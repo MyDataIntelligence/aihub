@@ -1,0 +1,29 @@
+{
+  "value": [
+    {
+      "id": 7,
+      "status": "active",
+      "threadContext": { "filePath": "/src/app.py", "rightFileStart": { "line": 3, "offset": 1 }, "rightFileEnd": { "line": 3, "offset": 20 } },
+      "comments": [
+        { "id": 1, "commentType": "text", "author": { "displayName": "Anna Test" }, "content": "Waarom geen controle op ë-tekens?\nGraag toelichten." },
+        { "id": 2, "commentType": "text", "author": { "displayName": "Ben Test" }, "content": "Goede vraag, +1" }
+      ]
+    },
+    {
+      "id": 8,
+      "status": "fixed",
+      "threadContext": { "filePath": "/src/app.py", "rightFileStart": { "line": 1, "offset": 1 } },
+      "comments": [{ "id": 1, "commentType": "text", "author": { "displayName": "Anna Test" }, "content": "Typo" }]
+    },
+    {
+      "id": 9,
+      "status": "active",
+      "comments": [{ "id": 1, "commentType": "text", "author": { "displayName": "Ben Test" }, "content": "Algemene opmerking" }]
+    },
+    {
+      "id": 10,
+      "status": "active",
+      "comments": [{ "id": 1, "commentType": "system", "author": { "displayName": "Azure DevOps" }, "content": "Policy update" }]
+    }
+  ]
+}
