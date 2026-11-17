@@ -1,0 +1,5 @@
+<type>: <korte samenvatting in de gebiedende wijs, maximaal 72 tekens> (#<story-id>)
+
+<optionele toelichting: waarom de wijziging nodig was, een alinea>
+
+# type: feat | fix | refactor | test | docs | chore

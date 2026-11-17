@@ -9,13 +9,14 @@
   },
   "files": [
     "dist",
-    "skills"
+    "pack"
   ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/copy-pack.mjs",
+    "prepack": "npm run build",
     "test": "vitest run",
     "lint:skills": "node dist/tools/lintSkills.js ../skills"
   },

@@ -1,7 +1,11 @@
 import type { Ctx } from "./lib/context.js";
 import { AihubError } from "./lib/errors.js";
+import { cliVersion } from "./lib/pack.js";
 import * as comments from "./commands/comments.js";
+import * as doctor from "./commands/doctor.js";
+import * as init from "./commands/init.js";
 import * as pr from "./commands/pr.js";
+import * as skills from "./commands/skills.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -13,9 +17,12 @@ export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 export const commands: Record<string, CommandFn> = {
   pr: pr.run,
   comments: comments.run,
+  init: init.run,
+  skills: skills.run,
+  doctor: doctor.run,
 };
 
-export const VERSION = "0.0.0";
+export const VERSION = cliVersion();
 
 /** Returns the process exit code. */
 export async function main(argv: string[], ctx: Ctx, registry: Record<string, CommandFn> = commands): Promise<number> {
