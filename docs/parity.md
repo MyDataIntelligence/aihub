@@ -32,6 +32,7 @@ Every workflow of the legacy Hub and where it lives now. A workflow is a skill (
 | PR auto-complete | `story-finish` | `aihub pr complete --pr N [--auto] [--delete-source] [--squash]` | done |
 | refine and create stories | `story-create`, `story-refine` | `aihub story create\|refine\|show` | done (separate change) |
 | background watch with notification ("laat het me weten") | `pr-watch` | `aihub watch --pr N\|--branch B [--until done\|comment\|vote] [--notify]`, `watch list\|stop` | done |
+| back to the session from a watch notification (even when the session was closed) | `pr-watch` | `aihub open --event ID\|--last\|--url aihub://open?event=ID [--print]`; `aihub watch --client C --session S`; the toast's Open button uses a per-user `aihub://` link (HKCU, no admin) | done (Windows button; macOS and Linux print the command) |
 | branch notes woven into the PR description | `pr-create` | `aihub note add "text"\|--file F`, `note list`; `pr create\|update` weave them (`--no-notes` skips) | done |
 | story state and resume ("Vorige keer ... Volgende stap ...") | `start-here`, `story-run` | `aihub status [--json]` | done |
 | story context for implementing (files, linked PRs and branches) | `implement` | `aihub story context --id N [--repos a,b] [--top 15]` | done |
@@ -68,4 +69,4 @@ Every workflow of the legacy Hub and where it lives now. A workflow is a skill (
 
 ## Not verified against a real organisation
 
-All commands are tested with synthetic fixtures and temporary git repositories only. These endpoints have no live proof yet: work item links to branches and pull requests, attachment upload, wiki page update with its version header, pipeline run parameters, policy evaluation endpoints (`policy/evaluations`, preview 7.1) and stage retry (`build/builds/{id}/stages/{stage}`, preview 7.1), the OS notification and detached start of `aihub watch`, auto-complete user lookup, and the REST shape of review threads. Check each once against a test project before the first release.
+All commands are tested with synthetic fixtures and temporary git repositories only. These endpoints have no live proof yet: work item links to branches and pull requests, attachment upload, wiki page update with its version header, pipeline run parameters, policy evaluation endpoints (`policy/evaluations`, preview 7.1) and stage retry (`build/builds/{id}/stages/{stage}`, preview 7.1), the OS notification, its Open button, the `aihub://` link registration, the resume commands of each client and the detached start of `aihub watch`, auto-complete user lookup, and the REST shape of review threads. Check each once against a test project before the first release.
