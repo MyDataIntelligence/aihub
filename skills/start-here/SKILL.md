@@ -28,14 +28,14 @@ Map the intent to a skill, then follow that skill:
 | review someone else's PR | pr-review |
 | "leg de PR uit", explain a PR | pr-explain |
 | wiki page | wiki |
-| other repository, clone | devops-repos |
-| Terraform, infrastructure code | terraform |
+| other repository | devops-repos |
+| Terraform | terraform |
 | screenshot in a PR | evidence |
-| transcript, voice notes | voice-notes |
+| voice notes | voice-notes |
 | change team.yaml or a template | team-settings |
 | release, release train | release |
 
-Resumed session ("ga verder", "continue"): run `aihub status`, open with "Last time ... Next step ..." in the user's language.
+Resumed session ("ga verder"): run `aihub status`, open with "Last time ... Next step ...".
 
 Each slash command (`/pr`, `/story`, `/watch`, `/start`, ...) maps to its skill.
 
