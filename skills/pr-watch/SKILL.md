@@ -33,7 +33,7 @@ aihub watch --mine --notify
 
 The first look only records what exists; every later event is one toast, once. Stop: `aihub watch stop --id mine`. `--at-logon` (Windows) starts it at sign-in; `aihub watch --remove-at-logon` undoes it.
 
-While waiting, do not poll by hand; `pipeline follow` returns when the run is finished. Report the final state in one short line per check.
+While waiting, do not poll by hand. Report the final state in one short line per check.
 
 Example: the link `.../pullrequest/42` gives `aihub pipeline follow --pr 42`.
 

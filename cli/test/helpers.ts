@@ -25,7 +25,15 @@ export function fakeFetch(routes: Route[]) {
     const call: Call = {
       method: init.method ?? "GET",
       url: String(input),
-      body: init.body ? JSON.parse(init.body) : undefined,
+      body: init.body
+        ? (() => {
+            try {
+              return JSON.parse(init.body);
+            } catch {
+              return init.body; // form-encoded bodies (OAuth)
+            }
+          })()
+        : undefined,
       headers: init.headers ?? {},
     };
     calls.push(call);

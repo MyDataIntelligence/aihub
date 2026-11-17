@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultExec, type Exec } from "./auth.js";
 import { AihubError } from "./errors.js";
+import { redact } from "./fabric-redact.js";
 import { anyGlob } from "./glob.js";
 import type { TeamConfig } from "./team.js";
 
@@ -20,6 +21,8 @@ export interface FabricWorkspace {
   environment: Env;
   /** Branch patterns whose changes are tested in this workspace. */
   branches?: string[];
+  /** Name of a registered service principal this workspace is accessed with (the secret lives in the user config, never here). */
+  servicePrincipal?: string;
 }
 
 export function fabricWorkspaces(team: TeamConfig): FabricWorkspace[] {
@@ -161,8 +164,8 @@ export function formatPlan(p: Plan, branch: string, target: string): string {
 
 /** Stage from a workspace name: only acc/prd are recognised (a name such as DEV-test-project stays dev). */
 export function inferEnv(name: string): Env {
-  if (/(^|[^a-z0-9])(prd|prod|production)([^a-z0-9]|$)/i.test(name)) return "prd";
-  if (/(^|[^a-z0-9])(acc|acceptance|accp)([^a-z0-9]|$)/i.test(name)) return "acc";
+  if (/(^|[^a-z0-9])(prd|prod|production|productie)([^a-z0-9]|$)/i.test(name)) return "prd";
+  if (/(^|[^a-z0-9])(acc|acceptance|acceptatie|acpt|uat)([^a-z0-9]|$)/i.test(name)) return "acc";
   return "dev";
 }
 
@@ -262,6 +265,8 @@ export interface FabricClientOpts {
   storageAuth?: () => Promise<string>;
   /** Auth for the Power BI REST API (refresh history). */
   powerbiAuth?: () => Promise<string>;
+  /** The identity behind the three auth functions (for hints and reporting). */
+  identity?: import("./fabric-auth.js").FabricIdentity;
 }
 
 export interface Res {
@@ -300,6 +305,9 @@ export class FabricClient {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly scale: number;
   private readonly maxRetries: number;
+  get identity() {
+    return this.opts.identity;
+  }
   constructor(
     private readonly auth: () => Promise<string>,
     private readonly fetchFn: typeof fetch,
@@ -338,9 +346,9 @@ export class FabricClient {
         let detail = "";
         try {
           const j = JSON.parse(text) as { message?: string; errorCode?: string; error?: { message?: string } };
-          detail = j.message ?? j.error?.message ?? j.errorCode ?? "";
+          detail = redact(j.message ?? j.error?.message ?? j.errorCode ?? "");
         } catch {
-          detail = text.slice(0, 200);
+          detail = redact(text.slice(0, 200));
         }
         if (res.status === 403) throw new FabricHttpError(`Fabric denied access (403): your account needs access to this workspace${detail ? ` (${detail})` : ""}`, 403);
         if (res.status === 429) throw new FabricHttpError(`Fabric kept answering 429 (too many requests) after ${this.maxRetries} retries; try again in a minute`, 429);
@@ -477,7 +485,7 @@ export function formatJob(j: JobInstance, itemName: string): string {
     const f = j.failureReason;
     lines.push(`failure: ${f?.errorCode ?? "unknown"}: ${(f?.message ?? "no details from Fabric").replace(/\s+/g, " ").trim()}`);
   }
-  return lines.join("\n");
+  return redact(lines.join("\n"));
 }
 
 /** Parameter file: JSON map (`{"limit": 10}`) or `{"parameters": {...}}`, turned into Fabric executionData. */
