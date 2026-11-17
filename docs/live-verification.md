@@ -37,7 +37,23 @@ afterwards. Second source = `az repos` / `az boards` / `az pipelines` / `az devo
 | `open --last --print` | prints the resume command of the event | events.log | n/a |
 | `skills install --global`, `skills diff`, `doctor` | into a temp home: 33 skills, 14 commands per client, doctor OK | files in the temp home | n/a |
 | `fabric plan`, `robot needed` | read only: no workspaces/suites in team.yaml, nothing to run | n/a | n/a |
-| `crossrepo test-resources`, `worktree`, `repos`, `pr requeue` | not run | no `crossRepo.testTarget` configured / out of the requested list | open |
+| `init` (round 2) | team.yaml prefilled with `active: Doing`, `finished: Done` read from the process states | fresh clone of test-project; `az` states Todo/Doing/Done (categories Proposed/InProgress/Completed) | PR #23 |
+| `pr complete --auto` (round 2) | no policies: "completed immediately"; failing Build policy on PR !748: "auto-complete set, it merges when: Build (ruff) is rejected" | `az repos pr show`: completed / active with autoCompleteSetBy | PR #23 |
+| `watch --interval 5` (round 2) | refused: "--interval '5' needs a unit: 5s, 5m or 5h" | n/a | PR #23 |
+| `repos list / clone` | listed 3 repos; **FAIL first**: `clone --root <missing folder>` gave "git is not available: spawnSync git ENOENT"; the folder is now created | both repos cloned under the root | PR #23 |
+| `worktree create / list / remove` (test-project + test-developers) | **FAIL first**: `repositories[].path` in team.yaml was ignored ("not found next to ..."); now honoured. Set created on `feature/2731-live-b2e5-story` in both repos, removed again (branches kept by design) | `git worktree list` in both clones, `git ls-remote` shows the pushed branches | PR #23 |
+| `pr requeue` | Build policy of PR !748 (Ruff, fails) requeued | `pr checks`: policy status queued | n/a |
+| `crossrepo test-resources` | `tests/test_empty_lines.py` pushed to test-developers as `resources/tests/...` on a test branch | `git diff` origin/staging..branch: one file | n/a |
+| `watch --notify` toast (round 2) | event logged and Windows toast delivered: "aihub / PR !748: 1 new comment(s)" with an **Open** button in the notification centre. The banner is suppressed on this machine because Do Not Disturb is on | proof PNGs below | n/a |
+| `open --last --print` | `cd '...'; 'codex' 'resume' '--last' 'PR !748: 1 new comment(s) - ga verder'` | matches events.log | n/a |
+
+## Toast proof
+
+Screenshots in `%LOCALAPPDATA%\AIContextHub\proof\`:
+- `20261117-230210-L-notification-center.png`: notification centre, Do Not Disturb on, the aihub group.
+- `20261117-230242-L-toast-watch-event-in-notification-center.png`: the watch toast "PR !748: 1 new comment(s)" with the **Open** button.
+
+The Open button was not clicked: it runs `codex resume --last` in a terminal, which is what `aihub open --last --print` shows. Do Not Disturb hides the banner, but the notification is in the centre, so delivery works.
 
 ## Isolation lesson
 
