@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { AihubError } from "./errors.js";
 
 export function git(cwd: string, args: string[], opts: { allowFail?: boolean } = {}): string {
@@ -84,4 +87,39 @@ export function pushIfNeeded(cwd: string, branch: string): boolean {
 export function workItemFromBranch(branch: string): number | undefined {
   const m = /(?:^|\/)(\d{1,9})(?=[-_/]|$)/.exec(branch);
   return m ? Number(m[1]) : undefined;
+}
+
+export interface GitResult {
+  status: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** Run git and return the exit status instead of throwing. */
+export function gitRaw(cwd: string, args: string[]): GitResult {
+  const r = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  if (r.error) throw new AihubError(`git is not available: ${r.error.message}`);
+  return { status: r.status ?? 1, stdout: r.stdout.split("\r\n").join("\n").trimEnd(), stderr: (r.stderr || "").trim() };
+}
+
+/** Run `fn` inside a throw-away detached worktree at `ref`; the user's checkout is never touched. */
+export async function withTempWorktree<T>(root: string, ref: string, fn: (dir: string) => Promise<T> | T): Promise<T> {
+  const dir = join(mkdtempSync(join(tmpdir(), "aihub-wt-")), "wt");
+  git(root, ["worktree", "add", "--detach", dir, ref]);
+  try {
+    return await fn(dir);
+  } finally {
+    gitRaw(root, ["worktree", "remove", "--force", dir]);
+    try {
+      rmSync(join(dir, ".."), { recursive: true, force: true });
+    } catch {
+      /* best effort */
+    }
+    gitRaw(root, ["worktree", "prune"]);
+  }
+}
+
+/** Fetch one branch of origin into refs/remotes/origin/<branch>. Returns false when origin has no such branch. */
+export function fetchBranch(root: string, branch: string): boolean {
+  return gitRaw(root, ["fetch", "--quiet", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`]).status === 0;
 }

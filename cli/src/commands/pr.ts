@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import { createPr, updatePr } from "../lib/pr.js";
+import { run as runChanges } from "./pr-changes.js";
 
 function parse(argv: string[], options: Record<string, { type: "string" | "boolean" }>) {
   try {
@@ -20,6 +21,7 @@ function num(v: unknown, flag: string): number | undefined {
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
+  if (sub === "changes") return runChanges(rest, ctx);
   if (sub === "create") {
     const v = parse(rest, {
       title: { type: "string" },

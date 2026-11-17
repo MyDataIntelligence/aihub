@@ -10,6 +10,9 @@ export interface Ctx {
   exec?: Exec;
   /** Token cache file override (tests). */
   tokenCache?: string;
+  /** Test hooks for polling commands. */
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
   out: (line: string) => void;
   err: (line: string) => void;
 }

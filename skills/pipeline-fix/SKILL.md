@@ -9,6 +9,7 @@ description: "Use when a build or pipeline failed: 'pipeline is rood', 'fix the 
 
 ## Steps
 1. Get the failing stage and log excerpt: `aihub pipeline follow`.
+   More log: `aihub pipeline logs --run <id> --search "<text>"`; earlier runs: `aihub pipeline runs`.
 2. Reproduce locally with your own tools if cheap (same test or lint command).
 3. Fix the cause, not the check. Never weaken a test.
 4. Commit per the commit template, push the own branch with git.
