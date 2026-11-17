@@ -42,15 +42,15 @@ pipelines:                         # pipelines to follow per repository (optiona
 
 fabric:                            # Fabric workspaces for `aihub fabric` (optional)
   workspaces:
-    - name: <workspace>            # workspace display name, e.g. DEV-test-project (required)
+    - name: <workspace>            # workspace display name, e.g. DEV-test-project (optional)
       id: <guid>                   # workspace id (optional; looked up by name when absent)
-      environment: dev             # dev | feature | test | acc | prd (required); acc and prd are never run by the CLI
+      environment: dev             # dev | feature | test | acc | prd (optional); acc and prd are never run by the CLI
       branches: []                 # branch patterns tested in this workspace, e.g. ["feature/*"] (optional)
 
 robot:                             # Robot integration tests for `aihub robot` (optional)
-  pipeline: <pipeline>             # Azure DevOps pipeline that runs the Robot suites (required for robot run)
-  integrationBranch: <branch>      # branch the pipeline runs on (required for robot run)
-  suites:                          # list; a suite belongs to a flow (required for robot needed)
+  pipeline: <pipeline>             # Azure DevOps pipeline that runs the Robot suites (optional; needed for robot run)
+  integrationBranch: <branch>      # branch the pipeline runs on (optional; needed for robot run)
+  suites:                          # list; a suite belongs to a flow (optional; needed for robot needed)
     - name: <suite>                # suite name passed to the pipeline as parameter `suite`
       paths: []                    # path patterns of the flow, e.g. ["src/flows/orders/**"]
       tests: []                    # path patterns of the suite's Robot files, e.g. ["tests/robot/orders/**"] (optional)
