@@ -32,6 +32,7 @@ export const COMMANDS: CommandSpec[] = [
   { name: "refine", skill: "story-refine", description: "Refine a story", hint: "story id" },
   { name: "review", skill: "review-process", description: "Process review comments", hint: "optional PR id" },
   { name: "watch", skill: "pr-watch", description: "Follow a PR and its pipeline", hint: "optional PR id or link" },
+  { name: "test", skill: "test-run", description: "Run the Fabric or Robot tests for this branch", hint: "fabric or robot, optional item or suite" },
 ];
 
 export function expectedCommand(kind: "opencode" | "copilot", c: CommandSpec): string {

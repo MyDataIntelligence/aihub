@@ -6,6 +6,8 @@ import * as doctor from "./commands/doctor.js";
 import * as init from "./commands/init.js";
 import * as pr from "./commands/pr.js";
 import * as skills from "./commands/skills.js";
+import * as fabric from "./commands/fabric.js";
+import * as robot from "./commands/robot.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -20,6 +22,8 @@ export const commands: Record<string, CommandFn> = {
   init: init.run,
   skills: skills.run,
   doctor: doctor.run,
+  fabric: fabric.run,
+  robot: robot.run,
 };
 
 export const VERSION = cliVersion();

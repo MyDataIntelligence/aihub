@@ -60,3 +60,28 @@ pipelines:
 | `pipelines` | Pipelines to follow per repository. |
 
 Check the file with `aihub doctor`. Change it through a pull request (see [onboarding](onboarding.md)).
+
+## Fabric and Robot (optional)
+
+```yaml
+fabric:
+  workspaces:
+    - { name: DEV-test-project, environment: dev, branches: ["feature/*"] }
+    - { name: ACC-test-project, environment: acc }
+
+robot:
+  pipeline: test-project-robot
+  integrationBranch: integration
+  suites:
+    - name: orders
+      paths: ["src/flows/orders/**"]
+      tests: ["tests/robot/orders/**"]
+```
+
+| Key | Meaning |
+|---|---|
+| `fabric.workspaces[]` | Name, optional id, `environment` (`dev`, `feature`, `test`, `acc`, `prd`) and optional `branches` patterns. `aihub fabric run` only runs `dev` and `feature`; `acc` and `prd` need `--allow-env` and are run by the developer. |
+| `robot.pipeline`, `robot.integrationBranch` | Azure DevOps pipeline and the branch `aihub robot run` queues it on. |
+| `robot.suites[]` | Suite name, `paths` of the flow it covers and `tests` (its Robot files). `aihub robot needed` compares the branch diff with these patterns. |
+
+Fabric items are found by the git-integration folder convention (`<name>.Notebook/`, `<name>.DataPipeline/`). Fabric auth: `az login` or the environment variable `AIHUB_FABRIC_TOKEN`.
