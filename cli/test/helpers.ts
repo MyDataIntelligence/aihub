@@ -95,6 +95,7 @@ export function ctxFor(dir: string, fetchFn: typeof fetch) {
     fetch: fetchFn,
     out: (l) => lines.push(l),
     err: (l) => errs.push(l),
+    sleep: async () => {}, // polling loops must not slow the tests
   };
   return { ctx, lines, errs };
 }

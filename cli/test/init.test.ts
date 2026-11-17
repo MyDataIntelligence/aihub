@@ -36,6 +36,28 @@ describe("aihub init --no-pr", () => {
     expect(validateTeam(team, requiredPaths(schema))).toEqual([]);
   });
 
+  it("prefills workItems.states from the process of the project (live: Basic has Doing/Done, not Active)", async () => {
+    const { dir } = repo();
+    const f = fakeFetch([
+      {
+        match: /\/_apis\/wit\/workitemtypes\/User%20Story\/states\?/,
+        respond: () => ({ body: { value: [{ name: "Todo", category: "Proposed" }, { name: "Doing", category: "InProgress" }, { name: "Done", category: "Completed" }] } }),
+      },
+    ]);
+    const { ctx } = ctxFor(dir, f.fn);
+    expect(await main(["init", "--no-pr"], ctx)).toBe(0);
+    const team = parse(readFileSync(join(dir, TEAM), "utf8"));
+    expect(team.workItems.states).toEqual({ active: "Doing", finished: "Done" });
+  });
+
+  it("keeps the default states when Azure DevOps cannot be asked", async () => {
+    const { dir } = repo();
+    const { ctx } = ctxFor(dir, fakeFetch([]).fn);
+    expect(await main(["init", "--no-pr"], ctx)).toBe(0);
+    const team = parse(readFileSync(join(dir, TEAM), "utf8"));
+    expect(team.workItems.states).toEqual({ active: "Active", finished: "Done" });
+  });
+
   it("never overwrites and reports existing files as skipped", async () => {
     const { dir } = repo();
     write(dir, TEAM, "mine: true\n");
