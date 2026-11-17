@@ -661,5 +661,150 @@ export const FABRIC_ROWS: FabricRow[] = [
     "url": "workspaces/{ws}/spark/pools",
     "paged": true,
     "noun": "custom pools"
+  },
+  {
+    "name": "get_domain",
+    "method": "GET",
+    "url": "admin/domains/{domainId}"
+  },
+  {
+    "name": "list_domain_workspaces",
+    "method": "GET",
+    "url": "admin/domains/{domainId}/workspaces",
+    "paged": true,
+    "noun": "workspaces"
+  },
+  {
+    "name": "get_deployment_pipeline",
+    "method": "GET",
+    "url": "deploymentPipelines/{deploymentPipelineId}"
+  },
+  {
+    "name": "list_deployment_stage_items",
+    "method": "GET",
+    "url": "deploymentPipelines/{deploymentPipelineId}/stages/{stageId}/items",
+    "paged": true,
+    "noun": "items"
+  },
+  {
+    "name": "list_deployment_operations",
+    "method": "GET",
+    "url": "deploymentPipelines/{deploymentPipelineId}/operations",
+    "paged": true,
+    "noun": "operations"
+  },
+  {
+    "name": "get_ml_model_endpoint",
+    "method": "GET",
+    "url": "workspaces/{ws}/mlmodels/{item}/endpoint"
+  },
+  {
+    "name": "get_ml_model_endpoint_versions",
+    "method": "GET",
+    "url": "workspaces/{ws}/mlmodels/{item}/endpoint/versions",
+    "paged": true,
+    "noun": "versions"
+  },
+  {
+    "name": "get_eventstream_topology",
+    "method": "GET",
+    "url": "workspaces/{ws}/eventstreams/{item}/topology"
+  },
+  {
+    "name": "set_eventstream_state",
+    "method": "POST",
+    "url": "workspaces/{ws}/eventstreams/{item}/topology/{action}",
+    "write": true,
+    "phrase": "{action} eventstream {item} in workspace {ws} (action pause or resume; body {startType: Now} to resume)",
+    "body": [
+      "startType",
+      "customStartDateTime"
+    ]
+  },
+  {
+    "name": "set_eventstream_source_state",
+    "method": "POST",
+    "url": "workspaces/{ws}/eventstreams/{item}/topology/sources/{sourceId}/{action}",
+    "write": true,
+    "phrase": "{action} source {sourceId} of eventstream {item}",
+    "body": [
+      "startType",
+      "customStartDateTime"
+    ]
+  },
+  {
+    "name": "set_eventstream_destination_state",
+    "method": "POST",
+    "url": "workspaces/{ws}/eventstreams/{item}/topology/destinations/{destinationId}/{action}",
+    "write": true,
+    "phrase": "{action} destination {destinationId} of eventstream {item}",
+    "body": [
+      "startType",
+      "customStartDateTime"
+    ]
+  },
+  {
+    "name": "discover_databricks_catalog",
+    "method": "GET",
+    "url": "workspaces/{ws}/azureDatabricks/catalogs",
+    "paged": true,
+    "noun": "catalogs",
+    "q": [
+      "databricksWorkspaceConnectionId=connectionId",
+      "maxResults"
+    ]
+  },
+  {
+    "name": "discover_databricks_schemas",
+    "method": "GET",
+    "url": "workspaces/{ws}/azureDatabricks/catalogs/{catalog}/schemas",
+    "paged": true,
+    "noun": "schemas",
+    "q": [
+      "databricksWorkspaceConnectionId=connectionId",
+      "maxResults"
+    ]
+  },
+  {
+    "name": "discover_databricks_tables",
+    "method": "GET",
+    "url": "workspaces/{ws}/azureDatabricks/catalogs/{catalog}/schemas/{schema}/tables",
+    "paged": true,
+    "noun": "tables",
+    "q": [
+      "databricksWorkspaceConnectionId=connectionId",
+      "maxResults"
+    ]
+  },
+  {
+    "name": "get_lakehouse",
+    "method": "GET",
+    "url": "workspaces/{ws}/lakehouses/{item}"
+  },
+  {
+    "name": "get_warehouse",
+    "method": "GET",
+    "url": "workspaces/{ws}/warehouses/{item}"
+  },
+  {
+    "name": "get_mirrored_database",
+    "method": "GET",
+    "url": "workspaces/{ws}/mirroredDatabases/{item}"
+  },
+  {
+    "name": "save_custom_pool",
+    "method": "POST",
+    "url": "workspaces/{ws}/spark/pools",
+    "write": true,
+    "phrase": "Create a custom Spark pool in workspace {ws}",
+    "bodyFile": true
+  },
+  {
+    "name": "update_custom_pool",
+    "method": "PATCH",
+    "url": "workspaces/{ws}/spark/pools/{poolId}",
+    "write": true,
+    "phrase": "Update custom Spark pool {poolId} in workspace {ws}",
+    "bodyFile": true
   }
 ];

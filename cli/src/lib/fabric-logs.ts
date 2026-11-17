@@ -39,7 +39,15 @@ export async function collectJobLogs(client: FabricClient, wsId: string, item: F
     for (const s of sessions) {
       const sid = s.livyId ?? s.id;
       const app = s.sparkApplicationId;
+      await attempt("Spark monitoring Livy log", `Livy log (session ${sid})`, () => client.request("GET", `/workspaces/${wsId}/${base}/${item.id}/livySessions/${sid}/applications/none/logs?type=livy`, undefined, { accept: "text/plain" }), sections, (r) => {
+        const lines = txt(r.text);
+        return { lines: lines.slice(-40) };
+      });
       if (!app) continue;
+      // Endpoints verified against Microsoft Learn (2026-11): driver log
+      //   https://learn.microsoft.com/en-us/fabric/data-engineering/driver-log
+      //   GET .../{notebooks|sparkJobDefinitions|lakehouses}/{itemId}/livySessions/{livyId}/applications/{appId}/logs?type=driver&fileName={stderr|stdout}
+      // Livy log https://learn.microsoft.com/en-us/fabric/data-engineering/livy-log  (.../applications/none/logs?type=livy)
       for (const f of ["stderr", "stdout"] as const) {
         const url = `/workspaces/${wsId}/${base}/${item.id}/livySessions/${sid}/applications/${app}/logs?type=driver&fileName=${f}`;
         await attempt("Spark monitoring driver log", `driver ${f} (session ${sid})`, () => client.request("GET", url, undefined, { accept: "text/plain" }), sections, (r) => {

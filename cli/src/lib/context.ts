@@ -17,6 +17,10 @@ export interface Ctx {
   now?: () => number;
   /** Test hook: the text piped to stdin (for --secret-from-stdin). */
   stdin?: () => string;
+  /** Test hook: runs a read-only SQL query against a Fabric SQL endpoint (default: tedious). */
+  sql?: (endpoint: { host: string; port: number; database: string }, query: string, maxRows: number, timeoutSeconds: number, accessToken: string) => Promise<{ columns: string[]; rows: unknown[][] }>;
+  /** Test hook: runs a local program without a shell (dbt). */
+  spawn?: (cmd: string, args: string[], cwd: string, timeoutMs: number) => { status: number; stdout: string; stderr: string };
   out: (line: string) => void;
   err: (line: string) => void;
 }

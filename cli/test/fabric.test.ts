@@ -98,7 +98,8 @@ describe("aihub fabric plan", () => {
     const dir = repoWithChanges(["fabric/nb_load_orders.Notebook/notebook-content.py", "fabric/pl_orders.DataPipeline/pipeline-content.json", "src/x.py"]);
     const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
     expect(await main(["fabric", "plan"], ctx)).toBe(0);
-    const out = lines[0].split("\n");
+    expect(lines[0]).toContain("strategy: fabric-api: Validate live Fabric items");
+    const out = lines[0].split("\n").filter((l) => !l.startsWith("strategy:"));
     expect(out.slice(0, 3)).toEqual([
       "Fabric plan for feature/12-orders (vs main):",
       "workspace: FEAT-test-project (feature)",
