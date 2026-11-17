@@ -12,7 +12,7 @@ Map the intent to a skill, then follow that skill:
 
 | Intent or input | Skill |
 |---|---|
-| new story | story-create |
+| new story, bug or task | story-create |
 | refine, "verfijn" | story-refine |
 | "implementeer", "werk uit" | implement |
 | "maak een PR", "create PR" | pr-create |
@@ -28,6 +28,8 @@ Map the intent to a skill, then follow that skill:
 | review someone else's PR | pr-review |
 | "leg de PR uit", explain a PR | pr-explain |
 | wiki page | wiki |
+| other repository, clone | devops-repos |
+| Terraform, infrastructure code | terraform |
 | screenshot in a PR | evidence |
 | transcript, voice notes | voice-notes |
 | change team.yaml or a template | team-settings |

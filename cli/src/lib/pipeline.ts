@@ -23,6 +23,7 @@ interface TimelineRecord {
   parentId?: string | null;
   type: string;
   name: string;
+  identifier?: string;
   result?: string | null;
   state?: string;
   order?: number;
@@ -265,4 +266,34 @@ export async function pipelineRun(ctx: Ctx, o: { name?: string; branch?: string;
     ...(templateParameters ? { templateParameters } : {}),
   });
   return o.json ? JSON.stringify({ id: b.id, pipeline: o.name, branch }) : `queued ${o.name} on ${branch}: run ${b.id}`;
+}
+
+/** Re-runs the failed stage(s) of a finished run (or the named one); a run without stages is queued again as a new run. */
+export async function pipelineRetry(ctx: Ctx, o: { run: number; stage?: string; json?: boolean }): Promise<string> {
+  const { client } = repoClient(ctx);
+  const t = await client.get<{ records?: (TimelineRecord & { identifier?: string })[] }>(`build/builds/${o.run}/timeline`);
+  const stages = (t.records ?? []).filter((r) => r.type === "Stage");
+  if (!stages.length) {
+    const b = await client.get<Build>(`build/builds/${o.run}`);
+    if (!b.definition?.id) throw new AihubError(`run ${o.run} has no pipeline definition`);
+    const again = await client.post<Build>("build/builds", { definition: { id: b.definition.id }, sourceBranch: b.sourceBranch });
+    return o.json ? JSON.stringify({ run: again.id, requeuedFrom: o.run }) : `run ${o.run} has no stages: queued ${defName(b)} again as run ${again.id}`;
+  }
+  const needle = o.stage?.toLowerCase();
+  const pick = needle
+    ? stages.filter((s) => s.name.toLowerCase() === needle || (s.identifier ?? "").toLowerCase() === needle)
+    : stages.filter((s) => s.result === "failed" || s.result === "canceled");
+  if (!pick.length) {
+    throw new AihubError(
+      needle
+        ? `run ${o.run}: no stage '${o.stage}' (stages: ${stages.map((s) => s.name).join(", ")})`
+        : `run ${o.run}: no failed stage to retry (stages: ${stages.map((s) => `${s.name} ${s.result ?? s.state}`).join(", ")}); pass --stage <name>`,
+    );
+  }
+  for (const s of pick) {
+    await client.patch(`build/builds/${o.run}/stages/${encodeURIComponent(s.identifier ?? s.name)}`, { state: "retry", forceRetryAllJobs: false }, { "api-version": "7.1-preview.1" });
+  }
+  return o.json
+    ? JSON.stringify({ run: o.run, retried: pick.map((s) => s.name) })
+    : `run ${o.run}: retrying stage ${pick.map((s) => s.name).join(", ")}; follow with aihub pipeline follow --run ${o.run}`;
 }

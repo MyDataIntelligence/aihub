@@ -8,6 +8,8 @@ export interface TeamConfig {
   workItems?: {
     storyType?: string;
     storyTemplate?: string;
+    /** template path per work item type, e.g. Bug and Task (aihub workitem create) */
+    templates?: Record<string, string>;
     emptySection?: string;
     /** heading -> ADO field reference name, merged over the defaults */
     sectionFields?: Record<string, string>;

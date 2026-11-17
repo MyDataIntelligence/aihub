@@ -29,6 +29,9 @@ import * as watch from "./commands/watch.js";
 import * as update from "./commands/update.js";
 import * as explain from "./commands/explain.js";
 import { setTrace } from "./lib/trace.js";
+import * as prPolicy from "./commands/pr-policy.js";
+import * as storyContext from "./commands/story-context.js";
+import * as repos from "./commands/repos.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -38,7 +41,8 @@ export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
  * throw AihubError for user-facing failures.
  */
 export const commands: Record<string, CommandFn> = {
-  pr: (argv, ctx) => (review.PR_EXTRA_SUBS.includes(argv[0]) ? review.runPrExtra(argv, ctx) : pr.run(argv, ctx)),
+  pr: (argv, ctx) =>
+    prPolicy.PR_POLICY_SUBS.includes(argv[0]) ? prPolicy.run(argv, ctx) : review.PR_EXTRA_SUBS.includes(argv[0]) ? review.runPrExtra(argv, ctx) : pr.run(argv, ctx),
   comments: comments.run,
   init: init.run,
   skills: skills.run,
@@ -50,7 +54,12 @@ export const commands: Record<string, CommandFn> = {
   pipeline: pipeline.run,
   batch: batch.run,
   work: work.run,
-  story: (argv, ctx) => (storyFlow.STORY_FLOW_SUBS.includes(argv[0]) ? storyFlow.run(argv, ctx) : story.run(argv, ctx)),
+  story: (argv, ctx) =>
+    storyContext.STORY_CONTEXT_SUBS.includes(argv[0])
+      ? storyContext.run(argv, ctx)
+      : storyFlow.STORY_FLOW_SUBS.includes(argv[0])
+        ? storyFlow.run(argv, ctx)
+        : story.run(argv, ctx),
   worktree: worktree.run,
   review: review.run,
   wiki: wiki.run,
@@ -64,6 +73,7 @@ export const commands: Record<string, CommandFn> = {
   watch: watch.run,
   update: update.run,
   explain: explain.run,
+  repos: repos.run,
 };
 
 export const VERSION = cliVersion();

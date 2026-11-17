@@ -31,6 +31,9 @@ pullRequest:                                                    # pull request s
 workItems:                                                      # work item settings
   storyType: User Story                                         # work item type of a story
   storyTemplate: .agents/skills/_shared/assets/story-template.md# story template path
+  templates:                                                    # optional: Bug and Task templates for `aihub workitem create`
+    Bug: .agents/skills/_shared/assets/bug-template.md
+    Task: .agents/skills/_shared/assets/task-template.md
 
 branches:                                                       # branch rules
   feature: "feature/{storyId}-{slug}"                           # feature branch pattern

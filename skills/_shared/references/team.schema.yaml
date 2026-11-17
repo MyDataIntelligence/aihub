@@ -25,6 +25,9 @@ pullRequest:                       # pull request settings (required)
 workItems:                         # work item settings (required)
   storyType: User Story            # work item type used for stories (required)
   storyTemplate: .agents/skills/_shared/assets/story-template.md   # story template path (required)
+  templates:                       # optional: template path per work item type for `aihub workitem create`
+    Bug: .agents/skills/_shared/assets/bug-template.md
+    Task: .agents/skills/_shared/assets/task-template.md
   states:                          # optional: states set by story start / finish
     active: Active                 # set when a story is started (default Active)
     finished: Done                 # set when a story is finished (default Done)

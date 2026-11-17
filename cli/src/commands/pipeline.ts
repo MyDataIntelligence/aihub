@@ -1,7 +1,7 @@
 import { num, parse } from "../lib/args.js";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
-import { pipelineFollow, pipelineLogs, pipelineRun, pipelineRuns, pipelineStatus } from "../lib/pipeline.js";
+import { pipelineFollow, pipelineLogs, pipelineRetry, pipelineRun, pipelineRuns, pipelineStatus } from "../lib/pipeline.js";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -14,6 +14,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     top: { type: "string" },
     timeout: { type: "string" },
     step: { type: "string" },
+    stage: { type: "string" },
     search: { type: "string" },
     tail: { type: "string" },
     "params-file": { type: "string" },
@@ -28,5 +29,9 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     return void ctx.out(await pipelineLogs(ctx, { run: sel.run, step: v.step, search: v.search, tail: num(v.tail, "--tail"), json: v.json }));
   }
   if (sub === "run") return void ctx.out(await pipelineRun(ctx, { name: v.name, branch: v.branch, paramsFile: v["params-file"], json: v.json }));
-  throw new AihubError("usage: aihub pipeline follow|status|runs|logs|run [flags]");
+  if (sub === "retry") {
+    if (!sel.run) throw new AihubError("aihub pipeline retry needs --run <id> (see 'aihub pipeline runs')");
+    return void ctx.out(await pipelineRetry(ctx, { run: sel.run, stage: v.stage, json: v.json }));
+  }
+  throw new AihubError("usage: aihub pipeline follow|status|runs|logs|run|retry [flags]");
 }
