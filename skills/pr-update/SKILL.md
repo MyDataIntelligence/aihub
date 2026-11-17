@@ -1,28 +1,27 @@
 ---
 name: pr-update
-description: "Use when an open pull request needs new content: 'update de PR', 'update the PR description', 'werk de PR bij', '/pr-update', new commits were pushed."
+description: "Use when an open pull request needs new content: 'update de PR', 'werk de PR bij', 'voeg onder <sectie> toe', a dev.azure.com pullrequest link, '/pr-update'."
 ---
 # Update a pull request
 
 ## When
-The own branch has new commits or the description is out of date.
+Something must be added to or changed in an open PR description.
 
 ## Steps
-1. With git (own tools): `git status`, push new commits.
-2. See what changed on the PR: `aihub pr changes`.
-3. Rewrite the description file from the template so it matches the current diff, keeping tested facts honest.
-4. Run:
+To add or change ONE section run this single command. Never resend or rewrite the whole description:
 
 ```sh
-aihub pr update --body-file pr.md
+aihub pr update --pr <url|N> --section "<heading>" --append-text "<short text>"
 ```
 
-Example: after a fix commit, `git push`, then `aihub pr update --body-file pr.md`.
+`--pr` takes the dev.azure.com link or the number (omit it for the PR of the current branch). Use `--replace-text` to replace the section, `--append-file f.md` / `--replace-file f.md` for long prose. Keep the team language.
+
+Do not run `git status`, `aihub pr changes`, `--help` or read the template first. Do not ask questions.
+
+Example: "voeg onder Testen toe: handmatig getest" with a link -> `aihub pr update --pr https://dev.azure.com/org/proj/_git/repo/pullrequest/42 --section "Testen" --append-text "Handmatig getest."`
 
 ## What the CLI fills
-PR id from the current branch, title, template sections, links to the story. Do not ask the user for the PR id.
+Reads the PR, edits only that section and keeps every other section byte for byte. New commits: `git push` first.
 
 ## If it fails
-No PR for this branch: follow pr-create. Error unclear: run `aihub doctor`. Never invent ids or links.
-
-Rules: direct command, 0 questions. Language follows the team template. Local git uses your own tools.
+Run `aihub doctor`. Never invent ids or links.

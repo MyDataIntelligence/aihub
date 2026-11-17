@@ -27,6 +27,8 @@ import { defaultTargetFor, loadTeam, readUtf8 } from "./team.js";
 
 export interface CreateOpts {
   title?: string;
+  /** Short prose for the first template section (the summary/context), inline instead of a body file. */
+  summaryText?: string;
   bodyFile?: string;
   target?: string;
   draft?: boolean;
@@ -75,7 +77,13 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
   const tpl = resolveTemplate(target, { readRef: (b, p) => showFile(root, b, p), localRoot: root });
   // Private branch notes (aihub note add) are woven into the context section as plain prose.
   const notes = o.noNotes ? [] : readNotes(root, branch);
-  const body = weaveNotes(o.bodyFile ? readUtf8(o.bodyFile) : "", tpl ? parseSections(tpl.content).sections.map((s) => s.heading) : [], notes);
+  const tplHeadings = tpl ? parseSections(tpl.content).sections.map((s) => s.heading) : [];
+  let given = o.bodyFile ? readUtf8(o.bodyFile) : "";
+  if (o.summaryText?.trim()) {
+    const first = tplHeadings[0];
+    given = first ? `## ${first}\n${o.summaryText.trim()}\n\n${given}` : `${o.summaryText.trim()}\n\n${given}`;
+  }
+  const body = weaveNotes(given, tplHeadings, notes);
   const emptyText = team.pullRequest?.emptySection || DEFAULT_EMPTY;
   let description: string;
   let summary: string;
@@ -132,7 +140,9 @@ export interface UpdateOpts {
   bodyFile?: string;
   section?: string;
   appendFile?: string;
+  appendText?: string;
   replaceFile?: string;
+  replaceText?: string;
   title?: string;
   draft?: boolean;
   target?: string;
@@ -166,16 +176,14 @@ export async function updatePr(ctx: Ctx, o: UpdateOpts): Promise<string> {
       changed.push("context");
     }
   }
+  const appendText = o.appendText ?? (o.appendFile ? readUtf8(o.appendFile) : undefined);
+  const replaceText = o.replaceText ?? (o.replaceFile ? readUtf8(o.replaceFile) : undefined);
   if (o.section) {
-    if (!o.appendFile && !o.replaceFile) throw new AihubError("--section needs --append-file or --replace-file");
-    description = editSection(
-      description,
-      o.section,
-      o.replaceFile ? { replace: readUtf8(o.replaceFile) } : { append: readUtf8(o.appendFile!) },
-    );
+    if (appendText === undefined && replaceText === undefined) throw new AihubError("--section needs --append-text, --append-file, --replace-text or --replace-file");
+    description = editSection(description, o.section, replaceText !== undefined ? { replace: replaceText } : { append: appendText! });
     changed.push(`section ${o.section}`);
-  } else if (o.appendFile || o.replaceFile) {
-    throw new AihubError("--append-file/--replace-file need --section <heading>");
+  } else if (appendText !== undefined || replaceText !== undefined) {
+    throw new AihubError("--append-*/--replace-* need --section <heading>");
   }
 
   const patch: Record<string, unknown> = {};

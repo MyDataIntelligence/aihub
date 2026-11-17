@@ -8,7 +8,7 @@ description: "Use when the user starts an Azure DevOps team task and it is uncle
 Any Azure DevOps team request. Route it at once; do not explain the pack.
 
 ## Steps
-Map the intent to a skill, then follow that skill:
+A direct command needs no routing: "maak een PR" -> run `aihub pr create --summary-text "..."`; "voeg onder <sectie> toe" with a PR link -> `aihub pr update --pr <url> --section "<heading>" --append-text "..."`. No exploring first. Otherwise map the intent:
 
 | Intent or input | Skill |
 |---|---|
@@ -27,17 +27,12 @@ Map the intent to a skill, then follow that skill:
 | "run story 123" | story-run |
 | review someone else's PR | pr-review |
 | "leg de PR uit", explain a PR | pr-explain |
-| wiki page | wiki |
-| other repository | devops-repos |
-| Terraform | terraform |
-| screenshot in a PR | evidence |
-| voice notes | voice-notes |
+| wiki, other repo, Terraform | wiki, devops-repos, terraform |
+| screenshot, voice notes | evidence, voice-notes |
 | change team.yaml or a template | team-settings |
 | release, release train | release |
 
-Resumed session ("ga verder"): run `aihub status`, open with "Last time ... Next step ...".
-
-Each slash command (`/pr`, `/story`, `/watch`, `/start`, ...) maps to its skill.
+Resumed session: run `aihub status`.
 
 Example: the user sends a pullrequest link, so follow pr-watch with that id.
 

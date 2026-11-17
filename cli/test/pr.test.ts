@@ -219,3 +219,58 @@ describe("router", () => {
     expect(lines).toEqual(["hi"]);
   });
 });
+
+describe("aihub pr, one-call agent flows", () => {
+  it("create takes the summary inline: it lands in the first template section, no body file needed", async () => {
+    const { dir } = setup();
+    const { fn, calls } = fakeFetch(
+      adoRoutes([{ method: "POST", match: new RegExp(PR_BASE + "\?"), respond: () => ({ body: { pullRequestId: 42 } }) }]),
+    );
+    const { ctx, errs } = ctxFor(dir, fn);
+    expect(await main(["pr", "create", "--summary-text", "Zoeken met ë, é en ü."], ctx)).toBe(0);
+    expect(errs).toEqual([]);
+    const post = calls.find((c) => c.method === "POST")!;
+    expect(post.body.description).toMatch(/## Beschrijving\n+Zoeken met ë, é en ü\./);
+    expect(post.body.description).toContain("AB#1234");
+  });
+
+  it("update takes the PR url positionally and appends short inline text to one section", async () => {
+    const dir = tmp();
+    sh(dir, ["init", "-b", "main"]);
+    sh(dir, ["config", "remote.origin.url", "https://dev.azure.com/ferron-org/test-project/_git/test-repo"]);
+    const existing = { pullRequestId: 42, title: "t", status: "active", description: "## Samenvatting\n\nEerste.\n\n## Testen\n\nUnit-test gedraaid.\n", sourceRefName: "refs/heads/x", targetRefName: "refs/heads/main" };
+    const { fn, calls } = fakeFetch([
+      { match: new RegExp(PR_BASE + "/42\?"), respond: () => ({ body: existing }) },
+      { method: "PATCH", match: new RegExp(PR_BASE + "/42\?"), respond: () => ({ body: {} }) },
+    ]);
+    const { ctx, lines } = ctxFor(dir, fn);
+    const url = "https://dev.azure.com/ferron-org/test-project/_git/test-repo/pullrequest/42";
+    expect(await main(["pr", "update", url, "--section", "Testen", "--append-text", "Handmatig getest met ë."], ctx)).toBe(0);
+    const patch = calls.find((c) => c.method === "PATCH")!;
+    expect(patch.body.description).toBe("## Samenvatting\n\nEerste.\n\n## Testen\n\nUnit-test gedraaid.\n\nHandmatig getest met ë.\n");
+    expect(lines[0]).toContain("PR !42 updated");
+  });
+
+  it("update replaces a section from inline text, and refuses inline text without --section", async () => {
+    const dir = tmp();
+    sh(dir, ["init", "-b", "main"]);
+    sh(dir, ["config", "remote.origin.url", "https://dev.azure.com/ferron-org/test-project/_git/test-repo"]);
+    const existing = { pullRequestId: 42, title: "t", status: "active", description: "## A\n\none\n\n## B\n\ntwo\n", sourceRefName: "refs/heads/x", targetRefName: "refs/heads/main" };
+    const { fn, calls } = fakeFetch([
+      { match: new RegExp(PR_BASE + "/42\?"), respond: () => ({ body: existing }) },
+      { method: "PATCH", match: new RegExp(PR_BASE + "/42\?"), respond: () => ({ body: {} }) },
+    ]);
+    const { ctx, errs } = ctxFor(dir, fn);
+    expect(await main(["pr", "update", "--pr", "42", "--section", "B", "--replace-text", "nieuw"], ctx)).toBe(0);
+    expect(calls.find((c) => c.method === "PATCH")!.body.description).toBe("## A\n\none\n\n## B\n\nnieuw\n");
+    expect(await main(["pr", "update", "--pr", "42", "--append-text", "x"], ctx)).toBe(1);
+    expect(errs.join("\n")).toMatch(/need --section/);
+  });
+
+  it("answers --help with the one-line commands instead of an option error", async () => {
+    const { ctx, lines } = ctxFor(tmp(), fakeFetch([]).fn);
+    expect(await main(["pr", "update", "--help"], ctx)).toBe(0);
+    expect(lines.join("\n")).toContain("--append-text");
+    expect(await main(["pr"], ctx)).toBe(0);
+  });
+});
