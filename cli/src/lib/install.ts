@@ -1,7 +1,14 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { trace } from "./trace.js";
 import { dirname, join } from "node:path";
 import { clientDirs, CLIENTS, type Client } from "./clients.js";
 import { cliVersion, listFiles, packRoot, readPackFile, sha256, stamp } from "./pack.js";
+
+// --dry-run: the same code path runs, but nothing is written and every planned write is printed.
+const wf = (p: string, c: string) => (trace.dryRun ? trace.plan(`would write ${p}`) : writeFileSync(p, c, "utf8"));
+const wq = (p: string, c: string) => (trace.dryRun ? undefined : writeFileSync(p, c, "utf8"));
+const mk = (p: string) => (trace.dryRun ? undefined : void mkdirSync(p, { recursive: true }));
+const rm = (p: string) => (trace.dryRun ? trace.plan(`would delete ${p}`) : unlinkSync(p));
 
 export const MANIFEST = ".aihub-manifest.json";
 
@@ -23,7 +30,7 @@ export interface Result {
   reason?: string;
 }
 
-function readManifest(dir: string): Manifest {
+export function readManifest(dir: string): Manifest {
   try {
     const m = JSON.parse(readFileSync(join(dir, MANIFEST), "utf8")) as Manifest;
     return { version: m.version, files: m.files ?? {} };
@@ -32,7 +39,7 @@ function readManifest(dir: string): Manifest {
   }
 }
 
-const readNorm = (p: string): string => readFileSync(p, "utf8").replace(/\r\n/g, "\n");
+export const readNorm = (p: string): string => readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 
 /**
  * Write entries into dir. Files that are not ours (no manifest record) or that the user changed (checksum differs from
@@ -46,8 +53,8 @@ export function installEntries(dir: string, entries: Entry[], version: string): 
     const abs = join(dir, e.rel);
     const want = sha256(e.content);
     if (!existsSync(abs)) {
-      mkdirSync(dirname(abs), { recursive: true });
-      writeFileSync(abs, e.content, "utf8");
+      mk(dirname(abs));
+      wf(abs, e.content);
       next[e.rel] = want;
       results.push({ action: "created", path: abs });
       continue;
@@ -57,7 +64,7 @@ export function installEntries(dir: string, entries: Entry[], version: string): 
       next[e.rel] = want;
       results.push({ action: "unchanged", path: abs });
     } else if (man.files[e.rel] === cur) {
-      writeFileSync(abs, e.content, "utf8");
+      wf(abs, e.content);
       next[e.rel] = want;
       results.push({ action: "updated", path: abs });
     } else {
@@ -70,13 +77,13 @@ export function installEntries(dir: string, entries: Entry[], version: string): 
     const abs = join(dir, rel);
     if (!existsSync(abs)) continue;
     if (sha256(readNorm(abs)) === sum) {
-      unlinkSync(abs);
+      rm(abs);
       results.push({ action: "removed", path: abs, reason: "no longer in the pack" });
     } else next[rel] = sum;
   }
   if (Object.keys(next).length) {
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, MANIFEST), JSON.stringify({ version, files: next }, null, 2) + "\n", "utf8");
+    mk(dir);
+    wq(join(dir, MANIFEST), JSON.stringify({ version, files: next }, null, 2) + "\n");
   }
   pruneEmpty(dir, dir);
   return results;
@@ -91,7 +98,7 @@ export function uninstallDir(dir: string): Result[] {
     const abs = join(dir, rel);
     if (!existsSync(abs)) continue;
     if (sha256(readNorm(abs)) === sum) {
-      unlinkSync(abs);
+      rm(abs);
       results.push({ action: "removed", path: abs });
     } else {
       keep[rel] = sum;
@@ -99,8 +106,8 @@ export function uninstallDir(dir: string): Result[] {
     }
   }
   const mf = join(dir, MANIFEST);
-  if (Object.keys(keep).length) writeFileSync(mf, JSON.stringify({ version: man.version, files: keep }, null, 2) + "\n", "utf8");
-  else if (existsSync(mf)) unlinkSync(mf);
+  if (Object.keys(keep).length) wq(mf, JSON.stringify({ version: man.version, files: keep }, null, 2) + "\n");
+  else if (existsSync(mf) && !trace.dryRun) unlinkSync(mf);
   pruneEmpty(dir, dir);
   return results;
 }
@@ -109,7 +116,7 @@ export function uninstallDir(dir: string): Result[] {
 function pruneEmpty(dir: string, top: string): void {
   if (!existsSync(dir)) return;
   for (const n of readdirSync(dir, { withFileTypes: true })) if (n.isDirectory()) pruneEmpty(join(dir, n.name), top);
-  if (readdirSync(dir).length === 0) rmdirSync(dir);
+  if (readdirSync(dir).length === 0 && !trace.dryRun) rmdirSync(dir);
 }
 
 export function skillEntries(version = cliVersion()): Entry[] {

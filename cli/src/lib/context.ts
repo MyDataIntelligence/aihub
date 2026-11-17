@@ -10,6 +10,8 @@ export interface Ctx {
   exec?: Exec;
   /** Token cache file override (tests). */
   tokenCache?: string;
+  /** Where this CLI is installed (tests); default is the folder of the running code. */
+  installPath?: string;
   /** Test hooks for polling commands. */
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;

@@ -8,9 +8,20 @@ Agent Skills plus one small CLI that let a coding agent (opencode, GitHub Copilo
 
 ## Install
 
+One line (checks Node 18+, installs the CLI and the skills for opencode, Codex and Copilot, runs `aihub doctor`; re-run to update):
+
+```sh
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/MyDataIntelligence/aihub/main/install.ps1 | iex
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/MyDataIntelligence/aihub/main/install.sh | sh
+```
+
+Or double-click `Install-aihub.cmd`. Flags: `-Next` / `--next` (test version), `-Uninstall` / `--uninstall`, `-WhatIf` / `--dry-run` (print the plan). Or by hand:
+
 ```sh
 npm i -g @ferronhooi/aihub
-npx skills add MyDataIntelligence/aihub -g -a opencode -a github-copilot -a codex
+aihub skills install
 aihub init        # in a team repository: proposes team.yaml + templates as a PR
 aihub doctor      # checks sign-in, remote, templates and team file
 ```

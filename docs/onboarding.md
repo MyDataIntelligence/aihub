@@ -2,6 +2,15 @@
 
 ## Install (once per computer)
 
+The easy way (checks Node 18+, installs the CLI and the skills, runs `aihub doctor`, prints the next steps; running it again updates):
+
+```sh
+irm https://raw.githubusercontent.com/MyDataIntelligence/aihub/main/install.ps1 | iex   # Windows PowerShell
+curl -fsSL https://raw.githubusercontent.com/MyDataIntelligence/aihub/main/install.sh | sh   # macOS, Linux
+```
+
+`Install-aihub.cmd` does the same on a double-click. Node is never installed silently: if it is missing the script says so and shows `winget install OpenJS.NodeJS.LTS` (or `brew install node`). Flags: `-Next`/`--next`, `-Uninstall`/`--uninstall`, `-WhatIf`/`--dry-run`. From a pipe set `AIHUB_NEXT=1`, `AIHUB_UNINSTALL=1`, `AIHUB_WHATIF=1` (`AIHUB_DRY_RUN=1` for the shell script) or `AIHUB_PACKAGE=@org/aihub` (own feed, see [self-hosting](self-hosting.md)). By hand:
+
 ```sh
 npm i -g @ferronhooi/aihub
 aihub skills install
@@ -19,7 +28,8 @@ Re-running the command updates unchanged files, never overwrites a file you edit
 stay and are listed), `aihub doctor` flags copies older than the CLI, and `aihub skills uninstall
 [--global]` removes only files aihub wrote and you did not change.
 
-Alternative without the CLI copy step:
+More: [how it works](how-it-works.md), [adapting without forking](customize.md), [self-hosting](self-hosting.md). `aihub update`
+updates the CLI and the skills (`--check` only reports). Alternative without the CLI copy step (use your team's own repository URL when you self-host):
 
 ```sh
 npx skills add MyDataIntelligence/aihub -g -a opencode -a github-copilot -a codex
@@ -32,6 +42,8 @@ cd <team-repo>
 aihub init      # proposes team.yaml and the templates as a pull request
 aihub doctor    # checks sign-in, remote, templates and team file
 ```
+
+The same files are in [`team-pack/`](../team-pack/README.md) (also attached to each release as `aihub-team-pack-<version>.zip`) if you prefer to copy them by hand.
 
 `aihub init [--repo .] [--no-pr] [--language nl|en] [--into-repo]` never overwrites existing files. It prefills `team.yaml` from the git
 remote and proposes the story and commit templates, a pull request template (only when none exists where Azure DevOps
