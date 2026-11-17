@@ -35,7 +35,7 @@ Map the intent to a skill, then follow that skill:
 
 Resumed session ("ga verder", "continue"): run `aihub status`, open with "Last time ... Next step ..." in the user's language.
 
-Slash commands `/pr /pr-update /cherry-pick /story /refine /review /watch /start /finish /review-pr /explain /release /wiki` map to the same skills.
+Each slash command (`/pr`, `/story`, `/watch`, `/start`, ...) maps to its skill.
 
 Example: the user sends a pullrequest link, so follow pr-watch with that id.
 
@@ -45,4 +45,4 @@ Templates, target branch, story links and repository come from `team.yaml` (see 
 ## If it fails
 Run `aihub doctor` and show its output. If `team.yaml` is missing, tell the user to run `aihub init` in the team repo.
 
-Rules: a direct command ("maak een PR") is executed at once with 0 questions. Local git (status, diff, commit, push of the own branch) uses your own tools. Write content in the language of the team template. Never invent work item ids or links.
+Rules: a direct command ("maak een PR") is executed at once with 0 questions. Local git uses your own tools. Content follows the team template language. Never invent work item ids or links.
