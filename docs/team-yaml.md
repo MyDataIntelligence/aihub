@@ -105,3 +105,38 @@ robot:                                   # Robot integration tests for `aihub ro
 | `robot.suites[]` | Suite name, `paths` of the flow it covers and `tests` (its Robot files). `aihub robot needed` compares the branch diff with these patterns. |
 
 `aihub robot run --no-merge` skips the merge for one run. Fabric items are found by the git-integration folder convention (`<name>.Notebook/`, `<name>.DataPipeline/`). Fabric auth: `az login` or the environment variable `AIHUB_FABRIC_TOKEN`.
+
+## Cross-repo (optional)
+
+```yaml
+repositories:                            # repositories[] may also carry a local clone path
+  - name: test-project                   # repository name in Azure DevOps
+    aliases: [tp]                        # short names people may say
+    defaultTarget: main                  # branch a new PR targets
+  - name: test-developers                # second repository of the team
+    aliases: [developers]                # "port naar developers"
+    defaultTarget: main                  # branch a ported change targets
+    path: ../test-developers             # optional local clone; default: sibling directory, else a temporary clone
+
+crossRepo:                               # settings for `aihub port` and `aihub crossrepo`
+  pathMaps:                              # named path mappings for `aihub port --map dev`
+    dev:                                 # name to say
+      - from: src/app                    # directory prefix in the source repository
+        to: lib/app                      # directory prefix in the target repository
+  testTarget:                            # default target of `aihub crossrepo test-resources`
+    repo: test-developers                # repository that receives the resources
+    branch: integration                  # its active test branch (never a protected branch)
+  testResources:                         # what is copied
+    fromRepo: test-project               # repository the resources come from
+    paths: ["tests/data/**"]             # globs relative to the source repository root
+    toPath: resources                    # optional directory prefix in the target repository
+```
+
+| Key | Meaning |
+|---|---|
+| `repositories[].path` | Local clone of that repository (absolute, or relative to the current repository). Without it the CLI looks for a sibling directory with that origin and otherwise clones temporarily. |
+| `crossRepo.pathMaps` | Named lists of `from`/`to` directory prefixes. The longest `from` wins; files outside every map are reported, never dropped silently. `aihub port --path-map "src=>dst"` adds an ad-hoc map. |
+| `crossRepo.testTarget` | Repository and active branch that `aihub crossrepo test-resources` pushes to when `--to-repo`/`--target` are absent. |
+| `crossRepo.testResources` | Source repository, glob list and optional target directory prefix for the same command. |
+
+`aihub port` writes a new branch `port/<source>-from-<repo>` in the target repository (a conflict pushes nothing); `aihub crossrepo status|link-prs --story N` follow a story over several repositories. See the `cross-repo` skill.

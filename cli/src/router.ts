@@ -21,6 +21,8 @@ import * as wiki from "./commands/wiki.js";
 import * as release from "./commands/release.js";
 import * as workitem from "./commands/workitem.js";
 import * as evidence from "./commands/evidence.js";
+import * as port from "./commands/port.js";
+import * as crossrepo from "./commands/crossrepo.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -49,6 +51,8 @@ export const commands: Record<string, CommandFn> = {
   release: release.run,
   workitem: workitem.run,
   evidence: evidence.run,
+  port: port.run,
+  crossrepo: crossrepo.run,
 };
 
 export const VERSION = cliVersion();
