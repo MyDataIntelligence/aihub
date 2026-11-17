@@ -21,7 +21,8 @@ import {
   workItemFromBranch,
   git,
 } from "./git.js";
-import { compose, DEFAULT_EMPTY, editSection, mergeSections, resolveTemplate, type CodeValues } from "./templates.js";
+import { compose, DEFAULT_EMPTY, editSection, mergeSections, parseSections, resolveTemplate, type CodeValues } from "./templates.js";
+import { CONTEXT_RE, notesText, readNotes, unwovenNotes, weaveNotes } from "./notes.js";
 import { defaultTargetFor, loadTeam, readUtf8 } from "./team.js";
 
 export interface CreateOpts {
@@ -31,6 +32,7 @@ export interface CreateOpts {
   draft?: boolean;
   workItem?: number;
   dryRun?: boolean;
+  noNotes?: boolean;
   json?: boolean;
 }
 
@@ -70,8 +72,10 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
     linked: linkedIds.length ? linkedIds.map((i) => `- !${i}`).join("\n") : undefined,
   };
 
-  const body = o.bodyFile ? readUtf8(o.bodyFile) : "";
   const tpl = resolveTemplate(target, { readRef: (b, p) => showFile(root, b, p), localRoot: root });
+  // Private branch notes (aihub note add) are woven into the context section as plain prose.
+  const notes = o.noNotes ? [] : readNotes(root, branch);
+  const body = weaveNotes(o.bodyFile ? readUtf8(o.bodyFile) : "", tpl ? parseSections(tpl.content).sections.map((s) => s.heading) : [], notes);
   const emptyText = team.pullRequest?.emptySection || DEFAULT_EMPTY;
   let description: string;
   let summary: string;
@@ -132,6 +136,7 @@ export interface UpdateOpts {
   title?: string;
   draft?: boolean;
   target?: string;
+  noNotes?: boolean;
   json?: boolean;
 }
 
@@ -148,10 +153,18 @@ export async function updatePr(ctx: Ctx, o: UpdateOpts): Promise<string> {
   const pr = await resolvePr(ctx, client, root, o.pr);
   let description = pr.description ?? "";
   const changed: string[] = [];
-
   if (o.bodyFile) {
     description = mergeSections(description, readUtf8(o.bodyFile));
     changed.push("body");
+  }
+  if (!o.noNotes && (o.bodyFile || o.section)) {
+    // private branch notes join the context section as plain prose, once
+    const fresh = unwovenNotes(description, readNotes(root, shortBranch(pr.sourceRefName)));
+    if (fresh.length) {
+      const heading = parseSections(description).sections.map((s) => s.heading).find((h) => CONTEXT_RE.test(h)) ?? "Context";
+      description = editSection(description, heading, { append: notesText(fresh) });
+      changed.push("context");
+    }
   }
   if (o.section) {
     if (!o.appendFile && !o.replaceFile) throw new AihubError("--section needs --append-file or --replace-file");

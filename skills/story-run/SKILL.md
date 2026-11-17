@@ -8,6 +8,8 @@ description: "Use when the user wants a story done end to end without questions:
 The story exists and the user wants a finished, green pull request. Ask nothing except a genuinely ambiguous choice (two plausible repositories, a contradiction in the story).
 
 ## Steps
+Resuming a run? Run `aihub status` first: it shows the story, PR, pipeline, open threads and the next step; continue from there instead of starting over.
+
 Chain these skills, each at once, and carry the ids forward:
 1. story-start: `aihub story start --id 123` (add `--repos` when the story names several repositories).
 2. implement: code and tests for the story.

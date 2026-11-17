@@ -31,6 +31,9 @@ Every workflow of the legacy Hub and where it lives now. A workflow is a skill (
 | work item state | `story-finish` | `aihub workitem state --id N --to S` | done |
 | PR auto-complete | `story-finish` | `aihub pr complete --pr N [--auto] [--delete-source] [--squash]` | done |
 | refine and create stories | `story-create`, `story-refine` | `aihub story create\|refine\|show` | done (separate change) |
+| background watch with notification ("laat het me weten") | `pr-watch` | `aihub watch --pr N\|--branch B [--until done\|comment\|vote] [--notify]`, `watch list\|stop` | done |
+| branch notes woven into the PR description | `pr-create` | `aihub note add "text"\|--file F`, `note list`; `pr create\|update` weave them (`--no-notes` skips) | done |
+| story state and resume ("Vorige keer ... Volgende stap ...") | `start-here`, `story-run` | `aihub status [--json]` | done |
 
 ## Dropped on purpose
 
