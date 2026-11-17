@@ -59,7 +59,7 @@ describe("cherry-pick", () => {
     sh(dir, ["push", "origin", "main"]);
     const headBefore = sh(dir, ["rev-parse", "HEAD"]);
     const { ctx, lines, errs } = ctxFor(dir, fakeFetch([]).fn);
-    const code = await main(["cherry-pick", "--from", `${add},${sha}`, "--to", "release/1.2", "--to", "release/1.3"], ctx, commands);
+    const code = await main(["cherry-pick", "--from", `${add},${sha}`, "--to", "release/1.2", "--to", "release/1.3", "--no-pr"], ctx, commands);
     const out = lines.join("\n");
     expect(code).toBe(1);
     expect(out).toMatch(/release\/1\.2\s+ok/);
@@ -95,6 +95,26 @@ describe("cherry-pick", () => {
     expect(post.body.sourceRefName).toMatch(/^refs\/heads\/cherry-pick\/.*-to-release-1\.2$/);
     expect(post.body.description).toContain("Pick naar release.");
     expect(post.body.description).toContain("fix: main change");
+  });
+
+  it("opens a PR by default, links the story named in the commit (AB#) and takes the summary inline", async () => {
+    const { dir } = scenario();
+    write(dir, ".azuredevops/pull_request_template.md", "## Samenvatting\n\n## Gekoppelde stories\n");
+    sh(dir, ["add", "."]);
+    sh(dir, ["commit", "-m", "chore: sjabloon"]);
+    const add = commit(dir, "fix.txt", "f\n", "fix: lege order (AB#4321)");
+    sh(dir, ["push", "origin", "main"]);
+    const f = fakeFetch([
+      { match: /_apis\/wit\/workitems\/4321\?/, respond: () => ({ body: { fields: { "System.Title": "Lege order" } } }) },
+      { method: "POST", match: /\/pullrequests\?/, respond: () => ({ body: { pullRequestId: 78 } }) },
+    ]);
+    const { ctx, lines } = ctxFor(dir, f.fn);
+    expect(await main(["cherry-pick", "--from", add, "--to", "release/1.2", "--summary-text", "Zet de fix ook op de release."], ctx, commands)).toBe(0);
+    expect(lines.join("\n")).toMatch(/release\/1\.2\s+ok.*PR !78/);
+    const post = f.calls.find((c) => c.method === "POST")!;
+    expect(post.body.workItemRefs).toEqual([{ id: "4321" }]);
+    expect(post.body.description).toMatch(/## Samenvatting\n+Zet de fix ook op de release\./);
+    expect(post.body.description).toContain("AB#4321");
   });
 
   it("resolves a completed PR to its merge commit and pushes --direct (protected is refused)", async () => {

@@ -122,11 +122,13 @@ export interface Reply {
 export function parseReplies(yamlText: string): Reply[] {
   const doc = parse(yamlText) as unknown;
   const list = Array.isArray(doc) ? doc : (doc as { replies?: unknown })?.replies;
-  if (!Array.isArray(list)) throw new AihubError("replies file must be a yaml list of {threadId, text, status}");
+  if (!Array.isArray(list)) throw new AihubError("replies file must be a yaml list of {threadId, text, status} (thread: and resolve: true also work)");
   return list.map((r: Record<string, unknown>, i) => {
-    const threadId = Number(r.threadId);
+    const threadId = Number(r.threadId ?? r.thread ?? r.id);
     if (!Number.isInteger(threadId) || threadId <= 0) throw new AihubError(`replies[${i}]: threadId is missing or not a number`);
-    const status = r.status === undefined || r.status === null ? undefined : String(r.status);
+    // `resolve: true` is the short form of status: fixed (agents write it naturally); `resolve: false` leaves the thread active.
+    const rawStatus = r.status === undefined || r.status === null ? (r.resolve === true ? "fixed" : undefined) : String(r.status);
+    const status = rawStatus === undefined ? undefined : (REPLY_STATUSES as readonly string[]).find((s) => s.toLowerCase() === rawStatus.toLowerCase()) ?? rawStatus;
     if (status && !(REPLY_STATUSES as readonly string[]).includes(status)) {
       throw new AihubError(`replies[${i}]: status '${status}' must be one of ${REPLY_STATUSES.join("|")}`);
     }

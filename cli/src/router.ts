@@ -33,6 +33,7 @@ import * as prPolicy from "./commands/pr-policy.js";
 import * as storyContext from "./commands/story-context.js";
 import * as repos from "./commands/repos.js";
 import * as open from "./commands/open.js";
+import * as commit from "./commands/commit.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -76,9 +77,18 @@ export const commands: Record<string, CommandFn> = {
   explain: explain.run,
   repos: repos.run,
   open: open.run,
+  commit: commit.run,
 };
 
 export const VERSION = cliVersion();
+
+/** One-line usage per command, printed for `aihub <command> --help` (an agent that asks for help must not get an option error). */
+export const HELP: Record<string, string> = {
+  "cherry-pick": 'aihub cherry-pick --from <pr N|url|commit sha|story id> --to <branch> [--to <branch>...|--to-group <name>] [--summary-text "<1-2 sentences>"] [--no-pr|--direct]\n    Cherry-picks in a temp worktree, pushes a cherry-pick/... branch per target and opens a PR per target (template, story link) unless --no-pr.',
+  comments: "aihub comments get [--pr <url|N>]\naihub comments reply [--pr <url|N>] --replies-file replies.yaml\n    replies.yaml: a list of {threadId, text, status} with status fixed|wontFix|closed|active (thread: and resolve: true also work).",
+  story: 'aihub story create --title "<title>" --body-file story.md   (sections of the team story template; write all of them)',
+  branch: "aihub branch update [--branch B] [--target T] [--rebase]",
+};
 
 /** Returns the process exit code. */
 export async function main(argv: string[], ctx: Ctx, registry: Record<string, CommandFn> = commands): Promise<number> {
@@ -89,6 +99,10 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
   }
   if (name === "--version" || name === "-v") {
     ctx.out(VERSION);
+    return 0;
+  }
+  if (HELP[name] && rest.includes("--help")) {
+    ctx.out(HELP[name]);
     return 0;
   }
   const fn = registry[name];

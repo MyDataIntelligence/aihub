@@ -46,3 +46,14 @@ describe("built cli", () => {
     expect(files).toContain("dist/cli.js");
   });
 });
+
+describe("aihub <command> --help", () => {
+  it("prints one-line usage instead of an option error (cherry-pick, comments, story)", async () => {
+    const { main, HELP } = await import("../src/router.js");
+    const out: string[] = [];
+    const ctx = { cwd: ".", env: {}, out: (l: string) => out.push(l), err: () => {} } as never;
+    for (const name of Object.keys(HELP)) expect(await main([name, "--help"], ctx)).toBe(0);
+    expect(out.join("\n")).toContain("--replies-file");
+    expect(out.join("\n")).toContain("--summary-text");
+  });
+});

@@ -87,3 +87,8 @@ crossRepo:                         # cross-repo settings for `aihub port` and `a
 
 guidelines:                       # list of repo files the agent reads before writing code or text (optional)
   - docs/guidelines.md
+
+commits:                           # optional: used by `aihub commit`
+  format: "{type}({scope}): {subject} (AB#{storyId})"   # placeholders {type} {scope} {subject} {storyId}; (scope) and the AB# part vanish when unknown
+  types: [feat, fix, docs, test, chore, refactor]       # allowed --type values
+  scope: ""                        # fixed scope; default: the most common top-level folder of the changed files
