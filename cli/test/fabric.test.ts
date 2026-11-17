@@ -19,9 +19,9 @@ fabric:
 `;
 const list = fabricWorkspaces({ fabric: { workspaces: [] } } as any);
 
-function repoWithChanges(files: string[]): string {
+function repoWithChanges(files: string[], team: string = TEAM): string {
   const { dir } = makeRepo();
-  write(dir, ".agents/skills/_shared/references/team.yaml", TEAM);
+  write(dir, ".agents/skills/_shared/references/team.yaml", team);
   sh(dir, ["add", "."]);
   sh(dir, ["commit", "-m", "team"]);
   sh(dir, ["push", "origin", "main"]);
@@ -262,5 +262,112 @@ describe("aihub fabric run/status", () => {
     await main(["fabric", "run", "--item", "nb_load_orders", "--workspace", "FEAT-test-project"], ctx);
     expect(seen[0]).toContain("https://api.fabric.microsoft.com");
     expect(calls[0].headers.Authorization).toBe("Bearer az-token");
+  });
+});
+
+describe("several workspaces", () => {
+  const A = "11111111-1111-1111-1111-111111111111";
+  const B = "55555555-5555-5555-5555-555555555555";
+  const MULTI = `version: 1
+repositories:
+  - name: test-repo
+    defaultTarget: main
+fabric:
+  workspaces:
+    - { name: DEV-anna, id: ${A}, environment: dev, branches: ["feature/*"] }
+    - { name: DEV-shared, id: ${B}, environment: dev, branches: ["feature/*"] }
+    - { name: ACC-test-project, id: 33333333-3333-3333-3333-333333333333, environment: acc }
+  workspaceGroups:
+    devs: [DEV-anna, DEV-shared]
+    risky: [DEV-anna, ACC-test-project]
+`;
+  const env = { AIHUB_FABRIC_TOKEN: "synthetic-token", AIHUB_POLL_MS: "0" };
+
+  function routes(opts: { missingIn?: string; failIn?: string } = {}) {
+    const r: any[] = [];
+    for (const [ws, tag] of [[A, "a"], [B, "b"]] as const) {
+      r.push({
+        match: new RegExp(`/v1/workspaces/${ws}/items$`),
+        respond: () => ({ body: { value: opts.missingIn === ws ? [] : [{ id: `item-${tag}`, displayName: "nb_load_orders", type: "Notebook" }] } }),
+      });
+      r.push({
+        method: "POST",
+        match: new RegExp(`/workspaces/${ws}/items/item-${tag}/jobs/instances\\?jobType=RunNotebook$`),
+        respond: () => ({ status: 202, headers: { location: `https://x/v1/workspaces/${ws}/items/item-${tag}/jobs/instances/job-${tag}` } }),
+      });
+      r.push({
+        match: new RegExp(`/workspaces/${ws}/items/item-${tag}/jobs/instances/job-${tag}$`),
+        respond: () => ({
+          body: opts.failIn === ws ? { id: `job-${tag}`, status: "Failed", failureReason: { errorCode: "E", message: "boom" } } : { id: `job-${tag}`, status: "Completed" },
+        }),
+      });
+    }
+    return fakeFetch(r);
+  }
+
+  it("plan lists every workspace the branch rules match", async () => {
+    const dir = repoWithChanges(["fabric/nb_load_orders.Notebook/x"], MULTI);
+    const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
+    await main(["fabric", "plan"], ctx);
+    expect(lines[0]).toContain("workspaces (branch rules): DEV-anna (dev), DEV-shared (dev)");
+    expect(lines[0]).toContain("aihub fabric run --item nb_load_orders --workspace DEV-anna --workspace DEV-shared --wait");
+  });
+
+  it("runs the item in two --workspace flags and prints a results table", async () => {
+    const dir = repoWithChanges(["x.txt"], MULTI);
+    const { fn } = routes();
+    const { ctx, lines } = ctxFor(dir, fn);
+    ctx.env = env;
+    expect(await main(["fabric", "run", "--item", "nb_load_orders", "--workspace", "DEV-anna", "--workspace", "DEV-shared", "--wait"], ctx)).toBe(0);
+    const table = lines[lines.length - 1].split("\n");
+    expect(table[0]).toBe("workspace | environment | job | result");
+    expect(table[1]).toBe("DEV-anna | dev | job-a | Completed");
+    expect(table[2]).toBe("DEV-shared | dev | job-b | Completed");
+  });
+
+  it("a group from team.yaml runs all its workspaces; errors in one do not stop the others", async () => {
+    const dir = repoWithChanges(["x.txt"], MULTI);
+    const { fn, calls } = routes({ missingIn: A });
+    const { ctx, lines, errs } = ctxFor(dir, fn);
+    ctx.env = env;
+    expect(await main(["fabric", "run", "--item", "nb_load_orders", "--workspaces", "devs", "--wait"], ctx)).toBe(1);
+    const table = lines[lines.length - 1].split("\n");
+    expect(table[1]).toContain("DEV-anna | dev | - | error: item 'nb_load_orders' not found");
+    expect(table[2]).toBe("DEV-shared | dev | job-b | Completed");
+    expect(errs[0]).toContain("1 of 2 workspaces did not complete: DEV-anna");
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("shows the failure reason of a failed workspace and still reports the other", async () => {
+    const dir = repoWithChanges(["x.txt"], MULTI);
+    const { fn } = routes({ failIn: B });
+    const { ctx, lines } = ctxFor(dir, fn);
+    ctx.env = env;
+    expect(await main(["fabric", "run", "--item", "nb_load_orders", "--workspaces", "devs", "--wait"], ctx)).toBe(1);
+    const table = lines[lines.length - 1].split("\n");
+    expect(table[1]).toBe("DEV-anna | dev | job-a | Completed");
+    expect(table[2]).toBe("DEV-shared | dev | job-b | Failed: boom");
+  });
+
+  it("refuses the whole run before any call when a group contains acc, unless allowed", async () => {
+    const dir = repoWithChanges(["x.txt"], MULTI);
+    const { fn, calls } = routes();
+    const { ctx, errs } = ctxFor(dir, fn);
+    ctx.env = env;
+    expect(await main(["fabric", "run", "--item", "nb_load_orders", "--workspaces", "risky"], ctx)).toBe(1);
+    expect(errs[0]).toContain("ACC");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects an unknown group and an unknown workspace among several", async () => {
+    const dir = repoWithChanges(["x.txt"], MULTI);
+    const a = ctxFor(dir, routes().fn);
+    a.ctx.env = env;
+    expect(await main(["fabric", "run", "--item", "n", "--workspaces", "nope"], a.ctx)).toBe(1);
+    expect(a.errs[0]).toContain("workspace group 'nope'");
+    const b = ctxFor(dir, routes().fn);
+    b.ctx.env = env;
+    expect(await main(["fabric", "run", "--item", "n", "--workspace", "DEV-anna", "--workspace", "other"], b.ctx)).toBe(1);
+    expect(b.errs[0]).toContain("'other' is not in team.yaml");
   });
 });

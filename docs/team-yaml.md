@@ -69,8 +69,13 @@ fabric:                                  # Fabric workspaces for `aihub fabric`
     - name: DEV-test-project             # workspace display name
       environment: dev                   # dev | feature | test | acc | prd; acc and prd are never run by the CLI
       branches: ["feature/*"]            # branch patterns whose changes are tested in this workspace
+    - name: DEV-shared                   # a second dev workspace for the same branches
+      environment: dev                   # same rules as above
+      branches: ["feature/*"]            # a branch matching several workspaces is run in each of them
     - name: ACC-test-project             # a workspace the developer runs by hand
       environment: acc                   # refused by `aihub fabric run` unless --allow-env acc
+  workspaceGroups:                       # named sets of workspaces for `aihub fabric run --workspaces <name>`
+    devs: [DEV-test-project, DEV-shared] # group name and the workspace names in it
 
 robot:                                   # Robot integration tests for `aihub robot`
   pipeline: test-project-robot           # Azure DevOps pipeline that runs the Robot suites
@@ -92,6 +97,7 @@ robot:                                   # Robot integration tests for `aihub ro
 | Key | Meaning |
 |---|---|
 | `fabric.workspaces[]` | Name, optional id, `environment` and optional `branches` patterns. `aihub fabric run` only runs `dev` and `feature`; `acc` and `prd` need `--allow-env` and are run by the developer. |
+| `fabric.workspaceGroups` | Named lists of workspace names. `aihub fabric run --item X --workspaces devs` runs X in every workspace of the group; `--workspace a --workspace b` does the same ad hoc. The result is one table per workspace and a failure in one does not stop the others. `aihub fabric plan` lists every workspace the branch rules match. |
 | `robot.pipeline` | Azure DevOps pipeline that `aihub robot run` queues (override with `--pipeline`). |
 | `robot.targets` | Named branches to run Robot on. `mergeMyBranchFirst: true` merges the current branch into the target branch (in a temporary worktree, never your checkout) and pushes it before the run; a merge conflict stops the run and pushes nothing. `mustAlreadyContain` lists branches that must be in the target branch first. |
 | `robot.defaultTarget` | The target used without `--on`. `aihub robot run --on staging` picks a target by name; an unknown name is taken as a branch that is run as it is. `aihub robot targets` lists them. |

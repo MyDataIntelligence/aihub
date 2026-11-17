@@ -48,7 +48,9 @@ fabric:                            # Fabric workspaces for `aihub fabric` (optio
     - name: <workspace>            # workspace display name, e.g. DEV-test-project (optional)
       id: <guid>                   # workspace id (optional; looked up by name when absent)
       environment: dev             # dev | feature | test | acc | prd (optional); acc and prd are never run by the CLI
-      branches: []                 # branch patterns tested in this workspace, e.g. ["feature/*"] (optional)
+      branches: []                 # branch patterns tested in this workspace, e.g. ["feature/*"]; several matches run in each (optional)
+  workspaceGroups:                 # named sets of workspaces for `aihub fabric run --workspaces <name>` (optional)
+    <group>: []                    # group name and the workspace names in it, e.g. [DEV-anna, DEV-shared] (optional)
 
 robot:                             # Robot integration tests for `aihub robot` (optional)
   pipeline: <pipeline>             # Azure DevOps pipeline that runs the Robot suites (optional; needed for robot run)

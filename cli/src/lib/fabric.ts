@@ -76,27 +76,72 @@ export function chooseWorkspace(list: FabricWorkspace[], opts: { branch?: string
 
 export interface Plan {
   workspace?: FabricWorkspace;
+  /** Every workspace that applies to the branch (several when more than one branch rule matches). */
+  workspaces: FabricWorkspace[];
   items: PlanItem[];
 }
 
+export function workspaceGroups(team: TeamConfig): Record<string, string[]> {
+  const g = (team as { fabric?: { workspaceGroups?: Record<string, string[]> } }).fabric?.workspaceGroups;
+  return g && typeof g === "object" ? g : {};
+}
+
+/** All workspaces whose branch rules match the branch. */
+export function matchingWorkspaces(list: FabricWorkspace[], branch?: string): FabricWorkspace[] {
+  return branch ? list.filter((x) => x.branches && anyGlob(x.branches, branch)) : [];
+}
+
+/**
+ * Workspaces for a run: explicit names/ids and/or a group from team.yaml, else the default choice.
+ * Unknown names and groups are refused. Duplicates are dropped.
+ */
+export function selectWorkspaces(
+  list: FabricWorkspace[],
+  groups: Record<string, string[]>,
+  opts: { workspaces?: string[]; group?: string; branch?: string },
+): FabricWorkspace[] {
+  const names = [...(opts.workspaces ?? [])];
+  if (opts.group) {
+    const key = Object.keys(groups).find((k) => k.toLowerCase() === opts.group!.toLowerCase());
+    if (!key) throw new AihubError(`workspace group '${opts.group}' is not in team.yaml fabric.workspaceGroups (${Object.keys(groups).join(", ") || "none"})`);
+    names.push(...groups[key]);
+  }
+  if (!names.length) {
+    const w = chooseWorkspace(list, { branch: opts.branch });
+    return w ? [w] : [];
+  }
+  const out: FabricWorkspace[] = [];
+  for (const n of names) {
+    const w = chooseWorkspace(list, { workspace: n });
+    if (!w) throw new AihubError(`workspace '${n}' is not in team.yaml fabric.workspaces; the CLI only runs workspaces the team listed`);
+    if (!out.includes(w)) out.push(w);
+  }
+  return out;
+}
+
 export function buildPlan(files: string[], list: FabricWorkspace[], opts: { branch?: string; workspace?: string }): Plan {
-  return { workspace: chooseWorkspace(list, opts), items: mapItems(files) };
+  const first = chooseWorkspace(list, opts);
+  const matched = opts.workspace ? [] : matchingWorkspaces(list, opts.branch);
+  return { workspace: first, workspaces: matched.length > 1 ? matched : first ? [first] : [], items: mapItems(files) };
 }
 
 export function formatPlan(p: Plan, branch: string, target: string): string {
   const lines = [`Fabric plan for ${branch} (vs ${target}):`];
-  lines.push(
-    p.workspace
-      ? `workspace: ${p.workspace.name} (${p.workspace.environment})`
-      : "workspace: none found in team.yaml fabric.workspaces; pass --workspace <name|id>",
-  );
+  if (p.workspaces.length > 1) lines.push(`workspaces (branch rules): ${p.workspaces.map((w) => `${w.name} (${w.environment})`).join(", ")}`);
+  else
+    lines.push(
+      p.workspace
+        ? `workspace: ${p.workspace.name} (${p.workspace.environment})`
+        : "workspace: none found in team.yaml fabric.workspaces; pass --workspace <name|id>",
+    );
   if (!p.items.length) {
     lines.push("No Fabric items changed: nothing to run in Fabric.");
     return lines.join("\n");
   }
   let n = 0;
   for (const it of p.items) {
-    const how = it.jobType ? `run: aihub fabric run --item ${it.name} --wait` : "deploy only (nothing to run)";
+    const all = p.workspaces.length > 1 ? p.workspaces.map((w) => ` --workspace ${w.name}`).join("") : "";
+    const how = it.jobType ? `run: aihub fabric run --item ${it.name}${all} --wait` : "deploy only (nothing to run)";
     lines.push(`${++n}. ${it.type} ${it.name} (${it.files} file${it.files === 1 ? "" : "s"}): ${how}`);
   }
   return lines.join("\n");
