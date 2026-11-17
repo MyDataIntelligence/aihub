@@ -68,8 +68,8 @@ Check the file with `aihub doctor`. Change it through a pull request (see [onboa
 ## Fabric and Robot (optional)
 
 ```yaml
-fabric:                                  # Fabric workspaces for `aihub fabric`
-  workspaces:                            # list of workspaces the CLI may know about
+fabric:                                  # optional: every workspace you can access works without this section
+  workspaces:                            # optional shortcuts and branch rules (also fixes the environment of a workspace)
     - name: DEV-test-project             # workspace display name
       environment: dev                   # dev | feature | test | acc | prd; acc and prd are never run by the CLI
       branches: ["feature/*"]            # branch patterns whose changes are tested in this workspace
@@ -80,6 +80,10 @@ fabric:                                  # Fabric workspaces for `aihub fabric`
       environment: acc                   # refused by `aihub fabric run` unless --allow-env acc
   workspaceGroups:                       # named sets of workspaces for `aihub fabric run --workspaces <name>`
     devs: [DEV-test-project, DEV-shared] # group name and the workspace names in it
+    ci:                                  # object form: the same group with a service principal
+      workspaces: [DEV-test-project]     # the workspace names in the group
+      servicePrincipal: ci-runner        # name of a service principal registered on the user machine (secret never here)
+  branchWorkspacePrefixes: [team data]   # prefixes of per-branch workspaces "<prefix> <branch label>" for `aihub fabric failures`
 
 robot:                                   # Robot integration tests for `aihub robot`
   pipeline: test-project-robot           # Azure DevOps pipeline that runs the Robot suites
@@ -100,7 +104,9 @@ robot:                                   # Robot integration tests for `aihub ro
 
 | Key | Meaning |
 |---|---|
-| `fabric.workspaces[]` | Name, optional id, `environment` and optional `branches` patterns. `aihub fabric run` only runs `dev` and `feature`; `acc` and `prd` need `--allow-env` and are run by the developer. |
+| `fabric.workspaces[]` | Optional. Name, optional id, `environment` and optional `branches` patterns (the default workspace of a branch). Without an entry, any workspace the signed-in user can access is used by name or id, and its environment is read from the name (`acc`, `acceptance`, `prd`, `prod`, `production` mark ACC and PRD). Writes and runs are refused in `acc` and `prd` (and `test` when listed) unless `--allow-env` names that environment. |
+| `fabric.workspaces[].servicePrincipal` | Optional name of a service principal registered on the user's machine (`aihub fabric auth sp add`). Only the name lives here; tenant, client id and secret are in the user config and credential store. `--sp` and the environment variables still win. |
+| `fabric.branchWorkspacePrefixes` | Prefixes of the per-branch workspaces `aihub fabric failures --branch B` looks for ("<prefix> <branch label>", compared without case and punctuation; repository names count as prefixes too). Two workspaces with the same normalised name are ambiguous and give no match. |
 | `fabric.workspaceGroups` | Named lists of workspace names. `aihub fabric run --item X --workspaces devs` runs X in every workspace of the group; `--workspace a --workspace b` does the same ad hoc. The result is one table per workspace and a failure in one does not stop the others. `aihub fabric plan` lists every workspace the branch rules match. |
 | `robot.pipeline` | Azure DevOps pipeline that `aihub robot run` queues (override with `--pipeline`). |
 | `robot.targets` | Named branches to run Robot on. `mergeMyBranchFirst: true` merges the current branch into the target branch (in a temporary worktree, never your checkout) and pushes it before the run; a merge conflict stops the run and pushes nothing. `mustAlreadyContain` lists branches that must be in the target branch first. |

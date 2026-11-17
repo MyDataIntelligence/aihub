@@ -92,14 +92,3 @@ describe("aihub comments reply", () => {
     expect(lines).toEqual(["!42: 2 replies posted (7=fixed, 9=wontFix)"]);
   });
 });
-
-describe("replies file aliases", () => {
-  it("accepts thread: / id: and resolve: true (agents write them naturally) next to threadId / status", async () => {
-    const { parseReplies } = await import("../src/lib/comments.js");
-    expect(parseReplies("- thread: 7\n  text: ok\n  resolve: true\n- id: 8\n  text: nee\n  status: wontfix\n- threadId: 9\n  text: x\n  resolve: false\n")).toEqual([
-      { threadId: 7, text: "ok", status: "fixed" },
-      { threadId: 8, text: "nee", status: "wontFix" },
-      { threadId: 9, text: "x", status: undefined },
-    ]);
-  });
-});

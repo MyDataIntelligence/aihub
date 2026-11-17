@@ -20,7 +20,7 @@ Every workflow of the legacy Hub and where it lives now. A workflow is a skill (
 | story-finish | `story-finish` | `aihub story finish --id N` | done |
 | story-run (end-to-end autopilot) | `story-run` | chains the commands above | done |
 | robot-tests (run, write a test for a new flow) | `test-run` | `aihub robot` | done (separate change) |
-| fabric-items | `test-run` | `aihub fabric` | done (separate change) |
+| fabric-items (list, create, update, delete, definitions, run, jobs, logs, lakehouse, git, deployment) | `fabric` | `aihub fabric ...` ([commands](../skills/fabric/references/fabric-commands.md)) | done except the rows marked not ported in [fabric-inventory.md](fabric-inventory.md) (143 legacy tools, each with its command) |
 | wiki | `wiki` | `aihub wiki update --page P --body-file F [--publish]` | done |
 | voice-notes | `voice-notes` | `aihub story create`, `aihub story refine` | done |
 | evidence (screenshots in the PR) | `evidence` | `aihub evidence add --pr N --file img.png` | done |

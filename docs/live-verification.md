@@ -62,6 +62,26 @@ The Open button was not clicked: it runs `codex resume --last` in a terminal, wh
 `XDG_CONFIG_HOME`). The 33 skills and 14 prompts were removed again with `aihub skills uninstall --client codex`
 (manifest-tracked files only; the user's own skills were untouched). Override all of them for a temp home.
 
+## Live check in three isolated clients (2026-11-17)
+
+`@ferronhooi/aihub@next` (0.1.0-next.20) installed in a scratch prefix; skills installed with `aihub skills install --client <c>` into isolated homes
+(own `HOME`/`USERPROFILE`, `XDG_*`, `OPENCODE_CONFIG_DIR`, `COPILOT_HOME`; `OPENCODE_DISABLE_CLAUDE_CODE=1` and `OPENCODE_DISABLE_EXTERNAL_SKILLS=1`; never the real homes). A fresh clone of
+test-project with `aihub init --no-pr`, a story, a feature branch with one local commit and a test release branch per client. Each client ran the four commands
+(the slash command text, as the agent runs it) and the end state was checked with `az` and `git`.
+
+| Client | /pr | /pr-update | /review | /cherry-pick | Proof |
+|---|---|---|---|---|---|
+| opencode 1.19.5, `openai/gpt-6-luna` (shared test auth, own config) | PASS: one `aihub pr create`, sections in template order, target main, story AB# link, work item related | FAIL: bullet added but the Related story link was replaced by the template placeholder (fix: PR #27) | PARTIAL: reply posted, thread status stayed active (fix: PR #28) | PARTIAL: 2 commits pushed on `cherry-pick/pr<N>-to-<target>`, no PR (fix: PR #30) | `20261117-2340-L-live-opencode.png` |
+| Copilot CLI (terminal, scratch `@github/copilot`, `COPILOT_HOME` scratch, `GH_TOKEN` from `gh` only in the environment) | PASS | PASS (slow: first searched for the binary) | PARTIAL: reply posted, status stayed active, agent said "resolved" (PR #28) | PARTIAL: branch pushed, agent reported a PR that does not exist (PR #30) | `20261117-2340-L-live-copilot.png` |
+| Codex 0.167.0 (`CODEX_HOME` = shared test home for auth, skills in a scratch `HOME/.agents/skills`) | BLOCKED: usage limit until 2026-11-18 13:28 | not run | not run | not run | `20261117-2340-L-live-codex.png` |
+
+Other findings: in non-interactive `opencode run` the skill's asset read outside the project (`.../skills/_shared/assets/...`) is auto-rejected unless
+`permission.external_directory` is `allow`, and the turn then ends; the scratch config allows it. Codex needs one re-run after the limit resets (same commands).
+
+Ids created and removed afterwards: stories 2781, 2787, 2804, 2808; PRs 778 and 786 (abandoned); branches `feature/<id>-live-<hex>-story`, `live-<hex>/rel` and
+`cherry-pick/pr778-to-live-e8a2-rel`, `cherry-pick/pr786-to-live-a9c4-rel` for the prefixes live-d5f1, live-e8a2, live-f3b7, live-a9c4. An `az` query shows no open PR, work item or
+branch with these prefixes.
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.

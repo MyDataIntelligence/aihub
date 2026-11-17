@@ -1,6 +1,6 @@
 ---
 name: pr-watch
-description: "Use when a PR or build must be followed: 'watch the PR', 'volg de build', 'is de pipeline groen', '/watch', a dev.azure.com pullrequest link."
+description: "Use when a PR or build must be followed: 'watch the PR', 'volg de build', 'is de pipeline groen', '/watch', a dev.azure.com pullrequest link, "laat me weten als iets mijn reactie nodig heeft"."
 ---
 # Watch a PR or pipeline
 
@@ -23,9 +23,17 @@ If the user says "laat het me weten", "hou het in de gaten" or "let me know when
 aihub watch --pr 42 --until done --notify
 ```
 
-`--until comment` or `vote` waits for a new review comment or vote. Add `--client opencode|codex|claude|copilot` (and `--session <id>` when you know it) so the notification's Open button, or `aihub open --last`, resumes this session in a terminal even after it was closed. `aihub watch list` and `stop` manage it; the log is `.git/aihub/events.log`.
+`--until comment` or `vote` waits for a new review comment or vote. Add `--client opencode|codex|claude|copilot` (and `--session <id>`) so the Open button or `aihub open --last` resumes this session. `aihub watch list` and `stop` manage it; the log is `.git/aihub/events.log`.
 
-While waiting, do not poll by hand and do not start other work on the same branch; `pipeline follow` returns when the run is finished. Report the final state in one short line per check.
+For "tell me whenever something needs me" without naming a PR, start the one poller over everything of mine (replies and mentions on my PRs and work items, review requests, votes, failed policies, completed or abandoned PRs):
+
+```sh
+aihub watch --mine --notify
+```
+
+The first look only records what exists; every later event is one toast, once. Stop: `aihub watch stop --id mine`. `--at-logon` (Windows) starts it at sign-in; `aihub watch --remove-at-logon` undoes it.
+
+While waiting, do not poll by hand. Report the final state in one short line per check.
 
 Example: the link `.../pullrequest/42` gives `aihub pipeline follow --pr 42`.
 

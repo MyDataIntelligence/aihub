@@ -19,6 +19,10 @@ export interface WatchSpec {
   pr?: number;
   branch?: string;
   until: Until;
+  /** `aihub watch --mine`: everything that needs me, not one PR or branch. */
+  mine?: boolean;
+  /** `--mine` only: report what already exists on the first look instead of just recording it. */
+  includeExisting?: boolean;
   notify: boolean;
   timeoutMs: number;
   intervalMs: number;
@@ -334,7 +338,10 @@ export function listWatches(ctx: Ctx, o: { json?: boolean }, alive: (pid?: numbe
   if (o.json) return JSON.stringify(rows.map((r) => r.spec));
   if (!rows.length) return "no running watches";
   return rows
-    .map(({ spec: s }) => `${s.id}  ${s.pr ? `PR !${s.pr}` : `branch ${s.branch}`}  until ${s.until}${s.notify ? "  notify" : ""}  pid ${s.pid}  since ${new Date(s.started).toISOString().slice(0, 16).replace("T", " ")}`)
+    .map(({ spec: s }) => {
+      const what = s.mine ? `all my PRs, mentions and reviews, every ${Math.round(s.intervalMs / 1000)} s` : `${s.pr ? `PR !${s.pr}` : `branch ${s.branch}`}  until ${s.until}`;
+      return `${s.id}  ${what}${s.notify ? "  notify" : ""}  pid ${s.pid}  since ${new Date(s.started).toISOString().slice(0, 16).replace("T", " ")}`;
+    })
     .join("\n");
 }
 

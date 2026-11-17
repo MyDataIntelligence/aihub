@@ -98,14 +98,16 @@ describe("aihub fabric plan", () => {
     const dir = repoWithChanges(["fabric/nb_load_orders.Notebook/notebook-content.py", "fabric/pl_orders.DataPipeline/pipeline-content.json", "src/x.py"]);
     const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
     expect(await main(["fabric", "plan"], ctx)).toBe(0);
-    expect(lines[0]).toBe(
-      [
-        "Fabric plan for feature/12-orders (vs main):",
-        "workspace: FEAT-test-project (feature)",
-        "1. Notebook nb_load_orders (1 file): run: aihub fabric run --item nb_load_orders --wait",
-        "2. DataPipeline pl_orders (1 file): run: aihub fabric run --item pl_orders --wait",
-      ].join("\n"),
-    );
+    expect(lines[0]).toContain("strategy: fabric-api: Validate live Fabric items");
+    const out = lines[0].split("\n").filter((l) => !l.startsWith("strategy:"));
+    expect(out.slice(0, 3)).toEqual([
+      "Fabric plan for feature/12-orders (vs main):",
+      "workspace: FEAT-test-project (feature)",
+      "1. Notebook nb_load_orders (1 file): run: aihub fabric run --item nb_load_orders --wait",
+    ]);
+    expect(out[3]).toContain("deploy: aihub fabric item update --workspace FEAT-test-project --item nb_load_orders --type Notebook --definition-dir fabric/nb_load_orders.Notebook");
+    expect(out[3]).toContain("item create --workspace FEAT-test-project --type Notebook --name nb_load_orders --definition-dir fabric/nb_load_orders.Notebook");
+    expect(out[4]).toContain("2. DataPipeline pl_orders (1 file): run: aihub fabric run --item pl_orders --wait");
   });
 
   it("uses the feature workspace for a feature branch given with --branch", async () => {
@@ -218,12 +220,14 @@ describe("aihub fabric run/status", () => {
     expect(calls.some((c) => c.method === "POST")).toBe(true);
   });
 
-  it("refuses a workspace that is not in team.yaml", async () => {
+  it("a workspace that team.yaml does not list is resolved through the API, with did-you-mean", async () => {
     const dir = repoWithChanges(["x.txt"]);
-    const { ctx, errs } = ctxFor(dir, fakeFetch([]).fn);
+    const { ctx, errs } = ctxFor(dir, fakeFetch([{ match: /\/v1\/workspaces$/, respond: () => ({ body: { value: [{ id: "x", displayName: "SOMETHING-elsewhere" }] } }) }]).fn);
     ctx.env = env;
     expect(await main(["fabric", "run", "--item", "a", "--workspace", "SOMETHING-else"], ctx)).toBe(1);
-    expect(errs[0]).toContain("not in team.yaml");
+    expect(errs[0]).toContain("did you mean: SOMETHING-elsewhere");
+    expect(errs[0]).toContain("SOMETHING-else");
+    expect(errs[0]).not.toContain("team.yaml");
   });
 
   it("explains an item that cannot run on demand", async () => {
@@ -368,6 +372,6 @@ fabric:
     const b = ctxFor(dir, routes().fn);
     b.ctx.env = env;
     expect(await main(["fabric", "run", "--item", "n", "--workspace", "DEV-anna", "--workspace", "other"], b.ctx)).toBe(1);
-    expect(b.errs[0]).toContain("'other' is not in team.yaml");
+    expect(b.errs[0]).toContain("did not complete");
   });
 });

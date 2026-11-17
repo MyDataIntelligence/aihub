@@ -23,6 +23,12 @@ and GitHub Copilot (`~/.copilot/skills`). Use `--client opencode|github-copilot|
 own plain copy. With `--into-repo` the skills go into the current repository instead (`.opencode/`, `.agents/skills`,
 `.github/`) for teams that want them there; by default repositories only hold team knowledge.
 
+For opencode the install also writes one scoped rule into `opencode.json` of that config folder:
+`permission.external_directory["<config>/skills/**"] = "allow"`. Skills read their templates next to `SKILL.md`, and without the rule opencode asks
+first (`opencode run` has no terminal, so it rejects the read and ends the turn). The rule covers the skills folder only, never a global allow;
+other keys and rules are kept, a config with comments is not edited (the command prints the line to add), `aihub skills uninstall` removes
+the rule again and `aihub doctor` reports it (`permission:opencode`).
+
 Every installed file carries an `aihub <version>` marker and is recorded with a checksum in `.aihub-manifest.json`.
 Re-running the command updates unchanged files, never overwrites a file you edited, and `aihub skills update` rewrites the copies of every client that has them from the bundled pack in one go (edited files
 stay and are listed), `aihub doctor` flags copies older than the CLI, and `aihub skills uninstall
@@ -58,6 +64,28 @@ method, `team.yaml` against the schema, PR template location, skills per client)
 Say what you want ("maak een PR", "verwerk de comments") or use a slash command: `/pr`, `/pr-update`, `/cherry-pick`,
 `/story`, `/refine`, `/review`, `/watch`. Slash command files are in `commands/opencode/` (opencode) and
 `commands/copilot/` (GitHub Copilot prompt files); copy them into the tool's command folder.
+
+## Get a notification when something needs you
+
+`aihub watch --mine --notify [--interval 2m]` starts one background poller (no daemon: a detached process that you
+can stop) over every active pull request where you are author or reviewer, in the team.yaml project and repositories,
+and over the comments of your work items. Per event you get one Windows toast with an Open button (the log line is in
+`.git/aihub/events.log`), once per event:
+
+- a new thread or reply by someone else on your PR that you have not answered yet; a reply to a comment of yours on a
+  PR you review;
+- an @mention of you in a PR thread or a work-item comment;
+- a review requested from you (you are a reviewer with no vote yet);
+- a vote on your PR (approved, rejected, waiting for the author);
+- a failed or broken build policy on your PR;
+- your PR completed or abandoned.
+
+The first look only records what already exists (`--include-existing` reports that backlog too). The dedupe state is in
+`.git/aihub/watch-state/mine.json`. `aihub watch list` shows it and `aihub watch stop --id mine` ends it. On Windows
+`aihub watch --mine --notify --at-logon` also writes a per-user Run entry (`HKCU...Runaihub-watch-mine`) so it starts
+at sign-in; `aihub watch --remove-at-logon` removes it. Elsewhere use a login item, cron `@reboot` or a systemd user
+unit. Limits: mentions are only found on PRs where you are author or reviewer and on work items assigned to or created by
+you (changed in the last 14 days, the newest 25); `--interval` needs a unit (30s, 2m, 1h).
 
 ## Changing team rules
 

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { trace } from "./trace.js";
 import { dirname, join } from "node:path";
+import { ensureSkillsPermission, removeSkillsPermission } from "./opencodePermission.js";
 import { clientDirs, CLIENTS, type Client } from "./clients.js";
 import { cliVersion, listFiles, packRoot, readPackFile, sha256, stamp } from "./pack.js";
 
@@ -148,6 +149,7 @@ export function installClients(clients: Client[], env: NodeJS.ProcessEnv, opts: 
     const d = clientDirs(c, env, opts);
     out.push({ client: c, dir: d.skills, results: installEntries(d.skills, skillEntries(version), version) });
     if (d.commands) out.push({ client: c, dir: d.commands.dir, results: installEntries(d.commands.dir, commandEntries(d.commands.source, version), version) });
+    if (c === "opencode" && opts.global) out.push({ client: c, dir: "permission", results: [ensureSkillsPermission(env)] });
   }
   return out;
 }
@@ -158,6 +160,7 @@ export function uninstallClients(clients: Client[], env: NodeJS.ProcessEnv, opts
     const d = clientDirs(c, env, opts);
     out.push({ client: c, dir: d.skills, results: uninstallDir(d.skills) });
     if (d.commands) out.push({ client: c, dir: d.commands.dir, results: uninstallDir(d.commands.dir) });
+    if (c === "opencode" && opts.global) out.push({ client: c, dir: "permission", results: [removeSkillsPermission(env)] });
   }
   return out;
 }
