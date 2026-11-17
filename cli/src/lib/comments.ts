@@ -123,7 +123,14 @@ export function parseReplies(yamlText: string): Reply[] {
   const doc = parse(yamlText) as unknown;
   const list = Array.isArray(doc) ? doc : (doc as { replies?: unknown })?.replies;
   if (!Array.isArray(list)) throw new AihubError("replies file must be a yaml list of {threadId, text, status}");
-  return list.map((r: Record<string, unknown>, i) => {
+  return list.map((r0: Record<string, unknown>, i) => {
+    let r = r0;
+    // an agent often writes {thread, resolve: true}: take that as {threadId, status: fixed}; anything else unknown is an error
+    const known = new Set(["threadId", "thread", "text", "status", "resolve"]);
+    const stray = Object.keys(r ?? {}).filter((k) => !known.has(k));
+    if (stray.length) throw new AihubError(`replies[${i}]: unknown key '${stray[0]}'; use threadId, text and status (fixed|wontFix|closed|active)`);
+    if (r.status === undefined && (r.resolve === true || r.resolve === "true")) r = { ...r, status: "fixed" };
+    if (r.threadId === undefined && r.thread !== undefined) r = { ...r, threadId: r.thread };
     const threadId = Number(r.threadId);
     if (!Number.isInteger(threadId) || threadId <= 0) throw new AihubError(`replies[${i}]: threadId is missing or not a number`);
     const status = r.status === undefined || r.status === null ? undefined : String(r.status);
