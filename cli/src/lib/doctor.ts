@@ -7,6 +7,7 @@ import { defaultExec, type Exec, ADO_RESOURCE } from "./auth.js";
 import { CLIENTS, clientDirs } from "./clients.js";
 import type { Ctx } from "./context.js";
 import { originDefaultBranch, remoteUrl, repoRoot, showFile } from "./git.js";
+import { permissionState } from "./opencodePermission.js";
 import { compareVersions, installedVersion } from "./install.js";
 import { cliVersion, packRoot } from "./pack.js";
 import { requiredPaths, validateTeam } from "./schema.js";
@@ -140,6 +141,14 @@ export function runChecks(ctx: Ctx): Check[] {
           ? fix(`skills:${c}`, `stale copy, older than the CLI ${current}: ${where}`, "run 'aihub skills update'")
           : ok(`skills:${c}`, where),
     );
+    if (c === "opencode" && found.some((p) => p.label === "global")) {
+      const s = permissionState(ctx.env);
+      checks.push(
+        s.state === "allowed"
+          ? ok("permission:opencode", `skills folder may be read without a prompt (${s.file})`)
+          : fix("permission:opencode", s.state === "unreadable" ? `${s.file} has comments, aihub cannot edit it` : "opencode will ask before a skill reads its templates (and 'opencode run' rejects that)", s.state === "unreadable" ? `add "permission": {"external_directory": {"${s.pattern}": "allow"}}` : "aihub skills install --client opencode"),
+      );
+    }
   }  return checks;
 }
 

@@ -23,6 +23,12 @@ and GitHub Copilot (`~/.copilot/skills`). Use `--client opencode|github-copilot|
 own plain copy. With `--into-repo` the skills go into the current repository instead (`.opencode/`, `.agents/skills`,
 `.github/`) for teams that want them there; by default repositories only hold team knowledge.
 
+For opencode the install also writes one scoped rule into `opencode.json` of that config folder:
+`permission.external_directory["<config>/skills/**"] = "allow"`. Skills read their templates next to `SKILL.md`, and without the rule opencode asks
+first (`opencode run` has no terminal, so it rejects the read and ends the turn). The rule covers the skills folder only, never a global allow;
+other keys and rules are kept, a config with comments is not edited (the command prints the line to add), `aihub skills uninstall` removes
+the rule again and `aihub doctor` reports it (`permission:opencode`).
+
 Every installed file carries an `aihub <version>` marker and is recorded with a checksum in `.aihub-manifest.json`.
 Re-running the command updates unchanged files, never overwrites a file you edited, and `aihub skills update` rewrites the copies of every client that has them from the bundled pack in one go (edited files
 stay and are listed), `aihub doctor` flags copies older than the CLI, and `aihub skills uninstall
