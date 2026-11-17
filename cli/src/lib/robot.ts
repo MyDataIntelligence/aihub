@@ -14,13 +14,69 @@ export interface RobotSuite {
 export interface RobotConfig {
   pipeline?: string;
   integrationBranch?: string;
+  /** Per-repository integration branches (first entry without `repository` is the default). */
+  integrationBranches?: { repository?: string; branch: string; requires?: string[] }[];
+  /** Branches that must already be merged into the integration branch (e.g. staging). */
+  integrationRequires?: string[];
+  /** Named places to run Robot: `feature` (merge the feature branch first), `staging` (as is), ... */
+  targets?: Record<string, { branch: string; mergeMyBranchFirst?: boolean; mustAlreadyContain?: string[] }>;
+  defaultTarget?: string;
   suites: RobotSuite[];
+}
+
+export interface RobotTarget {
+  name: string;
+  branch: string;
+  merge: boolean;
+  requires: string[];
+}
+
+/** `--on` (target name or plain branch), else robot.defaultTarget, else the legacy integration branch (merged). */
+export function resolveTarget(cfg: RobotConfig, repo: string | undefined, on?: string): RobotTarget | undefined {
+  const targets = cfg.targets ?? {};
+  const find = (n: string) => Object.entries(targets).find(([k]) => k.toLowerCase() === n.toLowerCase());
+  const make = (name: string, t: { branch: string; mergeMyBranchFirst?: boolean; mustAlreadyContain?: string[] }): RobotTarget => ({
+    name,
+    branch: t.branch,
+    merge: t.mergeMyBranchFirst ?? false,
+    requires: t.mustAlreadyContain ?? [],
+  });
+  if (on) {
+    const hit = find(on);
+    return hit ? make(hit[0], hit[1]) : { name: on, branch: on, merge: false, requires: [] };
+  }
+  if (cfg.defaultTarget) {
+    const hit = find(cfg.defaultTarget);
+    if (!hit) throw new AihubError(`robot.defaultTarget '${cfg.defaultTarget}' is not in robot.targets (${Object.keys(targets).join(", ") || "none"})`);
+    return make(hit[0], hit[1]);
+  }
+  const legacy = resolveIntegration(cfg, repo);
+  return legacy.branch ? { name: "integration", branch: legacy.branch, merge: true, requires: legacy.requires } : undefined;
+}
+
+export function formatTargets(cfg: RobotConfig): string {
+  const entries = Object.entries(cfg.targets ?? {});
+  if (!entries.length) return cfg.integrationBranch ? `robot targets: integration -> ${cfg.integrationBranch} (merges the feature branch first)` : "robot targets: none in team.yaml robot.targets";
+  const lines = ["robot targets:"];
+  for (const [name, t] of entries) {
+    const req = t.mustAlreadyContain?.length ? `; must already contain ${t.mustAlreadyContain.join(", ")}` : "";
+    lines.push(`- ${name} -> ${t.branch} (${t.mergeMyBranchFirst ? "merges the feature branch first" : "runs the branch as is"}${req})${name === cfg.defaultTarget ? " [default]" : ""}`);
+  }
+  lines.push("use: aihub robot run --on <name|branch>");
+  return lines.join("\n");
+}
+
+export function resolveIntegration(cfg: RobotConfig, repo?: string): { branch?: string; requires: string[] } {
+  const list = cfg.integrationBranches ?? [];
+  const hit = list.find((e) => e.repository && repo && e.repository.toLowerCase() === repo.toLowerCase()) ?? list.find((e) => !e.repository);
+  const branch = hit?.branch ?? cfg.integrationBranch;
+  return { branch, requires: hit?.requires ?? cfg.integrationRequires ?? [] };
 }
 
 export function robotConfig(team: TeamConfig): RobotConfig {
   const r = (team as { robot?: Partial<RobotConfig> }).robot ?? {};
   const suites = (r.suites ?? []).filter((s) => !!s?.name && Array.isArray(s.paths)) as RobotSuite[];
-  return { pipeline: r.pipeline, integrationBranch: r.integrationBranch, suites };
+  return { pipeline: r.pipeline, integrationBranch: r.integrationBranch, integrationBranches: r.integrationBranches, integrationRequires: r.integrationRequires, targets: r.targets, defaultTarget: r.defaultTarget, suites };
 }
 
 export interface SuiteNeed {
@@ -65,18 +121,22 @@ export interface Build {
   _links?: { web?: { href?: string } };
 }
 
+export async function robotDefinitionId(c: AdoClient, pipeline: string): Promise<number> {
+  const defs = await c.get<{ value?: { id: number; name: string }[] }>("build/definitions", { name: pipeline });
+  const def = (defs.value ?? []).find((d) => d.name.toLowerCase() === pipeline.toLowerCase());
+  if (!def) throw new AihubError(`pipeline '${pipeline}' not found in Azure DevOps; check robot.pipeline in team.yaml or pass --pipeline`);
+  return def.id;
+}
+
 export async function queueRobot(
   c: AdoClient,
-  opts: { pipeline: string; branch: string; suite?: string; include?: string },
+  opts: { definitionId: number; branch: string; suite?: string; include?: string },
 ): Promise<Build> {
-  const defs = await c.get<{ value?: { id: number; name: string }[] }>("build/definitions", { name: opts.pipeline });
-  const def = (defs.value ?? []).find((d) => d.name.toLowerCase() === opts.pipeline.toLowerCase());
-  if (!def) throw new AihubError(`pipeline '${opts.pipeline}' not found in Azure DevOps; check robot.pipeline in team.yaml or pass --pipeline`);
   const templateParameters: Record<string, string> = {};
   if (opts.suite) templateParameters.suite = opts.suite;
   if (opts.include) templateParameters.include = opts.include;
   return c.post<Build>("build/builds", {
-    definition: { id: def.id },
+    definition: { id: opts.definitionId },
     sourceBranch: opts.branch.startsWith("refs/") ? opts.branch : `refs/heads/${opts.branch}`,
     ...(Object.keys(templateParameters).length ? { templateParameters } : {}),
   });
