@@ -1,6 +1,6 @@
 {
   "name": "@ferronhooi/aihub",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "One small CLI for Azure DevOps team workflows used by coding agents (stories, pull requests, reviews, cherry-picks).",
   "license": "MIT",
   "type": "module",
@@ -26,5 +26,14 @@
   },
   "dependencies": {
     "yaml": "^2.6.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MyDataIntelligence/aihub",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/MyDataIntelligence/aihub#readme",
+  "bugs": {
+    "url": "https://github.com/MyDataIntelligence/aihub/issues"
   }
 }
