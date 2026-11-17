@@ -1,0 +1,41 @@
+# Schema of the team file. Teams keep their copy in the team repository at
+# .agents/skills/_shared/references/team.yaml (created by `aihub init`).
+# Every key below is documented as "key: <type>  # meaning (required|optional)".
+# The values shown are the generic defaults, not team knowledge.
+
+version: 1                         # integer, schema version (required)
+language: en                       # content language of stories, PRs, comments, e.g. en or nl (required)
+
+azureDevOps:
+  organization: <organization>     # Azure DevOps organization name (required)
+  project: <project>               # project name (required)
+
+repositories:                      # list (required, at least one)
+  - name: <repository>             # exact repository name in Azure DevOps (required)
+    aliases: []                    # list of short names users may say, e.g. ["tp"] (optional)
+    defaultTarget: main            # branch a new PR targets (required)
+    releaseBranches: []            # release branch patterns or names, e.g. ["release/*"] (optional)
+
+pullRequest:
+  template: .azuredevops/pull_request_template.md   # path in the repo to the PR template (required)
+  title: "{storyId}: {storyTitle}" # title pattern; placeholders {storyId} {storyTitle} {branch} (optional)
+  emptySection: "-"                # text the CLI writes into a template section left empty (optional)
+
+workItems:
+  storyType: User Story            # work item type used for stories (required)
+  storyTemplate: .agents/skills/_shared/assets/story-template.md   # story template path (required)
+
+branches:
+  feature: "feature/{storyId}-{slug}"   # pattern for feature branches (required)
+  protected:                            # branches the CLI never pushes to or force-updates (optional)
+    - main
+    - release/*
+
+cherryPick:
+  groups:                          # named sets of target branches, usable as --to <group> (optional)
+    supported: ["release/1.2", "release/1.3"]
+
+pipelines:                         # pipelines to follow per repository (optional)
+  - repository: <repository>      # repository name this pipeline belongs to
+    name: <pipeline>               # pipeline name or id
+    required: true                 # true when a red run blocks the PR

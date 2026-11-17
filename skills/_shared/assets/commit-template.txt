@@ -1,0 +1,5 @@
+<type>: <short summary in the imperative, max 72 characters> (#<story id>)
+
+<optional body: why the change was needed, one paragraph>
+
+# type: feat | fix | refactor | test | docs | chore
