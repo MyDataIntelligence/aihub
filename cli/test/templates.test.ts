@@ -173,6 +173,9 @@ describe("compose", () => {
     expect(codeKindOf("Story")).toBe("story");
     expect(codeKindOf("Gekoppelde story")).toBe("story");
     expect(codeKindOf("Work item")).toBe("story");
+    expect(codeKindOf("Gekoppelde stories")).toBe("story");
+    expect(codeKindOf("Linked stories")).toBe("story");
+    expect(codeKindOf("Work items")).toBe("story");
     expect(codeKindOf("Commits")).toBe("commits");
     expect(codeKindOf("Related pull requests")).toBe("linked");
     expect(codeKindOf("Related")).toBe("story");

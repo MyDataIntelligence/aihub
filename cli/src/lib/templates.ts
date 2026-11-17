@@ -104,7 +104,7 @@ export function codeKindOf(heading: string): CodeKind | undefined {
   const words = heading.trim().split(/\s+/).length;
   if (/(gerelateerde|gekoppelde|linked|related)\W+(pr|prs|pull)|(pr|prs|pull requests?)\W+(link|gerelateerd)/i.test(heading)) return "linked";
   if (/commit/i.test(heading)) return "commits";
-  if (words <= 4 && /(story|work ?item|werk ?item|ticket|ab#)/i.test(heading)) return "story";
+  if (words <= 4 && /(stor(y|ies)|work ?items?|werk ?items?|tickets?|ab#)/i.test(heading)) return "story";
   // The bundled templates end with a bare "Related" / "Gerelateerd" section holding the story link.
   if (/^(related|gerelateerd|gekoppeld)$/i.test(heading.trim())) return "story";
   return undefined;

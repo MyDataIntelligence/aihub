@@ -1,33 +1,27 @@
 ---
 name: branch-sync
-description: "Use when a change must move between branches: 'cherry-pick to release', 'cherry-pick naar', 'update my branch', 'werk de branch bij met main', '/cherry-pick'."
+description: "Use when a change must move between branches: 'cherry-pick to release', 'cherry-pick naar', 'zet de wijziging ook op', 'update my branch', 'werk de branch bij met main', '/cherry-pick'."
 ---
 # Cherry-pick and branch update
 
 ## When
-A merged change must go to other branches, or the own branch is behind its target.
+A change must go to other branches, or the own branch is behind its target.
 
 ## Steps
-Cherry-pick a PR or commits to one or more branches (groups from `team.yaml` `cherryPick.groups` work too):
+Run this ONE command, nothing before it. `--from` takes a PR (number or link), a commit sha or a story id:
 
 ```sh
-aihub cherry-pick --from 42 --to release/1.2 --to release/1.3 --pr
+aihub cherry-pick --from <pr|sha|story> --to <branch> --summary-text "<1-2 sentences: what and why, in the team language>"
 ```
 
-Without `--pr` only the branch `cherry-pick/pr42-to-<target>` is pushed; add `--pr` when the user wants a pull request per target.
+It cherry-picks in a temp worktree, pushes a branch per target and opens the PR per target (team template, story link). Repeat `--to` for more branches, or `--to-group <name>` (`team.yaml` `cherryPick.groups`). Show the PR links it prints. Do not run `git checkout`, `git cherry-pick`, `git log`, or `aihub pr create` yourself; no `--help`.
 
-Bring the own branch up to date with its target:
+Bring the own branch up to date with its target: `aihub branch update`.
 
-```sh
-aihub branch update
-```
-
-Example: "cherry-pick PR 42 naar release/1.2" gives the first command with `--pr`; then show the PR links the CLI printed. Never claim a PR the CLI did not print.
+Example: "cherry-pick PR 42 naar release/1.2" -> `aihub cherry-pick --from 42 --to release/1.2 --summary-text "Zet de fix ook op release 1.2."`
 
 ## What the CLI fills
-Merge commits, ordering, one new PR per target (with `--pr`) and protected-branch checks (`branches.protected`). Do not ask the user about targets that `team.yaml` defines.
+Branch names, merge commits, ordering, protected-branch checks (`branches.protected`), the PR title, description and story link.
 
 ## If it fails
-Conflict: resolve it with your own git tools, commit, push, rerun. Never invent branch names or links.
-
-Rules: direct command, 0 questions. Local git status, diff, commit and push use your own tools.
+Conflict: nothing is pushed; resolve it with your own git tools, then rerun. Never invent branch names or links.

@@ -5,25 +5,23 @@ description: "Use when the user wants a pull request: 'maak een PR', 'create a P
 # Create a pull request
 
 ## When
-Commits are pushed (or ready) on the own branch.
+The user wants a PR for the current branch.
 
 ## Steps
-1. Check with git (own tools): `git status`, `git diff main...HEAD`. Push the branch if needed.
-2. Private branch notes (`aihub note add "why"`, kept in `.git/aihub/notes`, never committed) are woven into the context section by `pr create`; save the user's reasons there when they say them. Write the description to a file following the team PR template ([default](../_shared/assets/pull_request_template.md)). State only what was really done and tested; write "not run" for the rest.
-3. Run one command:
+Run this ONE command from the repository, nothing before it:
 
 ```sh
-aihub pr create --body-file pr.md
+aihub pr create --summary-text "<1-2 sentences: what and why, in the team language>"
 ```
 
-4. Show the PR link the CLI prints.
+Show the PR link it prints. Do not run `git status`/`diff`/`log` first, do not read the template or `team.yaml`, do not look up the story, do not ask questions.
 
-Example: `aihub pr create --body-file pr.md` creates the PR to the right target, linked to the story.
+Optional, only when the user gave more: `--title "<t>"`, `--draft`, `--target <branch>`, `--work-item <id>`, `--body-file pr.md` (markdown with `## <template heading>` sections for long prose).
+
+Example: "maak een PR" -> `aihub pr create --summary-text "Voegt de orderexport toe zodat orders als CSV te delen zijn."`
 
 ## What the CLI fills
-Title, target branch and merge base, story link, reviewers, empty sections (`pullRequest.emptySection`) and the repository. Never ask the user about these.
+Pushes the branch; target branch, title, story link (AB#), commits, reviewers, empty sections and the template come from the repo and `team.yaml`. Private notes (`aihub note add "why"`) are woven in.
 
 ## If it fails
-Read the error text. Missing push: push, retry. Wrong target: run `aihub doctor`. Never invent links or ids.
-
-Rules: a direct command is done at once with 0 questions. Content language follows the template. Local git uses your own tools.
+Read the error. Login or team file problem: run `aihub doctor`. Never invent links or ids.

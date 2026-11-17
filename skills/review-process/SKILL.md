@@ -8,28 +8,23 @@ description: "Use when review comments must be handled: 'verwerk de comments', '
 A PR has open reviewer threads.
 
 ## Steps
-1. Read them: `aihub comments get`.
-2. Fix each valid point in code with your own tools. Commit per the commit template and push the own branch with git.
-3. Write one reply per thread into a file, in the team language, short and factual (what changed, or why not):
+1. Read them: `aihub comments get` (add `--pr <url|N>` when the PR is not the branch's).
+2. Fix each valid point in code with your own tools; commit with `aihub commit` and push (`--push`).
+3. Answer ALL threads in ONE call: write the yaml and run the command in the same shell call. Every thread gets a reply and a status: `fixed` (done), `wontFix` (declined, say why), `closed` (answered).
 
-```yaml
+```sh
+cat > replies.yaml <<'EOY'
 - threadId: 7
   text: "Aangepast: null-check toegevoegd."
   status: fixed
-```
-
-4. Send them in one call:
-
-```sh
+EOY
 aihub comments reply --replies-file replies.yaml
 ```
 
 Example: three threads give one `replies.yaml` with three entries and one command.
 
 ## What the CLI fills
-PR id, thread lookup, author tags and status. Do not post replies one by one.
+PR id, thread lookup and the status change. Do not post replies one by one and never leave a thread `active` after you answered it.
 
 ## If it fails
-Unknown thread id: rerun `aihub comments get`. Disagree with a comment: say so in the reply with `status: wontFix` or leave `status` out; status is `fixed|wontFix|closed|active`. Never invent ids.
-
-Rules: no questions for the direct command. Local git uses your own tools.
+Unknown thread id: rerun `aihub comments get`. Disagree with a comment: reply with the reason and `wontFix`. Never invent ids.

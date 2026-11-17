@@ -18,6 +18,7 @@ export interface TeamConfig {
     tags?: string[];
   };
   branches?: { feature?: string; protected?: string[] };
+  commits?: { format?: string; types?: string[]; scope?: string };
   cherryPick?: { groups?: Record<string, string[]> };
   pipelines?: { repository?: string; name?: string; required?: boolean }[];
   [k: string]: unknown;

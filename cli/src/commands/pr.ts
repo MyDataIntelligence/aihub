@@ -6,7 +6,7 @@ import { run as runChanges } from "./pr-changes.js";
 
 function parse(argv: string[], options: Record<string, { type: "string" | "boolean" }>) {
   try {
-    return parseArgs({ args: argv, options, allowPositionals: true }).values;
+    return parseArgs({ args: argv, options, allowPositionals: true });
   } catch (e) {
     throw new AihubError(`${(e as Error).message}`);
   }
@@ -19,12 +19,26 @@ function num(v: unknown, flag: string): number | undefined {
   return n;
 }
 
+export const PR_USAGE = [
+  "aihub pr create [--summary-text \"<1-2 sentences>\"] [--body-file f.md] [--title t] [--target b] [--draft] [--work-item n] [--dry-run]",
+  "    One call: pushes the branch, fills the team template (story link, commits, empty sections) and opens the PR.",
+  "aihub pr update [--pr <url|N>] --section \"<heading>\" (--append-text \"<text>\" | --append-file f | --replace-text \"<text>\" | --replace-file f)",
+  "    Changes ONE section and keeps the rest. Short text inline, long prose from a file.",
+  "aihub pr update [--pr <url|N>] [--body-file f.md] [--title t] [--draft true|false] [--target b]   (--body-file merges the sections it contains)",
+  "aihub pr changes [--pr <url|N>]",
+].join("\n");
+
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
+  if (!sub || sub === "--help" || sub === "help" || rest.includes("--help")) {
+    ctx.out(PR_USAGE);
+    return;
+  }
   if (sub === "changes") return runChanges(rest, ctx);
   if (sub === "create") {
     const v = parse(rest, {
       title: { type: "string" },
+      "summary-text": { type: "string" },
       "body-file": { type: "string" },
       target: { type: "string" },
       draft: { type: "boolean" },
@@ -32,9 +46,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
       "dry-run": { type: "boolean" },
       "no-notes": { type: "boolean" },
       json: { type: "boolean" },
-    });
+    }).values;
     ctx.out(
       await createPr(ctx, {
+        summaryText: v["summary-text"] as string | undefined,
         title: v.title as string | undefined,
         bodyFile: v["body-file"] as string | undefined,
         target: v.target as string | undefined,
@@ -48,18 +63,21 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     return;
   }
   if (sub === "update") {
-    const v = parse(rest, {
+    const parsed = parse(rest, {
       pr: { type: "string" },
       "body-file": { type: "string" },
       section: { type: "string" },
       "append-file": { type: "string" },
+      "append-text": { type: "string" },
       "replace-file": { type: "string" },
+      "replace-text": { type: "string" },
       title: { type: "string" },
       draft: { type: "string" },
       target: { type: "string" },
       "no-notes": { type: "boolean" },
       json: { type: "boolean" },
     });
+    const v = parsed.values;
     let draft: boolean | undefined;
     if (v.draft !== undefined) {
       if (v.draft !== "true" && v.draft !== "false") throw new AihubError("--draft must be true or false");
@@ -67,11 +85,13 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     }
     ctx.out(
       await updatePr(ctx, {
-        pr: v.pr as string | undefined,
+        pr: (v.pr as string | undefined) ?? parsed.positionals[0],
         bodyFile: v["body-file"] as string | undefined,
         section: v.section as string | undefined,
         appendFile: v["append-file"] as string | undefined,
+        appendText: v["append-text"] as string | undefined,
         replaceFile: v["replace-file"] as string | undefined,
+        replaceText: v["replace-text"] as string | undefined,
         title: v.title as string | undefined,
         draft,
         target: v.target as string | undefined,

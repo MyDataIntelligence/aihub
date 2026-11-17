@@ -26,6 +26,7 @@ export interface CommandSpec {
 /** The slash commands, each loading one skill. Files must equal expectedCommand(). */
 export const COMMANDS: CommandSpec[] = [
   { name: "pr", skill: "pr-create", description: "Create a pull request", hint: "optional story id or remarks" },
+  { name: "commit", skill: "commit", description: "Commit the working changes", hint: "optional type and remarks" },
   { name: "pr-update", skill: "pr-update", description: "Update the open pull request", hint: "optional remarks" },
   { name: "cherry-pick", skill: "branch-sync", description: "Cherry-pick a PR to other branches", hint: "PR id and target branches" },
   { name: "story", skill: "story-create", description: "Create a story", hint: "what the story is about" },

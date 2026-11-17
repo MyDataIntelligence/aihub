@@ -3,7 +3,7 @@ import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { fetchBranch, git, gitRaw, withTempWorktree } from "./git.js";
 import { commitList, parsePrRef } from "./pr.js";
-import { compose, DEFAULT_EMPTY, resolveTemplate } from "./templates.js";
+import { compose, DEFAULT_EMPTY, parseSections, resolveTemplate } from "./templates.js";
 import { isProtected, loadTeam, readUtf8, type TeamConfig } from "./team.js";
 import { showFile } from "./git.js";
 
@@ -60,6 +60,12 @@ async function resolvePrCommits(client: AdoClient, root: string, id: number): Pr
   return shas.map((s) => commitInfo(root, s));
 }
 
+/** The story a commit message names with AB#<id>. */
+export function storyFromText(text: string): number | undefined {
+  const m = /AB#(\d{1,9})/i.exec(text);
+  return m ? Number(m[1]) : undefined;
+}
+
 export async function resolveSources(client: AdoClient, root: string, sources: Source[]): Promise<Resolved> {
   const commits: PickCommit[] = [];
   const labels: string[] = [];
@@ -78,7 +84,9 @@ export async function resolveSources(client: AdoClient, root: string, sources: S
       labels.push(s.sha.slice(0, 7));
       gitRaw(root, ["fetch", "--quiet", "origin"]);
       if (gitRaw(root, ["cat-file", "-e", `${s.sha}^{commit}`]).status !== 0) throw new AihubError(`commit ${s.sha} not found; fetch it first`);
-      commits.push(commitInfo(root, git(root, ["rev-parse", s.sha])));
+      const info = commitInfo(root, git(root, ["rev-parse", s.sha]));
+      commits.push(info);
+      story ??= storyFromText(git(root, ["log", "-1", "--format=%B", info.sha], { allowFail: true }));
     }
   }
   // de-duplicate, keep order
@@ -101,9 +109,11 @@ export interface CherryOpts {
   from: string;
   to: string[];
   toGroup?: string;
+  /** Open a PR per target (the default); false = only push the cherry-pick branch (--no-pr). */
   pr?: boolean;
   direct?: boolean;
   bodyFile?: string;
+  summaryText?: string;
   json?: boolean;
 }
 
@@ -119,6 +129,7 @@ export async function cherryPick(ctx: Ctx, o: CherryOpts): Promise<void> {
   const uniqTargets = [...new Set(targets)];
   if (!uniqTargets.length) throw new AihubError("pass --to <branch> (repeatable) or --to-group <name>");
   if (o.direct && o.pr) throw new AihubError("--direct and --pr exclude each other");
+  if (o.direct && o.summaryText) throw new AihubError("--summary-text belongs to the PR; --direct opens none");
 
   const src = await resolveSources(client, root, parseSources(o.from));
   if (!src.commits.length) throw new AihubError("nothing to cherry-pick: the source has no commits");
@@ -165,7 +176,7 @@ async function pickOne(client: AdoClient, root: string, team: TeamConfig, src: R
       const push = gitRaw(wt, ["push", "--quiet", "origin", `HEAD:refs/heads/${dest}`]);
       if (push.status !== 0) return { target, result: "failed", detail: `push of '${dest}' rejected: ${push.stderr.split("\n").pop()}` } as TargetResult;
       const res: TargetResult = { target, result: "ok", branch: dest, detail: o.direct ? `pushed to ${dest}` : `pushed ${dest}` };
-      if (o.pr) res.pr = await createPickPr(client, root, team, src, target, branch, o.bodyFile);
+      if (!o.direct && o.pr !== false) res.pr = await createPickPr(client, root, team, src, target, branch, o.bodyFile, o.summaryText);
       return res;
     });
   } catch (e) {
@@ -173,13 +184,17 @@ async function pickOne(client: AdoClient, root: string, team: TeamConfig, src: R
   }
 }
 
-async function createPickPr(client: AdoClient, root: string, team: TeamConfig, src: Resolved, target: string, branch: string, bodyFile?: string) {
+async function createPickPr(client: AdoClient, root: string, team: TeamConfig, src: Resolved, target: string, branch: string, bodyFile?: string, summaryText?: string) {
   const commits = src.commits.map((c) => ({ sha: c.sha.slice(0, 7), subject: c.subject }));
   const wi = src.story;
   const wiTitle = wi ? await getWorkItemTitle(client, wi) : undefined;
   const title = `Cherry-pick ${src.label} to ${target}: ${commits[0].subject}`.slice(0, 200);
-  const body = bodyFile ? readUtf8(bodyFile) : "";
   const tpl = resolveTemplate(target, { readRef: (b, p) => showFile(root, b, p), localRoot: root });
+  let body = bodyFile ? readUtf8(bodyFile) : "";
+  if (summaryText?.trim()) {
+    const first = tpl ? parseSections(tpl.content).sections[0]?.heading : undefined;
+    body = first ? `## ${first}\n${summaryText.trim()}\n\n${body}` : `${summaryText.trim()}\n\n${body}`;
+  }
   const code = { story: wi ? `AB#${wi}${wiTitle ? ` ${wiTitle}` : ""}` : undefined, commits: commitList(commits) };
   let description: string;
   if (tpl) description = compose({ template: tpl.content, body, code, emptyText: team.pullRequest?.emptySection || DEFAULT_EMPTY }).text;
