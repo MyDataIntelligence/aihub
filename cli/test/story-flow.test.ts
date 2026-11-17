@@ -205,3 +205,25 @@ describe("aihub story finish", () => {
     expect(branches(m.dir)).not.toContain(m.branch);
   });
 });
+
+describe("aihub story start with a process that has other state names", () => {
+  it("names the states of the project instead of the bare 400 (live: Basic process To do/Doing/Done)", async () => {
+    const parent = newParent();
+    const { dir } = makeNamedRepo(parent, "test-repo");
+    const routes: Route[] = [
+      {
+        method: "PATCH",
+        match: /\/_apis\/wit\/workitems\/1234\?/,
+        respond: (c) =>
+          c.body?.some((o: any) => o.path === "/fields/System.State")
+            ? { status: 400, body: { message: "The field 'State' contains the value 'Active' that is not in the list of supported values" } }
+            : { body: { id: 1234 } },
+      },
+      { match: /\/_apis\/wit\/workitemtypes\/User%20Story\/states\?/, respond: () => ({ body: { value: [{ name: "To do" }, { name: "Doing" }, { name: "Done" }] } }) },
+      ...storyRoutes(1234, { title: "Zoekfunctie bouwen" }),
+    ];
+    const r = await run(dir, routes, ["story", "start", "--id", "1234"]);
+    expect(r.code).not.toBe(0);
+    expect(r.errs.join("\n")).toMatch(/state 'Active' does not exist.*To do, Doing, Done.*workItems\.states/);
+  });
+});
