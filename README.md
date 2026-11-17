@@ -19,4 +19,4 @@ Status: under construction (see the GitHub issues).
 
 ## Commands
 
-`aihub pr create|update|changes`, `comments get|reply`, `cherry-pick --from <pr|sha|story> --to <branch>... [--pr]`, `branch update [--rebase]`, `story show|create|refine`, `pipeline follow|status|runs|logs|run`, `batch --select "<query>" --run "<subcommand with {target}>"`, `work`. Prose goes in files (`--body-file`); `--json` is optional everywhere.
+`aihub pr create|update|changes`, `comments get|reply`, `cherry-pick --from <pr|sha|story> --to <branch>... [--pr]`, `branch update [--rebase]`, `story show|create|refine`, `pipeline follow|status|runs|logs|run`, `batch --select "<query>" --run "<subcommand with {target}>"`, `work`, `watch`, `note`, `status`. Prose goes in files (`--body-file`); `--json` is optional everywhere.

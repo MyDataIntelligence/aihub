@@ -33,6 +33,8 @@ Map the intent to a skill, then follow that skill:
 | change team.yaml or a template | team-settings |
 | release, release train | release |
 
+Resumed session ("ga verder", "continue"): run `aihub status`, open with "Last time ... Next step ..." in the user's language.
+
 Slash commands `/pr /pr-update /cherry-pick /story /refine /review /watch /start /finish /review-pr /explain /release /wiki` map to the same skills.
 
 Example: the user sends a pullrequest link, so follow pr-watch with that id.

@@ -30,6 +30,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
       draft: { type: "boolean" },
       "work-item": { type: "string" },
       "dry-run": { type: "boolean" },
+      "no-notes": { type: "boolean" },
       json: { type: "boolean" },
     });
     ctx.out(
@@ -40,6 +41,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
         draft: v.draft as boolean | undefined,
         workItem: num(v["work-item"], "--work-item"),
         dryRun: v["dry-run"] as boolean | undefined,
+        noNotes: v["no-notes"] as boolean | undefined,
         json: v.json as boolean | undefined,
       }),
     );
@@ -55,6 +57,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
       title: { type: "string" },
       draft: { type: "string" },
       target: { type: "string" },
+      "no-notes": { type: "boolean" },
       json: { type: "boolean" },
     });
     let draft: boolean | undefined;
@@ -72,6 +75,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
         title: v.title as string | undefined,
         draft,
         target: v.target as string | undefined,
+        noNotes: v["no-notes"] as boolean | undefined,
         json: v.json as boolean | undefined,
       }),
     );

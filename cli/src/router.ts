@@ -23,6 +23,9 @@ import * as workitem from "./commands/workitem.js";
 import * as evidence from "./commands/evidence.js";
 import * as port from "./commands/port.js";
 import * as crossrepo from "./commands/crossrepo.js";
+import * as note from "./commands/note.js";
+import * as status from "./commands/status.js";
+import * as watch from "./commands/watch.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -53,6 +56,9 @@ export const commands: Record<string, CommandFn> = {
   evidence: evidence.run,
   port: port.run,
   crossrepo: crossrepo.run,
+  note: note.run,
+  status: status.run,
+  watch: watch.run,
 };
 
 export const VERSION = cliVersion();
