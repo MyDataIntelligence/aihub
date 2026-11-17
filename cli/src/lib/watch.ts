@@ -7,7 +7,8 @@ import { getThreads } from "./comments.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { currentBranch } from "./git.js";
-import { latestPerDefinition, parseDuration, selectBuilds, type Build } from "./pipeline.js";
+import { detectClient, eventUrl, storeEvent, type Client } from "./open.js";
+import { failedSteps, latestPerDefinition, parseDuration, selectBuilds, type Build } from "./pipeline.js";
 import { parsePrRef } from "./pr.js";
 
 export type Until = "done" | "comment" | "vote";
@@ -23,12 +24,16 @@ export interface WatchSpec {
   intervalMs: number;
   started: number;
   pid?: number;
+  /** Where to come back to: the repository, the agent client and (when known) its session id. */
+  repo?: string;
+  client?: Client;
+  session?: string;
 }
 
 export interface Snapshot {
   prId?: number;
   prStatus?: string;
-  builds: { id: number; name: string; number: string; state: string; done: boolean; bad: boolean }[];
+  builds: { id: number; name: string; number: string; state: string; done: boolean; bad: boolean; failed?: string }[];
   comments: number;
   votes: Record<string, number>;
 }
@@ -76,7 +81,20 @@ export function logEvent(root: string, at: number, label: string, message: strin
 const psQuote = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 /** The OS command that shows a notification, or undefined when the platform has none. Exported for tests. */
-export function notifyCommand(platform: NodeJS.Platform, title: string, message: string): { cmd: string; args: string[] } | undefined {
+export function notifyCommand(platform: NodeJS.Platform, title: string, message: string, action?: NotifyAction): { cmd: string; args: string[] } | undefined {
+  if (platform === "win32" && action) {
+    const xe = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const xml =
+      `<toast launch="${xe(action.url)}" activationType="protocol"><visual><binding template="ToastGeneric"><text>${xe(title)}</text><text>${xe(message)}</text></binding></visual>` +
+      `<actions><action content="${xe(action.label)}" arguments="${xe(action.url)}" activationType="protocol"/></actions></toast>`;
+    const script =
+      "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null;" +
+      "[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null;" +
+      `$x = [Windows.Data.Xml.Dom.XmlDocument]::new(); $x.LoadXml(${psQuote(xml)});` +
+      "$t = [Windows.UI.Notifications.ToastNotification]::new($x);" +
+      "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('aihub').Show($t)";
+    return { cmd: "powershell.exe", args: ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script] };
+  }
   if (platform === "win32") {
     const script =
       "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null;" +
@@ -95,11 +113,17 @@ export function notifyCommand(platform: NodeJS.Platform, title: string, message:
   return undefined;
 }
 
-export type Notifier = (title: string, message: string) => boolean | Promise<boolean>;
+/** The "Open" button of a notification: clicking it runs `aihub open` through the aihub:// link. */
+export interface NotifyAction {
+  label: string;
+  url: string;
+}
+
+export type Notifier = (title: string, message: string, action?: NotifyAction) => boolean | Promise<boolean>;
 
 /** Shows an OS notification; false when it could not be shown (the caller then prints the line). */
-export const osNotify: Notifier = (title, message) => {
-  const c = notifyCommand(process.platform, title, message);
+export const osNotify: Notifier = (title, message, action) => {
+  const c = notifyCommand(process.platform, title, message, action);
   if (!c) return false;
   const r = spawnSync(c.cmd, c.args, { stdio: "ignore", timeout: 15_000 });
   return !r.error && r.status === 0;
@@ -122,14 +146,28 @@ export async function takeSnapshot(client: AdoClient, root: string, spec: Pick<W
     }
   }
   const sel = await selectBuilds(client, root, prId ? { pr: String(prId) } : { branch });
-  const builds = latestPerDefinition(sel.builds).map((b) => ({
-    id: b.id,
-    name: b.definition?.name ?? "pipeline",
-    number: b.buildNumber ?? String(b.id),
-    state: stateOf(b),
-    done: b.status === "completed",
-    bad: b.status === "completed" && b.result !== "succeeded" && b.result !== "partiallySucceeded",
-  }));
+  const builds = [];
+  for (const b of latestPerDefinition(sel.builds)) {
+    const bad = b.status === "completed" && b.result !== "succeeded" && b.result !== "partiallySucceeded";
+    let failed: string | undefined;
+    if (bad) {
+      try {
+        const s = (await failedSteps(client, b.id))[0];
+        if (s) failed = s.stage ? `${s.stage} / ${s.step}` : s.step;
+      } catch {
+        /* the message just has no stage */
+      }
+    }
+    builds.push({
+      id: b.id,
+      name: b.definition?.name ?? "pipeline",
+      number: b.buildNumber ?? String(b.id),
+      state: stateOf(b),
+      done: b.status === "completed",
+      bad,
+      failed,
+    });
+  }
   let comments = 0;
   if (prId) for (const t of await getThreads(client, prId, undefined, true)) comments += t.comments.length;
   const votes: Record<string, number> = {};
@@ -143,13 +181,13 @@ export function diffSnapshots(prev: Snapshot | undefined, cur: Snapshot, until: 
   const label = cur.prId ? `PR !${cur.prId}` : "branch";
   if (!prev) {
     if (until === "done" && cur.builds.length && cur.builds.every((b) => b.done)) {
-      ev.push({ kind: "build", message: `${label}: pipelines already finished: ${cur.builds.map((b) => `${b.name} ${b.state}`).join(", ")}` });
+      ev.push({ kind: "build", message: `${label}: pipelines already finished: ${cur.builds.map((b) => `${b.name} ${b.state}${b.failed ? ` in ${b.failed}` : ""}`).join(", ")}` });
     }
     return ev;
   }
   for (const b of cur.builds) {
     const was = prev.builds.find((x) => x.id === b.id);
-    if (b.done && !was?.done) ev.push({ kind: "build", message: `${label}: ${b.name} #${b.number} finished: ${b.state}` });
+    if (b.done && !was?.done) ev.push({ kind: "build", message: `${label}: ${b.name} #${b.number} finished: ${b.state}${b.failed ? ` in ${b.failed}` : ""}` });
   }
   if (cur.comments > prev.comments) ev.push({ kind: "comment", message: `${label}: ${cur.comments - prev.comments} new comment(s)` });
   for (const [who, vote] of Object.entries(cur.votes)) {
@@ -182,10 +220,14 @@ export async function runWatch(ctx: Ctx, spec: WatchSpec, deps: RunDeps = {}): P
   const start = now();
   let prev: Snapshot | undefined;
   let failures = 0;
+  let seq = 0;
   const emit = async (e: WatchEvent, label: string) => {
     all.push(e);
     logEvent(root, now(), label, e.message);
-    if (spec.notify && !(await notifier("aihub", e.message))) ctx.out(e.message);
+    // every event can be reopened: aihub open --event <id> (also from the notification button)
+    const id = `${spec.id}-${++seq}`;
+    storeEvent(ctx.env, { id, repo: spec.repo ?? root, client: spec.client, session: spec.session, message: e.message, prompt: `${e.message} — ga verder`, at: now() });
+    if (spec.notify && !(await notifier("aihub", e.message, { label: "Open", url: eventUrl(id) }))) ctx.out(`${e.message}\n  open it with: aihub open --event ${id}`);
   };
   const label = spec.pr ? `pr/${spec.pr}` : `branch/${spec.branch ?? "current"}`;
   for (;;) {
@@ -238,10 +280,18 @@ export interface StartOpts {
   notify?: boolean;
   timeout?: string;
   interval?: string;
+  client?: string;
+  session?: string;
   json?: boolean;
 }
 
-export function startWatch(ctx: Ctx, o: StartOpts, spawner: Spawner = spawnDetached, alive: (pid?: number) => boolean = isAlive): string {
+export function startWatch(
+  ctx: Ctx,
+  o: StartOpts,
+  spawner: Spawner = spawnDetached,
+  alive: (pid?: number) => boolean = isAlive,
+  register: () => boolean = () => false,
+): string {
   const { root } = repoClient(ctx);
   const until = (o.until ?? "done") as Until;
   if (!UNTILS.includes(until)) throw new AihubError(`--until must be one of ${UNTILS.join(", ")}`);
@@ -261,7 +311,11 @@ export function startWatch(ctx: Ctx, o: StartOpts, spawner: Spawner = spawnDetac
     timeoutMs: parseDuration(o.timeout, 2 * 3_600_000),
     intervalMs: parseDuration(o.interval ?? "30s", 30_000),
     started: now,
+    repo: root,
+    client: detectClient(ctx.env, o.client),
+    session: o.session ?? ctx.env.AIHUB_SESSION_ID,
   };
+  if (spec.notify) register(); // aihub:// link for the notification's Open button (per user, no admin)
   writeSpec(root, spec);
   spec.pid = spawner(root, spec.id);
   writeSpec(root, spec);

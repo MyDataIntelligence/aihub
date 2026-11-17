@@ -1,9 +1,10 @@
 import { parse } from "../lib/args.js";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
+import { ensureProtocol } from "../lib/open.js";
 import { listWatches, runDetached, startWatch, stopWatches } from "../lib/watch.js";
 
-/** aihub watch --pr N|--branch B [--until done|comment|vote] [--notify] | list | stop [--id X] */
+/** aihub watch --pr N|--branch B [--until done|comment|vote] [--notify] [--client C] [--session S] | list | stop [--id X] */
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const sub = argv[0] && !argv[0].startsWith("-") ? argv[0] : undefined;
   const v = parse(sub ? argv.slice(1) : argv, {
@@ -14,6 +15,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     timeout: { type: "string" },
     interval: { type: "string" },
     id: { type: "string" },
+    client: { type: "string" },
+    session: { type: "string" },
     json: { type: "boolean" },
   }).values;
   if (sub === "list") return void ctx.out(listWatches(ctx, { json: v.json }));
@@ -22,6 +25,14 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     if (!v.id) throw new AihubError("watch _run needs --id");
     return runDetached(ctx, v.id);
   }
-  if (sub) throw new AihubError("usage: aihub watch --pr <n>|--branch <b> [--until done|comment|vote] [--notify] [--timeout 2h] | watch list | watch stop [--id X]");
-  ctx.out(startWatch(ctx, { pr: v.pr, branch: v.branch, until: v.until, notify: v.notify, timeout: v.timeout, interval: v.interval, json: v.json }));
+  if (sub) throw new AihubError("usage: aihub watch --pr <n>|--branch <b> [--until done|comment|vote] [--notify] [--client opencode|codex|claude|copilot] [--session <id>] [--timeout 2h] | watch list | watch stop [--id X]");
+  ctx.out(
+    startWatch(
+      ctx,
+      { pr: v.pr, branch: v.branch, until: v.until, notify: v.notify, timeout: v.timeout, interval: v.interval, client: v.client, session: v.session, json: v.json },
+      undefined,
+      undefined,
+      () => ensureProtocol(),
+    ),
+  );
 }

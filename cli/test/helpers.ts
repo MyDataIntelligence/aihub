@@ -91,7 +91,7 @@ export function ctxFor(dir: string, fetchFn: typeof fetch) {
   const errs: string[] = [];
   const ctx: Ctx = {
     cwd: dir,
-    env: { AIHUB_ADO_PAT: "synthetic-pat" },
+    env: { AIHUB_ADO_PAT: "synthetic-pat", AIHUB_HOME: mkdtempSync(join(tmpdir(), "aihub-home-")) },
     fetch: fetchFn,
     out: (l) => lines.push(l),
     err: (l) => errs.push(l),

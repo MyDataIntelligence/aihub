@@ -32,6 +32,7 @@ import { setTrace } from "./lib/trace.js";
 import * as prPolicy from "./commands/pr-policy.js";
 import * as storyContext from "./commands/story-context.js";
 import * as repos from "./commands/repos.js";
+import * as open from "./commands/open.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -74,6 +75,7 @@ export const commands: Record<string, CommandFn> = {
   update: update.run,
   explain: explain.run,
   repos: repos.run,
+  open: open.run,
 };
 
 export const VERSION = cliVersion();

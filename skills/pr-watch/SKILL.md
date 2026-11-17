@@ -23,7 +23,7 @@ If the user says "laat het me weten", "hou het in de gaten" or "let me know when
 aihub watch --pr 42 --until done --notify
 ```
 
-`--until comment` or `vote` waits for a new review comment or vote. It shows an OS notification and writes `.git/aihub/events.log`; `aihub watch list` and `aihub watch stop` manage it. Without `--notify` read the log.
+`--until comment` or `vote` waits for a new review comment or vote. Add `--client opencode|codex|claude|copilot` (and `--session <id>` when you know it) so the notification's Open button, or `aihub open --last`, resumes this session in a terminal even after it was closed. `aihub watch list` and `stop` manage it; the log is `.git/aihub/events.log`.
 
 While waiting, do not poll by hand and do not start other work on the same branch; `pipeline follow` returns when the run is finished. Report the final state in one short line per check.
 
