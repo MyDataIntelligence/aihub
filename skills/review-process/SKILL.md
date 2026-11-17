@@ -13,9 +13,9 @@ A PR has open reviewer threads.
 3. Write one reply per thread into a file, in the team language, short and factual (what changed, or why not):
 
 ```yaml
-- thread: 7
+- threadId: 7
   text: "Aangepast: null-check toegevoegd."
-  resolve: true
+  status: fixed
 ```
 
 4. Send them in one call:
@@ -30,6 +30,6 @@ Example: three threads give one `replies.yaml` with three entries and one comman
 PR id, thread lookup, author tags and status. Do not post replies one by one.
 
 ## If it fails
-Unknown thread id: rerun `aihub comments get`. Disagree with a comment: say so in the reply, do not resolve. Never invent ids.
+Unknown thread id: rerun `aihub comments get`. Disagree with a comment: say so in the reply with `status: wontFix` or leave `status` out; status is `fixed|wontFix|closed|active`. Never invent ids.
 
 Rules: no questions for the direct command. Local git uses your own tools.
