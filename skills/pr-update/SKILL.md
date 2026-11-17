@@ -10,14 +10,15 @@ The own branch has new commits or the description is out of date.
 ## Steps
 1. With git (own tools): `git status`, push new commits.
 2. See what changed on the PR: `aihub pr changes`.
-3. Rewrite the description file from the template so it matches the current diff, keeping tested facts honest.
-4. Run:
+3. Write only what is new to a file, keeping tested facts honest.
+4. Add it to one section, or replace only the sections you changed (the story link, commits and related PRs are kept by the CLI):
 
 ```sh
-aihub pr update --body-file pr.md
+aihub pr update --section Changes --append-file add.md
+aihub pr update --body-file pr.md   # pr.md holds only the changed sections
 ```
 
-Example: after a fix commit, `git push`, then `aihub pr update --body-file pr.md`.
+Never copy the whole template into the body file. Example: after a fix commit, `git push`, then `aihub pr update --section Changes --append-file add.md`.
 
 ## What the CLI fills
 PR id from the current branch, title, template sections, links to the story. Do not ask the user for the PR id.

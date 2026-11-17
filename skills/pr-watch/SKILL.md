@@ -23,7 +23,7 @@ If the user says "laat het me weten", "hou het in de gaten" or "let me know when
 aihub watch --pr 42 --until done --notify
 ```
 
-`--until comment` or `vote` waits for a new review comment or vote. Add `--client opencode|codex|claude|copilot` (and `--session <id>` when you know it) so the notification's Open button, or `aihub open --last`, resumes this session in a terminal even after it was closed. `aihub watch list` and `stop` manage it; the log is `.git/aihub/events.log`.
+`--until comment` or `vote` waits for a new review comment or vote. Add `--client opencode|codex|claude|copilot` (and `--session <id>`) so the Open button or `aihub open --last` resumes this session. `aihub watch list` and `stop` manage it; the log is `.git/aihub/events.log`.
 
 For "tell me whenever something needs me" without naming a PR, start the one poller over everything of mine (replies and mentions on my PRs and work items, review requests, votes, failed policies, completed or abandoned PRs):
 
