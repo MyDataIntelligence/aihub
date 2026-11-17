@@ -120,6 +120,24 @@ describe("pipeline runs/logs/run", () => {
     const post = f.calls.find((c) => c.method === "POST")!;
     expect(post.body).toEqual({ definition: { id: 3 }, sourceBranch: "refs/heads/feature/5-x", templateParameters: { env: "test", retries: "2" } });
   });
+
+  it("shows why Azure DevOps refused to queue the run (ValidationResults, live: unknown branch)", async () => {
+    const r = routes([[]]);
+    r.routes.push({
+      method: "POST",
+      match: /build\/builds\?/,
+      respond: () => ({
+        status: 400,
+        body: {
+          message: "Could not queue the build because there were validation errors or warnings.",
+          customProperties: { ValidationResults: [{ result: "error", message: "Unable to resolve the reference 'refs/heads/feature/gone' to a specific version." }] },
+        },
+      }),
+    });
+    const { ctx, errs } = ctxWith(r.routes);
+    expect(await main(["pipeline", "run", "--name", "test-project-ci", "--branch", "feature/gone"], ctx, commands)).not.toBe(0);
+    expect(errs.join("\n")).toContain("Unable to resolve the reference 'refs/heads/feature/gone'");
+  });
 });
 
 void B;

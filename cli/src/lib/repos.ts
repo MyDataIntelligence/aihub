@@ -36,7 +36,16 @@ export function resolveRepoDirs(names: string[], currentRoot: string, team: Team
       continue;
     }
     let found: string | undefined;
+    // team.yaml repositories[].path (absolute or relative to this repository) wins over the sibling search
     for (const cand of aliasOf(n)) {
+      const hit = (team.repositories ?? []).find((r) => r.name?.toLowerCase() === cand.toLowerCase()) as { path?: string } | undefined;
+      const d = hit?.path ? resolve(currentRoot, hit.path) : undefined;
+      if (d && existsSync(join(d, ".git"))) {
+        found = d;
+        break;
+      }
+    }
+    for (const cand of found ? [] : aliasOf(n)) {
       for (const r of searchRoots) {
         const d = join(r, cand);
         if (existsSync(join(d, ".git"))) {
@@ -46,7 +55,7 @@ export function resolveRepoDirs(names: string[], currentRoot: string, team: Team
       }
       if (found) break;
     }
-    if (!found) throw new AihubError(`repository '${n}' not found next to ${currentRoot}; clone it there or pass --root <folder>`);
+    if (!found) throw new AihubError(`repository '${n}' not found next to ${currentRoot}; clone it there, or set repositories[].path in team.yaml`);
     out.push({ name: n, dir: found });
   }
   return out;

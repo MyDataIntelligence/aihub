@@ -4,7 +4,7 @@ import { latestPerDefinition, type Build } from "./pipeline.js";
 import { loadTeam } from "./team.js";
 
 export async function myId(client: AdoClient): Promise<string> {
-  const r = await client.get<{ authenticatedUser?: { id?: string } }>("connectionData");
+  const r = await client.getOrg<{ authenticatedUser?: { id?: string } }>("connectionData");
   return r.authenticatedUser?.id ?? "";
 }
 

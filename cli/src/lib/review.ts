@@ -5,6 +5,7 @@ import { repoClient, type Ctx } from "./context.js";
 import { diffLines } from "./diff.js";
 import { AihubError } from "./errors.js";
 import { workItemFromBranch } from "./git.js";
+import { evaluations } from "./policy.js";
 import { parsePrRef } from "./pr.js";
 import { readUtf8 } from "./team.js";
 
@@ -243,17 +244,52 @@ export async function prComplete(ctx: Ctx, o: CompleteOpts): Promise<string> {
   if (o.auto) {
     let userId: string | undefined;
     try {
-      userId = (await client.get<{ authenticatedUser?: { id?: string } }>("connectionData")).authenticatedUser?.id;
+      userId = (await client.getOrg<{ authenticatedUser?: { id?: string } }>("connectionData")).authenticatedUser?.id;
     } catch {
       userId = undefined;
     }
     userId ??= pr.createdBy?.id;
     if (!userId) throw new AihubError("could not find your Azure DevOps user id for auto-complete");
     await client.patch(path, { autoCompleteSetBy: { id: userId }, completionOptions });
-    return o.json ? JSON.stringify({ pr: id, autoComplete: true, url }) : `PR !${id}: auto-complete set, it merges when the policies pass (${url})`;
+    const after = await settle(ctx, client, id);
+    if (after.status === "completed") {
+      return o.json ? JSON.stringify({ pr: id, autoComplete: false, status: "completed", url }) : `PR !${id}: completed immediately, nothing was waiting on it (no blocking policies) (${url})`;
+    }
+    const waits = await waitingFor(client, id, after);
+    return o.json
+      ? JSON.stringify({ pr: id, autoComplete: true, status: after.status, waitsFor: waits, url })
+      : `PR !${id}: auto-complete set, it merges when: ${waits.length ? waits.join("; ") : "the policies pass"} (${url})`;
   }
   const commit = pr.lastMergeSourceCommit?.commitId;
   if (!commit) throw new AihubError(`PR !${id} has no source commit yet`);
-  const done = await client.patch<PrFull>(path, { status: "completed", lastMergeSourceCommit: { commitId: commit }, completionOptions });
-  return o.json ? JSON.stringify({ pr: id, status: done.status, url }) : `PR !${id}: completion requested, status ${done.status ?? "completed"} (${url})`;
+  await client.patch<PrFull>(path, { status: "completed", lastMergeSourceCommit: { commitId: commit }, completionOptions });
+  const done = await settle(ctx, client, id);
+  if (done.status === "completed") return o.json ? JSON.stringify({ pr: id, status: "completed", url }) : `PR !${id}: completed (${url})`;
+  const why = await waitingFor(client, id, done);
+  return o.json
+    ? JSON.stringify({ pr: id, status: done.status, waitsFor: why, url })
+    : `PR !${id}: completion requested but the PR is still ${done.status}${why.length ? `, waiting for: ${why.join("; ")}` : ""} (${url})`;
+}
+
+
+/** Azure DevOps completes a PR asynchronously: look again for a few seconds before saying what happened. */
+async function settle(ctx: Ctx, client: AdoClient, id: number): Promise<PrFull> {
+  const sleep = ctx.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  let pr = await getFull(client, id);
+  for (let i = 0; i < 4 && pr.status === "active"; i++) {
+    await sleep(1500);
+    pr = await getFull(client, id);
+  }
+  return pr;
+}
+
+async function waitingFor(client: AdoClient, id: number, pr: PrFull & { mergeStatus?: string }): Promise<string[]> {
+  const out: string[] = [];
+  try {
+    for (const p of await evaluations(client, id)) if (p.blocks) out.push(`${p.name} is ${p.status}`);
+  } catch {
+    /* policies are a hint only */
+  }
+  if (pr.mergeStatus === "conflicts") out.push("merge conflicts");
+  return out;
 }

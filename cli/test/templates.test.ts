@@ -178,6 +178,8 @@ describe("compose", () => {
     expect(codeKindOf("Work items")).toBe("story");
     expect(codeKindOf("Commits")).toBe("commits");
     expect(codeKindOf("Related pull requests")).toBe("linked");
+    expect(codeKindOf("Related")).toBe("story");
+    expect(codeKindOf("Gerelateerd")).toBe("story");
     expect(codeKindOf("Gerelateerde PR's")).toBe("linked");
     expect(codeKindOf("Beschrijving van de story en context erbij")).toBeUndefined();
     expect(codeKindOf("Tests")).toBeUndefined();

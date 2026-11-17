@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
@@ -63,6 +63,7 @@ export async function reposClone(ctx: Ctx, o: { names: string[]; root?: string; 
       out.push({ name: r.name, dir, status: "already there" });
       continue;
     }
+    mkdirSync(base, { recursive: true }); // --root may not exist yet (git would fail with ENOENT on the missing cwd)
     const args = [...(token ? ["-c", `http.extraheader=Authorization: Basic ${token}`] : []), "clone", "--quiet", r.remoteUrl, dir];
     const res = tryGit(base, args);
     if (!res.ok) throw new AihubError(`git clone of '${r.name}' failed: ${res.err.split("\n")[0]}`);

@@ -24,7 +24,24 @@ export async function getWorkItem(c: AdoClient, id: number): Promise<WorkItem> {
 }
 
 export async function setWorkItemState(c: AdoClient, id: number, state: string): Promise<void> {
-  await c.jsonPatch("PATCH", `wit/workitems/${id}`, [{ op: "add", path: "/fields/System.State", value: state }]);
+  try {
+    await c.jsonPatch("PATCH", `wit/workitems/${id}`, [{ op: "add", path: "/fields/System.State", value: state }]);
+  } catch (e) {
+    if (!(e instanceof AihubError) || !/not in the list of supported values/i.test(e.message)) throw e;
+    // The process template names its states differently (Basic: To do/Doing/Done). Say which ones exist.
+    let allowed = "";
+    try {
+      const wi = await c.get<{ fields?: Record<string, unknown> }>(`wit/workitems/${id}`, { fields: "System.WorkItemType" });
+      const type = String(wi.fields?.["System.WorkItemType"] ?? "");
+      const states = await c.get<{ value?: { name: string }[] }>(`wit/workitemtypes/${encodeURIComponent(type)}/states`);
+      allowed = (states.value ?? []).map((x) => x.name).join(", ");
+    } catch {
+      /* keep it short: the list is a hint only */
+    }
+    throw new AihubError(
+      `state '${state}' does not exist for work item ${id}${allowed ? ` (this project uses: ${allowed})` : ""}; set workItems.states.active / workItems.states.finished in team.yaml`,
+    );
+  }
 }
 
 /** Adds an ArtifactLink unless the work item already has it. Returns true when added. */

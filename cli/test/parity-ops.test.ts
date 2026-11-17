@@ -160,17 +160,38 @@ describe("aihub review and pr", () => {
     expect(r.out).toContain("Threads: 1 (1 open)");
   });
 
-  it("pr complete --auto sets auto-complete without bypassing policies", async () => {
+  it("pr complete --auto without policies says it completed immediately (live: ferron-test)", async () => {
     const { dir } = makeNamedRepo(newParent(), "test-repo");
     const patched: any[] = [];
     const routes: Route[] = [
       { match: /_apis\/connectionData\?/, respond: () => ({ body: { authenticatedUser: { id: "me-1" } } }) },
       { method: "PATCH", match: /pullrequests\/5\?/, respond: (c) => (patched.push(c.body), { body: PR(5) }) },
-      ...prRoutes(5),
+      // after the PATCH Azure DevOps has completed the PR
+      { match: /pullrequests\/5\?/, respond: () => ({ body: PR(5, patched.length ? { status: "completed" } : {}) }) },
+      ...prRoutes(5).slice(1),
     ];
     const r = await run(dir, routes, ["pr", "complete", "--pr", "5", "--auto", "--delete-source", "--squash"]);
     expect(r.errs).toEqual([]);
     expect(patched[0]).toEqual({ autoCompleteSetBy: { id: "me-1" }, completionOptions: { deleteSourceBranch: true, bypassPolicy: false, mergeStrategy: "squash" } });
+    expect(r.out).toContain("completed immediately");
+    expect(r.out).not.toContain("auto-complete set");
+  });
+
+  it("pr complete --auto with a blocking policy names what it waits for", async () => {
+    const { dir } = makeNamedRepo(newParent(), "test-repo");
+    const routes: Route[] = [
+      { match: /_apis\/connectionData\?/, respond: () => ({ body: { authenticatedUser: { id: "me-1" } } }) },
+      { method: "PATCH", match: /pullrequests\/5\?/, respond: () => ({ body: PR(5) }) },
+      { match: /\/_apis\/git\/repositories\/[^/?]+\?/, respond: () => ({ body: { id: "repo-1", project: { id: "proj-1" } } }) },
+      {
+        match: /_apis\/policy\/evaluations\?/,
+        respond: () => ({ body: { value: [{ evaluationId: "e1", status: "queued", configuration: { isEnabled: true, isBlocking: true, type: { displayName: "Build" }, settings: { displayName: "ci" } } }] } }),
+      },
+      ...prRoutes(5),
+    ];
+    const r = await run(dir, routes, ["pr", "complete", "--pr", "5", "--auto"]);
+    expect(r.errs).toEqual([]);
+    expect(r.out).toContain("auto-complete set, it merges when: Build (ci) is queued");
   });
 
   it("pr complete without --auto completes with the source commit; refuses drafts", async () => {

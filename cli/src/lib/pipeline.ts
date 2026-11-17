@@ -134,10 +134,13 @@ async function stepLog(client: AdoClient, buildId: number, logId: number): Promi
 
 // ---- commands -----------------------------------------------------------------
 
-export function parseDuration(s: string | undefined, fallbackMs: number): number {
+/** "90s", "30m", "1h". A bare number means minutes, unless `unitRequired` (then it is refused with a hint). */
+export function parseDuration(s: string | undefined, fallbackMs: number, opt: { flag?: string; unitRequired?: boolean } = {}): number {
+  const flag = opt.flag ?? "--timeout";
   if (!s) return fallbackMs;
   const m = /^(\d+)\s*(s|m|h)?$/i.exec(s.trim());
-  if (!m) throw new AihubError(`--timeout '${s}' is not a duration (use 90s, 30m or 1h)`);
+  if (!m) throw new AihubError(`${flag} '${s}' is not a duration (use 90s, 30m or 1h)`);
+  if (!m[2] && opt.unitRequired) throw new AihubError(`${flag} '${s}' needs a unit: ${s}s, ${s}m or ${s}h`);
   return Number(m[1]) * { s: 1000, m: 60_000, h: 3_600_000 }[(m[2] ?? "m").toLowerCase() as "s" | "m" | "h"];
 }
 
