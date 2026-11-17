@@ -5,6 +5,8 @@ import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import {
   buildPlan,
+  jobTypeFor,
+  type Plan,
   executionDataFromParams,
   fabricWorkspaces,
   FabricClient,
@@ -15,6 +17,7 @@ import {
   inferEnv,
   selectWorkspaces,
   workspaceGroups,
+  groupServicePrincipals,
   type FabricItem,
   type FabricWorkspace,
   type JobInstance,
@@ -23,6 +26,7 @@ import {
   chooseWorkspace,
 } from "../lib/fabric.js";
 import { collectJobLogs, collectRefreshLogs, workspaceRuns } from "../lib/fabric-logs.js";
+import { connectionWriteCmd, dbtCmd, failuresCmd, livyCmd, notebookTestCmd, sparkCmd, sqlCmd, udfCmd } from "./fabric-deep.js";
 import { apiCmd, onelakeCmd, queryCmd } from "./fabric-api.js";
 import { authCmd, capacitiesCmd, connectionsCmd, deploymentCmd, environmentCmd, lakehouseLoad, lakehouseMaintenance, schedulesCmd, shortcutsCmd, workspaceCmd } from "./fabric-extra.js";
 import { didYouMean } from "../lib/fabric.js";
@@ -30,6 +34,7 @@ import { durationText, filterLines, formatSections, oneLine, parseSince, readDef
 import { git, repoRoot } from "../lib/git.js";
 import { FabricIdentity, identityJson } from "../lib/fabric-auth.js";
 import { redact } from "../lib/fabric-redact.js";
+import { buildTestPlan, testStrategy } from "../lib/fabric-testplan.js";
 import { loadTeam } from "../lib/team.js";
 
 const USAGE = `usage: aihub fabric <command> [flags]
@@ -68,6 +73,44 @@ const OPTIONS = {
   yes: { type: "boolean" },
   json: { type: "boolean" },
   wait: { type: "boolean" },
+  "desired-commit": { type: "string" },
+  "deployed-commit": { type: "string" },
+  "log-type": { type: "string" },
+  livy: { type: "string" },
+  state: { type: "string" },
+  view: { type: "string" },
+  stage: { type: "string" },
+  "stage-attempt": { type: "string" },
+  "sql-id": { type: "string" },
+  container: { type: "string" },
+  code: { type: "string" },
+  "code-file": { type: "string" },
+  kind: { type: "string" },
+  timeout: { type: "string" },
+  context: { type: "string" },
+  "confirm-name": { type: "string" },
+  connection: { type: "string" },
+  function: { type: "string" },
+  "args-file": { type: "string" },
+  source: { type: "string" },
+  "source-file": { type: "string" },
+  route: { type: "string" },
+  "project-name": { type: "string" },
+  folder: { type: "string" },
+  schema: { type: "string" },
+  warehouse: { type: "string" },
+  command: { type: "string" },
+  select: { type: "string" },
+  exclude: { type: "string" },
+  "folder-path": { type: "string" },
+  project: { type: "string" },
+  operation: { type: "string" },
+  threads: { type: "string" },
+  full: { type: "boolean" },
+  errors: { type: "boolean" },
+  cell: { type: "boolean" },
+  "full-refresh": { type: "boolean" },
+  "fail-fast": { type: "boolean" },
   sp: { type: "string" },
   tenant: { type: "string" },
   "client-id": { type: "string" },
@@ -99,6 +142,10 @@ const OPTIONS = {
 export type V = Record<string, string | boolean | string[] | undefined>;
 
 export interface Setup {
+  /** Prefixes of per-branch workspaces: "<prefix> <branch label>" (team.yaml fabric.branchWorkspacePrefixes and repository names). */
+  prefixes?: string[];
+  /** Service principal per group name (lowercase), from team.yaml. */
+  groupSp?: Record<string, string>;
   ctx: Ctx;
   v: V;
   root?: string;
@@ -131,17 +178,21 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   let root: string | undefined;
   let list: FabricWorkspace[] = [];
   let groups: Record<string, string[]> = {};
+  let prefixes: string[] = [];
+  let groupSp: Record<string, string> = {};
   try {
     root = repoRoot(ctx.cwd);
     const team = loadTeam(root);
     list = fabricWorkspaces(team);
     groups = workspaceGroups(team);
+    groupSp = groupServicePrincipals(team);
+    prefixes = [...(((team as { fabric?: { branchWorkspacePrefixes?: string[] } }).fabric?.branchWorkspacePrefixes) ?? []), ...(((team as { repositories?: { name?: string }[] }).repositories ?? []).map((x) => x.name ?? "").filter(Boolean))];
   } catch (e) {
     // plan and run need the team file; the other commands work with an explicit --workspace name or id
     if (sub === "plan") throw e;
   }
   const branch = given ?? (root ? git(root, ["rev-parse", "--abbrev-ref", "HEAD"], { allowFail: true }).trim() : undefined);
-  const s: Setup = { ctx, v, root, list, groups, branch };
+  const s: Setup = { ctx, v, root, list, groups, branch, prefixes, groupSp };
 
   switch (sub) {
     case "plan":
@@ -202,6 +253,22 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     case "connections":
     case "gateways":
       return connectionsCmd(s, sub);
+    case "spark":
+      return sparkCmd(s, pos[0]);
+    case "livy":
+      return livyCmd(s, pos[0]);
+    case "failures":
+      return failuresCmd(s);
+    case "sql":
+      return sqlCmd(s);
+    case "connection":
+      return connectionWriteCmd(s, pos[0]);
+    case "udf":
+      return udfCmd(s, pos[0]);
+    case "notebook-test":
+      return notebookTestCmd(s, pos[0]);
+    case "dbt":
+      return dbtCmd(s, pos[0]);
     case "api":
       return apiCmd(s, pos);
     case "onelake":
@@ -314,6 +381,13 @@ async function planCmd(s: Setup): Promise<void> {
   const { ctx, v } = s;
   const c = changedFiles(s.root!, loadTeam(s.root!), { branch: v.branch as string | undefined, target: v.target as string | undefined });
   const plan = buildPlan(c.files, s.list, { branch: c.branch, workspace: (v.workspace as string[] | undefined)?.[0] });
+  applyTestPlan(s.root!, c.files, plan);
+  {
+    const team = loadTeam(s.root!) as { fabric?: { integrationRepositories?: string[]; robotGatedRepositories?: string[] }; repositories?: { name?: string }[] };
+    const env = plan.workspace?.environment === "test" ? "test" : plan.workspace?.environment === "feature" ? "feature" : "dev";
+    const d = testStrategy(team.repositories?.[0]?.name ?? "", env, team.fabric ?? {}, v["desired-commit"] as string | undefined, v["deployed-commit"] as string | undefined);
+    plan.strategy = `${d.strategy}${d.executable ? "" : " (blocked)"}: ${d.reason}`;
+  }
   if (v["check-workspace"] && plan.workspace) {
     const client = makeClient(ctx, v);
     const wsId = await client.workspaceId(plan.workspace);
@@ -321,6 +395,27 @@ async function planCmd(s: Setup): Promise<void> {
     for (const it of plan.items) it.inWorkspace = have.some((h) => h.displayName === it.name && h.type === it.type);
   }
   emit(s, plan, formatPlan(plan, c.branch, c.target));
+}
+
+/** Add the callers of changed items, order referenced-before-caller, and note dbt models and UDF functions (legacy test planner). */
+function applyTestPlan(root: string, changed: string[], plan: Plan): void {
+  const all = git(root, ["ls-files", "--cached", "--others", "--exclude-standard"], { allowFail: true }).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const tp = buildTestPlan(root, all, changed);
+  const known = new Map(plan.items.map((i) => [`${i.type}:${i.name}`, i]));
+  const ordered: PlanItem[] = [];
+  for (const st of tp.steps) {
+    const base = known.get(`${st.item.type}:${st.item.name}`);
+    const it: PlanItem = base ?? { name: st.item.name, type: st.item.type as PlanItem["type"], jobType: jobTypeFor(st.item.type), files: st.changedFiles.length, dir: st.item.folder };
+    if (st.via) {
+      it.via = st.via.name;
+      it.activity = st.activity;
+    }
+    if (st.functions.length) it.functions = st.functions.map((f) => `${f.name}(${f.params})`);
+    if (st.item.type === "DataBuildToolJob" && tp.dbtModels.length) it.note = `dbt models changed: ${tp.dbtModels.slice(0, 5).join(", ")}`;
+    ordered.push(it);
+  }
+  for (const i of plan.items) if (!ordered.includes(i)) ordered.push(i);
+  plan.items = ordered;
 }
 
 // ---- run / status ----------------------------------------------------------------
@@ -337,6 +432,7 @@ async function runStatus(s: Setup, sub: "run" | "status"): Promise<void> {
   if (sub === "status" && !v.job) throw new AihubError("aihub fabric status needs --job <id> and --item <name|id>");
 
   const client = makeClient(ctx, v);
+  client.identity?.hint(s.v.workspaces ? s.groupSp?.[String(s.v.workspaces).toLowerCase()] : undefined);
   client.identity?.hint(ws.servicePrincipal);
   if (chosen.length > 1) {
     if (sub === "status") throw new AihubError("aihub fabric status takes one --workspace");

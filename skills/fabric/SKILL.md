@@ -10,12 +10,12 @@ The user wants to look at, change or run something in a Fabric workspace. Reads 
 ## Steps
 1. Orient: `aihub fabric workspaces --filter test`, then `aihub fabric items --workspace DEV-test-project --type Notebook`.
 2. Run and follow: `aihub fabric run --workspace DEV-test-project --item nb_load --wait`. A failure prints the dig-deeper command: `aihub fabric logs --workspace DEV-test-project --item nb_load --job <id>`.
-3. What failed lately: `aihub fabric logs --workspace DEV-test-project --since 24h --status failed [--search text] [--tail 50]`.
+3. What failed: `aihub fabric failures --branch feature/12-x` (root cause pipeline to notebook to Spark), or `aihub fabric logs --workspace DEV-test-project --since 24h --status failed`.
 4. Write, always look first with `--dry-run`: `aihub fabric item create --workspace DEV-test-project --type Notebook --name nb_new --definition-dir fabric/nb_new.Notebook`, `item update`, `item rename`, `item delete --yes`, `git update|commit`.
 5. After code changes: `aihub fabric plan --check-workspace` lists the items to create or update, with the commands.
-6. Data and rest: `aihub fabric onelake list --lakehouse lh_test`, `dax|kql|graphql --item X --query ...`, `aihub fabric api list` for every other tool.
+6. Data: `aihub fabric sql --item wh_test --query "select ..."`, `onelake`, `dax|kql|graphql`, `livy run`, `spark logs`; every other tool: `aihub fabric api list`.
 
-Service principal (secret in the credential store): `aihub fabric auth sp add ci --tenant T --client-id C --secret-from-stdin`, then `aihub fabric items --workspace DEV-test-project --sp ci`; `auth status` says who you are.
+Service principal: `aihub fabric auth sp add ci --tenant T --client-id C --secret-from-stdin`, then `--sp ci`; `auth status` says who you are.
 
 ## What the CLI fills
 Workspace and item ids (from names), the default workspace of the branch, the token, long-running-operation polling, paging and 429 retries.

@@ -49,6 +49,13 @@ export interface PlanItem {
   dir: string;
   /** Set by `plan --check-workspace`: does the item exist in the chosen workspace? */
   inWorkspace?: boolean;
+  /** Set when the item is in the plan because it calls a changed item: that item, and the calling activity. */
+  via?: string;
+  activity?: string;
+  /** Functions of a User Data Functions item. */
+  functions?: string[];
+  /** dbt model files that changed (for a dbt job item). */
+  note?: string;
 }
 
 export const jobTypeFor = (t: string): PlanItem["jobType"] => (t === "Notebook" ? "RunNotebook" : t === "DataPipeline" ? "Pipeline" : undefined);
@@ -86,11 +93,24 @@ export interface Plan {
   /** Every workspace that applies to the branch (several when more than one branch rule matches). */
   workspaces: FabricWorkspace[];
   items: PlanItem[];
+  /** How the branch is tested (legacy test strategy): fabric-api, azure-devops-integration, robot-integration or blocked, with the reason. */
+  strategy?: string;
 }
 
-export function workspaceGroups(team: TeamConfig): Record<string, string[]> {
-  const g = (team as { fabric?: { workspaceGroups?: Record<string, string[]> } }).fabric?.workspaceGroups;
+type GroupDef = string[] | { workspaces?: string[]; servicePrincipal?: string };
+const groupsOf = (team: TeamConfig): Record<string, GroupDef> => {
+  const g = (team as { fabric?: { workspaceGroups?: Record<string, GroupDef> } }).fabric?.workspaceGroups;
   return g && typeof g === "object" ? g : {};
+};
+
+/** Named workspace shortcuts: `devs: [a, b]` or `devs: { workspaces: [a, b], servicePrincipal: ci }`. */
+export function workspaceGroups(team: TeamConfig): Record<string, string[]> {
+  return Object.fromEntries(Object.entries(groupsOf(team)).map(([k, v]) => [k, Array.isArray(v) ? v : (v?.workspaces ?? [])]));
+}
+
+/** The service principal a group is accessed with (only the registered name; the secret is in the user config). */
+export function groupServicePrincipals(team: TeamConfig): Record<string, string> {
+  return Object.fromEntries(Object.entries(groupsOf(team)).flatMap(([k, v]) => (!Array.isArray(v) && v?.servicePrincipal ? [[k.toLowerCase(), v.servicePrincipal]] : [])));
 }
 
 /** All workspaces whose branch rules match the branch. */
@@ -141,6 +161,7 @@ export function formatPlan(p: Plan, branch: string, target: string): string {
         ? `workspace: ${p.workspace.name} (${p.workspace.environment})`
         : "workspace: none found in team.yaml fabric.workspaces; pass --workspace <name|id>",
     );
+  if (p.strategy) lines.push(`strategy: ${p.strategy}`);
   if (!p.items.length) {
     lines.push("No Fabric items changed: nothing to run in Fabric.");
     return lines.join("\n");
@@ -149,7 +170,9 @@ export function formatPlan(p: Plan, branch: string, target: string): string {
   for (const it of p.items) {
     const all = p.workspaces.length > 1 ? p.workspaces.map((w) => ` --workspace ${w.name}`).join("") : "";
     const how = it.jobType ? `run: aihub fabric run --item ${it.name}${all} --wait` : "nothing to run";
-    lines.push(`${++n}. ${it.type} ${it.name} (${it.files} file${it.files === 1 ? "" : "s"}): ${how}`);
+    lines.push(`${++n}. ${it.type} ${it.name} (${it.via ? `calls changed ${it.via}${it.activity ? ` in activity ${it.activity}` : ""}` : `${it.files} file${it.files === 1 ? "" : "s"}`}): ${how}`);
+    if (it.functions?.length) lines.push(`   functions: ${it.functions.join(", ")}`);
+    if (it.note) lines.push(`   ${it.note}`);
     const ws = p.workspace ? ` --workspace ${p.workspace.name}` : "";
     const create = `aihub fabric item create${ws} --type ${it.type} --name ${it.name} --definition-dir ${it.dir}`;
     const update = `aihub fabric item update${ws} --item ${it.name} --type ${it.type} --definition-dir ${it.dir}`;

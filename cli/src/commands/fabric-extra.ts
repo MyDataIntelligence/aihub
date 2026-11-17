@@ -1,4 +1,6 @@
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { AihubError } from "../lib/errors.js";
 import { describe, FabricIdentity, identityJson, loadSpFile, saveSpFile, storeSecret } from "../lib/fabric-auth.js";
 import { FabricClient, FabricHttpError, guardEnv, inferEnv, jobTypeFor } from "../lib/fabric.js";
@@ -103,9 +105,29 @@ export async function lakehouseMaintenance(s: Setup): Promise<void> {
 export async function environmentCmd(s: Setup, sub: string | undefined): Promise<void> {
   const client = makeClient(s.ctx, s.v);
   const publish = sub === "publish";
-  if (!publish && sub !== "libraries") throw new AihubError("usage: aihub fabric environment publish|libraries --workspace W --item E");
-  const t = await target(s, client, publish);
+  const upload = sub === "upload-library";
+  if (!publish && !upload && sub !== "libraries") throw new AihubError("usage: aihub fabric environment publish|libraries|upload-library --workspace W --item E [--file lib.whl]");
+  const t = await target(s, client, publish || upload);
   const env = await client.resolveItem(t.id, need(s.v, "item", "environment"), "Environment");
+  if (upload) {
+    const file = need(s.v, "file", "library file (.whl .py .jar .tar.gz)");
+    const name = basename(file);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}.(jar|py|whl|tar.gz)$/.test(name)) throw new AihubError(`the library file name '${name}' must end in .whl, .py, .jar or .tar.gz`);
+    const blob = readFileSync(file);
+    const sha = createHash("sha256").update(blob).digest("hex");
+    if (s.v["dry-run"]) return dryRun(s, [`upload library ${name} (${blob.length} bytes, sha256 ${sha.slice(0, 12)}) to the staging of Environment '${env.displayName}' in ${where(t)}`]);
+    const boundary = `aihub${randomUUID().replace(/-/g, "")}`;
+    const head = Buffer.from(`--${boundary}
+Content-Disposition: form-data; name="file"; filename="${name}"
+Content-Type: application/octet-stream
+
+`);
+    const tail = Buffer.from(`
+--${boundary}--
+`);
+    await client.request("POST", `/workspaces/${t.id}/environments/${env.id}/staging/libraries`, undefined, { raw: new Uint8Array(Buffer.concat([head, blob, tail])), headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` } });
+    return emit(s, { uploaded: name, sha256: sha }, `uploaded ${name} to the staging of ${env.displayName}; publish it with: aihub fabric environment publish --workspace ${t.ws.name} --item ${env.displayName}`);
+  }
   if (publish) {
     if (s.v["dry-run"]) return dryRun(s, [`publish the staged libraries and Spark settings of Environment '${env.displayName}' in ${where(t)}`]);
     await client.lro("POST", `/workspaces/${t.id}/environments/${env.id}/staging/publish`);
