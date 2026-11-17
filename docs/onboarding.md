@@ -59,6 +59,28 @@ Say what you want ("maak een PR", "verwerk de comments") or use a slash command:
 `/story`, `/refine`, `/review`, `/watch`. Slash command files are in `commands/opencode/` (opencode) and
 `commands/copilot/` (GitHub Copilot prompt files); copy them into the tool's command folder.
 
+## Get a notification when something needs you
+
+`aihub watch --mine --notify [--interval 2m]` starts one background poller (no daemon: a detached process that you
+can stop) over every active pull request where you are author or reviewer, in the team.yaml project and repositories,
+and over the comments of your work items. Per event you get one Windows toast with an Open button (the log line is in
+`.git/aihub/events.log`), once per event:
+
+- a new thread or reply by someone else on your PR that you have not answered yet; a reply to a comment of yours on a
+  PR you review;
+- an @mention of you in a PR thread or a work-item comment;
+- a review requested from you (you are a reviewer with no vote yet);
+- a vote on your PR (approved, rejected, waiting for the author);
+- a failed or broken build policy on your PR;
+- your PR completed or abandoned.
+
+The first look only records what already exists (`--include-existing` reports that backlog too). The dedupe state is in
+`.git/aihub/watch-state/mine.json`. `aihub watch list` shows it and `aihub watch stop --id mine` ends it. On Windows
+`aihub watch --mine --notify --at-logon` also writes a per-user Run entry (`HKCU...Runaihub-watch-mine`) so it starts
+at sign-in; `aihub watch --remove-at-logon` removes it. Elsewhere use a login item, cron `@reboot` or a systemd user
+unit. Limits: mentions are only found on PRs where you are author or reviewer and on work items assigned to or created by
+you (changed in the last 14 days, the newest 25); `--interval` needs a unit (30s, 2m, 1h).
+
 ## Changing team rules
 
 Team knowledge lives in the team repository, never in this pack:
