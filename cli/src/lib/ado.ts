@@ -66,16 +66,19 @@ export class AdoClient {
   async request<T = any>(
     method: string,
     path: string,
-    opts: { query?: Query; body?: unknown; raw?: boolean; contentType?: string } = {},
+    opts: { query?: Query; body?: unknown; raw?: boolean; contentType?: string; rawBody?: Uint8Array; headers?: Record<string, string> } = {},
   ): Promise<{ data: T; headers: Headers }> {
     const res = await this.fetchFn(this.url(path, opts.query), {
       method,
       headers: {
         Authorization: await this.auth(),
         Accept: opts.raw ? "text/plain" : "application/json",
-        ...(opts.body !== undefined ? { "Content-Type": opts.contentType ?? "application/json; charset=utf-8" } : {}),
+        ...(opts.body !== undefined || opts.rawBody !== undefined
+          ? { "Content-Type": opts.contentType ?? "application/json; charset=utf-8" }
+          : {}),
+        ...(opts.headers ?? {}),
       },
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      body: opts.rawBody !== undefined ? (opts.rawBody as unknown as BodyInit) : opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     });
     const text = await res.text();
     const ctype = res.headers.get("content-type") ?? "";
@@ -122,6 +125,11 @@ export class AdoClient {
 
   workItemUrl(id: number): string {
     return `${this.remote.orgUrl}/${encodeURIComponent(this.remote.project)}/_workitems/edit/${id}`;
+  }
+
+  /** PUT/POST raw bytes (attachments). */
+  sendBytes<T = any>(method: "PUT" | "POST", path: string, bytes: Uint8Array, query?: Query): Promise<T> {
+    return this.request<T>(method, path, { rawBody: bytes, contentType: "application/octet-stream", query }).then((r) => r.data);
   }
 
   getText(path: string, query?: Query): Promise<string> {

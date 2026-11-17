@@ -14,6 +14,13 @@ import * as story from "./commands/story.js";
 import * as pipeline from "./commands/pipeline.js";
 import * as batch from "./commands/batch.js";
 import * as work from "./commands/work.js";
+import * as storyFlow from "./commands/story-flow.js";
+import * as worktree from "./commands/worktree.js";
+import * as review from "./commands/review.js";
+import * as wiki from "./commands/wiki.js";
+import * as release from "./commands/release.js";
+import * as workitem from "./commands/workitem.js";
+import * as evidence from "./commands/evidence.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -23,7 +30,7 @@ export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
  * throw AihubError for user-facing failures.
  */
 export const commands: Record<string, CommandFn> = {
-  pr: pr.run,
+  pr: (argv, ctx) => (review.PR_EXTRA_SUBS.includes(argv[0]) ? review.runPrExtra(argv, ctx) : pr.run(argv, ctx)),
   comments: comments.run,
   init: init.run,
   skills: skills.run,
@@ -32,10 +39,16 @@ export const commands: Record<string, CommandFn> = {
   robot: robot.run,
   "cherry-pick": cherryPick.run,
   branch: branch.run,
-  story: story.run,
   pipeline: pipeline.run,
   batch: batch.run,
   work: work.run,
+  story: (argv, ctx) => (storyFlow.STORY_FLOW_SUBS.includes(argv[0]) ? storyFlow.run(argv, ctx) : story.run(argv, ctx)),
+  worktree: worktree.run,
+  review: review.run,
+  wiki: wiki.run,
+  release: release.run,
+  workitem: workitem.run,
+  evidence: evidence.run,
 };
 
 export const VERSION = cliVersion();

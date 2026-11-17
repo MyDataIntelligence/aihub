@@ -54,7 +54,7 @@ pipelines:                                                      # pipelines to f
 | `azureDevOps` | Organization and project the CLI talks to. |
 | `repositories[]` | Repository name, spoken aliases, default PR target and release branch patterns. |
 | `pullRequest` | PR template path, title pattern and the text for empty sections. |
-| `workItems` | Story type and story template. |
+| `workItems` | Story type, story template and the states `aihub story start` (`states.active`, default Active) and `aihub story finish` (`states.finished`, default Done) set. |
 | `branches` | Feature branch pattern and protected branches. |
 | `cherryPick.groups` | Named sets of target branches for `aihub cherry-pick --to <group>`. |
 | `pipelines` | Pipelines to follow per repository. |
