@@ -1,0 +1,30 @@
+{
+  "name": "@ferronhooi/aihub",
+  "version": "0.0.0",
+  "description": "One small CLI for Azure DevOps team workflows used by coding agents (stories, pull requests, reviews, cherry-picks).",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "aihub": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint:skills": "node dist/tools/lintSkills.js ../skills"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.6",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "yaml": "^2.6.1"
+  }
+}
