@@ -12,18 +12,28 @@ Map the intent to a skill, then follow that skill:
 
 | Intent or input | Skill |
 |---|---|
-| new story, "maak een story" | story-create |
-| refine, "verfijn", story id without code | story-refine |
-| build a story, "implementeer", "werk uit" | implement |
+| new story | story-create |
+| refine, "verfijn" | story-refine |
+| "implementeer", "werk uit" | implement |
 | "maak een PR", "create PR" | pr-create |
-| "update de PR", new commits on open PR | pr-update |
-| PR link `.../pullrequest/<id>`, "watch", "volg de build" | pr-watch |
-| review comments, "verwerk de comments" | review-process |
-| cherry-pick, "update branch", merge target | branch-sync |
+| "update de PR" | pr-update |
+| PR link, "watch", "volg de build" | pr-watch |
+| "verwerk de comments" | review-process |
+| cherry-pick, "update branch" | branch-sync |
 | failing pipeline, "build is rood" | pipeline-fix |
-| release, "maak een release", several repos | release |
+| "start story 123" | story-start |
+| "rond af", clean up, complete the PR | story-finish |
+| worktree set, several repos | worktrees |
+| "run story 123" | story-run |
+| review someone else's PR | pr-review |
+| "leg de PR uit", explain a PR | pr-explain |
+| wiki page | wiki |
+| screenshot in a PR | evidence |
+| transcript, voice notes | voice-notes |
+| change team.yaml or a template | team-settings |
+| release, release train | release |
 
-Slash commands `/pr /pr-update /cherry-pick /story /refine /review /watch` map to the same skills.
+Slash commands `/pr /pr-update /cherry-pick /story /refine /review /watch /start /finish /review-pr /explain /release /wiki` map to the same skills.
 
 Example: the user sends a pullrequest link, so follow pr-watch with that id.
 

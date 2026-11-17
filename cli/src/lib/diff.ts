@@ -8,9 +8,11 @@ export interface DiffStat {
 const CONTEXT = 2;
 const MAX_CELLS = 4_000_000;
 
+const splitLines = (t: string): string[] => (t === "" ? [] : t.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n"));
+
 export function diffLines(oldText: string, newText: string, maxLines = 150): DiffStat {
-  const a = oldText === "" ? [] : oldText.replace(/\r\n/g, "\n").split("\n");
-  const b = newText === "" ? [] : newText.replace(/\r\n/g, "\n").split("\n");
+  const a = splitLines(oldText);
+  const b = splitLines(newText);
   // trim common prefix/suffix to keep the table small
   let s = 0;
   while (s < a.length && s < b.length && a[s] === b[s]) s++;

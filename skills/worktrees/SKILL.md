@@ -1,0 +1,29 @@
+---
+name: worktrees
+description: "Use when a story spans several repositories and the user wants one folder with a worktree per repository: 'maak een worktree set voor story 123', 'werk in worktrees', 'ruim de worktrees op'."
+---
+# Worktree sets
+
+## When
+One story is built in more than one repository, or the user wants to keep the main checkout untouched.
+
+## Steps
+1. Make the set (repositories are cloned next to the current one):
+
+```sh
+aihub worktree create --story 123 --repos repo-a,repo-b
+```
+
+2. Work inside the printed folders; each is on the story branch. Use `--root <folder>` to choose where sets live.
+3. See all sets and their state: `aihub worktree list`.
+4. When done and pushed: `aihub worktree remove --story 123`.
+
+Example: "zet story 123 klaar in repo-a en repo-b" is `aihub worktree create --story 123 --repos repo-a,repo-b`.
+
+## What the CLI fills
+The story branch (existing one, else the name from `team.yaml` and the base), the folder `story-123`, and the safety checks on removal. A worktree with uncommitted or unpushed work is kept and reported; the branch itself is never deleted here (use story-finish).
+
+## If it fails
+"Already checked out": the source repository sits on that branch; switch it to another branch first. Run `aihub doctor` for sign-in problems. Never remove a worktree folder by hand.
+
+Rules: direct command, 0 questions. Local git inside a worktree uses your own tools.
