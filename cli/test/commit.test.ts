@@ -5,6 +5,8 @@ import { ctxFor, fakeFetch, makeRepo, sh, write } from "./helpers.js";
 
 function setup(team: string) {
   const { dir, bare } = makeRepo();
+  sh(dir, ["config", "user.name", "Test"]);
+  sh(dir, ["config", "user.email", "test@example.invalid"]);
   write(dir, ".agents/skills/_shared/references/team.yaml", team);
   sh(dir, ["add", "."]);
   sh(dir, ["commit", "-m", "chore: team"]);
