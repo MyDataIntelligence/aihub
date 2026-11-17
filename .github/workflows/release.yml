@@ -5,7 +5,7 @@ on:
     branches: [staging]
     tags: ['v*']
 permissions:
-  contents: read
+  contents: write
   id-token: write
 jobs:
   publish:
@@ -30,3 +30,12 @@ jobs:
         run: |
           npm version --no-git-tag-version "${GITHUB_REF_NAME#v}" --allow-same-version
           npm publish --access public --provenance
+      - name: Attach the team pack to the GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          (cd ../team-pack && zip -r "../aihub-team-pack-${v}.zip" . -x '.DS_Store')
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "aihub $v" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" "../aihub-team-pack-${v}.zip" --clobber

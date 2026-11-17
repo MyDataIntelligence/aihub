@@ -41,6 +41,8 @@ describe("built cli", () => {
     expect(files).toContain("pack/skills/start-here/SKILL.md");
     expect(files).toContain("pack/skills/_shared/references/team.schema.yaml");
     expect(files).toContain("pack/commands/opencode/pr.md");
+    expect(files).toContain("pack/team-pack/.agents/skills/_shared/references/team.yaml");
+    expect(files).toContain("pack/CHANGELOG.md");
     expect(files).toContain("dist/cli.js");
   });
 });

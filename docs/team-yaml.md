@@ -58,6 +58,7 @@ pipelines:                                                      # pipelines to f
 | `branches` | Feature branch pattern and protected branches. |
 | `cherryPick.groups` | Named sets of target branches for `aihub cherry-pick --to <group>`. |
 | `pipelines` | Pipelines to follow per repository. |
+| `guidelines` | Optional list of repository files (for example `docs/CONTRIBUTING.md`) the generic skills tell the agent to read first; `aihub doctor` checks they exist. |
 
 Check the file with `aihub doctor`. Change it through a pull request (see [onboarding](onboarding.md)).
 

@@ -81,3 +81,6 @@ crossRepo:                         # cross-repo settings for `aihub port` and `a
     fromRepo: <repository>         # repository the resources come from (optional)
     paths: ["tests/data/**"]       # globs, relative to the source repository root (optional)
     toPath: ""                     # directory prefix in the target repository, default none (optional)
+
+guidelines:                       # list of repo files the agent reads before writing code or text (optional)
+  - docs/guidelines.md

@@ -22,6 +22,14 @@ export function cliVersion(): string {
   }
 }
 
+export function cliPackageName(): string {
+  try {
+    return (JSON.parse(readFileSync(join(here, "..", "..", "package.json"), "utf8")) as { name: string }).name;
+  } catch {
+    return "@ferronhooi/aihub";
+  }
+}
+
 export const sha256 = (s: string): string => createHash("sha256").update(s, "utf8").digest("hex");
 
 /** Relative POSIX paths of all files below dir, sorted. */

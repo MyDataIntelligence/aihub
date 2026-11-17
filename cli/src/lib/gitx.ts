@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { AihubError } from "./errors.js";
+import { gitGate } from "./trace.js";
 
 export interface GitResult {
   ok: boolean;
@@ -9,6 +10,7 @@ export interface GitResult {
 
 /** Runs git and reports success instead of throwing (the exit code matters for merge checks). */
 export function tryGit(cwd: string, args: string[]): GitResult {
+  if (gitGate(cwd, args)) return { ok: true, out: "", err: "" };
   const r = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   if (r.error) throw new AihubError(`git is not available: ${r.error.message}`);
   return { ok: r.status === 0, out: r.stdout.replace(/\r\n/g, "\n").trimEnd(), err: (r.stderr || "").trim() };

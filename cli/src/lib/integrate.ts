@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AihubError } from "./errors.js";
 import { git, pushIfNeeded } from "./git.js";
+import { gitGate } from "./trace.js";
 
 export interface IntegrateResult {
   integration: string;
@@ -15,6 +16,7 @@ export interface IntegrateResult {
 }
 
 function tryGit(cwd: string, args: string[]): { ok: boolean; out: string; err: string } {
+  if (gitGate(cwd, args)) return { ok: true, out: "", err: "" };
   const r = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   return { ok: r.status === 0, out: (r.stdout ?? "").replace(/\r\n/g, "\n").trim(), err: (r.stderr ?? "").trim() };
 }

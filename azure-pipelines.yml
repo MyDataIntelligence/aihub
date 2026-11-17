@@ -1,0 +1,62 @@
+# Only used when a team mirrors this repository into Azure DevOps (see docs/self-hosting.md).
+# Builds and tests the CLI and publishes it to an Azure Artifacts npm feed:
+#   staging       -> dist-tag `next`   (version <package.json version>-next.<build id>)
+#   tag vX.Y.Z    -> dist-tag `latest` (version X.Y.Z)
+# Pipeline variables to set (Pipelines > Edit > Variables), none of them secret:
+#   FeedRegistry  https://pkgs.dev.azure.com/<org>/<project>/_packaging/<feed>/npm/registry/
+#   (the build service must be a Contributor on the feed)
+trigger:
+  branches:
+    include: [staging]
+  tags:
+    include: ['v*']
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '22.x'
+
+  # Install and publish through the team feed: write the registry into cli/.npmrc, then let Azure add the credentials.
+  - script: |
+      printf 'registry=%s\nalways-auth=true\n' "$(FeedRegistry)" > .npmrc
+    displayName: Point npm at the team feed
+    workingDirectory: cli
+
+  - task: npmAuthenticate@0
+    displayName: Authenticate npm against the feed
+    inputs:
+      workingFile: cli/.npmrc
+
+  - script: npm ci
+    displayName: Install
+    workingDirectory: cli
+
+  - script: npm run build
+    displayName: Build
+    workingDirectory: cli
+
+  - script: npm test
+    displayName: Test
+    workingDirectory: cli
+
+  - script: |
+      base=$(node -p "require('./package.json').version")
+      npm version --no-git-tag-version "${base}-next.$(Build.BuildId)"
+      npm publish --tag next
+    displayName: Publish next (staging)
+    workingDirectory: cli
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/staging'))
+
+  - script: |
+      tag="$(Build.SourceBranchName)"
+      npm version --no-git-tag-version "${tag#v}" --allow-same-version
+      npm publish
+    displayName: Publish latest (version tag)
+    workingDirectory: cli
+    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))

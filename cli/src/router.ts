@@ -23,6 +23,9 @@ import * as workitem from "./commands/workitem.js";
 import * as evidence from "./commands/evidence.js";
 import * as port from "./commands/port.js";
 import * as crossrepo from "./commands/crossrepo.js";
+import * as update from "./commands/update.js";
+import * as explain from "./commands/explain.js";
+import { setTrace } from "./lib/trace.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -53,6 +56,8 @@ export const commands: Record<string, CommandFn> = {
   evidence: evidence.run,
   port: port.run,
   crossrepo: crossrepo.run,
+  update: update.run,
+  explain: explain.run,
 };
 
 export const VERSION = cliVersion();
@@ -73,12 +78,35 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
     ctx.err(`aihub: unknown command '${name}'. Commands: ${Object.keys(registry).join(", ")}.`);
     return 2;
   }
+  // global flags: --verbose logs the real git/REST calls; --dry-run prints the writes it would do and skips them
+  const ownDryRun = (name === "pr" && rest[0] === "create") || (name === "story" && storyFlow.STORY_FLOW_SUBS.includes(rest[0]));
+  const verbose = rest.includes("--verbose");
+  const dryRun = rest.includes("--dry-run");
+  const args = rest.filter((a) => a !== "--verbose" && (ownDryRun || a !== "--dry-run"));
+  let planned = 0;
+  setTrace({
+    dryRun,
+    verbose,
+    log: (l) => ctx.err(l),
+    plan: (l) => {
+      planned++;
+      ctx.out(`dry-run: ${l}`);
+    },
+  });
+  const run: Ctx = dryRun && !ownDryRun ? { ...ctx, out: (l) => ctx.out(`  (simulated) ${l}`) } : ctx;
   try {
-    await fn(rest, ctx);
+    await fn(args, run);
+    if (dryRun) ctx.out(`dry-run: ${planned} planned write(s), nothing was changed`);
     return 0;
   } catch (e) {
+    if (dryRun && planned > 0) {
+      ctx.out(`dry-run: stopped after the planned writes above, because the later steps need the real results (${(e as Error).message})`);
+      return 0;
+    }
     if (e instanceof AihubError) ctx.err(`aihub: ${e.message}`);
     else ctx.err(`aihub: unexpected error: ${(e as Error).message}`);
     return 1;
+  } finally {
+    setTrace({});
   }
 }

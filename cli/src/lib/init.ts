@@ -1,13 +1,14 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { stringify } from "yaml";
+import { parseDocument } from "yaml";
 import { parseRemote } from "./ado.js";
 import type { Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { git, hasRef, originDefaultBranch, pushIfNeeded, remoteUrl, repoRoot, showFile } from "./git.js";
 import { listFiles, packRoot, readPackFile } from "./pack.js";
 import { createPr } from "./pr.js";
+import { trace } from "./trace.js";
 import { TEAM_FILE } from "./team.js";
 import { resolveTemplate } from "./templates.js";
 
@@ -43,26 +44,28 @@ export function parseLanguage(v: string | undefined): Language {
   throw new AihubError(`--language must be nl or en, not '${v}'`);
 }
 
-function teamYaml(o: { org: string; project: string; repo: string; target: string; language: Language; prTemplate: string }): string {
-  const data = {
-    version: 1,
-    language: o.language,
-    azureDevOps: { organization: o.org, project: o.project },
-    repositories: [{ name: o.repo, defaultTarget: o.target, releaseBranches: ["release/*"] }],
-    pullRequest: {
-      template: o.prTemplate,
-      title: "{storyId}: {storyTitle}",
-      emptySection: o.language === "nl" ? "n.v.t." : "-",
-    },
-    workItems: { storyType: "User Story", storyTemplate: STORY_TEMPLATE },
-    branches: { feature: "feature/{storyId}-{slug}", protected: [o.target, "release/*"] },
-  };
-  const head =
-    "# Team file proposed by 'aihub init': check every value and change it through a pull request.\n" +
-    "# Schema: skills/_shared/references/team.schema.yaml in the aihub pack; see docs/team-yaml.md.\n";
-  return head + stringify(data, { lineWidth: 0 });
+/** The team pack files (the single source: team-pack/ in the repository, pack/team-pack in the npm package). */
+export function teamPackDir(): string {
+  return join(packRoot(), "team-pack");
 }
 
+/** team-pack/team.yaml with the values of this repository filled in; the comments of the example stay. */
+function teamYaml(src: string, o: { org: string; project: string; repo: string; target: string; language: Language; prTemplate: string }): string {
+  const doc = parseDocument(src);
+  doc.setIn(["language"], o.language);
+  doc.setIn(["azureDevOps", "organization"], o.org);
+  doc.setIn(["azureDevOps", "project"], o.project);
+  doc.setIn(["repositories", 0, "name"], o.repo);
+  doc.setIn(["repositories", 0, "defaultTarget"], o.target);
+  doc.setIn(["repositories", 0, "aliases"], doc.createNode([]));
+  doc.setIn(["pullRequest", "template"], o.prTemplate);
+  doc.setIn(["pullRequest", "emptySection"], o.language === "nl" ? "n.v.t." : "-");
+  doc.setIn(["branches", "protected", 0], o.target);
+  doc.deleteIn(["pipelines"]);
+  doc.deleteIn(["guidelines"]);
+  doc.deleteIn(["cherryPick"]);
+  return "# Proposed by 'aihub init': check every value and change it through a pull request.\n" + String(doc);
+}
 /** Where Azure DevOps already finds a PR template for the target branch, or undefined. */
 export function existingPrTemplate(root: string, target: string): string | undefined {
   return resolveTemplate(target, { readRef: (b, p) => showFile(root, b, p), localRoot: root })?.path;
@@ -71,17 +74,20 @@ export function existingPrTemplate(root: string, target: string): string | undef
 /** Everything `aihub init` would like to have in the repository (before skipping what exists). */
 export function planFiles(root: string, o: { org: string; project: string; repo: string; target: string; language: Language; intoRepo?: boolean }): { plan: Planned[]; skips: Record<string, string> } {
   const pack = packRoot();
-  const assets = join(pack, "skills", "_shared", "assets");
-  const nl = o.language === "nl";
-  const asset = (name: string, nlName: string) => readPackFile(join(assets, nl ? nlName : name));
+  const dir = teamPackDir();
+  const en = o.language === "en";
+  // team-pack holds Dutch files and `name.en.ext` English variants; the repository gets the plain name either way
+  const read = (rel: string) => {
+    const enRel = rel.replace(/(\.[^./]+)$/, ".en$1");
+    return readPackFile(join(dir, en && existsSync(join(dir, enRel)) ? enRel : rel));
+  };
   const found = existingPrTemplate(root, o.target);
   const plan: Planned[] = [
-    { path: TEAM_FILE, content: teamYaml({ ...o, prTemplate: found && !found.includes("/branches/") ? found : PR_TEMPLATE }) },
-    { path: STORY_TEMPLATE, content: asset("story-template.md", "story-template.nl.md") },
-    { path: COMMIT_TEMPLATE, content: asset("commit-template.txt", "commit-template.nl.txt") },
+    { path: TEAM_FILE, content: teamYaml(readPackFile(join(dir, TEAM_FILE)), { ...o, prTemplate: found && !found.includes("/branches/") ? found : PR_TEMPLATE }) },
+    { path: STORY_TEMPLATE, content: read(STORY_TEMPLATE) },
+    { path: COMMIT_TEMPLATE, content: read(COMMIT_TEMPLATE) },
   ];
-  if (!found) plan.push({ path: PR_TEMPLATE, content: asset("pull_request_template.md", "pull_request_template.nl.md") });
-  if (o.intoRepo) {
+  if (!found) plan.push({ path: PR_TEMPLATE, content: read(PR_TEMPLATE) });  if (o.intoRepo) {
     for (const f of listFiles(join(pack, "commands", "opencode"))) {
       plan.push({ path: `.opencode/command/${f}`, content: readPackFile(join(pack, "commands", "opencode", f)) });
     }
@@ -102,8 +108,11 @@ export function writePlanned(root: string, plan: Planned[], skipExtra: Record<st
       res.skipped.push({ path: p.path, reason: "exists" });
       continue;
     }
-    mkdirSync(dirname(abs), { recursive: true });
-    writeFileSync(abs, p.content, "utf8");
+    if (trace.dryRun) trace.plan(`would write ${abs}`);
+    else {
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, p.content, "utf8");
+    }
     res.created.push(p.path);
   }
   return res;

@@ -1,4 +1,5 @@
 import { AihubError } from "./errors.js";
+import { isRestWrite, summarizeBody, trace } from "./trace.js";
 
 export type FetchFn = typeof fetch;
 
@@ -68,7 +69,14 @@ export class AdoClient {
     path: string,
     opts: { query?: Query; body?: unknown; raw?: boolean; contentType?: string; rawBody?: Uint8Array; headers?: Record<string, string> } = {},
   ): Promise<{ data: T; headers: Headers }> {
-    const res = await this.fetchFn(this.url(path, opts.query), {
+    const fullUrl = this.url(path, opts.query);
+    const bodyText = opts.rawBody !== undefined ? `${opts.rawBody.length} bytes` : summarizeBody(opts.body);
+    if (trace.dryRun && isRestWrite(method, path)) {
+      trace.plan(`would ${method} ${fullUrl}${bodyText ? `   body ${bodyText}` : ""}`);
+      return { data: {} as T, headers: new Headers() };
+    }
+    if (trace.verbose) trace.log(`+ ${method} ${fullUrl}${bodyText ? `   body ${bodyText}` : ""}`);
+    const res = await this.fetchFn(fullUrl, {
       method,
       headers: {
         Authorization: await this.auth(),
@@ -81,6 +89,7 @@ export class AdoClient {
       body: opts.rawBody !== undefined ? (opts.rawBody as unknown as BodyInit) : opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     });
     const text = await res.text();
+    if (trace.verbose) trace.log(`  -> ${res.status}`);
     const ctype = res.headers.get("content-type") ?? "";
     // Azure DevOps answers a bad/missing credential with 203 + an HTML sign-in page.
     if (res.status === 401 || res.status === 203 || (res.ok && !opts.raw && ctype.includes("text/html"))) {
