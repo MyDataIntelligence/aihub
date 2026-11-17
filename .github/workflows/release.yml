@@ -1,0 +1,32 @@
+name: release
+# npm trusted publishing (OIDC): no npm token in this repository.
+on:
+  push:
+    branches: [staging]
+    tags: ['v*']
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: cli } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, registry-url: 'https://registry.npmjs.org' }
+      - run: npm install -g npm@11
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Publish next (staging)
+        if: github.ref == 'refs/heads/staging'
+        run: |
+          base=$(node -p "require('./package.json').version")
+          npm version --no-git-tag-version "${base}-next.${GITHUB_RUN_NUMBER}"
+          npm publish --access public --tag next --provenance
+      - name: Publish latest (version tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          npm version --no-git-tag-version "${GITHUB_REF_NAME#v}" --allow-same-version
+          npm publish --access public --provenance
