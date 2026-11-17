@@ -265,6 +265,8 @@ export interface FabricClientOpts {
   storageAuth?: () => Promise<string>;
   /** Auth for the Power BI REST API (refresh history). */
   powerbiAuth?: () => Promise<string>;
+  /** Auth for Kusto (KQL database query service). */
+  kustoAuth?: () => Promise<string>;
   /** The identity behind the three auth functions (for hints and reporting). */
   identity?: import("./fabric-auth.js").FabricIdentity;
 }
@@ -323,17 +325,18 @@ export class FabricClient {
   }
 
   /** One HTTP call with 429 back-off (Retry-After, else exponential). `path` may be an absolute URL (OneLake). */
-  async request(method: string, path: string, body?: unknown, o: { storage?: boolean; powerbi?: boolean; accept?: string } = {}): Promise<Res> {
+  async request(method: string, path: string, body?: unknown, o: { storage?: boolean; powerbi?: boolean; kusto?: boolean; accept?: string; raw?: string | Uint8Array; headers?: Record<string, string> } = {}): Promise<Res> {
     const url = /^https?:\/\//.test(path) ? path : `${FABRIC_API}${path}`;
     for (let attempt = 0; ; attempt++) {
       const res = await this.fetchFn(url, {
         method,
         headers: {
-          Authorization: await (o.storage && this.opts.storageAuth ? this.opts.storageAuth() : o.powerbi && this.opts.powerbiAuth ? this.opts.powerbiAuth() : this.auth()),
+          Authorization: await (o.storage && this.opts.storageAuth ? this.opts.storageAuth() : o.powerbi && this.opts.powerbiAuth ? this.opts.powerbiAuth() : o.kusto && this.opts.kustoAuth ? this.opts.kustoAuth() : this.auth()),
           Accept: o.accept ?? "application/json",
           ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+          ...(o.headers ?? {}),
         },
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body: o.raw !== undefined ? (o.raw as BodyInit) : body !== undefined ? JSON.stringify(body) : undefined,
       });
       const text = await res.text();
       if (res.status === 429 && attempt < this.maxRetries) {
@@ -365,13 +368,13 @@ export class FabricClient {
   }
 
   /** All pages of a list endpoint (continuationToken); the array is `value` or `data`. */
-  async list<T = any>(path: string): Promise<T[]> {
+  async list<T = any>(path: string, o: { key?: string; powerbi?: boolean } = {}): Promise<T[]> {
     const out: T[] = [];
     let token: string | undefined;
     for (let page = 0; page < 500; page++) {
       const sep = path.includes("?") ? "&" : "?";
-      const r = await this.request("GET", token ? `${path}${sep}continuationToken=${encodeURIComponent(token)}` : path);
-      out.push(...(((r.data.value ?? r.data.data) as T[] | undefined) ?? []));
+      const r = await this.request("GET", token ? `${path}${sep}continuationToken=${encodeURIComponent(token)}` : path, undefined, { powerbi: o.powerbi });
+      out.push(...(((o.key ? r.data[o.key] : (r.data.value ?? r.data.data)) as T[] | undefined) ?? []));
       token = r.data.continuationToken || undefined;
       if (!token) break;
     }
@@ -382,8 +385,8 @@ export class FabricClient {
    * A call that may be a long-running operation: 202 + Location/x-ms-operation-id is polled until
    * Succeeded (then the result is fetched when there is one) or Failed.
    */
-  async lro(method: string, path: string, body?: unknown): Promise<{ status: number; data: any; headers: Headers }> {
-    const first = await this.request(method, path, body);
+  async lro(method: string, path: string, body?: unknown, o: { powerbi?: boolean } = {}): Promise<{ status: number; data: any; headers: Headers }> {
+    const first = await this.request(method, path, body, { powerbi: o.powerbi });
     if (first.status !== 202) return first;
     const loc = first.headers.get("location") ?? "";
     const opId = first.headers.get("x-ms-operation-id") ?? /operations\/([^/?]+)/.exec(loc)?.[1];

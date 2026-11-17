@@ -23,6 +23,7 @@ import {
   chooseWorkspace,
 } from "../lib/fabric.js";
 import { collectJobLogs, collectRefreshLogs, workspaceRuns } from "../lib/fabric-logs.js";
+import { apiCmd, onelakeCmd, queryCmd } from "./fabric-api.js";
 import { authCmd, capacitiesCmd, connectionsCmd, deploymentCmd, environmentCmd, lakehouseLoad, lakehouseMaintenance, schedulesCmd, shortcutsCmd, workspaceCmd } from "./fabric-extra.js";
 import { didYouMean } from "../lib/fabric.js";
 import { durationText, filterLines, formatSections, oneLine, parseSince, readDefinitionDir, toTable, writeDefinitionParts } from "../lib/fabric-ops.js";
@@ -74,6 +75,15 @@ const OPTIONS = {
   cert: { type: "string" },
   keyvault: { type: "string" },
   clear: { type: "boolean" },
+  arg: { type: "string", multiple: true },
+  "body-file": { type: "string" },
+  query: { type: "string" },
+  "query-file": { type: "string" },
+  variables: { type: "string" },
+  to: { type: "string" },
+  text: { type: "string" },
+  file: { type: "string" },
+  "max-bytes": { type: "string" },
   capacity: { type: "string" },
   table: { type: "string" },
   append: { type: "boolean" },
@@ -192,6 +202,14 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     case "connections":
     case "gateways":
       return connectionsCmd(s, sub);
+    case "api":
+      return apiCmd(s, pos);
+    case "onelake":
+      return onelakeCmd(s, pos[0]);
+    case "dax":
+    case "kql":
+    case "graphql":
+      return queryCmd(s, sub);
     case "auth":
       return authCmd(s, pos);
     case "deployment":
@@ -217,6 +235,7 @@ export function makeClient(ctx: Ctx, v: V = {}): FabricClient {
     waitScale: ctx.env.AIHUB_POLL_MS === "0" ? 0 : 1,
     storageAuth: () => identity.token("storage"),
     powerbiAuth: () => identity.token("powerbi"),
+    kustoAuth: () => identity.token("kusto"),
     identity,
   });
 }
@@ -508,7 +527,7 @@ async function lakehouse(s: Setup, client: FabricClient, wsId: string): Promise<
   return client.resolveItem(wsId, name, "Lakehouse");
 }
 
-async function oneLakeList(client: FabricClient, wsId: string, lhId: string, folder: string, subPath: string): Promise<{ name: string; isDirectory: boolean; size: string; modified: string }[]> {
+export async function oneLakeList(client: FabricClient, wsId: string, lhId: string, folder: string, subPath: string): Promise<{ name: string; isDirectory: boolean; size: string; modified: string }[]> {
   const dir = [lhId, folder, subPath.replace(/^\/+|\/+$/g, "")].filter(Boolean).join("/");
   const out: { name: string; isDirectory: boolean; size: string; modified: string }[] = [];
   let cont: string | undefined;

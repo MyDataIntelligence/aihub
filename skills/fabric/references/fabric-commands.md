@@ -11,6 +11,9 @@ Every command takes `--workspace <name|id>` (any workspace you can access; the d
 | Write | `item create --type T --name N [--definition-dir D] [--description]`, `item update --item I --definition-dir D`, `item rename --name N`, `item delete --yes`, `run --item I [--params-file F] [--wait]`, `run --cancel ID`, `workspace create\|assign-capacity`, `environment publish\|libraries` |
 | Git | `git status`, `git update`, `git commit --message-file F` |
 | Deploy | `deployment list`, `deployment stages --pipeline P`, `deployment deploy --pipeline P --from-stage S --to-stage T` |
+| OneLake | `onelake list\|read\|write\|mkdir\|delete\|move --lakehouse L --path P [--to P2] [--text T\|--file F] [--yes]` |
+| Queries (read-only) | `dax --item MODEL --query "EVALUATE ..."`, `kql --item DB --query "T \| take 10"`, `graphql --item API --query "{ ... }"`; `--query-file`, `--top N` |
+| Everything else | `api list [--filter x]`, then `api <tool> --workspace W --item I --arg name=value [--body-file f.json]` runs any legacy tool row (folders, tags, shortcuts, data access roles, data shares, private endpoints, Spark settings, mirroring, role assignments, connections ...). See `docs/fabric-inventory.md` in the aihub repository for each tool and its status. |
 | Plan | `plan [--check-workspace]` maps changed `<name>.<Type>/` folders to create/update commands |
 
 ## Safety
