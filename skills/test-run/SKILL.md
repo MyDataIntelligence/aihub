@@ -15,11 +15,11 @@ aihub fabric plan
 aihub fabric run --item nb_load_orders --wait
 ```
 
-2. Robot: check first, then run only when needed:
+2. Robot: check first, then run only when needed. The target comes from the sentence: "test op staging" is `--on staging`, "draai Robot op feature" is `--on feature`. No target named: use the team default, do not ask. Run merges your branch into a merge target first and stops on a conflict:
 
 ```sh
 aihub robot needed
-aihub robot run --suite orders
+aihub robot run --on staging --suite orders
 ```
 
 3. Parameters: `--params-file params.json` (Fabric), `--include <tag>` (Robot).
@@ -30,6 +30,6 @@ aihub robot run --suite orders
 Changed items versus the target, the workspace by branch rule, item and job ids, the pipeline and branch from the team file. Do not ask for ids.
 
 ## If it fails
-Not signed in: `az login` or `aihub doctor`. Item not found: check the plan. Never run ACC or PRD: the developer does that; the CLI refuses them. Details: [Fabric and Robot reference](references/fabric-robot.md).
+Merge conflict: nothing was pushed; merge the target into your branch and fix it. `aihub robot targets` lists the targets; `--no-merge` skips the merge. Not signed in: `az login` or `aihub doctor`. Item not found: check the plan. Never run ACC or PRD: the developer does that; the CLI refuses them. Details: [Fabric and Robot reference](references/fabric-robot.md).
 
 Rules: direct task, 0 questions. A new Robot test is only needed for a new or changed flow.
