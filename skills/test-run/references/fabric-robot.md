@@ -8,7 +8,8 @@
 | `aihub fabric run --item N [--workspace W] [--params-file F] [--wait]` | Starts a notebook or pipeline job; with `--wait` polls and prints status and the failure reason. |
 | `aihub fabric status --item N --job ID [--workspace W]` | Status of one job. |
 | `aihub robot needed [--branch B]` | Which suites cover a changed flow, and whether a test changed with it. |
-| `aihub robot run [--suite S] [--include tag] [--pipeline P] [--no-wait]` | Queues the team Robot pipeline on the integration branch and prints the results summary. |
+| `aihub robot run [--on target\|branch] [--suite S] [--include tag] [--pipeline P] [--no-merge] [--no-wait]` | With a merge target: merges the current branch (and `mustAlreadyContain` branches that are behind) into the target branch in a temporary worktree, pushes it and lists the commits that went in; a conflict stops with the files and pushes nothing. Then queues the team Robot pipeline on that branch and prints the results summary. |
+| `aihub robot targets` | Lists the named targets and the default. |
 
 ## Environments
 

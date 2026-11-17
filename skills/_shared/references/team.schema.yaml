@@ -6,7 +6,7 @@
 version: 1                         # integer, schema version (required)
 language: en                       # content language of stories, PRs, comments, e.g. en or nl (required)
 
-azureDevOps:
+azureDevOps:                       # where the CLI talks to (required)
   organization: <organization>     # Azure DevOps organization name (required)
   project: <project>               # project name (required)
 
@@ -16,24 +16,24 @@ repositories:                      # list (required, at least one)
     defaultTarget: main            # branch a new PR targets (required)
     releaseBranches: []            # release branch patterns or names, e.g. ["release/*"] (optional)
 
-pullRequest:
+pullRequest:                       # pull request settings (required)
   template: .azuredevops/pull_request_template.md   # path in the repo to the PR template (required)
   title: "{storyId}: {storyTitle}" # title pattern; placeholders {storyId} {storyTitle} {branch} (optional)
   emptySection: "-"                # text the CLI writes into a template section left empty (optional)
 
-workItems:
+workItems:                         # work item settings (required)
   storyType: User Story            # work item type used for stories (required)
   storyTemplate: .agents/skills/_shared/assets/story-template.md   # story template path (required)
 
-branches:
+branches:                          # branch rules (required)
   feature: "feature/{storyId}-{slug}"   # pattern for feature branches (required)
   protected:                            # branches the CLI never pushes to or force-updates (optional)
     - main
     - release/*
 
-cherryPick:
+cherryPick:                        # cherry-pick settings (optional)
   groups:                          # named sets of target branches, usable as --to <group> (optional)
-    supported: ["release/1.2", "release/1.3"]
+    supported: ["release/1.2", "release/1.3"]   # example group name and its target branches (optional)
 
 pipelines:                         # pipelines to follow per repository (optional)
   - repository: <repository>      # repository name this pipeline belongs to
@@ -41,7 +41,7 @@ pipelines:                         # pipelines to follow per repository (optiona
     required: true                 # true when a red run blocks the PR
 
 fabric:                            # Fabric workspaces for `aihub fabric` (optional)
-  workspaces:
+  workspaces:                      # list of workspaces the CLI may know about
     - name: <workspace>            # workspace display name, e.g. DEV-test-project (optional)
       id: <guid>                   # workspace id (optional; looked up by name when absent)
       environment: dev             # dev | feature | test | acc | prd (optional); acc and prd are never run by the CLI
@@ -49,8 +49,16 @@ fabric:                            # Fabric workspaces for `aihub fabric` (optio
 
 robot:                             # Robot integration tests for `aihub robot` (optional)
   pipeline: <pipeline>             # Azure DevOps pipeline that runs the Robot suites (optional; needed for robot run)
-  integrationBranch: <branch>      # branch the pipeline runs on (optional; needed for robot run)
+  defaultTarget: <target>          # name in targets used when robot run has no --on (optional)
+  targets:                         # named places to run Robot, e.g. feature and staging (optional)
+    <target>:                      # the name you say: "draai Robot op <target>"
+      branch: <branch>             # branch the pipeline runs on (optional)
+      mergeMyBranchFirst: true     # true: merge my current branch into this branch and push it first; false: run it as is (optional)
+      mustAlreadyContain: []       # branches that must already be merged into this branch, e.g. ["staging"] (optional)
+  integrationBranch: <branch>      # older form: one branch that gets my branch merged, used without targets (optional)
+  integrationBranches: []          # older form per repository: [{ repository, branch, requires }] (optional)
+  integrationRequires: []          # older form: branches the integration branch must already contain (optional)
   suites:                          # list; a suite belongs to a flow (optional; needed for robot needed)
-    - name: <suite>                # suite name passed to the pipeline as parameter `suite`
-      paths: []                    # path patterns of the flow, e.g. ["src/flows/orders/**"]
+    - name: <suite>                # suite name passed to the pipeline as parameter `suite` (optional)
+      paths: []                    # path patterns of the flow, e.g. ["src/flows/orders/**"] (optional)
       tests: []                    # path patterns of the suite's Robot files, e.g. ["tests/robot/orders/**"] (optional)

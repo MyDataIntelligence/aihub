@@ -10,40 +10,40 @@ Templates are separate files next to it (stories, commits) or in the repo (`.azu
 ## Synthetic example
 
 ```yaml
-version: 1
-language: nl
+version: 1                                                      # schema version
+language: nl                                                    # language of stories, PR text and comments
 
-azureDevOps:
-  organization: ferron-test
-  project: test-project
+azureDevOps:                                                    # where the CLI talks to
+  organization: ferron-test                                     # Azure DevOps organization
+  project: test-project                                         # Azure DevOps project
 
-repositories:
-  - name: test-project
-    aliases: [tp]
-    defaultTarget: main
-    releaseBranches: ["release/*"]
+repositories:                                                   # repositories of this team
+  - name: test-project                                          # repository name in Azure DevOps
+    aliases: [tp]                                               # short names people may say
+    defaultTarget: main                                         # branch a new PR targets
+    releaseBranches: ["release/*"]                              # release branch patterns
 
-pullRequest:
-  template: .azuredevops/pull_request_template.md
-  title: "{storyId}: {storyTitle}"
-  emptySection: "Niet van toepassing"
+pullRequest:                                                    # pull request settings
+  template: .azuredevops/pull_request_template.md               # PR template path
+  title: "{storyId}: {storyTitle}"                              # PR title pattern
+  emptySection: "Niet van toepassing"                           # text for an empty template section
 
-workItems:
-  storyType: User Story
-  storyTemplate: .agents/skills/_shared/assets/story-template.md
+workItems:                                                      # work item settings
+  storyType: User Story                                         # work item type of a story
+  storyTemplate: .agents/skills/_shared/assets/story-template.md# story template path
 
-branches:
-  feature: "feature/{storyId}-{slug}"
-  protected: [main, "release/*"]
+branches:                                                       # branch rules
+  feature: "feature/{storyId}-{slug}"                           # feature branch pattern
+  protected: [main, "release/*"]                                # branches the CLI never pushes to
 
-cherryPick:
-  groups:
-    supported: ["release/1.2", "release/1.3"]
+cherryPick:                                                     # cherry-pick settings
+  groups:                                                       # named sets of target branches
+    supported: ["release/1.2", "release/1.3"]                   # group usable as --to supported
 
-pipelines:
-  - repository: test-project
-    name: test-project-ci
-    required: true
+pipelines:                                                      # pipelines to follow
+  - repository: test-project                                    # repository the pipeline belongs to
+    name: test-project-ci                                       # pipeline name
+    required: true                                              # a red run blocks the PR
 ```
 
 ## Fields
@@ -64,24 +64,38 @@ Check the file with `aihub doctor`. Change it through a pull request (see [onboa
 ## Fabric and Robot (optional)
 
 ```yaml
-fabric:
-  workspaces:
-    - { name: DEV-test-project, environment: dev, branches: ["feature/*"] }
-    - { name: ACC-test-project, environment: acc }
+fabric:                                  # Fabric workspaces for `aihub fabric`
+  workspaces:                            # list of workspaces the CLI may know about
+    - name: DEV-test-project             # workspace display name
+      environment: dev                   # dev | feature | test | acc | prd; acc and prd are never run by the CLI
+      branches: ["feature/*"]            # branch patterns whose changes are tested in this workspace
+    - name: ACC-test-project             # a workspace the developer runs by hand
+      environment: acc                   # refused by `aihub fabric run` unless --allow-env acc
 
-robot:
-  pipeline: test-project-robot
-  integrationBranch: integration
-  suites:
-    - name: orders
-      paths: ["src/flows/orders/**"]
-      tests: ["tests/robot/orders/**"]
+robot:                                   # Robot integration tests for `aihub robot`
+  pipeline: test-project-robot           # Azure DevOps pipeline that runs the Robot suites
+  defaultTarget: feature                 # target used when `aihub robot run` has no --on
+  targets:                               # named places to run Robot
+    feature:                             # name to say: "draai Robot op feature"
+      branch: integration                # branch the pipeline runs on
+      mergeMyBranchFirst: true           # true: merge my current branch into this branch and push it, then run
+      mustAlreadyContain: [staging]      # branches that must already be merged into it; merged in first when behind
+    staging:                             # name to say: "test op staging"
+      branch: staging                    # branch the pipeline runs on
+      mergeMyBranchFirst: false          # false: run the branch as it is, merge nothing
+  suites:                                # Robot suites, one per flow
+    - name: orders                       # suite name, passed to the pipeline as parameter `suite`
+      paths: ["src/flows/orders/**"]     # path patterns of the flow this suite covers
+      tests: ["tests/robot/orders/**"]   # path patterns of this suite's Robot files
 ```
 
 | Key | Meaning |
 |---|---|
-| `fabric.workspaces[]` | Name, optional id, `environment` (`dev`, `feature`, `test`, `acc`, `prd`) and optional `branches` patterns. `aihub fabric run` only runs `dev` and `feature`; `acc` and `prd` need `--allow-env` and are run by the developer. |
-| `robot.pipeline`, `robot.integrationBranch` | Azure DevOps pipeline and the branch `aihub robot run` queues it on. |
+| `fabric.workspaces[]` | Name, optional id, `environment` and optional `branches` patterns. `aihub fabric run` only runs `dev` and `feature`; `acc` and `prd` need `--allow-env` and are run by the developer. |
+| `robot.pipeline` | Azure DevOps pipeline that `aihub robot run` queues (override with `--pipeline`). |
+| `robot.targets` | Named branches to run Robot on. `mergeMyBranchFirst: true` merges the current branch into the target branch (in a temporary worktree, never your checkout) and pushes it before the run; a merge conflict stops the run and pushes nothing. `mustAlreadyContain` lists branches that must be in the target branch first. |
+| `robot.defaultTarget` | The target used without `--on`. `aihub robot run --on staging` picks a target by name; an unknown name is taken as a branch that is run as it is. `aihub robot targets` lists them. |
+| `robot.integrationBranch`, `robot.integrationBranches[]`, `robot.integrationRequires` | Older form of one merge target (a branch, optionally per repository, and the branches it must already contain). Used when `robot.targets` is absent. |
 | `robot.suites[]` | Suite name, `paths` of the flow it covers and `tests` (its Robot files). `aihub robot needed` compares the branch diff with these patterns. |
 
-Fabric items are found by the git-integration folder convention (`<name>.Notebook/`, `<name>.DataPipeline/`). Fabric auth: `az login` or the environment variable `AIHUB_FABRIC_TOKEN`.
+`aihub robot run --no-merge` skips the merge for one run. Fabric items are found by the git-integration folder convention (`<name>.Notebook/`, `<name>.DataPipeline/`). Fabric auth: `az login` or the environment variable `AIHUB_FABRIC_TOKEN`.
