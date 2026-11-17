@@ -292,6 +292,23 @@ describe("aihub release plan and run", () => {
     expect(plan.notes[0]).toContain("!43: skipped");
   });
 
+  it("plans from commits and tags next to PRs, named by --version", async () => {
+    const { dir, c1, c2 } = setup();
+    sh(dir, ["tag", "v1.0.0", c1]);
+    sh(dir, ["tag", "v1.1.0", c2]);
+    const routes: Route[] = [done(41, c1, "2026-01-01")];
+    const out = join(tmp(), "plan.yaml");
+    const r = await run(dir, routes, ["release", "plan", "--prs", "41", "--tags", "v1.0.0,v1.1.0", "--commits", c1, "--version", "1.2.0", "--out", out]);
+    expect(r.errs).toEqual([]);
+    const plan = parse(readFileSync(out, "utf8"));
+    expect(plan.name).toBe("release/1.2.0");
+    expect(plan.items.map((i: any) => [i.pr, i.commit])).toEqual([[41, c1], [undefined, c2]]);
+    const one = await run(dir, [], ["release", "plan", "--tags", "v1.0.0", "--json"]);
+    expect(JSON.parse(one.out).items.map((i: any) => i.commit)).toEqual([c1]);
+    const bad = await run(dir, [], ["release", "plan", "--tags", "v9"]);
+    expect(bad.errs.join("")).toContain("not a commit or tag");
+  });
+
   it("run cherry-picks onto a release branch per target and opens PRs", async () => {
     const { dir, bare, c1, c2 } = setup();
     sh(dir, ["push", "origin", "main:refs/heads/staging"]);

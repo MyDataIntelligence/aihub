@@ -14,7 +14,7 @@ import { loadTeam, readUtf8 } from "./team.js";
 import { slugify } from "./workitems.js";
 
 export interface PlanItem {
-  pr: number;
+  pr?: number;
   title: string;
   commit: string;
   story?: number;
@@ -37,6 +37,9 @@ interface DonePr extends PullRequest {
 
 export interface PlanOpts {
   stories?: number[];
+  commits?: string[];
+  tags?: string[];
+  version?: string;
   prs?: number[];
   target?: string;
   also?: string[];
@@ -46,7 +49,7 @@ export interface PlanOpts {
 }
 
 export async function releasePlan(ctx: Ctx, o: PlanOpts): Promise<string> {
-  if (!o.stories?.length && !o.prs?.length) throw new AihubError("pass --stories a,b or --prs a,b");
+  if (!o.stories?.length && !o.prs?.length && !o.commits?.length && !o.tags?.length) throw new AihubError("pass --prs a,b, --stories a,b, --commits sha,sha or --tags v1,v2");
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
   const target = o.target ?? (await baseFor(root, client, team));
@@ -80,14 +83,14 @@ export async function releasePlan(ctx: Ctx, o: PlanOpts): Promise<string> {
     const story = storyOf.get(id) ?? (pr.workItemRefs?.[0] ? Number(pr.workItemRefs[0].id) : undefined);
     items.push({ pr: id, title: pr.title, commit: pr.lastMergeCommit.commitId, story, closed: pr.closedDate ?? "" });
   }
-  items.sort((a, b) => a.closed.localeCompare(b.closed) || a.pr - b.pr);
+  items.sort((a, b) => a.closed.localeCompare(b.closed) || (a.pr ?? 0) - (b.pr ?? 0));
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const plan: ReleasePlan = {
     version: 1,
     repo: client.remote.repo,
-    name: o.name ?? `release/${date}`,
+    name: o.name ?? `release/${o.version ?? date}`,
     targets: [target, ...(o.also ?? []).filter((t) => t !== target)],
-    items: items.map(({ closed: _c, ...rest }) => rest),
+    items: [...items.map(({ closed: _c, ...rest }) => rest), ...commitItems(root, o, notes).filter((ci) => !items.some((i) => i.commit === ci.commit))],
     ...(notes.length ? { notes } : {}),
   };
   const text = stringify(plan);
@@ -99,8 +102,35 @@ export async function releasePlan(ctx: Ctx, o: PlanOpts): Promise<string> {
 function readPlan(file: string): ReleasePlan {
   const p = parse(readUtf8(file)) as Partial<ReleasePlan> | null;
   if (!p || !Array.isArray(p.items) || !Array.isArray(p.targets) || !p.name) throw new AihubError("plan file must have name, targets and items (create it with 'aihub release plan')");
-  for (const [i, it] of p.items.entries()) if (!it.commit || !it.pr) throw new AihubError(`items[${i}] needs pr and commit`);
+  for (const [i, it] of p.items.entries()) if (!it.commit) throw new AihubError(`items[${i}] needs a commit`);
   return p as ReleasePlan;
+}
+
+const lab = (i: PlanItem): string => (i.pr ? `!${i.pr}` : i.commit.slice(0, 8));
+
+/** Commits named directly (--commits) or through tags (--tags: one tag = that commit, two tags = the range between them). */
+function commitItems(root: string, o: PlanOpts, notes: string[]): PlanItem[] {
+  const out: PlanItem[] = [];
+  const add = (sha: string) => {
+    if (out.some((x) => x.commit === sha)) return;
+    out.push({ commit: sha, title: tryGit(root, ["log", "-1", "--format=%s", sha]).out.trim() || sha.slice(0, 8) });
+  };
+  const resolve = (ref: string): string => {
+    const r = tryGit(root, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+    if (!r.ok || !r.out.trim()) throw new AihubError(`'${ref}' is not a commit or tag in this clone (fetch tags first)`);
+    return r.out.trim();
+  };
+  for (const c of o.commits ?? []) add(resolve(c));
+  const tags = o.tags ?? [];
+  if (tags.length > 2) throw new AihubError("--tags takes one tag (that commit) or two tags (the commits between them)");
+  if (tags.length === 1) add(resolve(tags[0]));
+  if (tags.length === 2) {
+    const range = tryGit(root, ["rev-list", "--reverse", "--first-parent", `${resolve(tags[0])}..${resolve(tags[1])}`]);
+    const shas = range.out.split("\n").filter(Boolean);
+    if (!shas.length) notes.push(`tags ${tags[0]}..${tags[1]}: no commits in between`);
+    shas.forEach(add);
+  }
+  return out;
 }
 
 export const releaseBranch = (plan: ReleasePlan, index: number): string =>
@@ -138,12 +168,12 @@ export async function releaseRun(ctx: Ctx, o: { planFile: string; json?: boolean
       let broke = false;
       for (const it of plan.items) {
         if (!refSha(wt, it.commit)) {
-          steps.push(`${tag}: !${it.pr} FAILED, commit ${it.commit.slice(0, 8)} is not in this clone (fetch it first)`);
+          steps.push(`${tag}: ${lab(it)} FAILED, commit ${it.commit.slice(0, 8)} is not in this clone (fetch it first)`);
           broke = true;
           break;
         }
         if (isAncestor(wt, it.commit, "HEAD")) {
-          steps.push(`${tag}: !${it.pr} already in ${target}, skipped`);
+          steps.push(`${tag}: ${lab(it)} already in ${target}, skipped`);
           continue;
         }
         const parents = mustGit(wt, ["rev-list", "--parents", "-n", "1", it.commit]).split(" ").length - 1;
@@ -151,12 +181,12 @@ export async function releaseRun(ctx: Ctx, o: { planFile: string; json?: boolean
         if (!r.ok) {
           const files = tryGit(wt, ["diff", "--name-only", "--diff-filter=U"]).out.split("\n").filter(Boolean);
           tryGit(wt, ["cherry-pick", "--abort"]);
-          steps.push(`${tag}: !${it.pr} FAILED, conflict${files.length ? ` in ${files.join(", ")}` : ""}; resolve it by hand (git cherry-pick ${it.commit.slice(0, 8)}) and rerun`);
+          steps.push(`${tag}: ${lab(it)} FAILED, conflict${files.length ? ` in ${files.join(", ")}` : ""}; resolve it by hand (git cherry-pick ${it.commit.slice(0, 8)}) and rerun`);
           broke = true;
           break;
         }
         applied.push(it);
-        steps.push(`${tag}: !${it.pr} cherry-picked`);
+        steps.push(`${tag}: ${lab(it)} cherry-picked`);
       }
       if (broke) {
         failed.push(tag);
@@ -169,7 +199,7 @@ export async function releaseRun(ctx: Ctx, o: { planFile: string; json?: boolean
       mustGit(wt, ["push", "--set-upstream", "origin", `refs/heads/${branch}:refs/heads/${branch}`]);
       steps.push(`${tag}: branch '${branch}' pushed`);
       const stories = [...new Set(applied.map((a) => a.story).filter((s): s is number => !!s))];
-      const commits = applied.map((a) => `- ${a.title} (!${a.pr})`).join("\n");
+      const commits = applied.map((a) => `- ${a.title} (${lab(a)})`).join("\n");
       const tpl = resolveTemplate(target, { readRef: (b, p) => showFile(root, b, p), localRoot: root });
       const emptyText = team.pullRequest?.emptySection || DEFAULT_EMPTY;
       const code = { story: stories.length ? stories.map((s) => `AB#${s}`).join(", ") : undefined, commits };
