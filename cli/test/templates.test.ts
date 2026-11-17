@@ -200,3 +200,14 @@ describe("editSection / mergeSections", () => {
     expect(mergeSections(desc, "## Tests\nNieuw\n")).toBe("## Beschrijving\n\nEerste.\n\n## Tests\n\nNieuw\n");
   });
 });
+
+describe("mergeSections keeps the sections the CLI fills", () => {
+  it("a body that repeats the template's story placeholder does not replace the real story link (live: /pr-update in opencode)", () => {
+    const desc = "## Summary\n\nOld\n\n## Changes\n\n- a\n\n## Related\n\nAB#2787\n";
+    const body = "## Changes\n\n- a\n- b\n\n## Related\n\nStory: <work item link>\n";
+    const out = mergeSections(desc, body);
+    expect(out).toContain("- b");
+    expect(out).toContain("AB#2787");
+    expect(out).not.toContain("<work item link>");
+  });
+});

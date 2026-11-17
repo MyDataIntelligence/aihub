@@ -229,6 +229,11 @@ export function mergeSections(description: string, patch: string): string {
   const p = parseSections(patch);
   if (p.sections.length === 0) return patch.trim() + "\n";
   let out = description;
-  for (const s of p.sections) out = editSection(out, s.heading, { replace: s.body });
+  const have = parseSections(description).sections;
+  for (const s of p.sections) {
+    // story link, commit list and related PRs belong to the CLI: a body written from the bare template must not wipe them
+    if (codeKindOf(s.heading) && have.some((h) => headingsMatch(h.heading, s.heading))) continue;
+    out = editSection(out, s.heading, { replace: s.body });
+  }
   return out;
 }
