@@ -142,6 +142,11 @@ describe("aihub repos", () => {
     expect(lines.join("\n")).toContain("other-repo: cloned at");
     expect(lines.join("\n")).toContain("test-repo: already there");
 
+    // --root that does not exist yet is created (live: "git is not available: spawnSync git ENOENT")
+    const fresh = join(dir, "..", "fresh-root", "deeper");
+    expect(await main(["repos", "clone", "--name", "other-repo", "--root", fresh], ctx)).toBe(0);
+    expect(existsSync(join(fresh, "other-repo", ".git"))).toBe(true);
+
     expect(await main(["repos", "clone", "--name", "nope"], ctx)).toBe(1);
     expect(errs[0]).toContain("not found in the project");
     expect(await main(["repos", "list", "--filter", "other", "--json"], ctx)).toBe(0);

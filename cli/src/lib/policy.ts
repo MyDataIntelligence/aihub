@@ -57,7 +57,7 @@ export function viewOf(e: RawEvaluation): PolicyView | undefined {
   };
 }
 
-async function evaluations(client: AdoClient, prId: number): Promise<PolicyView[]> {
+export async function evaluations(client: AdoClient, prId: number): Promise<PolicyView[]> {
   const { projectId } = await repoInfo(client);
   const raw = await client.list<RawEvaluation>("policy/evaluations", {
     artifactId: `vstfs:///CodeReview/CodeReviewId/${projectId}/${prId}`,

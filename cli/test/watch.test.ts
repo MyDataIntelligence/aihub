@@ -117,6 +117,21 @@ describe("notification commands", () => {
   });
 });
 
+describe("aihub watch --interval / --timeout units", () => {
+  it("accepts 30s, 5m and 1h and refuses a bare number with a hint (live: 5 meant 5 minutes)", () => {
+    const { dir } = makeRepo();
+    const { ctx } = ctxFor(dir, fakeFetch([]).fn);
+    const spawner = () => 1;
+    const alive = () => true;
+    expect(() => startWatch(ctx, { pr: "5", interval: "5" }, spawner, alive)).toThrow(/--interval '5' needs a unit: 5s, 5m or 5h/);
+    expect(() => startWatch(ctx, { pr: "5", timeout: "3" }, spawner, alive)).toThrow(/--timeout '3' needs a unit/);
+    for (const [i, ms] of [["30s", 30_000], ["5m", 300_000], ["1h", 3_600_000]] as const) {
+      startWatch(ctx, { pr: String(10 + ms / 1000), interval: i }, spawner, alive);
+    }
+    expect(readSpecs(dir).map((x: any) => x.intervalMs).sort((a: number, b: number) => a - b)).toEqual([30_000, 300_000, 3_600_000]);
+  });
+});
+
 describe("aihub watch start, list, stop", () => {
   it("starts one detached watcher per target, lists and stops it", async () => {
     const { dir } = makeRepo();

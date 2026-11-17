@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseDocument } from "yaml";
 import { parseRemote } from "./ado.js";
-import type { Ctx } from "./context.js";
+import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { git, hasRef, originDefaultBranch, pushIfNeeded, remoteUrl, repoRoot, showFile } from "./git.js";
 import { listFiles, packRoot, readPackFile } from "./pack.js";
@@ -50,7 +50,7 @@ export function teamPackDir(): string {
 }
 
 /** team-pack/team.yaml with the values of this repository filled in; the comments of the example stay. */
-function teamYaml(src: string, o: { org: string; project: string; repo: string; target: string; language: Language; prTemplate: string }): string {
+function teamYaml(src: string, o: { org: string; project: string; repo: string; target: string; language: Language; prTemplate: string; states?: ProjectStates }): string {
   const doc = parseDocument(src);
   doc.setIn(["language"], o.language);
   doc.setIn(["azureDevOps", "organization"], o.org);
@@ -60,6 +60,10 @@ function teamYaml(src: string, o: { org: string; project: string; repo: string; 
   doc.setIn(["repositories", 0, "aliases"], doc.createNode([]));
   doc.setIn(["pullRequest", "template"], o.prTemplate);
   doc.setIn(["pullRequest", "emptySection"], o.language === "nl" ? "n.v.t." : "-");
+  if (o.states) {
+    doc.setIn(["workItems", "states", "active"], o.states.active);
+    doc.setIn(["workItems", "states", "finished"], o.states.finished);
+  }
   doc.setIn(["branches", "protected", 0], o.target);
   doc.deleteIn(["pipelines"]);
   doc.deleteIn(["guidelines"]);
@@ -72,7 +76,7 @@ export function existingPrTemplate(root: string, target: string): string | undef
 }
 
 /** Everything `aihub init` would like to have in the repository (before skipping what exists). */
-export function planFiles(root: string, o: { org: string; project: string; repo: string; target: string; language: Language; intoRepo?: boolean }): { plan: Planned[]; skips: Record<string, string> } {
+export function planFiles(root: string, o: { org: string; project: string; repo: string; target: string; language: Language; intoRepo?: boolean; states?: ProjectStates }): { plan: Planned[]; skips: Record<string, string> } {
   const pack = packRoot();
   const dir = teamPackDir();
   const en = o.language === "en";
@@ -137,12 +141,35 @@ function prBody(language: Language, r: InitResult): string {
   ].join("\n");
 }
 
+export interface ProjectStates {
+  active: string;
+  finished: string;
+}
+
+/**
+ * The states of the story work item type of this project: the first InProgress and the first Completed one
+ * (Basic: Doing/Done, Agile: Active/Closed, Scrum: Committed/Done). undefined when Azure DevOps cannot be asked.
+ */
+export async function projectStates(ctx: Ctx, root: string, type = "User Story"): Promise<ProjectStates | undefined> {
+  try {
+    const client = repoClient({ ...ctx, cwd: root }).client;
+    const r = await client.get<{ value?: { name: string; category?: string }[] }>(`wit/workitemtypes/${encodeURIComponent(type)}/states`);
+    const list = r.value ?? [];
+    const active = list.find((x) => x.category === "InProgress")?.name;
+    const finished = list.find((x) => x.category === "Completed")?.name;
+    return active && finished ? { active, finished } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function runInit(ctx: Ctx, o: InitOpts): Promise<InitResult> {
   const language = parseLanguage(o.language);
   const root = repoRoot(resolve(ctx.cwd, o.repo ?? "."));
   const remote = parseRemote(remoteUrl(root));
   const target = originDefaultBranch(root) || "main";
-  const info = { org: remote.org, project: remote.project, repo: remote.repo, target, language, intoRepo: !!o.intoRepo };
+  const states = existsSync(join(root, TEAM_FILE)) ? undefined : await projectStates(ctx, root); // only needed for a new team.yaml
+  const info = { org: remote.org, project: remote.project, repo: remote.repo, target, language, intoRepo: !!o.intoRepo, states };
 
   if (o.noPr) {
     const p = planFiles(root, info);
