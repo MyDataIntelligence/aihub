@@ -154,7 +154,11 @@ export class AdoClient {
 function httpMessage(status: number, body: string, method: string, path: string): string {
   let detail = "";
   try {
-    detail = (JSON.parse(body) as { message?: string }).message ?? "";
+    const j = JSON.parse(body) as { message?: string; customProperties?: { ValidationResults?: { result?: string; message?: string }[] } };
+    detail = j.message ?? "";
+    // e.g. queueing a build on a missing branch: the reason sits in customProperties, not in message.
+    const why = (j.customProperties?.ValidationResults ?? []).map((v) => v.message).filter(Boolean).join("; ");
+    if (why) detail = `${detail} ${why}`;
   } catch {
     detail = body.slice(0, 200);
   }
