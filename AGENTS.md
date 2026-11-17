@@ -5,3 +5,11 @@
 - Team knowledge never goes into this repository: no organisation, project, repository or person names, no absolute paths. Examples use the synthetic project `ferron-test` / `test-project`.
 - Prose for pull requests, stories and comments is passed to the CLI as files (`--body-file`, `--replies-file`), never inline.
 - Keep each rule in one place; update existing files instead of duplicating.
+
+## Branches and releases
+
+- `staging` is the default branch and the integration branch. Every change goes in through a pull request to `staging`; CI (`test`) must be green; squash-merge.
+- `main` is the released state. Only release pull requests `staging` → `main` go there (merge commit, no squash), after the release checks pass.
+- Every merge to `staging` may be published as a test version on the npm dist-tag `next` (`npm i -g @ferronhooi/aihub@next`). A version tag `vX.Y.Z` on `main` publishes to `latest` with release notes.
+- Feature branches: `<topic>` or `feat/<topic>`, `fix/<topic>`; one topic per pull request; delete after merge.
+- Never push directly to `staging` or `main`; no force pushes.
