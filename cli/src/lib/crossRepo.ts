@@ -143,6 +143,11 @@ function tempClone(here: string, name: string, mk: (root: string, release: () =>
     throw new AihubError(`repository '${name}' is not cloned next to this one and cloning failed: ${r.stderr.split("\n")[0]}`);
   }
   for (const [k, v] of rewrites) gitRaw(dir, ["config", k, v]);
+  // the clone commits as the same person as the checkout it was derived from
+  for (const k of ["user.name", "user.email", "commit.gpgsign"]) {
+    const v = git(here, ["config", "--get", k], { allowFail: true }).trim();
+    if (v) gitRaw(dir, ["config", k, v]);
+  }
   return mk(dir, () => rmSync(base, { recursive: true, force: true }));
 }
 
