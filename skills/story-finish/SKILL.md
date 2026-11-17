@@ -8,7 +8,7 @@ description: "Use when the work is merged and the story must be closed: 'rond st
 The pull request is approved or merged and the user wants the story closed and the leftovers removed.
 
 ## Steps
-1. PR not merged yet and the user wants it merged: `aihub pr complete --pr 42 --auto --squash`. Policies stay required; auto-complete merges when they pass. Add `--delete-source` when the user asks.
+1. PR not merged yet: `aihub pr checks --pr 42` lists what blocks completion. If the user wants it merged: `aihub pr complete --pr 42 --auto --squash`. Policies stay required; auto-complete merges when they pass. Add `--delete-source` when the user asks.
 2. Preview the cleanup: `aihub story finish --id 123 --dry-run`.
 3. Run it after the PR is merged:
 

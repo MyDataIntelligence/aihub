@@ -34,6 +34,22 @@ Every workflow of the legacy Hub and where it lives now. A workflow is a skill (
 | background watch with notification ("laat het me weten") | `pr-watch` | `aihub watch --pr N\|--branch B [--until done\|comment\|vote] [--notify]`, `watch list\|stop` | done |
 | branch notes woven into the PR description | `pr-create` | `aihub note add "text"\|--file F`, `note list`; `pr create\|update` weave them (`--no-notes` skips) | done |
 | story state and resume ("Vorige keer ... Volgende stap ...") | `start-here`, `story-run` | `aihub status [--json]` | done |
+| story context for implementing (files, linked PRs and branches) | `implement` | `aihub story context --id N [--repos a,b] [--top 15]` | done |
+| bug and task work items | `story-create` | `aihub workitem create --type Bug\|Task --title T --body-file F [--parent N]` (templates: `workItems.templates`) | done |
+| PR policy evaluations and requeue | `story-finish`, `pipeline-fix` | `aihub pr checks --pr N`, `aihub pr requeue --pr N [--policy build]` | done |
+| retry a failed pipeline stage | `pipeline-fix` | `aihub pipeline retry --run ID [--stage S]` | done |
+| devops-repos (list and clone the project's repositories) | `devops-repos` | `aihub repos list [--filter t]`, `repos clone --name a,b` | done |
+| terraform (find and explain, never apply) | `terraform` | none: own tools, plans only through `aihub pipeline run` after the user's yes | done (skill only) |
+
+## Legacy generated skills (decisions)
+
+| Legacy skill | Decision |
+|---|---|
+| `setup` | covered by `aihub init`, `aihub doctor` and `aihub update` (install track) |
+| `devops-repos` | `devops-repos` skill plus `aihub repos list\|clone`; searching and reading stay with the agent's own tools |
+| `terraform` | `terraform` skill only; the legacy inventory tool had no real workflow beyond grep, and `terraform plan\|apply` is never run by the agent |
+| `cross-repo-test` | `aihub crossrepo` and `aihub port` (cross-repo track) |
+| `tool-index` | not needed: there are no tools to index; `aihub --help` lists the commands and `start-here` routes intents |
 
 ## Dropped on purpose
 
@@ -52,4 +68,4 @@ Every workflow of the legacy Hub and where it lives now. A workflow is a skill (
 
 ## Not verified against a real organisation
 
-All commands are tested with synthetic fixtures and temporary git repositories only. These endpoints have no live proof yet: work item links to branches and pull requests, attachment upload, wiki page update with its version header, pipeline run parameters, auto-complete user lookup, and the REST shape of review threads. Check each once against a test project before the first release.
+All commands are tested with synthetic fixtures and temporary git repositories only. These endpoints have no live proof yet: work item links to branches and pull requests, attachment upload, wiki page update with its version header, pipeline run parameters, policy evaluation endpoints (`policy/evaluations`, preview 7.1) and stage retry (`build/builds/{id}/stages/{stage}`, preview 7.1), the OS notification and detached start of `aihub watch`, auto-complete user lookup, and the REST shape of review threads. Check each once against a test project before the first release.

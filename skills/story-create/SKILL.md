@@ -15,6 +15,8 @@ The user describes new work and wants it in Azure DevOps.
 aihub story create --title "Export report as CSV" --body-file story.md
 ```
 
+A bug or task instead: `aihub workitem create --type Bug --title "..." --body-file bug.md [--parent 123]` (templates [bug](../_shared/assets/bug-template.md), [task](../_shared/assets/task-template.md); `workItems.templates` in `team.yaml`).
+
 3. Report the id and link the CLI prints. Do not guess them.
 
 Example: "maak een story voor CSV-export" gives `aihub story create --title "CSV-export van het rapport" --body-file story.md` and then the printed id.

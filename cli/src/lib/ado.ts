@@ -60,7 +60,7 @@ export class AdoClient {
   private url(path: string, query: Query = {}): string {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(query)) if (v !== undefined) q.set(k, String(v));
-    q.set("api-version", API_VERSION);
+    if (!q.has("api-version")) q.set("api-version", API_VERSION); // preview endpoints pass their own, e.g. 7.1-preview.1
     return `${this.remote.orgUrl}/${encodeURIComponent(this.remote.project)}/_apis/${path}?${q.toString()}`;
   }
 
