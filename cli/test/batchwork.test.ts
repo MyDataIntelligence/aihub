@@ -66,6 +66,19 @@ describe("batch", () => {
     ]);
   });
 
+  it("asks connectionData at organization level, not under the project (live: 404 otherwise)", async () => {
+    const { dir } = makeRepo();
+    const f = fakeFetch([
+      { match: /^https:\/\/dev\.azure\.com\/[^/]+\/_apis\/connectionData\?/, respond: () => ({ body: { authenticatedUser: { id: "me-guid" } } }) },
+      { match: /pullrequests\?/, respond: () => ({ body: { value: [{ pullRequestId: 7 }] } }) },
+    ]);
+    const { ctx, lines } = ctxFor(dir, f.fn);
+    const runner: Runner = async (argv) => ({ code: 0, output: argv.join(" ") });
+    await batch(ctx, { select: "prs:mine", run: "pr changes --pr {target}" }, runner);
+    expect(lines.join("\n")).toContain("7  ok");
+    expect(f.calls.find((c) => c.url.includes("connectionData"))?.url).not.toMatch(/\/test-project\/_apis\/connectionData/);
+  });
+
   it("selects PRs and branches through the ADO API", async () => {
     const { dir } = makeRepo();
     const f = fakeFetch([

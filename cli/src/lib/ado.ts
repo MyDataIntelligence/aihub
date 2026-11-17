@@ -57,19 +57,19 @@ export class AdoClient {
     return `${r.orgUrl}/${encodeURIComponent(r.project)}/_git/${encodeURIComponent(r.repo)}/pullrequest/${id}`;
   }
 
-  private url(path: string, query: Query = {}): string {
+  private url(path: string, query: Query = {}, orgLevel = false): string {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(query)) if (v !== undefined) q.set(k, String(v));
     if (!q.has("api-version")) q.set("api-version", API_VERSION); // preview endpoints pass their own, e.g. 7.1-preview.1
-    return `${this.remote.orgUrl}/${encodeURIComponent(this.remote.project)}/_apis/${path}?${q.toString()}`;
+    return `${this.remote.orgUrl}/${orgLevel ? "" : `${encodeURIComponent(this.remote.project)}/`}_apis/${path}?${q.toString()}`;
   }
 
   async request<T = any>(
     method: string,
     path: string,
-    opts: { query?: Query; body?: unknown; raw?: boolean; contentType?: string; rawBody?: Uint8Array; headers?: Record<string, string> } = {},
+    opts: { query?: Query; body?: unknown; raw?: boolean; orgLevel?: boolean; contentType?: string; rawBody?: Uint8Array; headers?: Record<string, string> } = {},
   ): Promise<{ data: T; headers: Headers }> {
-    const fullUrl = this.url(path, opts.query);
+    const fullUrl = this.url(path, opts.query, opts.orgLevel);
     const bodyText = opts.rawBody !== undefined ? `${opts.rawBody.length} bytes` : summarizeBody(opts.body);
     if (trace.dryRun && isRestWrite(method, path)) {
       trace.plan(`would ${method} ${fullUrl}${bodyText ? `   body ${bodyText}` : ""}`);
@@ -102,6 +102,11 @@ export class AdoClient {
 
   get<T = any>(path: string, query?: Query): Promise<T> {
     return this.request<T>("GET", path, { query }).then((r) => r.data);
+  }
+
+  /** GET an organization-level endpoint (not under the project), such as connectionData (a preview API). */
+  getOrg<T = any>(path: string, query?: Query): Promise<T> {
+    return this.request<T>("GET", path, { query: { "api-version": "7.1-preview.1", ...query }, orgLevel: true }).then((r) => r.data);
   }
 
   /** GET a collection, following x-ms-continuationtoken. Returns all `value` items. */
