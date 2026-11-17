@@ -25,7 +25,7 @@ describe("aihub doctor", () => {
     expect(by(report, "auth")).toMatchObject({ status: "FIX" });
     expect(by(report, "team.yaml").fix).toContain("aihub init");
     expect(by(report, "pr-template").status).toBe("FIX");
-    expect(by(report, "skills:codex").fix).toContain("aihub skills install --client codex --global");
+    expect(by(report, "skills:codex").fix).toContain("aihub skills install --client codex");
   });
 
   it("recognises PAT, az token and git credential as sign-in methods", async () => {
@@ -58,6 +58,13 @@ describe("aihub doctor", () => {
     const bad = (await doctor(dir, env)).report;
     expect(by(bad, "team.yaml").status).toBe("FIX");
     expect(by(bad, "team.yaml").detail).toContain("missing azureDevOps.organization");
+    // a copy older than the CLI is flagged as stale
+    const skill = join(h, ".config", "opencode", "skills", "start-here", "SKILL.md");
+    const { readFileSync, writeFileSync } = await import("node:fs");
+    writeFileSync(skill, readFileSync(skill, "utf8").replace(/aihub \S+ -->/, "aihub 0.0.1 -->"), "utf8");
+    const stale = (await doctor(dir, env)).report;
+    expect(by(stale, "skills:opencode").status).toBe("FIX");
+    expect(by(stale, "skills:opencode").fix).toContain("aihub skills update");
     void join; void sh;
   });
 });

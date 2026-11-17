@@ -27,8 +27,9 @@ describe("aihub init --no-pr", () => {
     expect(team.repositories[0]).toMatchObject({ name: "test-repo", defaultTarget: "main" });
     expect(existsSync(join(dir, ".azuredevops/pull_request_template.md"))).toBe(true);
     expect(existsSync(join(dir, ".agents/skills/_shared/assets/story-template.md"))).toBe(true);
-    expect(existsSync(join(dir, ".opencode/command/pr.md"))).toBe(true);
-    expect(existsSync(join(dir, ".github/prompts/pr.prompt.md"))).toBe(true);
+    // only team knowledge goes into the repository: no skills, no slash commands
+    expect(existsSync(join(dir, ".opencode"))).toBe(false);
+    expect(existsSync(join(dir, ".github"))).toBe(false);
     expect(lines.some((l) => l.startsWith("created  " + TEAM))).toBe(true);
     // the file we wrote passes our own doctor schema
     const schema = readFileSync(join(__dirname, "..", "..", "skills/_shared/references/team.schema.yaml"), "utf8");
@@ -41,7 +42,8 @@ describe("aihub init --no-pr", () => {
     write(dir, "docs/pull_request_template.md", "## Eigen\n");
     write(dir, ".opencode/command/pr.md", "eigen\n");
     const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
-    await main(["init", "--no-pr"], ctx);
+    await main(["init", "--no-pr", "--into-repo"], ctx);
+    expect(existsSync(join(dir, ".github/prompts/story.prompt.md"))).toBe(true);
     expect(readFileSync(join(dir, TEAM), "utf8")).toBe("mine: true\n");
     expect(readFileSync(join(dir, ".opencode/command/pr.md"), "utf8")).toBe("eigen\n");
     expect(existsSync(join(dir, ".azuredevops/pull_request_template.md"))).toBe(false);
@@ -74,7 +76,7 @@ describe("aihub init (pull request)", () => {
       { method: "POST", match: /pullrequests\?/, respond: () => ({ body: { pullRequestId: 9 } }) },
     ]);
     const { ctx, lines, errs } = ctxFor(dir, fn);
-    const code = await main(["init", "--language", "nl"], ctx);
+    const code = await main(["init", "--language", "nl", "--into-repo"], ctx);
     expect(errs).toEqual([]);
     expect(code).toBe(0);
     expect(errs).toEqual([]);

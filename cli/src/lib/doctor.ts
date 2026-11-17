@@ -7,7 +7,8 @@ import { defaultExec, type Exec, ADO_RESOURCE } from "./auth.js";
 import { CLIENTS, clientDirs } from "./clients.js";
 import type { Ctx } from "./context.js";
 import { originDefaultBranch, remoteUrl, repoRoot, showFile } from "./git.js";
-import { packRoot } from "./pack.js";
+import { compareVersions, installedVersion } from "./install.js";
+import { cliVersion, packRoot } from "./pack.js";
 import { requiredPaths, validateTeam } from "./schema.js";
 import { defaultTargetFor, loadTeam, readUtf8, TEAM_FILE } from "./team.js";
 import { resolveTemplate } from "./templates.js";
@@ -113,18 +114,24 @@ export function runChecks(ctx: Ctx): Check[] {
     );
   }
 
+  const current = cliVersion();
   for (const c of CLIENTS) {
-    const places = [
+    const found = [
       { label: "global", dir: clientDirs(c, ctx.env, { global: true }).skills },
       ...(root ? [{ label: "project", dir: clientDirs(c, ctx.env, { global: false, root }).skills }] : []),
-    ].filter((p) => existsSync(join(p.dir, "start-here", "SKILL.md")));
+    ]
+      .map((p) => ({ ...p, version: installedVersion(p.dir) }))
+      .filter((p) => p.version !== undefined);
+    const stale = found.filter((p) => compareVersions(p.version!, current) < 0);
+    const where = found.map((p) => `${p.label} ${p.dir} (aihub ${p.version})`).join(", ");
     checks.push(
-      places.length
-        ? ok(`skills:${c}`, places.map((p) => `${p.label} (${p.dir})`).join(", "))
-        : fix(`skills:${c}`, "aihub skills not installed", `aihub skills install --client ${c} --global`),
+      !found.length
+        ? fix(`skills:${c}`, "aihub skills not installed", `aihub skills install --client ${c}`)
+        : stale.length
+          ? fix(`skills:${c}`, `stale copy, older than the CLI ${current}: ${where}`, "run 'aihub skills update'")
+          : ok(`skills:${c}`, where),
     );
-  }
-  return checks;
+  }  return checks;
 }
 
 export function formatChecks(checks: Check[]): string[] {
