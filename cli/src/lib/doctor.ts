@@ -105,6 +105,15 @@ export function runChecks(ctx: Ctx): Check[] {
       }
     }
     const team = loadTeam(root);
+    const guidelines = Array.isArray(team.guidelines) ? (team.guidelines as unknown[]).map(String) : [];
+    if (guidelines.length) {
+      const missing = guidelines.filter((g) => !existsSync(join(root, g)));
+      checks.push(
+        missing.length
+          ? fix("guidelines", `listed in team.yaml but not found: ${missing.join(", ")}`, "add the files or remove them from guidelines: in team.yaml")
+          : ok("guidelines", `${guidelines.length} guideline file(s) found`),
+      );
+    }
     const target = defaultTargetFor(team, repoName) || originDefaultBranch(root) || "main";
     const tpl = resolveTemplate(target, { readRef: (b, p) => showFile(root!, b, p), localRoot: root });
     checks.push(
