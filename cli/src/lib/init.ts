@@ -1,4 +1,4 @@
-﻿import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { stringify } from "yaml";
@@ -21,6 +21,8 @@ export interface InitOpts {
   repo?: string;
   noPr?: boolean;
   language?: string;
+  /** Also write the slash commands into the repository (.opencode/command, .github/prompts); by default only team knowledge goes in. */
+  intoRepo?: boolean;
 }
 
 export interface Planned {
@@ -67,7 +69,7 @@ export function existingPrTemplate(root: string, target: string): string | undef
 }
 
 /** Everything `aihub init` would like to have in the repository (before skipping what exists). */
-export function planFiles(root: string, o: { org: string; project: string; repo: string; target: string; language: Language }): { plan: Planned[]; skips: Record<string, string> } {
+export function planFiles(root: string, o: { org: string; project: string; repo: string; target: string; language: Language; intoRepo?: boolean }): { plan: Planned[]; skips: Record<string, string> } {
   const pack = packRoot();
   const assets = join(pack, "skills", "_shared", "assets");
   const nl = o.language === "nl";
@@ -79,11 +81,13 @@ export function planFiles(root: string, o: { org: string; project: string; repo:
     { path: COMMIT_TEMPLATE, content: asset("commit-template.txt", "commit-template.nl.txt") },
   ];
   if (!found) plan.push({ path: PR_TEMPLATE, content: asset("pull_request_template.md", "pull_request_template.nl.md") });
-  for (const f of listFiles(join(pack, "commands", "opencode"))) {
-    plan.push({ path: `.opencode/command/${f}`, content: readPackFile(join(pack, "commands", "opencode", f)) });
-  }
-  for (const f of listFiles(join(pack, "commands", "copilot"))) {
-    plan.push({ path: `.github/prompts/${f}`, content: readPackFile(join(pack, "commands", "copilot", f)) });
+  if (o.intoRepo) {
+    for (const f of listFiles(join(pack, "commands", "opencode"))) {
+      plan.push({ path: `.opencode/command/${f}`, content: readPackFile(join(pack, "commands", "opencode", f)) });
+    }
+    for (const f of listFiles(join(pack, "commands", "copilot"))) {
+      plan.push({ path: `.github/prompts/${f}`, content: readPackFile(join(pack, "commands", "copilot", f)) });
+    }
   }
   return { plan, skips: found ? { [PR_TEMPLATE]: `a pull request template already exists (${found})` } : {} };
 }
@@ -112,8 +116,8 @@ function prBody(language: Language, r: InitResult): string {
     `## ${nl ? "Beschrijving" : "Description"}`,
     "",
     nl
-      ? "Voorstel van `aihub init` voor het teampakket: teambestand, sjablonen en slash-commando's. Bestaande bestanden zijn niet aangepast. Controleer de waarden in `team.yaml` voor het mergen."
-      : "Proposal from `aihub init` for the team pack: team file, templates and slash commands. Existing files were not changed. Check the values in `team.yaml` before merging.",
+      ? "Voorstel van `aihub init` voor het teampakket: teambestand en sjablonen. Bestaande bestanden zijn niet aangepast. Controleer de waarden in `team.yaml` voor het mergen."
+      : "Proposal from `aihub init` for the team pack: team file and templates. Existing files were not changed. Check the values in `team.yaml` before merging.",
     "",
     nl ? "Aangemaakt:" : "Created:",
     list(r.created),
@@ -129,7 +133,7 @@ export async function runInit(ctx: Ctx, o: InitOpts): Promise<InitResult> {
   const root = repoRoot(resolve(ctx.cwd, o.repo ?? "."));
   const remote = parseRemote(remoteUrl(root));
   const target = originDefaultBranch(root) || "main";
-  const info = { org: remote.org, project: remote.project, repo: remote.repo, target, language };
+  const info = { org: remote.org, project: remote.project, repo: remote.repo, target, language, intoRepo: !!o.intoRepo };
 
   if (o.noPr) {
     const p = planFiles(root, info);

@@ -8,11 +8,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   try {
     v = parseArgs({
       args: argv,
-      options: { repo: { type: "string" }, "no-pr": { type: "boolean" }, language: { type: "string" } },
+      options: { repo: { type: "string" }, "no-pr": { type: "boolean" }, language: { type: "string" }, "into-repo": { type: "boolean" } },
     }).values;
   } catch (e) {
     throw new AihubError((e as Error).message);
   }
-  const r = await runInit(ctx, { repo: v.repo as string | undefined, noPr: !!v["no-pr"], language: v.language as string | undefined });
+  const r = await runInit(ctx, { repo: v.repo as string | undefined, noPr: !!v["no-pr"], language: v.language as string | undefined, intoRepo: !!v["into-repo"] });
   for (const l of reportInit(r)) ctx.out(l);
 }

@@ -88,15 +88,44 @@ describe("aihub skills install --global", () => {
     expect(existsSync(join(h, ".codex", "skills", "start-here"))).toBe(false);
   });
 
-  it("without --global installs inside the repository", async () => {
+  it("--into-repo installs inside the repository", async () => {
     const { env } = fakeHome();
     const { dir } = makeRepo();
-    const r = await run(["skills", "install", "--client", "github-copilot"], env, dir);
+    const r = await run(["skills", "install", "--client", "github-copilot", "--into-repo"], env, dir);
     expect(r.errs).toEqual([]);
     expect(existsSync(join(dir, ".github", "skills", "start-here", "SKILL.md"))).toBe(true);
     expect(existsSync(join(dir, ".github", "prompts", "pr.prompt.md"))).toBe(true);
   });
 
+  it("update rewrites old copies of installed clients only and keeps edited files", async () => {
+    const { h, env } = fakeHome();
+    await run(["skills", "install", "--global", "--client", "codex"], env);
+    const old = join(h, ".codex", "skills", "pr-create", "SKILL.md");
+    const edited = join(h, ".codex", "skills", "pr-update", "SKILL.md");
+    // simulate a copy written by an older aihub: same content, older marker, still unchanged since install
+    const fs = await import("node:fs");
+    const man = join(h, ".codex", "skills", ".aihub-manifest.json");
+    const { createHash } = await import("node:crypto");
+    const oldText = readFileSync(old, "utf8").replace(/aihub \S+ -->/, "aihub 0.0.1 -->");
+    writeFileSync(old, oldText, "utf8");
+    const m = JSON.parse(readFileSync(man, "utf8"));
+    m.files["pr-create/SKILL.md"] = createHash("sha256").update(oldText, "utf8").digest("hex");
+    writeFileSync(man, JSON.stringify(m), "utf8");
+    writeFileSync(edited, readFileSync(edited, "utf8") + "\nMy rule.\n", "utf8");
+    const r = await run(["skills", "update", "--global"], env);
+    expect(r.errs).toEqual([]);
+    expect(readFileSync(old, "utf8")).not.toContain("0.0.1");
+    expect(readFileSync(edited, "utf8")).toContain("My rule.");
+    expect(r.lines.join("\n")).toContain("changed by the user");
+    expect(fs.existsSync(join(h, ".copilot"))).toBe(false); // not installed there, so not touched
+  });
+
+  it("update without any install explains what to do", async () => {
+    const { env } = fakeHome();
+    const r = await run(["skills", "update"], env);
+    expect(r.code).toBe(1);
+    expect(r.errs.join("")).toContain("aihub skills install");
+  });
   it("rejects an unknown client", async () => {
     const { env } = fakeHome();
     const r = await run(["skills", "install", "--global", "--client", "nope"], env);

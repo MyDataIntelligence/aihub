@@ -154,3 +154,38 @@ export function uninstallClients(clients: Client[], env: NodeJS.ProcessEnv, opts
   }
   return out;
 }
+
+/** The aihub version in the marker of an installed skills folder, or undefined when none is installed. */
+export function installedVersion(skillsDir: string): string | undefined {
+  try {
+    return /aihub (\S+?) (?:-->|$)/m.exec(readFileSync(join(skillsDir, "start-here", "SKILL.md"), "utf8"))?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+/** Negative when a is older than b (semver-like; a prerelease is older than its release). */
+export function compareVersions(a: string, b: string): number {
+  const parse = (v: string) => {
+    const m = /^(\d+)\.(\d+)\.(\d+)(?:-(.+))?/.exec(v);
+    return m ? { n: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] } : { n: [0, 0, 0], pre: v };
+  };
+  const x = parse(a);
+  const y = parse(b);
+  for (let i = 0; i < 3; i++) if (x.n[i] !== y.n[i]) return x.n[i] - y.n[i];
+  if (x.pre === y.pre) return 0;
+  if (!x.pre) return 1;
+  if (!y.pre) return -1;
+  return x.pre.localeCompare(y.pre, undefined, { numeric: true });
+}
+
+/** Does this client already have aihub skills in its global folder? */
+export function clientHasInstall(env: NodeJS.ProcessEnv, client: Client): boolean {
+  const d = clientDirs(client, env, { global: true });
+  return installedVersion(d.skills) !== undefined || Object.keys(readManifest(d.skills).files).length > 0;
+}
+
+/** Rewrite the copies of every selected client that has them from the bundled pack. */
+export function updateClients(clients: Client[], env: NodeJS.ProcessEnv): ClientReport[] {
+  return installClients(clients.filter((c) => clientHasInstall(env, c)), env, { global: true });
+}
