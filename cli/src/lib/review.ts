@@ -243,7 +243,7 @@ export async function prComplete(ctx: Ctx, o: CompleteOpts): Promise<string> {
   if (o.auto) {
     let userId: string | undefined;
     try {
-      userId = (await client.get<{ authenticatedUser?: { id?: string } }>("connectionData")).authenticatedUser?.id;
+      userId = (await client.getOrg<{ authenticatedUser?: { id?: string } }>("connectionData")).authenticatedUser?.id;
     } catch {
       userId = undefined;
     }
