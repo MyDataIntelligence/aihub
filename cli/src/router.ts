@@ -8,6 +8,12 @@ import * as pr from "./commands/pr.js";
 import * as skills from "./commands/skills.js";
 import * as fabric from "./commands/fabric.js";
 import * as robot from "./commands/robot.js";
+import * as cherryPick from "./commands/cherry-pick.js";
+import * as branch from "./commands/branch.js";
+import * as story from "./commands/story.js";
+import * as pipeline from "./commands/pipeline.js";
+import * as batch from "./commands/batch.js";
+import * as work from "./commands/work.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -24,6 +30,12 @@ export const commands: Record<string, CommandFn> = {
   doctor: doctor.run,
   fabric: fabric.run,
   robot: robot.run,
+  "cherry-pick": cherryPick.run,
+  branch: branch.run,
+  story: story.run,
+  pipeline: pipeline.run,
+  batch: batch.run,
+  work: work.run,
 };
 
 export const VERSION = cliVersion();

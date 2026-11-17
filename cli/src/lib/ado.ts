@@ -66,14 +66,14 @@ export class AdoClient {
   async request<T = any>(
     method: string,
     path: string,
-    opts: { query?: Query; body?: unknown; raw?: boolean } = {},
+    opts: { query?: Query; body?: unknown; raw?: boolean; contentType?: string } = {},
   ): Promise<{ data: T; headers: Headers }> {
     const res = await this.fetchFn(this.url(path, opts.query), {
       method,
       headers: {
         Authorization: await this.auth(),
         Accept: opts.raw ? "text/plain" : "application/json",
-        ...(opts.body !== undefined ? { "Content-Type": "application/json; charset=utf-8" } : {}),
+        ...(opts.body !== undefined ? { "Content-Type": opts.contentType ?? "application/json; charset=utf-8" } : {}),
       },
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     });
@@ -113,6 +113,15 @@ export class AdoClient {
 
   patch<T = any>(path: string, body: unknown, query?: Query): Promise<T> {
     return this.request<T>("PATCH", path, { body, query }).then((r) => r.data);
+  }
+
+  /** Work item writes need the JSON Patch media type. */
+  jsonPatch<T = any>(method: "POST" | "PATCH", path: string, ops: unknown[], query?: Query): Promise<T> {
+    return this.request<T>(method, path, { body: ops, query, contentType: "application/json-patch+json" }).then((r) => r.data);
+  }
+
+  workItemUrl(id: number): string {
+    return `${this.remote.orgUrl}/${encodeURIComponent(this.remote.project)}/_workitems/edit/${id}`;
   }
 
   getText(path: string, query?: Query): Promise<string> {

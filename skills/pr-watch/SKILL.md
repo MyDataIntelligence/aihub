@@ -14,7 +14,7 @@ After creating or updating a PR, or when the user gives a PR link or id.
 aihub pipeline follow
 ```
 
-2. Show state, failed stage and open review threads: `aihub pr changes`.
+2. Show state, failed stage and open review threads: `aihub work` (all my PRs) and `aihub comments get`.
 3. Green and no open threads: say so. Red: follow pipeline-fix. New comments: follow review-process.
 
 While waiting, do not poll by hand and do not start other work on the same branch; `pipeline follow` returns when the run is finished. Report the final state in one short line per check.

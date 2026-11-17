@@ -5,31 +5,29 @@ description: "Use when several repositories or branches must be released togethe
 # Release with batch
 
 ## When
-A release touches more than one repository or target branch.
+A release touches more than one pull request or target branch.
 
 ## Steps
-1. Describe the batch in a file: repositories (names or aliases from `team.yaml`), source PRs, target release branches.
-
-```yaml
-- repo: test-project
-  from: [42, 43]
-  to: [release/1.2]
-```
-
-2. Run it in one call:
+1. In each repository checkout, one call for all PRs and target branches:
 
 ```sh
-aihub batch --file release.yaml
+aihub cherry-pick --from 42,43 --to release/1.2 --pr
 ```
 
-3. Show the resulting PR links per repository.
+2. Many separate PRs or branches: one batch call, 4 in parallel, one result table:
 
-Example: two PRs to one release branch is one `release.yaml` and one command.
+```sh
+aihub batch --select "ids:42,43" --run "cherry-pick --from {target} --to release/1.2 --pr"
+```
+
+3. Show the resulting PR links.
+
+Example: two PRs to one release branch is one `aihub cherry-pick` call.
 
 ## What the CLI fills
-Repository resolution, branch checks, ordering, one PR per target, summary table. Do not ask the user per repository.
+Branch checks, ordering, one PR per target, summary table. Do not ask the user per target.
 
 ## If it fails
-One repo fails: the CLI reports it per repo; fix that one (see branch-sync) and rerun only it. Never invent ids or links.
+One target fails: the CLI reports it per target; fix that one (see branch-sync), or rerun only the failed ones with `aihub batch --retry-failed <batchId>`. Never invent ids or links.
 
 Rules: direct command, 0 questions. Local git uses your own tools. Content language follows the team template.
