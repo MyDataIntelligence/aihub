@@ -106,7 +106,8 @@ describe("read commands", () => {
     const b = await go([r], ["workspaces", "--filter", "shop"]);
     expect(b.out).not.toContain("DEV-test-project");
     const c = await go([r], ["workspaces", "--json"]);
-    expect(JSON.parse(c.out)).toHaveLength(2);
+    expect(JSON.parse(c.out).result).toHaveLength(2);
+    expect(JSON.parse(c.out).identity.kind).toBe("token");
   });
 
   it("retries a 429 using Retry-After", async () => {
@@ -438,7 +439,7 @@ describe("logs", () => {
     const t = await go(base, ["logs", "--workspace", "DEV-test-project", "--top", "1"]);
     expect(t.out).toContain("1 run(s)");
     const j = await go(base, ["logs", "--workspace", "DEV-test-project", "--status", "failed", "--json"]);
-    expect(JSON.parse(j.out).rows).toHaveLength(2);
+    expect(JSON.parse(j.out).result.rows).toHaveLength(2);
     const old = await go(base, ["logs", "--workspace", "DEV-test-project", "--since", "30d", "--status", "failed"]);
     expect(old.out).toContain("ancient");
   });

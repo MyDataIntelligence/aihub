@@ -14,10 +14,12 @@ The user wants to look at, change or run something in a Fabric workspace. Reads 
 4. Write, always look first with `--dry-run`: `aihub fabric item create --workspace DEV-test-project --type Notebook --name nb_new --definition-dir fabric/nb_new.Notebook`, `item update`, `item rename`, `item delete --yes`, `git update|commit`.
 5. After code changes: `aihub fabric plan --check-workspace` lists the items to create or update, with the commands.
 
+As a service principal (secret from the credential store, never in the repo): `aihub fabric auth sp add ci --tenant T --client-id C --secret-from-stdin`, then `aihub fabric items --workspace DEV-test-project --sp ci`; `aihub fabric auth status` says who you are.
+
 ## What the CLI fills
-Workspace and item ids (from names), the default workspace of the branch, the token, long-running-operation polling, paging and 429 retries. Do not ask for ids.
+Workspace and item ids (from names), the default workspace of the branch, the token, long-running-operation polling, paging and 429 retries.
 
 ## If it fails
 ACC and PRD are refused (`--allow-env acc` only when the user asked). 403: the account lacks access. Not signed in: `az login`, `aihub fabric auth status`. A missing endpoint is reported per section; say which source was used. All commands and flags: [reference](references/fabric-commands.md).
 
-Rules: direct task, 0 questions, never touch ACC or PRD, add `--json` when you parse the output.
+Rules: direct task, 0 questions, never ACC or PRD, `--json` when you parse.

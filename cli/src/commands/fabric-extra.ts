@@ -1,12 +1,14 @@
+import { readFileSync } from "node:fs";
 import { AihubError } from "../lib/errors.js";
-import { FabricHttpError, guardEnv, inferEnv, jobTypeFor, type FabricClient } from "../lib/fabric.js";
+import { describe, FabricIdentity, identityJson, loadSpFile, saveSpFile, storeSecret } from "../lib/fabric-auth.js";
+import { FabricClient, FabricHttpError, guardEnv, inferEnv, jobTypeFor } from "../lib/fabric.js";
 import { oneLine, toTable } from "../lib/fabric-ops.js";
 import { dryRun, emit, itemArg, makeClient, need, target, where, type Setup } from "./fabric.js";
 
 // ---- workspaces, capacities, connections ----------------------------------------------
 
 export async function workspaceCmd(s: Setup, sub: string | undefined): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   if (sub === "create") {
     const name = need(s.v, "name", "display name");
     const env = inferEnv(name);
@@ -38,12 +40,12 @@ export async function workspaceCmd(s: Setup, sub: string | undefined): Promise<v
 }
 
 export async function capacitiesCmd(s: Setup): Promise<void> {
-  const caps = await makeClient(s.ctx).list<{ id: string; displayName: string; sku?: string; region?: string; state?: string }>("/capacities");
+  const caps = await makeClient(s.ctx, s.v).list<{ id: string; displayName: string; sku?: string; region?: string; state?: string }>("/capacities");
   emit(s, caps, caps.length ? toTable([["id", "name", "sku", "region", "state"], ...caps.map((c) => [c.id, c.displayName, c.sku ?? "-", c.region ?? "-", c.state ?? "-"])]) : "no capacities visible for this account");
 }
 
 export async function connectionsCmd(s: Setup, what: "connections" | "gateways"): Promise<void> {
-  const rows = await makeClient(s.ctx).list<{ id: string; displayName?: string; connectivityType?: string; type?: string }>(`/${what}`);
+  const rows = await makeClient(s.ctx, s.v).list<{ id: string; displayName?: string; connectivityType?: string; type?: string }>(`/${what}`);
   const f = (s.v.filter as string | undefined)?.toLowerCase();
   const out = rows.filter((r) => !f || `${r.displayName ?? ""} ${r.id}`.toLowerCase().includes(f));
   emit(s, out, out.length ? toTable([["id", "name", "kind"], ...out.map((r) => [r.id, r.displayName ?? "-", r.connectivityType ?? r.type ?? "-"])]) : `no ${what} visible for this account`);
@@ -52,7 +54,7 @@ export async function connectionsCmd(s: Setup, what: "connections" | "gateways")
 // ---- schedules, shortcuts ---------------------------------------------------------------
 
 export async function schedulesCmd(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   const it = await itemArg(s, client, t.id);
   const jobType = (s.v["job-type"] as string | undefined) ?? (jobTypeFor(it.type) === "Pipeline" ? "Pipeline" : "DefaultJob");
@@ -62,7 +64,7 @@ export async function schedulesCmd(s: Setup): Promise<void> {
 }
 
 export async function shortcutsCmd(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   const lh = await client.resolveItem(t.id, need(s.v, "lakehouse", "name|id"), "Lakehouse");
   const sc = await client.list<{ name: string; path: string; target?: { type?: string } }>(`/workspaces/${t.id}/items/${lh.id}/shortcuts`);
@@ -72,7 +74,7 @@ export async function shortcutsCmd(s: Setup): Promise<void> {
 // ---- lakehouse load / maintenance ----------------------------------------------------------
 
 export async function lakehouseLoad(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const table = need(s.v, "table", "table name");
   const rel = need(s.v, "path", "file path under Files, e.g. landing/orders.csv");
   const t = await target(s, client, true);
@@ -85,7 +87,7 @@ export async function lakehouseLoad(s: Setup): Promise<void> {
 }
 
 export async function lakehouseMaintenance(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const table = need(s.v, "table", "table name");
   const t = await target(s, client, true);
   const lh = await client.resolveItem(t.id, need(s.v, "lakehouse", "name|id"), "Lakehouse");
@@ -99,7 +101,7 @@ export async function lakehouseMaintenance(s: Setup): Promise<void> {
 // ---- environments --------------------------------------------------------------------------
 
 export async function environmentCmd(s: Setup, sub: string | undefined): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const publish = sub === "publish";
   if (!publish && sub !== "libraries") throw new AihubError("usage: aihub fabric environment publish|libraries --workspace W --item E");
   const t = await target(s, client, publish);
@@ -149,7 +151,7 @@ export function stageEnv(st: Stage, all: Stage[]) {
 }
 
 export async function deploymentCmd(s: Setup, sub: string | undefined): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   if (sub === "list" || !sub) {
     const all = await client.list<{ id: string; displayName: string; description?: string }>("/deploymentPipelines");
     return emit(s, all, all.length ? toTable([["id", "name"], ...all.map((p) => [p.id, p.displayName])]) : "no deployment pipelines visible for this account");
@@ -172,4 +174,90 @@ export async function deploymentCmd(s: Setup, sub: string | undefined): Promise<
   throw new AihubError("usage: aihub fabric deployment list|stages|deploy --pipeline P [--from-stage S --to-stage T]");
 }
 
+// ---- auth: who am I, service principals ----------------------------------------------------------
+
+export async function authCmd(s: Setup, pos: string[]): Promise<void> {
+  const deps = { env: s.ctx.env, fetch: s.ctx.fetch, exec: s.ctx.exec, now: s.ctx.now, tokenCache: s.ctx.tokenCache };
+  const file = loadSpFile(deps);
+  if (pos[1] === "status" || pos[0] === "status" || !pos[0]) {
+    const id = new FabricIdentity(deps, s.v.sp as string | undefined);
+    const ident = id.resolve();
+    const lines = [`identity: ${describeIdentity(ident)}`];
+    let expires: number | undefined;
+    try {
+      expires = await id.expiry("fabric");
+      if (expires) lines.push(`token expires: ${new Date(expires).toISOString()}`);
+      else lines.push("token expiry: managed by az / the token you supplied");
+    } catch (e) {
+      lines.push(`sign-in failed: ${(e as Error).message}`);
+    }
+    lines.push(`registered service principals: ${Object.keys(file.principals).join(", ") || "none"}${file.default ? ` (default ${file.default})` : ""}`);
+    return emit(s, { identity: identityJson(ident), expires, registered: Object.keys(file.principals), default: file.default }, lines.join("\n"));
+  }
+  if (pos[0] !== "sp") throw new AihubError("usage: aihub fabric auth status | sp add|list|remove|default|test");
+  const act = pos[1];
+  const name = pos[2];
+  const nameOf = () => {
+    if (!name) throw new AihubError(`usage: aihub fabric auth sp ${act} <name>`);
+    return name;
+  };
+  if (act === "list") {
+    const rows = Object.entries(file.principals).map(([n, p]) => [n, p.tenant, p.clientId, p.secretRef.startsWith("kv://") ? p.secretRef : p.secretRef.startsWith("cert:") ? "certificate" : "credential store", n === file.default ? "default" : ""]);
+    return emit(s, file, rows.length ? toTable([["name", "tenant", "client id", "secret", ""], ...rows]) : "no service principals registered; add one with: aihub fabric auth sp add <name> --tenant T --client-id C --secret-from-stdin");
+  }
+  if (act === "add") {
+    const n = nameOf();
+    const tenant = need(s.v, "tenant", "tenant id");
+    const clientId = need(s.v, "client-id", "application (client) id");
+    const kinds = ["secret-from-stdin", "cert", "keyvault"].filter((k) => s.v[k]);
+    if (kinds.length !== 1) throw new AihubError("give exactly one of --secret-from-stdin, --cert <pem file> or --keyvault kv://<vault>/<secret>");
+    let secretRef: string;
+    if (s.v.cert) secretRef = `cert:${s.v.cert as string}`;
+    else if (s.v.keyvault) {
+      secretRef = s.v.keyvault as string;
+      if (!/^kv:\/\/[^/]+\/[^/]+$/.test(secretRef)) throw new AihubError(`--keyvault must look like kv://<vault>/<secret>, not '${secretRef}'`);
+    } else {
+      const secret = (s.ctx.stdin ? s.ctx.stdin() : readFileSync(0, "utf8")).trim();
+      if (!secret) throw new AihubError("no secret on stdin: pipe it in, for example: echo $SECRET | aihub fabric auth sp add ...");
+      if (s.v["dry-run"]) return dryRun(s, [`register service principal ${n} (client ${clientId}) with a secret in the credential store`]);
+      storeSecret(deps, n, secret);
+      secretRef = `store:${n}`;
+    }
+    if (s.v["dry-run"]) return dryRun(s, [`register service principal ${n} (client ${clientId}) with ${secretRef}`]);
+    file.principals[n] = { tenant, clientId, secretRef };
+    saveSpFile(deps, file);
+    return emit(s, { added: n }, `registered service principal ${n} (client ${clientId}); test it with: aihub fabric auth sp test ${n}`);
+  }
+  if (act === "remove") {
+    const n = nameOf();
+    if (!file.principals[n]) throw new AihubError(`service principal '${n}' is not registered`);
+    delete file.principals[n];
+    if (file.default === n) file.default = undefined;
+    saveSpFile(deps, file);
+    return emit(s, { removed: n }, `removed service principal ${n} (a secret in the credential store is not deleted: remove the '${n}' entry there too)`);
+  }
+  if (act === "default") {
+    if (s.v.clear) {
+      file.default = undefined;
+      saveSpFile(deps, file);
+      return emit(s, { default: null }, "no default service principal: the az user is used again");
+    }
+    const n = nameOf();
+    if (!file.principals[n]) throw new AihubError(`service principal '${n}' is not registered`);
+    file.default = n;
+    saveSpFile(deps, file);
+    return emit(s, { default: n }, `default service principal: ${n}`);
+  }
+  if (act === "test") {
+    const n = nameOf();
+    const id = new FabricIdentity(deps, n);
+    id.resolve();
+    const client = new FabricClient(() => id.token("fabric"), s.ctx.fetch, { sleep: s.ctx.sleep, waitScale: s.ctx.env.AIHUB_POLL_MS === "0" ? 0 : 1, identity: id });
+    const ws = await client.workspaces();
+    return emit(s, { ok: true, workspaces: ws.length }, `service principal ${n} signed in and sees ${ws.length} workspace(s)`);
+  }
+  throw new AihubError("usage: aihub fabric auth sp add|list|remove|default|test");
+}
+
+const describeIdentity = describe;
 void FabricHttpError;

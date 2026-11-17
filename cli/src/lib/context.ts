@@ -15,6 +15,8 @@ export interface Ctx {
   /** Test hooks for polling commands. */
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  /** Test hook: the text piped to stdin (for --secret-from-stdin). */
+  stdin?: () => string;
   out: (line: string) => void;
   err: (line: string) => void;
 }

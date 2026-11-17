@@ -13,7 +13,6 @@ import {
   formatPlan,
   guardEnv,
   inferEnv,
-  makeFabricAuth,
   selectWorkspaces,
   workspaceGroups,
   type FabricItem,
@@ -24,10 +23,12 @@ import {
   chooseWorkspace,
 } from "../lib/fabric.js";
 import { collectJobLogs, collectRefreshLogs, workspaceRuns } from "../lib/fabric-logs.js";
-import { capacitiesCmd, connectionsCmd, deploymentCmd, environmentCmd, lakehouseLoad, lakehouseMaintenance, schedulesCmd, shortcutsCmd, workspaceCmd } from "./fabric-extra.js";
+import { authCmd, capacitiesCmd, connectionsCmd, deploymentCmd, environmentCmd, lakehouseLoad, lakehouseMaintenance, schedulesCmd, shortcutsCmd, workspaceCmd } from "./fabric-extra.js";
 import { didYouMean } from "../lib/fabric.js";
 import { durationText, filterLines, formatSections, oneLine, parseSince, readDefinitionDir, toTable, writeDefinitionParts } from "../lib/fabric-ops.js";
 import { git, repoRoot } from "../lib/git.js";
+import { FabricIdentity, identityJson } from "../lib/fabric-auth.js";
+import { redact } from "../lib/fabric-redact.js";
 import { loadTeam } from "../lib/team.js";
 
 const USAGE = `usage: aihub fabric <command> [flags]
@@ -66,6 +67,13 @@ const OPTIONS = {
   yes: { type: "boolean" },
   json: { type: "boolean" },
   wait: { type: "boolean" },
+  sp: { type: "string" },
+  tenant: { type: "string" },
+  "client-id": { type: "string" },
+  "secret-from-stdin": { type: "boolean" },
+  cert: { type: "string" },
+  keyvault: { type: "string" },
+  clear: { type: "boolean" },
   capacity: { type: "string" },
   table: { type: "string" },
   append: { type: "boolean" },
@@ -184,6 +192,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     case "connections":
     case "gateways":
       return connectionsCmd(s, sub);
+    case "auth":
+      return authCmd(s, pos);
     case "deployment":
       return deploymentCmd(s, pos[0]);
     case "git":
@@ -197,11 +207,18 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
 
 // ---- shared helpers --------------------------------------------------------------
 
-export function makeClient(ctx: Ctx): FabricClient {
-  const auth = makeFabricAuth({ env: ctx.env, exec: ctx.exec, cacheFile: ctx.tokenCache && `${ctx.tokenCache}.fabric` });
-  const storageAuth = makeFabricAuth({ env: ctx.env, exec: ctx.exec, resource: "https://storage.azure.com", tokenVar: "AIHUB_ONELAKE_TOKEN", cacheFile: ctx.tokenCache && `${ctx.tokenCache}.onelake` });
-  const powerbiAuth = makeFabricAuth({ env: ctx.env, exec: ctx.exec, resource: "https://analysis.windows.net/powerbi/api", tokenVar: "AIHUB_POWERBI_TOKEN", cacheFile: ctx.tokenCache && `${ctx.tokenCache}.powerbi` });
-  return new FabricClient(auth, ctx.fetch, { sleep: ctx.sleep, waitScale: ctx.env.AIHUB_POLL_MS === "0" ? 0 : 1, storageAuth, powerbiAuth });
+let currentIdentity: FabricIdentity | undefined;
+
+export function makeClient(ctx: Ctx, v: V = {}): FabricClient {
+  const identity = new FabricIdentity({ env: ctx.env, fetch: ctx.fetch, exec: ctx.exec, now: ctx.now, tokenCache: ctx.tokenCache }, v.sp as string | undefined);
+  currentIdentity = identity;
+  return new FabricClient(() => identity.token("fabric"), ctx.fetch, {
+    sleep: ctx.sleep,
+    waitScale: ctx.env.AIHUB_POLL_MS === "0" ? 0 : 1,
+    storageAuth: () => identity.token("storage"),
+    powerbiAuth: () => identity.token("powerbi"),
+    identity,
+  });
 }
 
 export const need = (v: V, key: string, what: string): string => {
@@ -220,7 +237,10 @@ const num = (v: V, key: string, dflt: number): number => {
 
 /** Print text, or the data as JSON with --json. */
 export function emit(s: Setup, data: unknown, text: string): void {
-  s.ctx.out(s.v.json ? JSON.stringify(data, null, 2) : text);
+  if (s.v.json) {
+    const id = currentIdentity?.resolve();
+    s.ctx.out(redact(JSON.stringify(id ? { identity: identityJson(id), result: data } : { result: data }, null, 2)));
+  } else s.ctx.out(redact(text));
 }
 
 /**
@@ -241,6 +261,7 @@ export async function target(s: Setup, client: FabricClient, write: boolean): Pr
   // refuse ACC/PRD by name before any Fabric call; a bare id is classified after its name is read
   const byId = adhoc && isGuidLike(ws.name);
   if (write && !byId) guardEnv(ws, s.v["allow-env"] as string | undefined);
+  client.identity?.hint(ws.servicePrincipal);
   const id = await client.workspaceId(ws);
   if (adhoc && write && byId) {
     // a bare id says nothing about the stage: read the name and classify that
@@ -275,7 +296,7 @@ async function planCmd(s: Setup): Promise<void> {
   const c = changedFiles(s.root!, loadTeam(s.root!), { branch: v.branch as string | undefined, target: v.target as string | undefined });
   const plan = buildPlan(c.files, s.list, { branch: c.branch, workspace: (v.workspace as string[] | undefined)?.[0] });
   if (v["check-workspace"] && plan.workspace) {
-    const client = makeClient(ctx);
+    const client = makeClient(ctx, v);
     const wsId = await client.workspaceId(plan.workspace);
     const have = await client.items(wsId);
     for (const it of plan.items) it.inWorkspace = have.some((h) => h.displayName === it.name && h.type === it.type);
@@ -296,7 +317,8 @@ async function runStatus(s: Setup, sub: "run" | "status"): Promise<void> {
   if (!v.item) throw new AihubError(`aihub fabric ${sub} needs --item <name|id>`);
   if (sub === "status" && !v.job) throw new AihubError("aihub fabric status needs --job <id> and --item <name|id>");
 
-  const client = makeClient(ctx);
+  const client = makeClient(ctx, v);
+  client.identity?.hint(ws.servicePrincipal);
   if (chosen.length > 1) {
     if (sub === "status") throw new AihubError("aihub fabric status takes one --workspace");
     await runMany(s, client, chosen);
@@ -386,7 +408,7 @@ async function runMany(s: Setup, client: FabricClient, chosen: FabricWorkspace[]
 // ---- read commands -----------------------------------------------------------------
 
 async function workspacesCmd(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const f = (s.v.filter as string | undefined)?.toLowerCase();
   const all = (await client.workspaces()).filter((w) => !f || w.displayName.toLowerCase().includes(f) || w.id.toLowerCase().includes(f));
   const known = (n: string) => s.list.find((w) => w.name.toLowerCase() === n.toLowerCase())?.environment ?? "-";
@@ -394,7 +416,7 @@ async function workspacesCmd(s: Setup): Promise<void> {
 }
 
 async function itemsCmd(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   const type = typeArg(s);
   const items = await client.items(t.id, type);
@@ -403,7 +425,7 @@ async function itemsCmd(s: Setup): Promise<void> {
 }
 
 async function itemShow(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   const it = await itemArg(s, client, t.id);
   const full = (await client.request("GET", `/workspaces/${t.id}/items/${it.id}`)).data as Record<string, unknown>;
@@ -416,7 +438,7 @@ async function itemShow(s: Setup): Promise<void> {
 }
 
 async function itemDefinition(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   const it = await itemArg(s, client, t.id);
   const fmt = s.v.format as string | undefined;
@@ -434,7 +456,7 @@ async function itemDefinition(s: Setup): Promise<void> {
 }
 
 async function jobsCmd(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   const it = await itemArg(s, client, t.id);
   const jobs = (await client.jobs(t.id, it.id)).sort((a, b) => Date.parse(b.startTimeUtc ?? "") - Date.parse(a.startTimeUtc ?? ""));
@@ -447,7 +469,7 @@ async function jobsCmd(s: Setup): Promise<void> {
 
 async function logsCmd(s: Setup): Promise<void> {
   const { v } = s;
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   const search = v.search as string | undefined;
   const tail = v.tail ? num(v, "tail", 1) : undefined;
@@ -503,7 +525,7 @@ async function oneLakeList(client: FabricClient, wsId: string, lhId: string, fol
 }
 
 async function lakehouseTables(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   const lh = await lakehouse(s, client, t.id);
   try {
@@ -518,7 +540,7 @@ async function lakehouseTables(s: Setup): Promise<void> {
 }
 
 async function lakehouseFiles(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   const lh = await lakehouse(s, client, t.id);
   const path = (s.v.path as string | undefined) ?? "";
@@ -532,7 +554,7 @@ const KNOWN_TYPES = ["Notebook", "DataPipeline", "Lakehouse", "Warehouse", "Sema
 
 async function itemCreate(s: Setup): Promise<void> {
   const { v } = s;
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const type0 = need(v, "type", "Notebook|DataPipeline|Lakehouse|...");
   const type = KNOWN_TYPES.find((k) => k.toLowerCase() === type0.toLowerCase()) ?? type0;
   const name = need(v, "name", "display name");
@@ -552,7 +574,7 @@ async function itemCreate(s: Setup): Promise<void> {
 
 async function itemUpdate(s: Setup): Promise<void> {
   const { v } = s;
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const dir = need(v, "definition-dir", "folder");
   const parts = readDefinitionDir(dir);
   const t = await target(s, client, true);
@@ -567,7 +589,7 @@ async function itemUpdate(s: Setup): Promise<void> {
 }
 
 async function itemRename(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const name = need(s.v, "name", "new display name");
   const t = await target(s, client, true);
   const it = await itemArg(s, client, t.id);
@@ -580,7 +602,7 @@ async function itemRename(s: Setup): Promise<void> {
 }
 
 async function itemDelete(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, true);
   const it = await itemArg(s, client, t.id);
   if (s.v["dry-run"]) {
@@ -594,7 +616,7 @@ async function itemDelete(s: Setup): Promise<void> {
 
 async function cancelCmd(s: Setup, jobId: string | undefined): Promise<void> {
   if (!jobId) throw new AihubError("needs --job <id> (or: aihub fabric run --cancel <job> --item <name|id>)");
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, true);
   const it = await itemArg(s, client, t.id);
   if (s.v["dry-run"]) {
@@ -621,7 +643,7 @@ const changeRows = (st: GitStatus) =>
   (st.changes ?? []).map((c) => [c.itemMetadata?.itemType ?? "?", c.itemMetadata?.displayName ?? "?", c.workspaceChange ?? "-", c.remoteChange ?? "-", c.conflictType && c.conflictType !== "None" ? c.conflictType : "-"]);
 
 async function gitStatus(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   const st = await gitState(client, t.id);
   const rows = changeRows(st);
@@ -629,7 +651,7 @@ async function gitStatus(s: Setup): Promise<void> {
 }
 
 async function gitUpdate(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, true);
   const st = await gitState(client, t.id);
   const remote = (st.changes ?? []).filter((c) => c.remoteChange);
@@ -649,7 +671,7 @@ async function gitUpdate(s: Setup): Promise<void> {
 }
 
 async function gitCommit(s: Setup): Promise<void> {
-  const client = makeClient(s.ctx);
+  const client = makeClient(s.ctx, s.v);
   const file = need(s.v, "message-file", "file");
   const message = readFileSync(file, "utf8").trim();
   if (!message) throw new AihubError(`--message-file '${file}' is empty`);
