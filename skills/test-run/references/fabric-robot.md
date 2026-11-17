@@ -5,7 +5,7 @@
 | Command | Does |
 |---|---|
 | `aihub fabric plan [--branch B] [--target T] [--workspace W]` | Maps changed files (`<name>.Notebook/`, `<name>.DataPipeline/`, lakehouse items) to Fabric items, ordered: dependencies, notebooks, pipelines. |
-| `aihub fabric run --item N [--workspace W] [--params-file F] [--wait]` | Starts a notebook or pipeline job; with `--wait` polls and prints status and the failure reason. |
+| `aihub fabric run --item N [--workspace W]... [--workspaces GROUP] [--params-file F] [--wait]` | Starts a notebook or pipeline job; with `--wait` polls and prints status and the failure reason. Several `--workspace` flags or a team.yaml group run it in each workspace: one results table, errors in one workspace do not stop the others. |
 | `aihub fabric status --item N --job ID [--workspace W]` | Status of one job. |
 | `aihub robot needed [--branch B]` | Which suites cover a changed flow, and whether a test changed with it. |
 | `aihub robot run [--on target\|branch] [--suite S] [--include tag] [--pipeline P] [--no-merge] [--no-wait]` | With a merge target: merges the current branch (and `mustAlreadyContain` branches that are behind) into the target branch in a temporary worktree, pushes it and lists the commits that went in; a conflict stops with the files and pushes nothing. Then queues the team Robot pipeline on that branch and prints the results summary. |

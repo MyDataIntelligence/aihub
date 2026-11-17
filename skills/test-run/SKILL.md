@@ -15,6 +15,8 @@ aihub fabric plan
 aihub fabric run --item nb_load_orders --wait
 ```
 
+Several workspaces ("in beide DEV's"): repeat `--workspace` or use `--workspaces <group>`.
+
 2. Robot: check first, then run only when needed. The target comes from the sentence: "test op staging" is `--on staging`, "draai Robot op feature" is `--on feature`. No target named: use the team default, do not ask. Run merges your branch into a merge target first and stops on a conflict:
 
 ```sh
