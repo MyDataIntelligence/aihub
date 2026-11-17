@@ -1,6 +1,6 @@
 # Parity with the legacy AI Context Hub
 
-Every workflow of the legacy Hub and where it lives now. A workflow is a skill (when and how) plus an `aihub` command (the precise work). "Other track" means a command or skill delivered by a parallel change (stories and pull request flows, install, Fabric and Robot); the name is the target, not a gap.
+Every workflow of the legacy Hub and where it lives now. A workflow is a skill (when and how) plus an `aihub` command (the precise work). "Separate change" means a command or skill delivered by a parallel change (stories and pull request flows, install, Fabric and Robot); the name is the target, not a gap.
 
 | Legacy workflow | Skill | `aihub` command | Status |
 |---|---|---|---|
@@ -11,16 +11,16 @@ Every workflow of the legacy Hub and where it lives now. A workflow is a skill (
 | implement | `implement` | none (agent writes code and tests) | done |
 | create-pr | `pr-create`, `pr-update` | `aihub pr create\|update` | done |
 | pr-comments (process review comments) | `review-process` | `aihub comments get\|reply` | done |
-| release-cherry-pick (one PR to other branches) | `branch-sync` | `aihub cherry-pick` | other track |
+| release-cherry-pick (one PR to other branches) | `branch-sync` | `aihub cherry-pick` | done (separate change) |
 | release train (stories to main and staging) | `release` | `aihub release plan\|run`, `aihub batch` | done |
-| fix-pipeline | `pipeline-fix` | `aihub pipeline follow\|status` | other track |
-| pipeline run or queue | `pipeline-fix`, `story-run` | `aihub pipeline run --name P` | other track (cli-flows) |
+| fix-pipeline | `pipeline-fix` | `aihub pipeline follow\|status` | done (separate change) |
+| pipeline run or queue | `pipeline-fix`, `story-run` | `aihub pipeline run --name P` | done (separate change) |
 | change-template | `team-settings` | edit `team.yaml` or a template through a PR, `aihub doctor` | done |
 | settings | `team-settings` | `team.yaml`, `aihub init`, `aihub doctor` | done |
 | story-finish | `story-finish` | `aihub story finish --id N` | done |
 | story-run (end-to-end autopilot) | `story-run` | chains the commands above | done |
-| robot-tests (run, write a test for a new flow) | `robot-tests` | `aihub robot` | other track |
-| fabric-items | `fabric-items` | `aihub fabric` | other track |
+| robot-tests (run, write a test for a new flow) | `test-run` | `aihub robot` | done (separate change) |
+| fabric-items | `test-run` | `aihub fabric` | done (separate change) |
 | wiki | `wiki` | `aihub wiki update --page P --body-file F [--publish]` | done |
 | voice-notes | `voice-notes` | `aihub story create`, `aihub story refine` | done |
 | evidence (screenshots in the PR) | `evidence` | `aihub evidence add --pr N --file img.png` | done |
@@ -30,7 +30,7 @@ Every workflow of the legacy Hub and where it lives now. A workflow is a skill (
 | explain a PR | `pr-explain` | `aihub pr explain --pr N` | done |
 | work item state | `story-finish` | `aihub workitem state --id N --to S` | done |
 | PR auto-complete | `story-finish` | `aihub pr complete --pr N [--auto] [--delete-source] [--squash]` | done |
-| refine and create stories | `story-create`, `story-refine` | `aihub story create\|refine\|show` | other track |
+| refine and create stories | `story-create`, `story-refine` | `aihub story create\|refine\|show` | done (separate change) |
 
 ## Dropped on purpose
 
