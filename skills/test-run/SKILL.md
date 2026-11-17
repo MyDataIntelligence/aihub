@@ -8,7 +8,7 @@ description: "Use when the change must be tested in Fabric or with Robot: 'test 
 The branch changes Fabric items (notebooks, pipelines) or a flow with Robot integration tests, and the PR tests section needs real results.
 
 ## Steps
-1. Fabric: see what to run, then run it in order and wait:
+1. Fabric (all other Fabric commands: skill `fabric`): see what to run, then run it in order and wait:
 
 ```sh
 aihub fabric plan
