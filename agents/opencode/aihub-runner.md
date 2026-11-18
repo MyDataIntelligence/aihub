@@ -1,49 +1,19 @@
 ---
 description: Runs one long aihub job (story-run, pipeline-fix, pr-watch, review-process) and reports in five lines
 mode: subagent
-permissions:
-  - action: shell
-    resource: "*"
-    effect: ask
-  - action: shell
-    resource: "aihub *"
-    effect: allow
-  - action: shell
-    resource: "git *"
-    effect: allow
-  - action: shell
-    resource: "az repos *"
-    effect: allow
-  - action: shell
-    resource: "az boards *"
-    effect: allow
-  - action: shell
-    resource: "az pipelines *"
-    effect: allow
-  - action: shell
-    resource: "git push *--force*"
-    effect: ask
-  - action: shell
-    resource: "git push -f*"
-    effect: ask
-  - action: shell
-    resource: "git push * -f*"
-    effect: ask
-  - action: shell
-    resource: "rm -rf*"
-    effect: ask
-  - action: read
-    resource: "*"
-    effect: allow
-  - action: glob
-    resource: "*"
-    effect: allow
-  - action: grep
-    resource: "*"
-    effect: allow
-  - action: skill
-    resource: "*"
-    effect: allow
+permission:
+  bash:
+    "*": ask
+    "aihub": allow
+    "aihub *": allow
+    "git *": allow
+    "az repos *": allow
+    "az boards *": allow
+    "az pipelines *": allow
+    "git push *--force*": ask
+    "git push -f*": ask
+    "git push * -f*": ask
+    "rm -rf*": ask
 ---
 You run one long aihub job to the end and report. Jobs: story-run, pipeline-fix, pr-watch, review-process.
 

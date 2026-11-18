@@ -8,54 +8,75 @@ const repoAgents = path.resolve(import.meta.dirname, "../../../agents");
 const repoSkills = path.resolve(import.meta.dirname, "../../../skills");
 const skillNames = fs.readdirSync(repoSkills, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith("_")).map((e) => e.name);
 
-const BODY = "Load the `start-here` skill and run its one `aihub` command.\n";
-const OC = `---\ndescription: Demo\nmode: primary\npermissions:\n  - action: shell\n    resource: "aihub *"\n    effect: allow\n---\n${BODY}`;
-const CP = `---\nname: demo\ndescription: Demo\ntools: ["execute", "read"]\n---\n${BODY}`;
+const BODY = "Load the `start-here` skill and run its one `aihub` command.";
 
-function pack(oc: string | undefined, cp: string | undefined): string {
+/** One valid agent "demo" for every client; `tweak` may change the text of one client. */
+function files(body = BODY): Record<string, { file: string; text: string }> {
+  return {
+    opencode: { file: "demo.md", text: `---\ndescription: Demo\nmode: primary\npermission:\n  bash:\n    "*": ask\n    "aihub *": allow\n---\n${body}\n` },
+    opencode2: { file: "demo.md", text: `---\ndescription: Demo\nmode: primary\npermissions:\n  - action: shell\n    resource: "aihub *"\n    effect: allow\n---\n${body}\n` },
+    copilot: { file: "demo.agent.md", text: `---\nname: demo\ndescription: Demo\ntools: ["execute", "read"]\n---\n${body}\n` },
+    codex: { file: "demo.toml", text: `name = "demo"\ndescription = "Demo"\ndeveloper_instructions = """\n${body}\n"""\n` },
+    claude: { file: "demo.md", text: `---\nname: demo\ndescription: Demo\ntools: Bash, Read\n---\n${body}\n` },
+  };
+}
+
+function pack(tweak: (f: ReturnType<typeof files>) => void = () => undefined): string {
+  const f = files();
+  tweak(f);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lint-agents-"));
-  fs.mkdirSync(path.join(root, "opencode"));
-  fs.mkdirSync(path.join(root, "copilot"));
-  if (oc !== undefined) fs.writeFileSync(path.join(root, "opencode", "demo.md"), oc);
-  if (cp !== undefined) fs.writeFileSync(path.join(root, "copilot", "demo.agent.md"), cp);
+  for (const [kind, { file, text }] of Object.entries(f)) {
+    fs.mkdirSync(path.join(root, kind));
+    if (text) fs.writeFileSync(path.join(root, kind, file), text);
+  }
   return root;
 }
+
+const lint = (tweak?: (f: ReturnType<typeof files>) => void) => lintAgents(pack(tweak), skillNames).join("\n");
 
 describe("lintAgents", () => {
   it("the agents of this repository pass", () => {
     expect(lintAgents(repoAgents, skillNames)).toEqual([]);
   });
 
-  it("accepts a valid pair", () => {
-    expect(lintAgents(pack(OC, CP), skillNames)).toEqual([]);
+  it("accepts a valid set", () => {
+    expect(lint()).toBe("");
   });
 
-  it("rejects broken front matter and missing keys", () => {
-    expect(lintAgents(pack("no front matter\n", CP), skillNames).join("\n")).toContain("front matter missing");
-    expect(lintAgents(pack(OC.replace("mode: primary", "mode: [unclosed"), CP), skillNames).join("\n")).toContain("not valid YAML");
-    expect(lintAgents(pack(OC.replace("mode: primary", "mode: sideways"), CP), skillNames).join("\n")).toContain("mode must be");
-    expect(lintAgents(pack(OC.replace("effect: allow", "effect: maybe"), CP), skillNames).join("\n")).toContain("permissions[0]");
-    expect(lintAgents(pack(OC, CP.replace("name: demo", "name: other")), skillNames).join("\n")).toContain("must equal the file name");
-    expect(lintAgents(pack(OC, CP.replace('tools: ["execute", "read"]\n', "")), skillNames).join("\n")).toContain("tools must be");
-    expect(lintAgents(pack(OC, CP.replace("description: Demo\n", "")), skillNames).join("\n")).toContain("description missing");
+  it("rejects broken front matter and missing keys per client", () => {
+    expect(lint((f) => (f.opencode.text = "no front matter\n"))).toContain("front matter missing");
+    expect(lint((f) => (f.opencode.text = f.opencode.text.replace("mode: primary", "mode: [unclosed")))).toContain("not valid YAML");
+    expect(lint((f) => (f.opencode.text = f.opencode.text.replace("mode: primary", "mode: sideways")))).toContain("mode must be");
+    expect(lint((f) => (f.opencode.text = f.opencode.text.replace('"aihub *": allow', '"aihub *": maybe')))).toContain("must be allow, ask or deny");
+    expect(lint((f) => (f.opencode2.text = f.opencode2.text.replace("effect: allow", "effect: maybe")))).toContain("permissions[0]");
+    expect(lint((f) => (f.copilot.text = f.copilot.text.replace("name: demo", "name: other")))).toContain("must equal the file name");
+    expect(lint((f) => (f.copilot.text = f.copilot.text.replace('tools: ["execute", "read"]\n', "")))).toContain("tools must be");
+    expect(lint((f) => (f.claude.text = f.claude.text.replace("tools: Bash, Read\n", "")))).toContain("tools must be a comma separated string");
+    expect(lint((f) => (f.codex.text = f.codex.text.replace('name = "demo"\n', "")))).toContain("expected name, description and developer_instructions");
+    expect(lint((f) => (f.codex.text = f.codex.text.replace('name = "demo"', 'name = "other"')))).toContain("must equal the file name");
+    expect(lint((f) => (f.claude.text = f.claude.text.replace("description: Demo\n", "")))).toContain("description missing");
   });
 
   it("rejects a body over the budget", () => {
-    const long = Array.from({ length: 30 }, (_, i) => `- rule number ${i}`).join("\n") + "\n";
-    const errs = lintAgents(pack(OC.replace(BODY, long), CP.replace(BODY, long)), skillNames).join("\n");
-    expect(errs).toContain("lines, max");
+    const long = Array.from({ length: 30 }, (_, i) => `- rule number ${i}`).join("\n");
+    const f = files(long);
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "lint-agents-"));
+    for (const [kind, { file, text }] of Object.entries(f)) {
+      fs.mkdirSync(path.join(root, kind));
+      fs.writeFileSync(path.join(root, kind, file), text);
+    }
+    expect(lintAgents(root, skillNames).join("\n")).toContain("lines, max");
   });
 
   it("rejects absolute paths, real names and skills that do not exist", () => {
-    const bad = "Read C:\\Users\\someone\\notes and use the `nope-skill` skill.\n";
-    const errs = lintAgents(pack(OC.replace(BODY, bad), CP.replace(BODY, bad)), skillNames).join("\n");
-    expect(errs).toContain("absolute path");
-    expect(errs).toContain('names the skill "nope-skill"');
-    expect(lintAgents(pack(OC.replace(BODY, "Ask IQBS.\n"), CP.replace(BODY, "Ask IQBS.\n")), skillNames).join("\n")).toContain("forbidden name");
+    const bad = (body: string) => lint((f) => (f.claude.text = f.claude.text.replace(BODY, body)));
+    expect(bad("Read C:\\Users\\someone\\notes.")).toContain("absolute path");
+    expect(bad("Use the `nope-skill` skill.")).toContain('names the skill "nope-skill"');
+    expect(bad("Ask IQBS.")).toContain("forbidden name");
   });
 
-  it("rejects bodies that differ between the clients or a client file that is missing", () => {
-    expect(lintAgents(pack(OC, CP.replace(BODY, BODY + "extra\n")), skillNames).join("\n")).toContain("bodies differ");
-    expect(lintAgents(pack(OC, undefined), skillNames).join("\n")).toContain("needs both");
+  it("rejects bodies that differ between the clients or a client folder that lacks the agent", () => {
+    expect(lint((f) => (f.codex.text = f.codex.text.replace(BODY, BODY + "\nextra")))).toContain("bodies differ");
+    expect(lint((f) => (f.opencode2.text = ""))).toContain("missing for opencode2");
   });
 });

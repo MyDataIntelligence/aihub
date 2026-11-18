@@ -34,7 +34,7 @@ Status: 1.0.0 (see [docs/releases/1.0.0.md](docs/releases/1.0.0.md)).
 
 ## Agents (optional)
 
-`aihub skills install` also installs two optional agents for opencode and GitHub Copilot: `aihub` (primary, works through the skills) and `aihub-runner` (subagent for long jobs). They are a thin layer over the skills; your default agent is untouched and the agents are only used when you pick them. `--no-agents` skips them, `--into-repo` writes `.opencode/agents/` and `.github/agents/`. How to pick them (opencode Tab, VS Code agent picker, Copilot CLI `/agent`) and the permissions: [docs/agents.md](docs/agents.md).
+`aihub skills install` also installs two optional agents for opencode, GitHub Copilot and Codex (Claude Code with `--client claude`): `aihub` (primary, works through the skills) and `aihub-runner` (subagent for long jobs). They are a thin layer over the skills; your default agent is untouched and the agents are only used when you pick them. `--no-agents` skips them, `--into-repo` writes them into the repository. How to pick them (opencode Tab, VS Code agent picker, Copilot CLI `/agent`) and the permissions: [docs/agents.md](docs/agents.md).
 
 ## Commands
 
