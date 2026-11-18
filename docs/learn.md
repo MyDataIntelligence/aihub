@@ -14,6 +14,19 @@ Facts come from git and the working files in about a second; Azure DevOps is ask
 
 `/leer [PR, branch or repository]` loads the skill: facts first, then `explanation.json`, validated, then the lesson with the pictures. The schema is the port of the old EXPLANATION.json (`references/schema.md` in the skill): one sentence, before and after, Mermaid diagrams, design choices with alternatives, tell-a-colleague, risks, quiz, concepts and the reason per changed piece. Pictures first: before/after, flow, architecture (callers), lineage (dbt).
 
+## Slice 2: your lessons, the lesson page and the tour
+
+| Command | Does |
+|---|---|
+| `aihub learn save --file explanation.json [--facts facts.json]` | validates, then keeps the lesson in `~/.config/aihub/learn` (`AIHUB_LEARN_HOME` or `XDG_CONFIG_HOME` move it); an invalid explanation saves nothing |
+| `aihub learn list [--all]`, `show --id`, `forget --id` | your lessons for this repository (or all), one lesson as JSON, remove one |
+| `aihub learn concepts [--mark NAME\|--unmark NAME]` | every concept of your lessons once, and which you marked as learned |
+| `aihub learn quiz [--id ID] [--score ID --correct N --of M]` | the questions of a lesson; keeps a score |
+
+The store is yours alone: nothing is written into a repository and nothing is shared with the team. Lessons of other repositories are listed only with `--all`.
+
+In VS Code the **Learn** view (Explorer) lists your lessons and concepts. A lesson opens as one page: the one-sentence summary, then the pictures (Mermaid, drawn by the bundled mermaid, no network), what changed and why with links to the files, who is affected, design choices, risks, a quiz you can click through, and concepts you can mark as learned. **Guided tour** walks through the changed pieces: it opens each file at the line, highlights it and shows the reason with Previous, Next and Stop. Reading only; lessons are written by `/leer`.
+
 ## Later slices
 
-The VS Code view and guided tour, the personal store `~/.config/aihub/learn`, `learn list|save|concepts|quiz`, `learn diagram` (Mermaid by default, iDiagram optional), `learn flow|glossary|week|onboarding`, and the learner profile. The store is per user only; there is no team-shared store.
+`learn diagram` (Mermaid by default, iDiagram optional), `learn flow|glossary|week|onboarding`, and the learner profile. The store is per user only; there is no team-shared store.

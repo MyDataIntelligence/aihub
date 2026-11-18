@@ -9,6 +9,7 @@ import { statusItems, type BarError, type BarModel, type StatusItem, type Tone }
 import { Refresher, type Result } from "./refresher";
 import { registerGitCommands } from "./gitUi";
 import { ThreadsController } from "./threadsUi";
+import { LearnController } from "./learnUi";
 import { registerWorktreeCommands } from "./worktreeUi";
 
 const cfg = () => vscode.workspace.getConfiguration("aihub");
@@ -335,6 +336,8 @@ export function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(vscode.commands.registerCommand("aihub.editor.ask", selection("Question about the code")), vscode.commands.registerCommand("aihub.editor.suggestFix", selection("Suggest a fix for the code")));
   const threads = new ThreadsController(() => bar.runnerNow(), () => bar.cwdNow(), (t) => bar.sendText(t), (l) => bar.logLine(l), () => void bar.refresh());
   threads.register(ctx);
+  const learn = new LearnController(ctx, () => bar.runnerNow(), () => bar.cwdNow(), (l) => bar.logLine(l));
+  learn.register(ctx);
   bar.onModel = (m) => void threads.sync(m.pr && m.pr.status === "active" ? m.pr.id : undefined, m.openThreads);
   registerGitCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
   registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));

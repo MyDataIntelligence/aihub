@@ -3,6 +3,7 @@
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
 ## 1.0.5
+- Learn, slice 2: personal store `aihub learn save|list|show|forget|concepts|quiz` (~/.config/aihub/learn, nothing in the repository) and, in the VS Code extension, the Learn view, a lesson page with rendered Mermaid pictures and a guided tour.
 - Learn, slice 1: `aihub learn change|repo|validate` (facts of a change or repository as JSON in about a second: hunks, changed names, callers, tests, dbt lineage; schema check of a written explanation), skill `learn` and `/leer` that write the lesson with Mermaid pictures first. See docs/learn.md.
 - Feasibility mode: skill `feasibility` and slash commands `/kan-dit` and `/can-it` research whether an idea is possible (docs, community, live probes) and answer with a fixed report (Verdict, Hoe, Bewijs, Bronnen, Grenzen, Inschatting, Open vragen). New subagent `aihub-researcher`. New read-only `aihub probe fabric endpoint|capacity`, `aihub probe devops feature`, `aihub probe api --get <url>` (YES/NO/UNKNOWN with the raw status, never item contents) and `aihub research save --file report.md [--wiki <page>]`. See docs/feasibility.md.
 
