@@ -122,7 +122,7 @@
     "build": "node esbuild.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:unit": "vitest run",
-    "package": "npm run build && vsce package --no-dependencies --out ../build/"
+    "package": "npm run build && node -e \"require('fs').mkdirSync('../build',{recursive:true})\" && vsce package --no-dependencies --out ../build/"
   },
   "devDependencies": {
     "@types/node": "^20.17.6",
