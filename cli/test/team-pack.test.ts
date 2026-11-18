@@ -68,7 +68,7 @@ describe("aihub init uses team-pack as its only source", () => {
     expect(parsed.repositories[0]).toMatchObject({ name: "test-repo", defaultTarget: "main" });
     expect(parsed.guidelines).toBeUndefined();
     expect(parsed.pipelines).toBeUndefined();
-    expect(existsSync(join(dir, ".github"))).toBe(false);
+    expect(existsSync(join(dir, ".github", "prompts"))).toBe(false); // slash commands only with --into-repo
 
     const en = makeRepo().dir;
     await main(["init", "--no-pr", "--language", "en"], ctxFor(en, fakeFetch([]).fn).ctx);
