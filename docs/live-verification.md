@@ -153,6 +153,29 @@ Ids created and removed: story 3370, PR !1063 (abandoned), branches of the prefi
 `aihub pr show --json`, `aihub status --json` (`pr.reviewers`) and `aihub pr list` showed the votes of a fresh PR in ferron-test where the one test identity added itself as reviewer: `az repos pr set-vote --vote approve` gave `{"name":"Ferron Hooi","vote":10,"voteName":"approved","required":false}`
 in both JSON views and `wait-for-author` gave vote -5 / "waiting for the author" (also in the text of `pr list` and `pr show`). PR !1078 abandoned, branch `live-9d3e/votes` deleted, nothing left.
 
+## All slash commands through the `aihub` agent (2026-11-18)
+
+`@ferronhooi/aihub@next` (1.0.2-next.53; the /review rerun on next.59) in a scratch prefix, `aihub skills install --client all` into isolated homes (own `HOME`/`XDG_*`/`COPILOT_HOME`/`OPENCODE_CONFIG_DIR`;
+opencode auth only through `XDG_DATA_HOME` of the shared test home, never copied; Copilot with `GH_TOKEN` from `gh` in the environment). Per client a fresh synthetic story, feature branch and test release branch in ferron-test; the
+slash command text through the `aihub` agent (`opencode run --agent aihub --command <c>`, `copilot -p ... --agent aihub`); `/commit` on an uncommitted change; `/story-run` on a second fresh story. 0 questions in all 12 runs. End state via `az` and `git`.
+
+| Command | opencode 1.19.5 (gpt-6-luna) | Copilot CLI |
+|---|---|---|
+| /pr | PASS: PR !1080, template sections, `AB#` link, work item related | PASS: PR !1079 |
+| /pr-update | PASS: text added to Changes, story link kept | PASS (first try `--append-text "- bullet"` was refused as an ambiguous option; fixed) |
+| /review | first run FAIL (below), rerun PASS: reply posted, thread `closed` | PASS: via `aihub-runner`, marker removed, reply posted, thread `fixed` |
+| /cherry-pick | PASS: PR !1081 on `live-f4a1/rel` | PASS: PR !1082 on `live-b7c2/rel` |
+| /commit | PASS: `chore: commit working changes (AB#3395)` committed and pushed | PASS: `chore: werk wijzigingen bij (AB#3396)` pushed |
+| /story-run | PASS: story 3398 -> PR !1083, README line present, honest status (no pipeline configured) | PASS: story 3399 -> PR !1084, README line present |
+| VS Code Copilot Chat | not run: needs a signed-in Copilot account, an isolated profile has none and the user's account is not used; the same agent files ran in the Copilot CLI | |
+
+Bugs found and fixed (PR #62, released in next.59): (1) opencode's `aihub` agent only allows `aihub`, `git` and `az` in bash, so `cat > replies.yaml <<EOF ... && aihub comments reply --replies-file` was rejected and /review posted nothing:
+`aihub comments reply` now takes repeatable `--reply "<threadId>:<status>:<text>"` without a file and the review-process skill uses it; the rerun posted the reply and closed the thread. (2) A value that starts with `- ` (a markdown bullet) after an option, such as
+`--append-text "- item"`, failed as an ambiguous option in Node's parser; it is now accepted.
+
+Cleanup: PRs !1079-!1084 abandoned, all `live-f4a1` and `live-b7c2` branches and stories 3395, 3396, 3398, 3399 deleted, no `aihub watch` process left (the runner had started and stopped one itself); `az` and `git ls-remote` show nothing left.
+Proof PNGs (rendered summaries): `20261118-2030-L-agent-e2e-opencode.png`, `-copilot.png`, `-vscode.png` (the last states why it was not run).
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
