@@ -24,7 +24,7 @@ describe("BarLoader", () => {
     expect(m.watching).toBe(true);
     const c = calls(log);
     expect(c).toHaveLength(6);
-    expect(c).toEqual(expect.arrayContaining(["status", "pr checks --pr 45", "fabric failures", "fabric logs --since 24h --top 8", "watch list", "watch events --limit 5"]));
+    expect(c).toEqual(expect.arrayContaining(["status", "pr checks --pr 45", "fabric failures", "fabric logs --workspace FEAT 1234 add export --since 24h --top 8", "watch list", "watch events --limit 5"]));
     rmSync(dir, { recursive: true, force: true });
   });
 
