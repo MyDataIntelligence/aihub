@@ -39,7 +39,7 @@ import { loadTeam } from "../lib/team.js";
 
 const USAGE = `usage: aihub fabric <command> [flags]
   read:   workspaces | items | item show|definition | jobs | job show | logs | lakehouse tables|files | git status
-  write:  item create|update|rename|delete | run | job cancel | git update|commit   (dev/feature only; --dry-run shows the plan)
+  write:  item create|update|rename|delete | run | job cancel | spark stop | git update|commit   (dev/feature only; --dry-run shows the plan)
   plan:   plan [--check-workspace]
   flags:  --workspace W --item I --type T --json --dry-run   (aihub fabric <command> --help is not needed: see skills/fabric)`;
 
@@ -77,6 +77,8 @@ const OPTIONS = {
   "deployed-commit": { type: "string" },
   "log-type": { type: "string" },
   livy: { type: "string" },
+  session: { type: "string" },
+  "all-mine": { type: "boolean" },
   state: { type: "string" },
   view: { type: "string" },
   stage: { type: "string" },
@@ -420,6 +422,8 @@ function applyTestPlan(root: string, changed: string[], plan: Plan): void {
 
 // ---- run / status ----------------------------------------------------------------
 
+const CAPACITY_FULL = /TooManyRequestsForCapacity/i;
+
 async function runStatus(s: Setup, sub: "run" | "status"): Promise<void> {
   const { ctx, v } = s;
   if (sub === "run" && v.cancel) return cancelCmd(s, v.cancel as string);
@@ -453,7 +457,11 @@ async function runStatus(s: Setup, sub: "run" | "status"): Promise<void> {
     dryRun(s, [`start ${item.type} ${item.displayName} in ${ws.name} (${ws.environment})${exec ? ` with parameters ${JSON.stringify(exec)}` : ""}`]);
     return;
   }
-  const jobId = await client.startJob(wsId, item, exec);
+  const stopHint = `the capacity is full of Spark sessions; free it with: aihub fabric spark stop --workspace ${ws.name} --all-mine`;
+  const jobId = await client.startJob(wsId, item, exec).catch((e) => {
+    if (CAPACITY_FULL.test((e as Error).message)) ctx.out(`hint: ${stopHint}`);
+    throw e;
+  });
   ctx.out(`started ${item.type} ${item.displayName} in ${ws.name} (${ws.environment}): job ${jobId}`);
   if (!v.wait) {
     ctx.out(`follow with: aihub fabric status --item ${item.displayName} --job ${jobId}`);
@@ -462,6 +470,7 @@ async function runStatus(s: Setup, sub: "run" | "status"): Promise<void> {
   const j = await waitForJob(client, wsId, item.id, jobId, { pollMs: Number(ctx.env.AIHUB_POLL_MS ?? 5000) });
   ctx.out(formatJob(j, item.displayName));
   if (j.status === "Failed") ctx.out(`dig deeper: aihub fabric logs --workspace ${ws.name} --item ${item.displayName} --job ${jobId}`);
+  if (j.status === "Failed" && CAPACITY_FULL.test(JSON.stringify(j))) ctx.out(`hint: ${stopHint}`);
   if (j.status !== "Completed") throw new AihubError(`${item.displayName} ended as ${j.status}`);
 }
 

@@ -258,3 +258,15 @@ describe("commands as a service principal", () => {
     expect(r.errs[0]).not.toContain(SECRET);
   });
 });
+
+describe("token cache per resource", () => {
+  it("the SQL token is not served from the OneLake token cache (the audiences differ)", async () => {
+    const { makeFabricAuth } = await import("../src/lib/fabric.js");
+    const now = () => Date.now() + 10 * 365 * 24 * 3600_000; // far future: any cache file left by another run is expired
+    const exec = ((_: string, args: string[]) => JSON.stringify({ accessToken: `tok-for-${args[args.indexOf("--resource") + 1]}`, expires_on: Math.floor(now() / 1000) + 3600 })) as any;
+    const storage = await makeFabricAuth({ env: {}, exec, now, resource: "https://storage.azure.com", tokenVar: "X1" })();
+    const sql = await makeFabricAuth({ env: {}, exec, now, resource: "https://database.windows.net/", tokenVar: "X2" })();
+    expect(storage).toContain("storage.azure.com");
+    expect(sql).toContain("database.windows.net/");
+  });
+});

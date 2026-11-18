@@ -2,6 +2,10 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.0.4
+- `aihub fabric sql` works against the lakehouse SQL endpoint: tedious 18.6 was closed by the endpoint right after login, tedious 19.2 (Node 18.17 or newer) is not. Also fixed: the SQL token was served from the OneLake token cache (wrong audience, "authentication failed"), and `--item <lakehouse>` was "ambiguous" with its same-named SQL endpoint.
+- `aihub fabric spark stop --workspace W --session <livyId> | --all-mine [--dry-run]` frees capacity by stopping Spark sessions you started (job sessions by cancelling the job, Livy API sessions by closing them); ACC/PRD is refused. `fabric run` prints this command when the capacity answers `TooManyRequestsForCapacity`, and so does `failures`. Release notes: docs/releases/1.0.4.md.
+
 ## 1.0.3
 - `aihub legacy remove [--yes] [--keep-data] [--keep-settings] [--repos <dir>]`: lists, then removes, everything the old AI Context Hub put on the machine (extension below 3.0.0, `hub` CLI package and PATH entry, its skills, agent, rules block and hooks, data, per-repo `.aihub`, exclude lines and git hook blocks); only what is provably Hub-owned, your own files and hooks stay. See docs/legacy-removal.md.
 - `aihub init` also proposes `.github/instructions/<area>.instructions.md` skeletons (`applyTo:` front matter, empty rule bullets, for the file types the repository really has) and a marked aihub block in `AGENTS.md` (created, or appended only when the file has no aihub line); each only when missing. `--no-instructions` and `--no-agents-md` skip them.

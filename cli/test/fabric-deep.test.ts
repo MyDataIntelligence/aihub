@@ -480,3 +480,60 @@ describe("remaining legacy rows", () => {
     expect(r.errs[0]).not.toContain("plain-secret");
   });
 });
+
+describe("sql on a lakehouse with a same-named SQL endpoint", () => {
+  it("picks the Lakehouse instead of reporting the name as ambiguous", async () => {
+    const both = get(new RegExp(`/workspaces/${WS}/items$`), { value: [{ id: "lh-1", displayName: "lh_test", type: "Lakehouse" }, { id: "ep-1", displayName: "lh_test", type: "SQLEndpoint" }] });
+    const lh = get(new RegExp(`/workspaces/${WS}/lakehouses/lh-1$`), { properties: { sqlEndpointProperties: { connectionString: "abc.datawarehouse.fabric.microsoft.com" } } });
+    const seen: any[] = [];
+    const r = await go([both, lh], ["sql", "--workspace", "DEV-test-project", "--item", "lh_test", "--query", "select 1 as x"], { setup: (c) => (c.sql = async (ep: any) => (seen.push(ep), { columns: ["x"], rows: [[1]] })) });
+    expect(r.code).toBe(0);
+    expect(seen[0]).toMatchObject({ host: "abc.datawarehouse.fabric.microsoft.com", database: "lh_test" });
+  });
+});
+
+describe("spark stop", () => {
+  const me = "49284f26-fb77-4714-b6fb-1bcc024e090e";
+  const jwt = (oid: string) => `h.${Buffer.from(JSON.stringify({ oid })).toString("base64url")}.s`;
+  const sess = [
+    { livyId: "L-job", state: "Idle", submitter: { id: me }, item: { itemId: "nb-1" }, itemName: "nb_load", itemType: "notebook", jobInstanceId: "J1" },
+    { livyId: "L-api", state: "Busy", submitter: { id: me }, item: { itemId: "lh-1" }, itemName: "lh_test", itemType: "lakehouse", jobInstanceId: "L-api" },
+    { livyId: "L-other", state: "Idle", submitter: { id: "someone-else" }, item: { itemId: "nb-1" }, itemName: "nb_load", itemType: "notebook", jobInstanceId: "J2" },
+    { livyId: "L-done", state: "Succeeded", submitter: { id: me }, item: { itemId: "nb-1" }, itemName: "nb_load", itemType: "notebook", jobInstanceId: "J3" },
+  ];
+  const list = get(new RegExp(`/workspaces/${WS}/spark/livySessions$`), { value: sess });
+  const routes = [list, send("POST", /items\/nb-1\/jobs\/instances\/J1\/cancel$/, {}), send("DELETE", /lakehouses\/lh-1\/livyapi\/versions\/2023-12-01\/sessions\/L-api$/, {})];
+  const env = { AIHUB_FABRIC_TOKEN: jwt(me) };
+  it("--all-mine stops only my active sessions: job sessions by cancelling the job, Livy API sessions by closing them", async () => {
+    const r = await go(routes, ["spark", "stop", "--workspace", "DEV-test-project", "--all-mine"], { env });
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("stopped L-job");
+    expect(r.out).toContain("stopped L-api");
+    expect(r.out).not.toContain("L-other");
+    expect(r.calls.filter((c) => c.method !== "GET").map((c) => c.method + " " + c.url.split("/workspaces/")[1].replace(WS + "/", ""))).toEqual(["POST items/nb-1/jobs/instances/J1/cancel", "DELETE lakehouses/lh-1/livyapi/versions/2023-12-01/sessions/L-api"]);
+  });
+  it("--dry-run changes nothing; --session of a finished session is a no-op; ACC is refused; flags are required", async () => {
+    const dry = await go(routes, ["spark", "stop", "--workspace", "DEV-test-project", "--all-mine", "--dry-run"], { env });
+    expect(dry.out).toContain("dry-run");
+    expect(dry.calls.every((c) => c.method === "GET")).toBe(true);
+    const done = await go(routes, ["spark", "stop", "--workspace", "DEV-test-project", "--session", "L-done"], { env });
+    expect(done.out).toContain("nothing to stop");
+    expect(done.calls.every((c) => c.method === "GET")).toBe(true);
+    const acc = await go(routes, ["spark", "stop", "--workspace", "ACC-test-project", "--all-mine"], { env });
+    expect(acc.errs[0]).toContain("is ACC");
+    expect(acc.calls).toHaveLength(0);
+    expect((await go(routes, ["spark", "stop", "--workspace", "DEV-test-project"], { env })).errs[0]).toContain("usage: aihub fabric spark stop");
+    expect((await go(routes, ["spark", "stop", "--workspace", "DEV-test-project", "--all-mine"])).errs[0]).toContain("cannot tell who you are");
+  });
+  it("a failing stop is reported and the exit code is 1", async () => {
+    const r = await go([list, send("POST", /cancel$/, { error: "x" }, { status: 500 }), routes[2]], ["spark", "stop", "--workspace", "DEV-test-project", "--all-mine"], { env });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("could not stop L-job");
+    expect(r.out).toContain("stopped L-api");
+  });
+  it("fabric run prints the stop hint when the capacity is full", async () => {
+    const r = await go([items, send("POST", /jobs\/instances\?jobType=/, { errorCode: "TooManyRequestsForCapacity", message: "TooManyRequestsForCapacity" }, { status: 430 })], ["run", "--workspace", "DEV-test-project", "--item", "nb_load"]);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("aihub fabric spark stop --workspace DEV-test-project --all-mine");
+  });
+});

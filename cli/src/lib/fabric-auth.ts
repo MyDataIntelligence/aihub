@@ -14,11 +14,11 @@ export type Audience = "fabric" | "storage" | "sql" | "powerbi" | "kusto";
 export const RESOURCES: Record<Audience, string> = {
   fabric: "https://api.fabric.microsoft.com",
   storage: "https://storage.azure.com",
-  sql: "https://database.windows.net",
+  sql: "https://database.windows.net/", // the trailing slash matters: az issues the audience as given and the SQL endpoint rejects it without it
   powerbi: "https://analysis.windows.net/powerbi/api",
   kusto: "https://kusto.kusto.windows.net",
 };
-export const scopeFor = (a: Audience) => `${RESOURCES[a]}/.default`;
+export const scopeFor = (a: Audience) => `${RESOURCES[a].replace(/\/$/, "")}/.default`;
 const TOKEN_ENV: Record<Audience, string> = {
   fabric: "AIHUB_FABRIC_TOKEN",
   storage: "AIHUB_ONELAKE_TOKEN",

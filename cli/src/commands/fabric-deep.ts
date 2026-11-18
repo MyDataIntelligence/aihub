@@ -41,6 +41,7 @@ async function findSession(client: FabricClient, wsId: string, item: FabricItem,
 
 /** `aihub fabric spark sessions|app|logs`: Spark sessions of a workspace or item, application views, driver/executor/Livy logs. */
 export async function sparkCmd(s: Setup, sub: string | undefined): Promise<void> {
+  if (sub === "stop") return sparkStopCmd(s);
   const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   if (sub === "sessions") {
@@ -104,7 +105,68 @@ export async function sparkCmd(s: Setup, sub: string | undefined): Promise<void>
     return emit(s, { session: session.livyId, view, data }, `Spark session ${session.livyId} (${session.state ?? "?"}), view ${view}\n${text}`);
   }
   if (sub === "logs") return sparkLogs(s, client, t, item, session, base);
-  throw new AihubError("usage: aihub fabric spark sessions|app|logs --workspace W --item I [--livy ID|--job ID]");
+  throw new AihubError("usage: aihub fabric spark sessions|app|logs|stop --workspace W --item I [--livy ID|--job ID]");
+}
+
+const ACTIVE_SPARK = /^(notstarted|not_started|starting|idle|busy|running|inprogress|in_progress|shutting_down|submitted|queued)$/i;
+
+/** Object id of the signed-in identity, read from the (unverified) Fabric token; undefined for opaque tokens. */
+function tokenOid(token: string): string | undefined {
+  try {
+    return JSON.parse(Buffer.from(token.replace(/^Bearer /, "").split(".")[1], "base64url").toString("utf8")).oid;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * `aihub fabric spark stop`: frees capacity by stopping Spark sessions you started. `--session <livyId>` stops one, `--all-mine` every
+ * active session whose submitter is the signed-in identity. Sessions of a job (notebook/pipeline run) are stopped by cancelling the job
+ * instance; Livy API sessions of a Lakehouse (aihub livy run, table loads) by closing the Livy session. Writes: ACC/PRD is refused.
+ */
+async function sparkStopCmd(s: Setup): Promise<void> {
+  const client = makeClient(s.ctx, s.v);
+  const t = await target(s, client, true);
+  const one = s.v.session as string | undefined;
+  const all = !!s.v["all-mine"];
+  if (!one && !all) throw new AihubError("usage: aihub fabric spark stop --workspace W --session <livyId> | --all-mine [--dry-run]; list the sessions with: aihub fabric spark sessions --workspace W");
+  if (one && all) throw new AihubError("use either --session or --all-mine, not both");
+  const rows = await client.list<any>(`/workspaces/${t.id}/spark/livySessions`);
+  let picked = rows.filter((x) => ACTIVE_SPARK.test(String(x.state ?? "")));
+  if (one) {
+    const hit = rows.find((x) => String(x.livyId ?? "").toLowerCase() === one.toLowerCase());
+    if (!hit) throw new AihubError(`no Spark session ${one} in ${where(t)}; list them with: aihub fabric spark sessions --workspace ${t.ws.name}`);
+    if (!ACTIVE_SPARK.test(String(hit.state ?? ""))) return emit(s, { stopped: [], note: "not active" }, `Spark session ${one} is already ${hit.state}; nothing to stop`);
+    picked = [hit];
+  } else {
+    const me = tokenOid(await client.identity!.token("fabric"));
+    if (!me) throw new AihubError("cannot tell who you are from the Fabric token (service principal or opaque token); use --session <livyId>");
+    picked = picked.filter((x) => String(x.submitter?.id ?? "").toLowerCase() === me.toLowerCase());
+  }
+  const plan = picked.map((x) => {
+    const itemId = x.item?.itemId ?? x.creatorItem?.itemId;
+    const kind = String(x.itemType ?? "").toLowerCase();
+    // a Lakehouse Livy API session reports its own id as job id: close it as a Livy session, not as a job
+    const asJob = !!x.jobInstanceId && !!itemId && kind !== "lakehouse";
+    const how = asJob ? `cancel job ${x.jobInstanceId} of ${x.itemName}` : `close Livy session of ${x.itemName ?? itemId}`;
+    return { x, itemId: itemId as string | undefined, kind, how, asJob };
+  });
+  if (!plan.length) return emit(s, { stopped: [] }, `no active Spark session of yours in ${where(t)}`);
+  if (s.v["dry-run"]) return dryRun(s, plan.map((p) => `stop Spark session ${p.x.livyId} (${p.x.state}): ${p.how}`));
+  const stopped: { livyId: string; how: string }[] = [];
+  const failed: { livyId: string; error: string }[] = [];
+  for (const p of plan) {
+    try {
+      if (p.asJob) await client.request("POST", `/workspaces/${t.id}/items/${p.itemId}/jobs/instances/${p.x.jobInstanceId}/cancel`);
+      else if (p.itemId && (p.kind === "lakehouse" || p.kind === "notebook")) await client.request("DELETE", `/workspaces/${t.id}/${p.kind}s/${p.itemId}/livyapi/versions/2023-12-01/sessions/${p.x.livyId}`);
+      else throw new AihubError(`do not know how to stop a session of a ${p.x.itemType ?? "unknown"} item`);
+      stopped.push({ livyId: p.x.livyId, how: p.how });
+    } catch (e) {
+      failed.push({ livyId: p.x.livyId, error: redact((e as Error).message).slice(0, 300) });
+    }
+  }
+  emit(s, { stopped, failed }, [...stopped.map((x) => `stopped ${x.livyId}: ${x.how}`), ...failed.map((x) => `could not stop ${x.livyId}: ${x.error}`)].join("\n"));
+  if (failed.length) throw new AihubError(`${failed.length} Spark session(s) could not be stopped (see above)`);
 }
 
 /** Driver, executor, Livy or rolling driver log of a session, with tail/search/errors/cell windows. */
@@ -379,7 +441,8 @@ export async function sqlCmd(s: Setup): Promise<void> {
   const query = sqlGuard(q);
   const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
-  const it = await itemArg(s, client, t.id);
+  // a Lakehouse always has a SQLEndpoint item with the same name: without --type look for the Lakehouse, then the Warehouse
+  const it = s.v.type ? await itemArg(s, client, t.id) : await client.resolveItem(t.id, need(s.v, "item", "name|id"), "Lakehouse").catch(() => client.resolveItem(t.id, need(s.v, "item", "name|id"), "Warehouse")).catch(() => itemArg(s, client, t.id));
   const route = it.type === "Warehouse" ? "warehouses" : it.type === "Lakehouse" ? "lakehouses" : undefined;
   if (!route) throw new AihubError(`${it.type} '${it.displayName}' has no SQL endpoint (Warehouse or Lakehouse)`);
   const props = ((await client.request("GET", `/workspaces/${t.id}/${route}/${it.id}`)).data as any).properties ?? {};

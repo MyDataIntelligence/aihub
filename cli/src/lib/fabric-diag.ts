@@ -95,7 +95,7 @@ const CAUSES: [RegExp, Cause][] = [
   [/ModuleNotFoundError|ImportError|No module named/i, { kind: "missing-library", hint: "add the library to the Fabric environment and publish it, or %pip install it in the notebook" }],
   [/Forbidden|403|Unauthorized|401|PermissionDenied|AuthorizationFailed|does not have (?:permission|access)/i, { kind: "permission", hint: "the running identity lacks access to the workspace, lakehouse, connection or storage path" }],
   [/Timeout|timed out|TimeoutException/i, { kind: "timeout", hint: "look for a stuck dependency or a long shuffle; retry once, then check capacity throttling" }],
-  [/430|TooManyRequestsForCapacity|capacity.*(throttl|exceeded)/i, { kind: "capacity", hint: "the capacity is full: wait, cancel idle Spark sessions, or use a bigger capacity" }],
+  [/430|TooManyRequestsForCapacity|capacity.*(throttl|exceeded)/i, { kind: "capacity", hint: "the capacity is full: wait, free it with `aihub fabric spark stop --workspace W --all-mine`, or use a bigger capacity" }],
   [/ConcurrentAppendException|ConcurrentDeleteReadException|MetadataChangedException|ProtocolChangedException|conflict/i, { kind: "delta-conflict", hint: "two writers touched the same Delta table: serialise the runs or retry" }],
   [/Connection (?:refused|reset)|UnknownHost|SSLHandshake|Could not connect/i, { kind: "connection", hint: "a source or sink endpoint is unreachable: check the connection, gateway and firewall" }],
   [/SyntaxError|ParseException|IndentationError/i, { kind: "syntax", hint: "the code or SQL does not parse: open the failing cell or statement" }],
