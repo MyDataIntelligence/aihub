@@ -270,6 +270,23 @@ More findings of these runs (all fixed through PRs to `staging`):
 
 Cleanup: PRs !1090, !1092, !1094, !1095 abandoned; branches `aihub-e2e-main` and `feature/3401|3403|3405|3406-...` deleted; pipeline 12 deleted (its runs 271 to 275 stay as history); policy 10 deleted; stories 3401, 3403, 3405 and 3406 deleted. **Mistake of mine:** a "delete every Build policy" loop also removed the existing build policy of `test-project` on `ci-checks-demo` (pipeline 5, Ruff). I recreated it (id 11, blocking, display name `ruff`, pipeline 5); settings other than those could not be read back, so compare with the original if it matters. Proof: `20261118-2041-L-story-ci-e2e.png` in the proof folder of the benchmark machine.
 
+## Data before/after and the environment release plan (2026-11-18)
+
+**`aihub pr data-diff`** live: two own Fabric dev workspaces on the trial capacity (`aihub-test-dev-3f2a-base` / `-feat`, a Lakehouse `lh_orders` each, a table `orders` loaded from a 4-row and a 6-row CSV), PR !1098 in ferron-test, `team.yaml` with
+`fabric.workspaces` (target branch -> base, `feature/*` -> feat) and `dataChecks` on `dbo.orders`. The output (SQL endpoint) was count 4 -> 6 (+2, +50%), nulls_customer_id 0 -> 1, sum_amount 375.75 -> 715.75 (+340), distinct_customer_id 3 -> 4;
+second source: the two input CSVs computed separately (identical numbers). `--write` put the table, the verdict and the "Measured (read-only)" line in the PR section "Data before/after" (checked with `az repos pr show`);
+`--baseline ACC-shared` was refused before any call. Not live: the Livy fallback (the capacity's Spark was full, HTTP 430 `TooManyRequestsForCapacity`; unit tested with an injected runner).
+Bugs found live and fixed: (1) a lakehouse name is ambiguous with its SQL endpoint, `fabric sql --item lh_orders` failed: `dataChecks.itemType` (default Lakehouse) is always passed as `--type` (PR #98); (2) a stale cached token made OneLake answer
+"not signed in" until the cache file was deleted: a 401 now drops the cache and retries once (PR #91). Table loads need Spark: on the trial capacity they waited for free Spark compute for about 25 minutes. Both workspaces and lakehouses were deleted afterwards (the workspaces filter shows nothing).
+
+**`aihub release plan --from DEV --to ACC`** live (git side): branches `live-3f2a/dev` and `live-3f2a/acc` in ferron-test, story 3402, PR !1091 adding `nb_live.Notebook/` completed into the dev branch, `fabric.environments` DEV/ACC in team.yaml. The plan listed
+1 commit, 1 PR, the item `Notebook nb_live` as changed with `PRs !1091` and `stories AB#3402`, the cherry-pick list and release notes; `--out` wrote a plan with the merge commit that `aihub release run` can execute. Bug found live and fixed (PR #89):
+a GET of the pull request does not list `workItemRefs`, the first run showed 0 stories; the stories now come from `/pullrequests/<id>/workitems`. Not live: the Fabric deployment pipeline compare (no deployment pipeline is visible to this
+account, `fabric deployment list` says so); new and deleted items are covered by tests with an injected stage reader, and without a pipeline the plan says "git only".
+
+Cleanup: PRs !1091 (merged into a test branch) and !1098 (abandoned), every `live-3f2a` branch, story 3402 and the workspaces; `az`, `git ls-remote` and `fabric workspaces --filter 3f2a` show nothing. Proof PNGs (rendered summaries):
+`20261118-2115-L-data-diff.png`, `20261118-2115-L-release-env.png`.
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
