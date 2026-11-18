@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { AihubError } from "./errors.js";
 
-type Opts = Record<string, { type: "string" | "boolean"; multiple?: boolean }>;
+type Opts = Record<string, { type: "string" | "boolean"; multiple?: boolean; short?: string }>;
 
 export function parse<T extends Opts>(argv: string[], options: T, positionals = false) {
   try {
