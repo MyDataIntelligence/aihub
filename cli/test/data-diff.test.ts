@@ -114,7 +114,10 @@ describe("fabricRunner: SQL endpoint first, Livy as the fallback", () => {
     const run = fabricRunner(ctx, async (argv, c) => (seen.push(argv), c.out(JSON.stringify({ result: { columns: ["count"], rows: [[5]] } }))));
     const r = await run("DEV", "lh", "SELECT 1 AS [count]");
     expect(r).toEqual({ columns: ["count"], rows: [[5]], how: "the SQL endpoint" });
-    expect(seen).toEqual([["sql", "--workspace", "DEV", "--item", "lh", "--query", "SELECT 1 AS [count]", "--json"]]);
+    expect(seen).toEqual([["sql", "--workspace", "DEV", "--item", "lh", "--type", "Lakehouse", "--query", "SELECT 1 AS [count]", "--json"]]);
+    const wh = await fabricRunner(ctx, async (argv, c) => (seen.push(argv), c.out(JSON.stringify({ result: { columns: ["count"], rows: [[1]] } }))))("DEV", "wh", "SELECT 1 AS [count]", "Warehouse");
+    expect(wh.how).toBe("the SQL endpoint");
+    expect(seen[1]).toContain("Warehouse");
   });
 
   it("falls back to Livy (Spark SQL in the Lakehouse) and says so", async () => {
