@@ -69,7 +69,7 @@ Check the file with `aihub doctor`. Change it through a pull request (see [onboa
 
 ```yaml
 tests:
-  command: "pytest {tests}"        # {tests} becomes the quoted test files; default pytest for .py, npx vitest run for JS/TS
+  command: "python -m pytest {tests}" # {tests} becomes the quoted test files; default python -m pytest for .py (puts the repo root on sys.path, so top-level packages import), npx vitest run for JS/TS
   map:                             # rules for code the name/import heuristics do not match
     - source: "etl/**"             # changed files matching these globs (a string or a list)
       tests: "tests/etl/**"        # run the repository files matching these globs
