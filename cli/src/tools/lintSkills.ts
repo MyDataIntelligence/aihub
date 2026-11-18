@@ -30,6 +30,7 @@ export const COMMANDS: CommandSpec[] = [
   { name: "pr-update", skill: "pr-update", description: "Update the open pull request", hint: "optional remarks" },
   { name: "cherry-pick", skill: "branch-sync", description: "Cherry-pick a PR to other branches", hint: "PR id and target branches" },
   { name: "story", skill: "story-create", description: "Create a story", hint: "what the story is about" },
+  { name: "story-run", skill: "story-run", description: "Run a story end to end to a green PR", hint: "story id or link" },
   { name: "refine", skill: "story-refine", description: "Refine a story", hint: "story id" },
   { name: "review", skill: "review-process", description: "Process review comments", hint: "optional PR id" },
   { name: "watch", skill: "pr-watch", description: "Follow a PR and its pipeline", hint: "optional PR id or link" },

@@ -62,7 +62,7 @@ method, `team.yaml` against the schema, PR template location, skills per client)
 ## Daily use
 
 Say what you want ("maak een PR", "verwerk de comments") or use a slash command: `/pr`, `/pr-update`, `/cherry-pick`,
-`/story`, `/refine`, `/review`, `/watch`. Slash command files are in `commands/opencode/` (opencode) and
+`/story`, `/refine`, `/story-run`, `/review`, `/watch`. Slash command files are in `commands/opencode/` (opencode) and
 `commands/copilot/` (GitHub Copilot prompt files); copy them into the tool's command folder.
 
 ## Get a notification when something needs you
