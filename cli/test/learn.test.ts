@@ -220,3 +220,97 @@ describe("the personal learn store", () => {
     expect(JSON.parse((await goHome(dir, home, ["learn", "list", "--json"])).out)).toEqual([]);
   });
 });
+
+describe("learn diagram, flow, glossary, week, onboarding, item", () => {
+  it("draws the architecture from the facts: changed names, callers and tests, nothing invented", async () => {
+    const r = JSON.parse((await go(world(), ["learn", "diagram", "--kind", "architecture", "--json"])).out);
+    expect(r.kind).toBe("architecture");
+    expect(r.mermaid).toMatch(/^flowchart LR/);
+    expect(r.mermaid).toContain("app/report.py");
+    expect(r.mermaid).toContain(":::changed");
+    expect(r.mermaid).toContain("-.->");
+    expect(r.basedOn).toContain("text search");
+    expect(mermaidProblem(r.mermaid)).toBeUndefined();
+  });
+
+  it("draws dbt lineage of the change and of the whole repository, and says when there is nothing to draw", async () => {
+    const dir = world();
+    const ch = JSON.parse((await go(dir, ["learn", "diagram", "--kind", "lineage", "--branch", "feature/42-guard", "--json"])).out);
+    expect(ch.mermaid).toContain("raw_orders");
+    expect(ch.mermaid).toContain("class n_orders changed");
+    const all = JSON.parse((await go(dir, ["learn", "diagram", "--kind", "lineage", "--json"])).out);
+    expect(all.empty).toBe(false);
+    const none = JSON.parse((await go(makeRepo().dir, ["learn", "diagram", "--kind", "lineage", "--json"])).out);
+    expect(none.empty).toBe(true);
+  });
+
+  it("draws the repository and the team flow (from team.yaml when there is one)", async () => {
+    const { dir } = makeRepo();
+    write(dir, ".agents/skills/_shared/references/team.yaml", "repositories:\n  - name: test-repo\n    defaultTarget: staging\nbranches:\n  feature: 'feature/<id>-<slug>'\n  protected: [staging]\n");
+    sh(dir, ["add", "."]);
+    sh(dir, ["commit", "-m", "team"]);
+    const f = JSON.parse((await go(dir, ["learn", "flow", "--json"])).out);
+    expect(f.source).toContain("team.yaml");
+    expect(f.steps.find((s: { name: string }) => s.name === "Pull request").detail).toContain("staging");
+    expect(f.steps.find((s: { name: string }) => s.name === "Branch").detail).toContain("feature/<id>-<slug>");
+    expect(JSON.parse((await go(makeRepo().dir, ["learn", "flow", "--json"])).out).source).toContain("generic");
+    expect(JSON.parse((await go(world(), ["learn", "diagram", "--kind", "repo", "--json"])).out).mermaid).toContain("flowchart TD");
+  });
+
+  it("iDiagram is only reported, never required", async () => {
+    const dir = world();
+    const none = JSON.parse((await go(dir, ["learn", "diagram", "--kind", "flow", "--idiagram", "--json"])).out);
+    expect(none.idiagram.configured).toBe(false);
+    expect(none.idiagram.message).toContain("complete without it");
+  });
+
+  it("glossary uses only the repository's own files", async () => {
+    const dir = world();
+    write(dir, "README.md", "# Demo\n\n## Betaalkosten\n\n- **Cap**: het maximum dat een betaling kost\n");
+    sh(dir, ["add", "."]);
+    sh(dir, ["commit", "-m", "readme"]);
+    const g = JSON.parse((await go(dir, ["learn", "glossary", "--json"])).out);
+    const t = Object.fromEntries(g.terms.map((x: { term: string; meaning: string }) => [x.term, x.meaning]));
+    expect(t["Cap"]).toBe("het maximum dat een betaling kost");
+    expect(t["raw.orders"]).toBe("dbt source");
+    expect(g.notes[0]).toContain("unverified");
+  });
+
+  it("week lists my commits of the last days and the most touched files", async () => {
+    const dir = world();
+    sh(dir, ["config", "user.email", "test@example.com"]);
+    const w = JSON.parse((await go(dir, ["learn", "week", "--json"])).out);
+    expect(w.commits.map((c: { subject: string }) => c.subject)).toContain("guard negative factor");
+    expect(w.files.map((f: { path: string }) => f.path)).toContain("app/scale.py");
+  });
+
+  it("item: a python file, a dbt model, a pipeline yaml and a Fabric item folder", async () => {
+    const dir = world();
+    write(dir, "azure-pipelines.yml", "trigger: [main]\nstages:\n  - stage: Build\n    jobs:\n      - job: Test\n  - stage: Deploy\n    jobs:\n      - job: Ship\n");
+    write(dir, "fab/nb_load.Notebook/notebook-content.py", "# notebook\nspark.read.table('x')\n");
+    sh(dir, ["add", "."]);
+    sh(dir, ["commit", "-m", "more"]);
+    const file = JSON.parse((await go(dir, ["learn", "item", "app/scale.py", "--json"])).out);
+    expect(file).toMatchObject({ type: "file", language: "python" });
+    expect(file.details.definitions).toContain("scale");
+    expect(file.usedBy.map((u: { file: string }) => u.file)).toContain("app/report.py");
+    const model = JSON.parse((await go(dir, ["learn", "item", "dbt/models/orders.sql", "--json"])).out);
+    expect(model.details).toMatchObject({ name: "orders", sources: ["raw.orders"], downstream: ["revenue"] });
+    expect(mermaidProblem(model.mermaid)).toBeUndefined();
+    const pipe = JSON.parse((await go(dir, ["learn", "item", "azure-pipelines.yml", "--json"])).out);
+    expect(pipe.type).toBe("pipeline");
+    expect(pipe.details.stages).toEqual([{ stage: "Build", jobs: ["Test"] }, { stage: "Deploy", jobs: ["Ship"] }]);
+    expect(pipe.mermaid).toContain("Build");
+    const fab = JSON.parse((await go(dir, ["learn", "item", "fab/nb_load.Notebook/notebook-content.py", "--json"])).out);
+    expect(fab).toMatchObject({ type: "fabric-item", path: "fab/nb_load.Notebook" });
+    const bad = await go(dir, ["learn", "item", "nope.py"]);
+    expect(bad.code).toBe(1);
+  });
+
+  it("onboarding bundles the repository, the flow, terms and pictures", async () => {
+    const b = JSON.parse((await go(world(), ["learn", "onboarding", "--json"])).out);
+    expect(b.kind).toBe("onboarding");
+    expect(b.diagrams.length).toBeGreaterThanOrEqual(3);
+    for (const d of b.diagrams) expect(mermaidProblem(d.mermaid)).toBeUndefined();
+  });
+});

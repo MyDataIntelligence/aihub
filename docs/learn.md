@@ -27,6 +27,20 @@ The store is yours alone: nothing is written into a repository and nothing is sh
 
 In VS Code the **Learn** view (Explorer) lists your lessons and concepts. A lesson opens as one page: the one-sentence summary, then the pictures (Mermaid, drawn by the bundled mermaid, no network), what changed and why with links to the files, who is affected, design choices, risks, a quiz you can click through, and concepts you can mark as learned. **Guided tour** walks through the changed pieces: it opens each file at the line, highlights it and shows the reason with Previous, Next and Stop. Reading only; lessons are written by `/leer`.
 
+## Slices 3 and 4: pictures and orientation
+
+| Command | Gives |
+|---|---|
+| `aihub learn diagram [--kind architecture\|lineage\|repo\|flow] [--pr\|--branch\|--range] [--json]` | a Mermaid picture built from facts: who calls the changed names and which tests mention them, dbt lineage (of the change, or of the whole repository), the folders, the team flow. `basedOn` says what it was built from; `empty` is true when nothing was found and then nothing is drawn |
+| `--idiagram` | reports only whether iDiagram is configured (`AIHUB_IDIAGRAM_URL`). Pushing a board is not implemented; the Mermaid is complete without it |
+| `aihub learn flow` | how the team works (story, branch, commits, PR, pipeline, review, merge) from `team.yaml`; generic when there is none |
+| `aihub learn glossary` | the repository's own terms: README bullets and headings, dbt models and sources, folders |
+| `aihub learn week [--days N]` | your commits and most touched files |
+| `aihub learn onboarding` | repository facts, flow, terms and pictures in one bundle |
+| `aihub learn item <path>` | one file (definitions, imports, users), a pipeline yaml (stages, jobs, steps), a dbt model (lineage) or a Fabric item folder from git integration |
+
+All of it comes from git and files; Azure DevOps and Fabric are not called. Paste a diagram's `mermaid` into `diagrams` of an explanation and it is drawn on the lesson page.
+
 ## Later slices
 
-`learn diagram` (Mermaid by default, iDiagram optional), `learn flow|glossary|week|onboarding`, and the learner profile. The store is per user only; there is no team-shared store.
+the learner profile and `learn.afterPr`. The store is per user only; there is no team-shared store.
