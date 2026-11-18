@@ -20,7 +20,7 @@ export async function workspaceCmd(s: Setup, sub: string | undefined): Promise<v
     const r = await client.request("POST", "/workspaces", body);
     return emit(s, r.data, `created workspace ${name} (id ${r.data.id ?? "?"})`);
   }
-  const t = await target(s, client, sub === "assign-capacity");
+  const t = await target(s, client, sub === "assign-capacity" || sub === "delete");
   if (sub === "show") {
     const w = (await client.request("GET", `/workspaces/${t.id}`)).data as Record<string, unknown>;
     return emit(s, w, [`workspace ${w.displayName ?? t.ws.name} (${t.ws.environment})`, ...Object.entries(w).filter(([k]) => k !== "displayName").map(([k, x]) => `${k}: ${typeof x === "object" ? JSON.stringify(x) : String(x ?? "")}`)].join("\n"));
@@ -38,7 +38,14 @@ export async function workspaceCmd(s: Setup, sub: string | undefined): Promise<v
     await client.request("POST", `/workspaces/${t.id}/assignToCapacity`, { capacityId: hit.id });
     return emit(s, { capacity: hit.id }, `assigned ${t.ws.name} to capacity ${hit.displayName}`);
   }
-  throw new AihubError("usage: aihub fabric workspace show|roles|create|assign-capacity");
+  if (sub === "delete") {
+    // The whole workspace with everything in it: --yes is required, ACC and PRD are refused by target() before any call.
+    if (s.v["dry-run"]) return dryRun(s, [`delete ${where(t)} with all its items (cannot be undone)`]);
+    if (!s.v.yes) throw new AihubError(`deleting ${where(t)} and everything in it cannot be undone: add --yes (or --dry-run to look first)`);
+    await client.request("DELETE", `/workspaces/${t.id}`);
+    return emit(s, { deleted: t.id }, `deleted workspace ${t.ws.name} (id ${t.id})`);
+  }
+  throw new AihubError("usage: aihub fabric workspace show|roles|create|assign-capacity|delete");
 }
 
 export async function capacitiesCmd(s: Setup): Promise<void> {

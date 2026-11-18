@@ -592,3 +592,25 @@ describe("zoneless UTC job times and the cause of a failure chain (found by the 
     expect(causeOfChain([{ error: "cell 2: x -> Table or view not found" }, { error: "no Spark session found" }]).kind).toBe("missing-table-or-path");
   });
 });
+
+describe("workspace delete (the live Fabric check needed it)", () => {
+  const ws = get(new RegExp(`/workspaces/${WS}$`), { id: WS, displayName: "DEV-test-project" });
+  const del: Route = { method: "DELETE", match: new RegExp(`/workspaces/${WS}$`), respond: () => ({ status: 200, body: {} }) };
+  it("needs --yes, shows the plan with --dry-run, and deletes the whole workspace", async () => {
+    const d = await go([], ["workspace", "delete", "--workspace", "DEV-test-project", "--dry-run"]);
+    expect(d.out).toContain("with all its items");
+    expect(d.calls.some((c) => c.method === "DELETE")).toBe(false);
+    const n = await go([], ["workspace", "delete", "--workspace", "DEV-test-project"]);
+    expect(n.errs[0]).toContain("add --yes");
+    expect(n.calls.some((c) => c.method === "DELETE")).toBe(false);
+    const y = await go([ws, del], ["workspace", "delete", "--workspace", "DEV-test-project", "--yes"]);
+    expect(y.errs).toEqual([]);
+    expect(y.calls.some((c) => c.method === "DELETE")).toBe(true);
+    expect(y.out).toContain("deleted workspace");
+  });
+  it("refuses ACC and PRD before any call", async () => {
+    const a = await go([], ["workspace", "delete", "--workspace", "ACC-test-project", "--yes"]);
+    expect(a.errs[0]).toContain("is ACC");
+    expect(a.calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+});
