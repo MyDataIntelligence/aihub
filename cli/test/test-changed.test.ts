@@ -109,11 +109,12 @@ describe("aihub test changed", () => {
   });
 
   it("--run executes only the mapped command and fails when it fails", async () => {
-    const dir = repo("repositories:\n  - name: test-repo\n    defaultTarget: main\ntests:\n  command: \"node -e process.exit(process.argv.length>2?3:0) {tests}\"\n");
+    const dir = repo("repositories:\n  - name: test-repo\n    defaultTarget: main\ntests:\n  command: \"node check.js {tests}\"\n");
+    write(dir, "check.js", "process.exit(process.argv.length > 2 ? 3 : 0);\n");
     write(dir, "src/orders/other.py", "def o(): return 3\n");
     const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
     await expect(main(["test", "changed", "--run"], ctx)).resolves.toBe(1);
-    expect(lines.join("\n")).toContain("running: node -e");
+    expect(lines.join("\n")).toContain("running: node check.js tests/unit/test_other.py");
   });
 
   it("nothing mapped: prints that nothing runs locally and --run runs nothing", async () => {

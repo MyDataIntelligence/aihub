@@ -1,3 +1,5 @@
+import { chmodSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { main } from "../src/router.js";
 import { formatCommit, inferScope } from "../src/lib/commit.js";
@@ -79,10 +81,16 @@ describe("aihub commit", () => {
 });
 
 describe("aihub commit and the repository's git hooks", () => {
+  // git only runs executable hooks (the mode matters on Linux)
+  const hook = (dir: string, name: string, body: string) => {
+    write(dir, `.git/hooks/${name}`, `#!/bin/sh\n${body}\n`);
+    chmodSync(join(dir, ".git", "hooks", name), 0o755);
+  };
+
 
   it("says which hooks run before them and how long they took after (live: a pre-commit running the full suite)", async () => {
     const { dir } = setup(TEAM);
-    write(dir, ".git/hooks/pre-commit", "#!/bin/sh\nexit 0\n");
+    hook(dir, "pre-commit", "exit 0");
     write(dir, ".git/hooks/pre-push.sample", "#!/bin/sh\nexit 1\n");
     write(dir, "src/a.py", "x = 1\n");
     const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
@@ -103,7 +111,7 @@ describe("aihub commit and the repository's git hooks", () => {
 
   it("a failing hook stops the commit with git's message; --no-verify skips it and says so", async () => {
     const { dir } = setup(TEAM);
-    write(dir, ".git/hooks/pre-commit", "#!/bin/sh\necho tests failed >&2\nexit 1\n");
+    hook(dir, "pre-commit", "echo tests failed >&2\nexit 1");
     write(dir, "src/a.py", "x = 1\n");
     const a = ctxFor(dir, fakeFetch([]).fn);
     expect(await main(["commit", "--type", "feat", "--subject", "a"], a.ctx)).toBe(1);
@@ -116,7 +124,7 @@ describe("aihub commit and the repository's git hooks", () => {
 
   it("names the pre-push hook before the push and skips it with --no-verify", async () => {
     const { dir } = setup(TEAM);
-    write(dir, ".git/hooks/pre-push", "#!/bin/sh\nexit 1\n");
+    hook(dir, "pre-push", "exit 1");
     write(dir, "src/a.py", "x = 1\n");
     const a = ctxFor(dir, fakeFetch([]).fn);
     expect(await main(["commit", "--type", "feat", "--subject", "a", "--push"], a.ctx)).toBe(1);
@@ -129,7 +137,7 @@ describe("aihub commit and the repository's git hooks", () => {
 
   it("--json carries hooks and timing", async () => {
     const { dir } = setup(TEAM);
-    write(dir, ".git/hooks/commit-msg", "#!/bin/sh\nexit 0\n");
+    hook(dir, "commit-msg", "exit 0");
     write(dir, "src/a.py", "x = 1\n");
     const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
     await main(["commit", "--type", "feat", "--subject", "a", "--json"], ctx);
