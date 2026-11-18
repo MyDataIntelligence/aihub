@@ -199,7 +199,7 @@ export async function envDeployments(c: AdoClient, ctx: Ctx, v: Flags, ref: stri
 export async function envChecks(c: AdoClient, ctx: Ctx, v: Flags, ref: string): Promise<void> {
   const e = await findEnv(c, ref);
   const r = await c.get<{ value?: any[] }>("pipelines/checks/configurations", { ...PREVIEW, resourceType: "environment", resourceId: String(e.id), $expand: "settings" });
-  const rows = (r.value ?? []).map((k) => ({ id: k.id, type: k.type?.name, timeout: k.timeout, approvers: (k.settings?.approvers ?? []).map((a: any) => a.displayName) }));
+  const rows = (r.value ?? []).map((k) => ({ id: k.id, type: k.type?.name, timeout: k.timeout, approvers: (k.settings?.approvers ?? []).map((a: any) => a.displayName ?? a.uniqueName ?? a.id) }));
   emit(ctx, v, rows, rows.length ? rows.map((k) => `#${k.id} ${k.type}${k.approvers.length ? ` (${k.approvers.join(", ")})` : ""}${k.timeout ? ` timeout ${k.timeout} min` : ""}`).join("\n") : `'${e.name}' has no approvals or checks`);
 }
 
@@ -212,15 +212,35 @@ interface Approval {
   steps?: { assignedApprover?: { displayName?: string }; status?: string; comment?: string }[];
 }
 
+/**
+ * The approvals API does not say which environment an approval guards. The run's timeline links the approval to its
+ * checkpoint, and the checkpoint's check runs name the environment. Failing to find it leaves the field empty.
+ */
+async function withEnvironment(c: AdoClient, a: Approval): Promise<Approval> {
+  const run = a.pipeline?.owner?.id;
+  if (a.resource?.name || !run) return a;
+  try {
+    const t = await c.get<{ records?: { id: string; type: string; parentId?: string | null }[] }>(`build/builds/${run}/timeline`);
+    const point = (t.records ?? []).find((r) => r.id === a.id && r.parentId);
+    if (!point?.parentId) return a;
+    const checks = await c.get<{ checkRuns?: { checkConfigurationRef?: { resource?: { type?: string; name?: string } } }[] }>(`pipelines/checks/runs/${encode(point.parentId)}`, { ...PREVIEW, $expand: "resources" });
+    const resource = (checks.checkRuns ?? []).map((k) => k.checkConfigurationRef?.resource).find((x) => x?.name);
+    return resource ? { ...a, resource } : a;
+  } catch {
+    return a;
+  }
+}
+
 export async function approvalsList(c: AdoClient, ctx: Ctx, v: Flags): Promise<void> {
   const r = await c.get<{ value?: Approval[] }>("pipelines/approvals", { ...PREVIEW, state: typeof v.state === "string" ? v.state : "pending", $expand: "steps" });
-  const rows = (r.value ?? []).slice(0, top(v, 50)).map((a) => ({ id: a.id, status: a.status, environment: a.resource?.name, pipeline: a.pipeline?.name ?? a.pipeline?.owner?.name, run: a.pipeline?.owner?.id, since: day(a.createdOn), approvers: (a.steps ?? []).map((s) => s.assignedApprover?.displayName).filter(Boolean) }));
+  const found = await Promise.all((r.value ?? []).slice(0, top(v, 50)).map((a) => withEnvironment(c, a)));
+  const rows = found.map((a) => ({ id: a.id, status: a.status, environment: a.resource?.name, pipeline: a.pipeline?.name ?? a.pipeline?.owner?.name, run: a.pipeline?.owner?.id, since: day(a.createdOn), approvers: (a.steps ?? []).map((s) => s.assignedApprover?.displayName).filter(Boolean) }));
   emit(ctx, v, rows, rows.length ? table([["approval", "status", "environment", "pipeline", "run"], ...rows.map((a) => [a.id, a.status, a.environment ?? "", a.pipeline ?? "", String(a.run ?? "")])]) : "no approvals match");
 }
 
 /** Approve or reject. Refused when the environment or the pipeline is ACC or PRD, unless --allow-env names that stage. */
 export async function approvalsDecide(c: AdoClient, ctx: Ctx, v: Flags, id: string, approve: boolean): Promise<void> {
-  const a = await c.get<Approval>(`pipelines/approvals/${encode(id)}`, { ...PREVIEW, $expand: "steps" });
+  const a = await withEnvironment(c, await c.get<Approval>(`pipelines/approvals/${encode(id)}`, { ...PREVIEW, $expand: "steps" }));
   for (const n of [a.resource?.name, a.pipeline?.name, a.pipeline?.owner?.name]) if (n) guardStage(n, v, "approval for");
   if (a.status !== "pending") throw new AihubError(`approval ${id} is ${a.status}, not pending`);
   await c.patch("pipelines/approvals", [{ approvalId: id, status: approve ? "approved" : "rejected", comment: typeof v.comment === "string" ? v.comment : "" }], PREVIEW);

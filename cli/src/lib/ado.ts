@@ -182,7 +182,7 @@ export class AdoClient {
 
   /** Download bytes from an absolute Azure DevOps URL (artifact zips); the same sign-in, capped at maxBytes. */
   async fetchBytes(fullUrl: string, maxBytes = 200 * 1024 * 1024): Promise<Uint8Array> {
-    if (!/^https:\/\/([a-z0-9-]+\.)?(dev\.azure\.com|visualstudio\.com)\//i.test(fullUrl)) throw new AihubError(`refusing to download from ${fullUrl}: not an Azure DevOps address`);
+    if (!/^https:\/\/([a-z0-9-]+\.)*(dev\.azure\.com|visualstudio\.com)\//i.test(fullUrl)) throw new AihubError(`refusing to download from ${fullUrl}: not an Azure DevOps address`);
     const res = await this.fetchFn(fullUrl, { headers: { Authorization: await this.auth() } });
     if (!res.ok) throw new AihubError(`download failed (${res.status})`);
     const buf = new Uint8Array(await res.arrayBuffer());
