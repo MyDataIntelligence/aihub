@@ -98,7 +98,7 @@ export function failureReport(p: Project, runner: Runner | undefined, o: { rows:
       kind,
       status: r.status,
       file: node ? (node.yml && (kind === "test" || kind === "unit_test") ? node.yml : node.file) || node.file : undefined,
-      message: clean(String(r.message ?? "")).split("\n").slice(0, kind === "unit_test" ? 30 : 6).join("\n").slice(0, 1500),
+      message: clean(String(r.message ?? "")).split("\n").filter((l) => l.trim()).slice(0, kind === "unit_test" ? 30 : 6).join("\n").slice(0, 1500),
       failingRows: typeof r.failures === "number" ? r.failures : undefined,
       on: node?.attached ? m?.nodes.get(node.attached)?.name : undefined,
     };

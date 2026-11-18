@@ -4,6 +4,8 @@ import { copyFileSync, mkdirSync } from "node:fs";
 // The panel uses codicons; ship the font and css from resources/ so the webview needs no network.
 mkdirSync("resources", { recursive: true });
 for (const f of ["codicon.css", "codicon.ttf"]) copyFileSync(`node_modules/@vscode/codicons/dist/${f}`, `resources/${f}`);
+// Learn draws its pictures with Mermaid, bundled so the page needs no network.
+copyFileSync("node_modules/mermaid/dist/mermaid.min.js", "resources/mermaid.min.js");
 
 await build({
   entryPoints: ["src/extension.ts"],

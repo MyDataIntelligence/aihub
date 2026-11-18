@@ -66,7 +66,8 @@ const int = (s: string | undefined, flag: string, def: number): number => {
   return n;
 };
 
-const tail = (text: string, n: number): string => clean(text).split("\n").map((l) => l.trimEnd()).filter(Boolean).slice(-n).join("\n");
+const NOISE = /^\d\d:\d\d:\d\d\s*(Running with|Registered adapter|Found \d|Concurrency:|$)/;
+const tail = (text: string, n: number): string => clean(text).split("\n").map((l) => l.trimEnd()).filter((l) => l && !NOISE.test(l)).slice(-n).join("\n");
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -139,7 +140,7 @@ async function verb(ctx: Ctx, name: string, v: V, emit: Emit, macro?: string): P
     ctx.out(JSON.stringify({ command: `dbt ${args.join(" ")}`, ok, exit: r.status, counts: rep?.counts, failures: rep?.failures.map((f) => ({ name: f.name, kind: f.kind, status: f.status, file: f.file, message: f.message.split("\n")[0] })), ...(rep ? {} : { output: tail(out, 60) }), ...(capacity ? { capacityFull: true, hint: CAPACITY_NOTE } : {}) }));
   } else if (rep) {
     ctx.out(`dbt ${name} ${ok ? "succeeded" : `failed (exit ${r.status})`}: ${Object.entries(rep.counts).map(([k, n]) => `${n} ${k}`).join(", ")}`);
-    for (const f of rep.failures.slice(0, 10)) ctx.out(`  ${f.status} ${f.kind} ${f.name}${f.file ? ` (${f.file})` : ""}: ${f.message.split("\n")[0].slice(0, 160)}`);
+    for (const f of rep.failures.slice(0, 10)) ctx.out(`  ${f.status} ${f.kind} ${f.name}${f.file ? ` (${f.file})` : ""}: ${(f.message.split("\n").find((l) => l.trim()) ?? "").slice(0, 160)}`);
     if (rep.failures.length > 10) ctx.out(`  ... and ${rep.failures.length - 10} more`);
     if (rep.failures.length) ctx.out("details with compiled SQL and failing rows: aihub dbt failures");
   } else {
