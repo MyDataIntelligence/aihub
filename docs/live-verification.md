@@ -245,3 +245,5 @@ Cleanup: PRs !1077 (earlier check), !1086, !1087, !1088, !1089 abandoned; all fe
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
+
+Workspace `aihub-test-dev-20261118b` (second round, sql fix, spark stop) was deleted on 2026-11-18 with `fabric workspace delete --yes`; the Fabric API answers WorkspaceNotFound for its id.
