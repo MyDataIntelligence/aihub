@@ -6,3 +6,5 @@
 - `aihub learn week [--days N]`: your commits and most touched files.
 - `aihub learn onboarding`: repository, flow, terms and pictures in one JSON for a welcome lesson.
 - `aihub learn item <path>`: one file (definitions, imports, who uses it), pipeline yaml (stages, jobs), dbt model (lineage) or Fabric item folder.
+- `--idiagram` on `learn diagram` pushes a flowchart to iDiagram (the user's own app, no key) with a story of scenes and returns `url` and `playUrl`: put them in the diagram as `idiagramUrl` and `playUrl`; the lesson page then shows "Play story". Only Mermaid and the scenes are sent. A `failed` status is fine: the Mermaid stays.
+- `aihub learn level [set junior|medior|senior]` and `aihub learn after-pr [on|off]`: the level sets the lesson's style; after-pr (off by default, `learn.afterPr` in team.yaml sets the team default) makes `pr create` and `story finish` end with one line offering `/leer`.

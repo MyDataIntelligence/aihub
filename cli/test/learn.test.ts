@@ -257,13 +257,6 @@ describe("learn diagram, flow, glossary, week, onboarding, item", () => {
     expect(JSON.parse((await go(world(), ["learn", "diagram", "--kind", "repo", "--json"])).out).mermaid).toContain("flowchart TD");
   });
 
-  it("iDiagram is only reported, never required", async () => {
-    const dir = world();
-    const none = JSON.parse((await go(dir, ["learn", "diagram", "--kind", "flow", "--idiagram", "--json"])).out);
-    expect(none.idiagram.configured).toBe(false);
-    expect(none.idiagram.message).toContain("complete without it");
-  });
-
   it("glossary uses only the repository's own files", async () => {
     const dir = world();
     write(dir, "README.md", "# Demo\n\n## Betaalkosten\n\n- **Cap**: het maximum dat een betaling kost\n");
@@ -312,5 +305,13 @@ describe("learn diagram, flow, glossary, week, onboarding, item", () => {
     expect(b.kind).toBe("onboarding");
     expect(b.diagrams.length).toBeGreaterThanOrEqual(3);
     for (const d of b.diagrams) expect(mermaidProblem(d.mermaid)).toBeUndefined();
+  });
+});
+
+describe("iDiagram links in an explanation", () => {
+  it("accepts https links on a diagram and refuses others", () => {
+    const d = { title: "t", kind: "flow", mermaid: "flowchart LR\n A-->B" };
+    expect(validateExplanation({ ...GOOD, diagrams: [{ ...d, idiagramUrl: "https://idiagram.vercel.app/#board=x", playUrl: "https://idiagram.vercel.app/#board=x&play=1" }] }).ok).toBe(true);
+    expect(validateExplanation({ ...GOOD, diagrams: [{ ...d, playUrl: "javascript:alert(1)" }] }).errors.join(" ")).toContain("playUrl must be an https link");
   });
 });
