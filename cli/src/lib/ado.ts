@@ -173,6 +173,16 @@ export class AdoClient {
     return this.request<T>(method, path, { rawBody: bytes, contentType: "application/octet-stream", query }).then((r) => r.data);
   }
 
+  /** Download bytes from an absolute Azure DevOps URL (artifact zips); the same sign-in, capped at maxBytes. */
+  async fetchBytes(fullUrl: string, maxBytes = 200 * 1024 * 1024): Promise<Uint8Array> {
+    if (!/^https:\/\/([a-z0-9-]+\.)?(dev\.azure\.com|visualstudio\.com)\//i.test(fullUrl)) throw new AihubError(`refusing to download from ${fullUrl}: not an Azure DevOps address`);
+    const res = await this.fetchFn(fullUrl, { headers: { Authorization: await this.auth() } });
+    if (!res.ok) throw new AihubError(`download failed (${res.status})`);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.length > maxBytes) throw new AihubError(`the download is ${Math.round(buf.length / 1048576)} MB, more than the ${Math.round(maxBytes / 1048576)} MB limit`);
+    return buf;
+  }
+
   getText(path: string, query?: Query): Promise<string> {
     return this.request<string>("GET", path, { query, raw: true }).then((r) => r.data);
   }
