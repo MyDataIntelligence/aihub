@@ -4,6 +4,7 @@ import { parse as parseYaml } from "yaml";
 import { parse } from "../lib/args.js";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
+import { impact, yamlCmd } from "./dbt-more.js";
 import { SHOW_TARGET, failureReport, renderFailures } from "../lib/dbt-failures.js";
 import { downstream, findNode, label, loadManifest, upstream, type Node } from "../lib/dbt-manifest.js";
 import type { Version } from "../lib/dbt-run.js";
@@ -76,6 +77,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   if (sub === "check") return check(ctx, v, emit);
   if (sub === "failures") return failures(ctx, v, emit);
   if (sub === "lineage") return lineage(ctx, v, positionals[0], emit);
+  if (sub === "impact") return impact(ctx, v, emit);
+  if (sub === "yaml") return yamlCmd(ctx, v, positionals, emit);
   if (sub === "run-operation") {
     if (!positionals[0]) throw new AihubError("usage: aihub dbt run-operation <macro> [--args <yaml>]");
     return verb(ctx, "run-operation", v, emit, positionals[0]);
@@ -111,7 +114,7 @@ export function verbArgs(verb: string, v: V, macro?: string): string[] {
   if (v["fail-fast"] && ["build", "run", "test", "seed"].includes(verb)) a.push("--fail-fast");
   if (v.threads) a.push("--threads", String(int(v.threads, "threads", 1)));
   if (v.limit && verb === "show") a.push("--limit", String(int(v.limit, "limit", 5)));
-  if (verb === "show") a.push("--target-path", SHOW_TARGET);
+  if (verb === "show") a.push("--indirect-selection", "empty", "--target-path", SHOW_TARGET);
   return a;
 }
 
