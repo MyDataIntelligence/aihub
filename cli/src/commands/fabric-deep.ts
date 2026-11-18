@@ -7,6 +7,7 @@ import { causeOfChain, classifyError, codeRefusals, errorsOnly, failedCell, pars
 import { COMMANDS, findProfiles, findProjects, jobDefinition, projectFiles, readRunResults, logTail, safeProjectDir, scaffoldFiles, setHash, writeScaffold, routeOf, MAX_FILES } from "../lib/fabric-dbt.js";
 import { durationText, extractStack, oneLine, parseUtc, toTable } from "../lib/fabric-ops.js";
 import { redact } from "../lib/fabric-redact.js";
+import { isDroppedConnection, powershellSqlQuery } from "../lib/fabric-sql-fallback.js";
 import { readKeyVaultSecret } from "../lib/fabric-auth.js";
 import { dryRun, emit, itemArg, makeClient, need, target, where, type Setup, type Target } from "./fabric.js";
 import { slim } from "./fabric-api.js";
@@ -39,9 +40,44 @@ async function findSession(client: FabricClient, wsId: string, item: FabricItem,
   return hit;
 }
 
-/** `aihub fabric spark sessions|app|logs`: Spark sessions of a workspace or item, application views, driver/executor/Livy logs. */
+export const CAPACITY_HINT = (ws: string) => `the capacity is full (a trial capacity runs one Spark session at a time): free it with: aihub fabric spark stop --workspace ${ws} --all-mine --dry-run`;
+
+const ENDED = /^(dead|killed|error|failed|cancelled|canceled|succeeded|success|completed|stopped|shutting_down|notstarted)$/i;
+
+/** `aihub fabric spark stop`: closes idle or stuck Spark sessions that block the capacity (Livy API session: DELETE; notebook session: cancel its job). Dev/feature workspaces only. */
+async function sparkStop(s: Setup, client: FabricClient): Promise<void> {
+  const t = await target(s, client, true);
+  const one = s.v.session as string | undefined;
+  if (!one && !s.v["all-mine"]) throw new AihubError("usage: aihub fabric spark stop --workspace W (--session <livyId> | --all-mine) [--dry-run] [--yes]");
+  const all = await client.list<Session>(`/workspaces/${t.id}/spark/livySessions`);
+  const pick = one ? all.filter((x) => x.livyId?.toLowerCase() === one.toLowerCase()) : all.filter((x) => !ENDED.test(String(x.state ?? "")));
+  if (!pick.length) {
+    if (one) throw new AihubError(`no Spark session ${one} in ${where(t)}; list them with: aihub fabric spark sessions --workspace ${t.ws.name}`);
+    return emit(s, { stopped: [] }, `no active Spark session in ${where(t)}`);
+  }
+  const how = (x: Session) => (x.itemType === "Lakehouse" || !x.jobInstanceId ? "close the Livy session" : "cancel the notebook job");
+  const plan = pick.map((x) => `${how(x)} ${x.livyId} (${String(x.state ?? "?")}, ${String(x.itemName ?? x.itemId ?? "?")}) in ${where(t)}`);
+  if (s.v["dry-run"]) return dryRun(s, plan);
+  if (!one && !s.v.yes) throw new AihubError(`--all-mine stops ${pick.length} session(s) in ${where(t)}; add --yes after checking with --dry-run`);
+  const stopped: string[] = [];
+  const failed: string[] = [];
+  for (const x of pick) {
+    try {
+      if (x.itemType === "Lakehouse" || !x.jobInstanceId) await client.request("DELETE", `/workspaces/${t.id}/lakehouses/${String(x.itemId)}/livyapi/versions/2023-12-01/sessions/${x.livyId}`);
+      else await client.cancelJob(t.id, String(x.itemId), x.jobInstanceId);
+      stopped.push(x.livyId);
+    } catch (e) {
+      failed.push(`${x.livyId}: ${(e as Error).message}`);
+    }
+  }
+  emit(s, { stopped, failed }, `stopped ${stopped.length} Spark session(s) in ${where(t)}${failed.length ? `; failed: ${failed.join("; ")}` : ""}`);
+  if (failed.length) throw new AihubError(`${failed.length} Spark session(s) could not be stopped`);
+}
+
+/** `aihub fabric spark sessions|app|logs|stop`: Spark sessions of a workspace or item, application views, driver/executor/Livy logs. */
 export async function sparkCmd(s: Setup, sub: string | undefined): Promise<void> {
   const client = makeClient(s.ctx, s.v);
+  if (sub === "stop") return sparkStop(s, client);
   const t = await target(s, client, false);
   if (sub === "sessions") {
     const item = s.v.item ? await itemArg(s, client, t.id) : undefined;
@@ -104,7 +140,7 @@ export async function sparkCmd(s: Setup, sub: string | undefined): Promise<void>
     return emit(s, { session: session.livyId, view, data }, `Spark session ${session.livyId} (${session.state ?? "?"}), view ${view}\n${text}`);
   }
   if (sub === "logs") return sparkLogs(s, client, t, item, session, base);
-  throw new AihubError("usage: aihub fabric spark sessions|app|logs --workspace W --item I [--livy ID|--job ID]");
+  throw new AihubError("usage: aihub fabric spark sessions|app|logs|stop --workspace W --item I [--livy ID|--job ID]");
 }
 
 /** Driver, executor, Livy or rolling driver log of a session, with tail/search/errors/cell windows. */
@@ -390,7 +426,19 @@ export async function sqlCmd(s: Setup): Promise<void> {
   const ep = { host, port, database: it.displayName };
   if (s.v["dry-run"]) return dryRun(s, [`read-only query on ${it.displayName} (${host}): ${oneLine(query, 100)}`]);
   const token = (await client.identity!.token("sql")).replace(/^Bearer /, "");
-  const run = s.ctx.sql ?? tediousQuery;
+  // tedious first; when the endpoint drops its connection (seen on a lakehouse SQL endpoint) Windows retries the same read-only query through .NET SqlClient.
+  const run =
+    s.ctx.sql ??
+    (async (...a: Parameters<typeof tediousQuery>) => {
+      try {
+        return await tediousQuery(...a);
+      } catch (e) {
+        if (process.platform !== "win32" || !isDroppedConnection((e as Error).message)) throw e;
+        return await powershellSqlQuery(...a).catch((e2) => {
+          throw new AihubError(`${(e as Error).message}; the .NET SqlClient fallback failed too: ${(e2 as Error).message}`);
+        });
+      }
+    });
   const r = await run(ep, query, max, num(s, "timeout", 60), token);
   const rows = r.rows.slice(0, max).map((row) => row.map((v) => (typeof v === "string" ? redact(v) : v)));
   emit(s, { readOnly: true, columns: r.columns, rowCount: rows.length, truncated: r.rows.length > max, rows }, `${rows.length} row(s)${r.rows.length > max ? ` (first ${max})` : ""} from ${it.displayName} [read-only]\n${r.columns.join(" | ")}\n${rows.map((x) => x.join(" | ")).join("\n")}`);
