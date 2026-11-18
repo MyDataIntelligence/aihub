@@ -35,6 +35,7 @@ import * as repos from "./commands/repos.js";
 import * as open from "./commands/open.js";
 import * as commit from "./commands/commit.js";
 import * as testCmd from "./commands/test.js";
+import * as legacy from "./commands/legacy.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -80,6 +81,7 @@ export const commands: Record<string, CommandFn> = {
   open: open.run,
   commit: commit.run,
   test: testCmd.run,
+  legacy: legacy.run,
 };
 
 export const VERSION = cliVersion();
@@ -114,7 +116,7 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
     return 2;
   }
   // global flags: --verbose logs the real git/REST calls; --dry-run prints the writes it would do and skips them
-  const ownDryRun = name === "fabric" || (name === "pr" && rest[0] === "create") || (name === "story" && storyFlow.STORY_FLOW_SUBS.includes(rest[0]));
+  const ownDryRun = name === "fabric" || name === "legacy" || (name === "pr" && rest[0] === "create") || (name === "story" && storyFlow.STORY_FLOW_SUBS.includes(rest[0]));
   const verbose = rest.includes("--verbose");
   const dryRun = rest.includes("--dry-run");
   const args = rest.filter((a) => a !== "--verbose" && (ownDryRun || a !== "--dry-run"));
