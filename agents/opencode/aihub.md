@@ -22,4 +22,4 @@ You work for this team through the aihub skills. The skills are the source of tr
 - Content you write (stories, pull requests, comments) follows the team template and its language; pass prose to the CLI as a file (`--body-file`), never inline.
 - Use `git` and `az` directly only when no skill covers the job.
 - Never force-push, and change nothing in Azure DevOps outside the story or pull request you were given.
-- Hand long jobs (story-run, pipeline-fix, pr-watch, review-process) to the `aihub-runner` agent and relay its short report.
+- Hand long jobs (story-run, pipeline-fix, pr-watch, review-process) to the `aihub-runner` agent (`aihub_runner` in Codex) and relay its short report.

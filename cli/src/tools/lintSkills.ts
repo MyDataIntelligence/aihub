@@ -213,7 +213,7 @@ export function lintAgents(agentsDir: string, skillNames: string[], opts: { forb
           errors.push(`${file}: expected name, description and developer_instructions (triple-quoted), in that order`);
           continue;
         }
-        if (t[1] !== name) errors.push(`${file}: name "${t[1]}" must equal the file name "${name}"`);
+        if (t[1] !== name.replace(/-/g, "_")) errors.push(`${file}: name "${t[1]}" must equal the file name with underscores "${name.replace(/-/g, "_")}"`);
         description = t[2];
         body = t[3].trim();
       } else {

@@ -1,6 +1,3 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { CliError, readJson, type Runner } from "./cli";
 import { TtlCache } from "./cache";
 import { buildModel, toFabric, type BarEvent, type BarModel, type FabricModel, type PrChecksJson, type StatusJson } from "./model";
@@ -11,26 +8,9 @@ export interface LoadOptions {
   /** How long a Fabric result stays valid; Fabric calls are the slow ones. */
   fabricTtlMs: number;
   now?: () => number;
-  env?: NodeJS.ProcessEnv;
 }
 
 const FABRIC_NONE = Symbol("no fabric workspace");
-
-/** The events `aihub watch --mine` stored (one JSON file each), newest first. Reading them is the only thing not done through a command. */
-export function readEvents(env: NodeJS.ProcessEnv = process.env, limit = 5, readdir = readdirSync): BarEvent[] {
-  const dir = join(env.AIHUB_HOME || join(homedir(), ".aihub"), "events");
-  if (!existsSync(dir)) return [];
-  const rows: BarEvent[] = [];
-  for (const f of readdir(dir).filter((x) => x.endsWith(".json"))) {
-    try {
-      const j = JSON.parse(readFileSync(join(dir, f), "utf8")) as { id?: string; message?: string; at?: number; repo?: string };
-      if (j.message) rows.push({ id: String(j.id ?? f), message: j.message, at: typeof j.at === "number" ? j.at : statSync(join(dir, f)).mtimeMs, repo: j.repo });
-    } catch {
-      // a half-written file: the next refresh sees it whole
-    }
-  }
-  return rows.sort((a, b) => b.at - a.at).slice(0, limit);
-}
 
 /** Reads the whole bar. Each call is one aihub JSON read; the Fabric ones are cached longer. */
 export class BarLoader {
@@ -55,7 +35,14 @@ export class BarLoader {
       this.opts.fabric ? this.fabric(status.branch ?? "") : null,
       this.soft(async () => (await readJson<{ mine?: boolean }[]>(this.run, ["watch", "list"], cwd)).some((w) => w.mine)),
     ]);
-    return buildModel({ status, checks: checks ?? undefined, fabric, watching: !!watching, events: readEvents(this.opts.env), now: (this.opts.now ?? Date.now)() });
+    const events = (await this.soft(() => this.cliEvents())) ?? [];
+    return buildModel({ status, checks: checks ?? undefined, fabric, watching: !!watching, events, now: (this.opts.now ?? Date.now)() });
+  }
+
+  /** `aihub watch events` (CLI 1.0.3+). An older CLI has no such command: no events then. */
+  private async cliEvents(): Promise<BarEvent[]> {
+    const rows = await readJson<{ id: string; message: string; epoch?: number; at?: string; repo?: string }[]>(this.run, ["watch", "events", "--limit", "5"], this.opts.cwd);
+    return rows.map((r) => ({ id: r.id, message: r.message, at: typeof r.epoch === "number" ? r.epoch : Date.parse(r.at ?? "") || 0, repo: r.repo }));
   }
 
   /** A failed side read must not take the whole bar down. */

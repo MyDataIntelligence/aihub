@@ -1,8 +1,9 @@
 import { findActivePr, type AdoClient, type PullRequest } from "./ado.js";
+import { reviewersOf, type Reviewer } from "./prList.js";
 import { getThreads } from "./comments.js";
 import { repoClient, type Ctx } from "./context.js";
 import { currentBranch, workItemFromBranch } from "./git.js";
-import { isDirty, unpushedCount } from "./gitx.js";
+import { hasWorkToCommit, unpushedCount } from "./gitx.js";
 import { readNotes } from "./notes.js";
 import { latestPerDefinition, selectBuilds, type Build } from "./pipeline.js";
 import { loadTeam } from "./team.js";
@@ -14,7 +15,7 @@ export interface Status {
   repo: string;
   branch: string;
   story: { id: number; title: string; state: string } | null;
-  pr: { id: number; title: string; status: string; draft: boolean; url: string } | null;
+  pr: { id: number; title: string; status: string; draft: boolean; url: string; reviewers: Reviewer[] } | null;
   pipeline: { name: string; state: string }[];
   checks: Checks;
   openThreads: number;
@@ -117,7 +118,7 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
 
   const threads = active ? await guard("threads", () => getThreads(client, active.pullRequestId, undefined, false)) : undefined;
   const openThreads = threads?.length ?? 0;
-  const dirty = isDirty(root);
+  const dirty = hasWorkToCommit(root);
   const unpushed = unpushedCount(root);
   const notes = readNotes(root, branch).length;
   const prCompleted = !!done;
@@ -138,7 +139,7 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
     repo: client.remote.repo,
     branch,
     story,
-    pr: pr ? { id: pr.pullRequestId, title: pr.title, status: pr.status, draft: !!pr.isDraft, url: client.prUrl(pr.pullRequestId) } : null,
+    pr: pr ? { id: pr.pullRequestId, title: pr.title, status: pr.status, draft: !!pr.isDraft, url: client.prUrl(pr.pullRequestId), reviewers: reviewersOf(pr as { reviewers?: { displayName?: string; vote?: number; isRequired?: boolean }[] }) } : null,
     pipeline: latest.map((b) => ({ name: b.definition?.name ?? "pipeline", state: stateOf(b) })),
     checks,
     openThreads,

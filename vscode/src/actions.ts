@@ -10,20 +10,29 @@ export interface ChatAction {
   /** What is put in the chat input. */
   text: string;
   icon: string;
+  /** The label on the bar's main button. */
+  short: string;
 }
 
 export const ACTIONS: ChatAction[] = [
-  { id: "story-run", label: "Run the story", text: "/story-run", icon: "play" },
-  { id: "start", label: "Start a story", text: "/start", icon: "rocket" },
-  { id: "commit", label: "Commit", text: "/commit", icon: "git-commit" },
-  { id: "pr", label: "Create pull request", text: "/pr", icon: "git-pull-request-create" },
-  { id: "pr-update", label: "Update pull request", text: "/pr-update", icon: "git-pull-request" },
-  { id: "review", label: "Process review comments", text: "/review", icon: "comment-discussion" },
-  { id: "pipeline-fix", label: "Fix the failing pipeline", text: "Use the pipeline-fix skill: follow the pipeline of this branch's pull request, find the failed step and fix it.", icon: "error" },
-  { id: "watch", label: "Watch the pull request", text: "/watch", icon: "eye" },
-  { id: "fabric-failures", label: "Explain the Fabric failures", text: "Use the fabric skill: run aihub fabric failures for this branch and explain the root cause of the newest failed run.", icon: "database" },
-  { id: "explain", label: "Explain this change", text: "/explain", icon: "info" },
-  { id: "finish", label: "Finish the story", text: "/finish", icon: "check-all" },
+  { id: "story-run", short: "Run story", label: "Run the story", text: "/story-run", icon: "play" },
+  { id: "start", short: "Start story", label: "Start a story", text: "/start", icon: "rocket" },
+  { id: "commit", short: "Commit", label: "Commit", text: "/commit", icon: "git-commit" },
+  { id: "pr", short: "Create PR", label: "Create pull request", text: "/pr", icon: "git-pull-request-create" },
+  { id: "pr-update", short: "Update PR", label: "Update pull request", text: "/pr-update", icon: "git-pull-request" },
+  { id: "review", short: "Review", label: "Process review comments", text: "/review", icon: "comment-discussion" },
+  { id: "pipeline-fix", short: "Fix pipeline", label: "Fix the failing pipeline", text: "Use the pipeline-fix skill: follow the pipeline of this branch's pull request, find the failed step and fix it.", icon: "error" },
+  { id: "watch", short: "Watch", label: "Watch the pull request", text: "/watch", icon: "eye" },
+  { id: "fabric-failures", short: "Fabric failures", label: "Explain the Fabric failures", text: "Use the fabric skill: run aihub fabric failures for this branch and explain the root cause of the newest failed run.", icon: "database" },
+  { id: "story", short: "Write story", label: "Write story from idea...", text: "/story", icon: "note" },
+  { id: "refine", short: "Refine", label: "Refine story...", text: "/refine", icon: "wand" },
+  { id: "review-pr", short: "Review PR", label: "Review someone else's PR...", text: "/review-pr", icon: "eye" },
+  { id: "cherry-pick", short: "Cherry-pick", label: "Cherry-Pick to Other Repositories...", text: "/cherry-pick", icon: "git-merge" },
+  { id: "release", short: "Release", label: "Create release...", text: "/release", icon: "package" },
+  { id: "wiki", short: "Wiki", label: "Update the wiki...", text: "/wiki", icon: "book" },
+  { id: "test", short: "Robot tests", label: "Run or generate Robot tests...", text: "/test", icon: "beaker" },
+  { id: "explain", short: "Explain", label: "Explain this change", text: "/explain", icon: "info" },
+  { id: "finish", short: "Finish", label: "Finish the story", text: "/finish", icon: "check-all" },
 ];
 
 export const actionById = (id: string): ChatAction | undefined => ACTIONS.find((a) => a.id === id);
@@ -62,6 +71,14 @@ export function actionsFor(m: BarModel): ChatAction[] {
         return !!m.pr;
       case "start":
         return !m.story;
+      case "review-pr":
+      case "cherry-pick":
+      case "release":
+      case "wiki":
+      case "test":
+      case "story":
+      case "refine":
+        return true;
       case "commit":
         return m.dirty;
       default:

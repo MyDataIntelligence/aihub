@@ -1,13 +1,13 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BarLoader, readEvents } from "../src/data";
+import { BarLoader } from "../src/data";
 import { stubRunner } from "./helpers";
 
 const scratch = () => mkdtempSync(join(tmpdir(), "aihub-ext-"));
 const calls = (file: string) => readFileSync(file, "utf8").trim().split("\n");
-const opts = (dir: string, fabric = true, ttl = 60_000) => ({ cwd: dir, fabric, fabricTtlMs: ttl, env: { AIHUB_HOME: dir } });
+const opts = (dir: string, fabric = true, ttl = 60_000) => ({ cwd: dir, fabric, fabricTtlMs: ttl });
 
 describe("BarLoader", () => {
   it("reads the whole bar through aihub --json calls only", async () => {
@@ -16,13 +16,15 @@ describe("BarLoader", () => {
     writeFileSync(log, "");
     const m = await new BarLoader(stubRunner({ FAKE_AIHUB_CALLS: log }), opts(dir)).load();
     expect(m.story?.id).toBe(1234);
-    expect(m.pr).toMatchObject({ id: 45, votes: { summary: "needs approval" } });
+    expect(m.pr).toMatchObject({ id: 45, votes: { summary: "1 approved, 1 waiting" } });
+    expect(m.pr?.reviewers.map((r) => r.name)).toEqual(["Bob", "Ann"]);
+    expect(m.events.map((e) => e.message)).toEqual(["New comment on PR !45", "Build (ci) failed on your PR !45"]);
     expect(m.openThreads).toBe(2);
     expect(m.fabric?.failed).toHaveLength(1);
     expect(m.watching).toBe(true);
     const c = calls(log);
-    expect(c).toHaveLength(5);
-    expect(c).toEqual(expect.arrayContaining(["status", "pr checks --pr 45", "fabric failures", "fabric logs --since 24h --top 8", "watch list"]));
+    expect(c).toHaveLength(6);
+    expect(c).toEqual(expect.arrayContaining(["status", "pr checks --pr 45", "fabric failures", "fabric logs --since 24h --top 8", "watch list", "watch events --limit 5"]));
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -58,18 +60,15 @@ describe("BarLoader", () => {
   it("still shows the bar when pr checks fails", async () => {
     const dir = scratch();
     const m = await new BarLoader(stubRunner({ FAKE_AIHUB_FAIL: "pr" }), opts(dir, false, 1)).load();
-    expect(m.pr?.votes.summary).toBe("no votes");
+    expect(m.pr?.id).toBe(45);
+    expect(m.pr?.blockers).toEqual([]);
   });
 });
 
-describe("readEvents", () => {
-  it("reads the stored watch events, newest first", () => {
-    const home = scratch();
-    mkdirSync(join(home, "events"));
-    writeFileSync(join(home, "events", "a.json"), JSON.stringify({ id: "a", message: "old", at: 1000 }));
-    writeFileSync(join(home, "events", "b.json"), JSON.stringify({ id: "b", message: "new", at: 2000 }));
-    writeFileSync(join(home, "events", "c.json"), "{ half");
-    expect(readEvents({ AIHUB_HOME: home }).map((e) => e.message)).toEqual(["new", "old"]);
-    expect(readEvents({ AIHUB_HOME: join(home, "nothing") })).toEqual([]);
+describe("events", () => {
+  it("come from aihub watch events, and are empty for a CLI without that command", async () => {
+    const dir = scratch();
+    expect((await new BarLoader(stubRunner(), opts(dir, false)).load()).events).toHaveLength(2);
+    expect((await new BarLoader(stubRunner({ FAKE_AIHUB_FAIL: "watch" }), opts(dir, false)).load()).events).toEqual([]);
   });
 });

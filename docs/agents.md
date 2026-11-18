@@ -16,7 +16,7 @@ The source files live in `agents/<format>/` (`opencode`, `opencode2`, `copilot`,
 | opencode 1.x | `~/.config/opencode/agent/aihub.md`, `aihub-runner.md` (`OPENCODE_CONFIG_DIR` or `XDG_CONFIG_HOME` move it) | `.opencode/agent/` |
 | opencode 2.x | `~/.config/opencode/agents/` | `.opencode/agents/` |
 | GitHub Copilot (VS Code and Copilot CLI) | `~/.copilot/agents/aihub.agent.md`, `aihub-runner.agent.md` (`COPILOT_HOME` moves it) | `.github/agents/` |
-| Codex | `$CODEX_HOME/agents/aihub.toml`, `aihub-runner.toml` (default `~/.codex/agents/`) | `.codex/agents/` |
+| Codex | `$CODEX_HOME/agents/aihub.toml`, `aihub-runner.toml` (agent name `aihub_runner`: the Codex docs only show underscore names) (default `~/.codex/agents/`) | `.codex/agents/` |
 | Claude Code (opt-in: `--client claude`) | `~/.claude/agents/aihub.md`, `aihub-runner.md` (`CLAUDE_CONFIG_DIR` moves it) | `.claude/agents/` |
 
 - **opencode format follows the installed version.** `aihub skills install` runs `opencode --version`: 2.x and newer gets `agents/` with a `permissions` list, everything else (1.x, or opencode not found) gets `agent/` with a `permission` map, which 2.x still translates. If the version changes, `aihub skills update` moves your unmodified aihub files to the other folder; `aihub doctor` shows the version, the format and a fix when the folder is the wrong one.
@@ -29,6 +29,7 @@ The source files live in `agents/<format>/` (`opencode`, `opencode2`, `copilot`,
 
 - **opencode**: press Tab in the prompt to cycle through the primary agents and choose `aihub` (or `opencode --agent aihub`), or set `"default_agent": "aihub"` in `opencode.json` to start with it. `aihub-runner` is a subagent: the `aihub` agent hands long jobs to it, or you write `@aihub-runner` in the prompt.
 - **VS Code (Copilot Chat)**: open chat, select the Copilot harness in the session target, then pick `aihub` in the Agent dropdown. `aihub-runner` is hidden from the dropdown (`user-invocable: false`); the `aihub` agent calls it as a subagent.
+  Checked live in VS Code 1.146 (isolated profile, not signed in): `Chat: Open Customizations` > Agents (Local harness) lists `aihub` and `aihub-runner` from `.github/agents/`, from the profile folder `<user data dir>/User/prompts/` and from `~/.copilot/agents/` (it also listed an existing agent there, so the global install location is read). The Copilot harness list stayed empty without a sign-in.
 - **Copilot CLI**: type `/agent` and choose `aihub`, or start with `copilot --agent aihub`.
 - **Claude Code**: `claude --agent aihub` runs the whole session as the aihub agent; or write "use the aihub-runner subagent to ...". `/agents` shows them.
 - **Codex**: agents are subagents of the main thread: write "use the aihub agent for this" or "let aihub-runner follow the pipeline"; `/subagents` shows the threads.

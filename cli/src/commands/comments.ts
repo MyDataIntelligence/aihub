@@ -5,7 +5,7 @@ import { AihubError } from "../lib/errors.js";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
-  let v: Record<string, string | boolean | undefined>;
+  let v: Record<string, string | boolean | string[] | undefined>;
   try {
     v = parseArgs({
       args: rest,
@@ -13,6 +13,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
         pr: { type: "string" },
         "include-resolved": { type: "boolean" },
         "replies-file": { type: "string" },
+        reply: { type: "string", multiple: true },
         json: { type: "boolean" },
       },
     }).values;
@@ -24,8 +25,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     return;
   }
   if (sub === "reply") {
-    if (!v["replies-file"]) throw new AihubError("aihub comments reply needs --replies-file <file.yaml>");
-    ctx.out(await commentsReply(ctx, { pr: v.pr as string | undefined, repliesFile: v["replies-file"] as string, json: !!v.json }));
+    ctx.out(await commentsReply(ctx, { pr: v.pr as string | undefined, repliesFile: v["replies-file"] as string | undefined, replies: v.reply as string[] | undefined, json: !!v.json }));
     return;
   }
   throw new AihubError("usage: aihub comments get|reply [flags]");

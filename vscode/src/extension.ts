@@ -1,10 +1,14 @@
 import * as vscode from "vscode";
-import { actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
+import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
 import { checkCli, CliError, INSTALL_COMMAND, makeRunner, type Runner } from "./cli";
+import { chatOpenArgs, copilotAgentInstalled } from "./agents";
 import { BarLoader } from "./data";
 import { renderBody, renderError, renderPage } from "./html";
+import { popupFor } from "./popups";
 import { statusItems, type BarError, type BarModel, type StatusItem, type Tone } from "./model";
 import { Refresher, type Result } from "./refresher";
+import { registerGitCommands } from "./gitUi";
+import { registerWorktreeCommands } from "./worktreeUi";
 
 const cfg = () => vscode.workspace.getConfiguration("aihub");
 
@@ -162,17 +166,29 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private async onMessage(m: { type: string; id?: string }) {
     switch (m.type) {
-      case "refresh":
-        return void this.refresh();
-      case "openPr":
-        return void vscode.commands.executeCommand("aihub.openPr");
-      case "openLog":
-        return this.log.show(true);
-      case "installHelp":
-        return void vscode.commands.executeCommand("aihub.installHelp");
       case "chat":
         return void this.sendToChat(m.id ?? "");
+      case "chip":
+      case "menu":
+        return this.showPopup(m.type === "menu" ? "menu" : (m.id ?? ""));
     }
+  }
+
+  /** Chips open a native pick list: details and secondary actions stay out of the bar. */
+  private async showPopup(chip: string) {
+    if (chip === "refresh") return void this.refresh();
+    if (chip === "installHelp") return void vscode.commands.executeCommand("aihub.installHelp");
+    const model = this.model();
+    if (!model) {
+      const err = this.errorOf();
+      return void vscode.window.showInformationMessage(err?.message ?? "No status yet.");
+    }
+    const popup = popupFor(chip, model);
+    const items = popup.items.map((i) => (i.separator ? { label: "", kind: vscode.QuickPickItemKind.Separator } : { label: i.label, description: i.description, detail: i.detail, run: i.run }));
+    const pick = (await vscode.window.showQuickPick(items as (vscode.QuickPickItem & { run?: (typeof popup.items)[number]["run"] })[], { title: popup.title, placeHolder: "Pick an action, or Esc" })) as { run?: (typeof popup.items)[number]["run"] } | undefined;
+    if (!pick?.run) return;
+    if (pick.run.kind === "chat") await this.sendToChat(pick.run.id);
+    else if (pick.run.kind === "command") await vscode.commands.executeCommand(pick.run.id);
   }
 
   model(): BarModel | undefined {
@@ -181,6 +197,10 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
 
   errorOf(): BarError | undefined {
     return this.last && !this.last.ok ? this.last.error : undefined;
+  }
+
+  logLine(line: string) {
+    this.log.appendLine(`${new Date().toISOString()} ${line}`);
   }
 
   showLog() {
@@ -193,39 +213,64 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   async sendToChat(actionId: string): Promise<void> {
     const action = actionById(actionId);
     if (!action) return;
+    await this.sendText(action.text);
+  }
+
+  /** Puts any text in the chat input (an action, or a question about a selection). */
+  async sendText(text: string): Promise<void> {
+    const action = { text };
     const setting = cfg().get<ChatSetting>("chatTarget", "auto");
     const term = vscode.window.terminals.find((t) => isOpencodeTerminalName(t.name));
     const target: ChatTarget = pickTarget(setting, !!term);
     this.log.appendLine(`${new Date().toISOString()} chat ${target}: ${action.text}`);
     if (target === "opencode") {
       const t = term ?? (await this.openOpencodeTerminal());
-      if (!t) {
-        void vscode.window.showInformationMessage("No opencode terminal is open. Start opencode in a terminal, or set aihub.chatTarget to copilot.");
-        return;
-      }
+      if (!t) return void vscode.window.showInformationMessage("Could not start opencode. Install it, or set aihub.chatTarget to copilot.");
       t.show(false);
       t.sendText(action.text, false);
       return;
     }
-    const base = { query: action.text, isPartialQuery: true };
+    const name = String(cfg().get("chatAgentName", "aihub"));
+    const installed = copilotAgentInstalled(name, this.cwd);
+    const args = chatOpenArgs(action.text, { agentName: name, agentInstalled: installed, agentMode: !!cfg().get("chatAgentMode", true) });
+    this.log.appendLine(`${new Date().toISOString()} chat.open ${JSON.stringify(args)}`);
     try {
-      await vscode.commands.executeCommand("workbench.action.chat.open", cfg().get("chatAgentMode", true) ? { ...base, mode: "agent" } : base);
+      await vscode.commands.executeCommand("workbench.action.chat.open", args);
     } catch {
-      await vscode.commands.executeCommand("workbench.action.chat.open", base);
+      await vscode.commands.executeCommand("workbench.action.chat.open", { query: action.text, isPartialQuery: true });
     }
+    if (!installed) void this.offerAgentInstall(name);
   }
 
+  /** Once per machine: the aihub agent is not installed, so the chat opened with the default agent. */
+  private async offerAgentInstall(name: string) {
+    if (this.ctx.globalState.get("aihub.agentOfferShown")) return;
+    await this.ctx.globalState.update("aihub.agentOfferShown", true);
+    const copy = "Copy install command";
+    const pick = await vscode.window.showInformationMessage(`The "${name}" chat agent is not installed, so the default agent was used. Install it with: aihub skills install`, copy);
+    if (pick === copy) await vscode.env.clipboard.writeText("aihub skills install");
+  }
+
+  /** The opencode VS Code extension's command when it is installed, else a terminal named opencode that starts opencode with the aihub agent. */
   private async openOpencodeTerminal(): Promise<vscode.Terminal | undefined> {
     const cmds = await vscode.commands.getCommands(true);
     const open = ["opencode.openTerminal", "opencode.openNewTerminal"].find((c) => cmds.includes(c));
-    if (!open) return undefined;
-    await vscode.commands.executeCommand(open);
-    for (let i = 0; i < 10; i++) {
-      const t = vscode.window.terminals.find((x) => isOpencodeTerminalName(x.name));
-      if (t) return t;
-      await new Promise((r) => setTimeout(r, 300));
+    if (open) {
+      await vscode.commands.executeCommand(open);
+      for (let i = 0; i < 10; i++) {
+        const t = vscode.window.terminals.find((x) => isOpencodeTerminalName(x.name));
+        if (t) return t;
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      return vscode.window.activeTerminal;
     }
-    return vscode.window.activeTerminal;
+    const name = String(cfg().get("chatAgentName", "aihub"));
+    const t = vscode.window.createTerminal({ name: "opencode", cwd: this.cwd });
+    t.show(false);
+    t.sendText(`opencode --agent ${name}`, true);
+    // give the TUI time to start before the text goes to its prompt
+    await new Promise((r) => setTimeout(r, 12000));
+    return t;
   }
 
   dispose() {
@@ -267,6 +312,17 @@ export function activate(ctx: vscode.ExtensionContext) {
       if (choice === copy) await vscode.env.clipboard.writeText(INSTALL_COMMAND);
     }),
   );
+  for (const a of ACTIONS) ctx.subscriptions.push(vscode.commands.registerCommand(`aihub.chat.${a.id}`, () => bar.sendToChat(a.id)));
+  const selection = (verb: string) => async () => {
+    const ed = vscode.window.activeTextEditor;
+    if (!ed || ed.selection.isEmpty) return;
+    const rel = vscode.workspace.asRelativePath(ed.document.uri);
+    const text = `${verb} in ${rel} lines ${ed.selection.start.line + 1}-${ed.selection.end.line + 1}: `;
+    await bar.sendText(text);
+  };
+  ctx.subscriptions.push(vscode.commands.registerCommand("aihub.editor.ask", selection("Question about the code")), vscode.commands.registerCommand("aihub.editor.suggestFix", selection("Suggest a fix for the code")));
+  registerGitCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
+  registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
   bar.start();
 }
 
