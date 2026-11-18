@@ -26,6 +26,10 @@ aihub init        # in a team repository: proposes team.yaml + templates as a PR
 aihub doctor      # checks sign-in, remote, templates and team file
 ```
 
+Skills alone, without the installer: `npx skills add MyDataIntelligence/aihub -g -a opencode -a github-copilot -a codex` copies every skill
+(each skill folder is self-contained) to `~/.agents/skills`. The slash commands (`/pr`, `/review`, ...) and the scoped opencode permission for the
+skills folder only come from `aihub skills install`, so use that for the full setup.
+
 Status: 1.0.0 (see [docs/releases/1.0.0.md](docs/releases/1.0.0.md)).
 
 ## Commands

@@ -109,6 +109,8 @@ export function lintSkills(skillsDir: string, opts: LintOptions = {}): string[] 
     }
     skillNames.push(e.name);
     const text = fs.readFileSync(file, "utf8");
+    // `npx skills add` copies each skill folder on its own: a link into _shared (or any underscore folder) would not exist there
+    if (/\]\(\.\.\/_/.test(text)) errors.push(`${file}: links into an underscore folder (_shared); a skill must be self-contained`);
     const fm = parseFrontMatter(text);
     if (!fm) {
       errors.push(`${file}: front matter missing`);

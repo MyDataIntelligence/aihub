@@ -100,6 +100,25 @@ Copilot's first `/review` ran before its thread existed because the harness read
 Ids created and removed: stories 3211 and 2840; PRs !968, !969, !970, !971 (abandoned); branches of the prefixes live-b2c6 and live-c7d1 (feature, release, cherry-pick). An `az` query shows
 no open PR, work item or branch with these prefixes. The findings table above (17-11, next.20) is kept as the "before".
 
+## Clean install 1.0.0 (2026-11-18)
+
+A clean environment on Windows (Node 22.17.1, npm 10.9.2): a fresh npm prefix and fresh `HOME`/`USERPROFILE`/`APPDATA`/`LOCALAPPDATA`, `XDG_*`, `CODEX_HOME`, `COPILOT_HOME`,
+`OPENCODE_CONFIG_DIR` and `AZURE_CONFIG_DIR` under one scratch folder, no `aihub` anywhere on `PATH` before. The installer comes from the extensions repository after the
+switch of `installer.menu[0].npm.tag` from `next` to `latest` (extensions PR #827, `check-layout.ps1` and `installer-installable.tests.ps1` green).
+
+| Step | Result |
+|---|---|
+| `install\install.ps1 -Aihub` | `npm install -g @ferronhooi/aihub@latest` into the scratch prefix, `aihub --version` = **1.0.0**, then `aihub skills install` for all three clients: opencode 36 skills + 15 commands + the scoped permission, github-copilot 36 skills, codex 36 skills + 15 prompts |
+| `install\Install.cmd`, menu `[1]` (stdin `1`, no prompts left; `INSTALLER_UPDATE_DONE=1` skips the git pull) | same result, second run `unchanged 36/15/1` |
+| `aihub skills install --client opencode\|codex\|github-copilot` | lands in the isolated homes only; each skills folder has `.aihub-manifest.json` with `version 1.0.0` and 36 files with their sha256 |
+| `aihub doctor` | `OK` node, git, `skills:opencode`, `permission:opencode`, `skills:github-copilot`, `skills:codex`; `FIX` repository and auth only because the clean env has no clone and no `az` login |
+| `npx skills add MyDataIntelligence/aihub -g -a opencode -a github-copilot -a codex` (alternative route) | works in the isolated home: 26 skills copied to `~/.agents/skills` (the universal folder all three read). It brings no slash commands, no `_shared` folder and no opencode permission rule, so the installer route stays the primary one |
+| `/pr` in isolated opencode (`gpt-6-luna`, clean env, real `az` login only for the REST calls) on a synthetic branch | PR !972 created: target main, sections Summary/Changes/Tests/Related, `AB#3212` linked, work item related (checked with `az`). The agent left Changes/Tests as `-`; the CLI behaved correctly |
+| `install\install.ps1 -Aihub -Uninstall` | skills, commands and the permission rule removed (manifest-tracked files only), `npm rm -g` done, 0 skill files left |
+
+Cleanup: PR !972 abandoned, branches `feature/3212-live-1a2b-story` and `live-1a2b/rel` deleted, story 3212 deleted, the scratch folder removed. An `az` query shows nothing with the prefix.
+Proof: `20261118-0600-L-clean-install.png` (rendered summary). Codex cases (one `codex exec` per command) follow after the usage limit resets (2026-11-18 13:28).
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.

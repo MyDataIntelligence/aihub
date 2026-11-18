@@ -13,6 +13,7 @@ import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import {
   commitsSince,
+  diffSummary,
   currentBranch,
   mergeBase,
   originDefaultBranch,
@@ -42,6 +43,14 @@ export function parsePrRef(ref: string): number {
   const m = /pullrequest\/(\d+)/i.exec(ref) ?? /^!?(\d+)$/.exec(ref.trim());
   if (!m) throw new AihubError(`'${ref}' is not a pull request number or URL`);
   return Number(m[1]);
+}
+
+/** The Changes section when the agent wrote none: one line per commit and the size of the diff. */
+export function changesText(commits: { sha: string; subject: string }[], diff?: string): string | undefined {
+  if (!commits.length) return undefined;
+  return `${commitList(commits)}${diff ? `
+
+${diff}` : ""}`;
 }
 
 export function commitList(commits: { sha: string; subject: string }[]): string {
@@ -88,7 +97,11 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
   let description: string;
   let summary: string;
   if (tpl) {
-    const c = compose({ template: tpl.content, body, code, emptyText });
+    const fallback = {
+      changes: changesText(commits, diffSummary(root, mergeBase(root, target))),
+      tests: team.language === "nl" ? "Nog niet uitgevoerd." : "Not run yet.",
+    };
+    const c = compose({ template: tpl.content, body, code, emptyText, fallback });
     description = c.text;
     const by = (k: string) => c.filled.filter((f) => f.by === k).map((f) => f.heading);
     summary = [
