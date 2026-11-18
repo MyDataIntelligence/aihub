@@ -397,3 +397,13 @@ Synthetic pipeline, environment, secure file and service connection in ferron-te
 
 Created and removed (all verified gone): pipeline #17, environment #4, secure file 48cd5a2e-22a0-4c52-93a2-4c5c9bfc6d63, connection 07ad2871-bdb5-47d2-8802-77e850b6efed, branch `live-1771c1/pipe`. Runs 283 and 284 stay (builds cannot be deleted; both ended on the rejected approval). Evidence of pipelines-build's earlier live rows: PR #125.
 
+
+### Rerun on the released 1.0.4 (2026-11-18)
+
+Same isolated setup with `@ferronhooi/aihub@latest` = **1.0.4** (`npm view` dist-tags: latest 1.0.4, next 1.0.4-next.121). Result: the same table as above, all OK (76 of 81 lines at the first pass; the other 5 are the script's own wrong arguments and the expected `crossrepo impact` refusal, as before). Additions for 1.0.4:
+
+| Check | Result |
+|---|---|
+| `aihub skills install --client all` | OK; prints the old-Hub warning, the opencode note, and the Copilot/Codex auto-approve notes |
+| `aihub doctor` `legacy-hub` | `FIX legacy-hub: the old AI Context Hub is still installed (the old hub CLI) ... -> aihub legacy remove --dry-run` in the shell as it is: the user's real old `hub` CLI is on the PATH (`%LOCALAPPDATA%\AIContextHub\cli`), nothing was touched. With that folder taken out of the PATH: `OK legacy-hub: no old AI Context Hub found` |
+| opencode 1.19.5 + Luna, agent files from the npm 1.0.4 package, isolated homes | `python -m pytest --version` ran without a prompt (pytest 7.4.4); `git push origin main` was refused by the agent's rule and the bare origin stayed at `init` (the first attempt ended with an opencode server error, the retry ran) |
