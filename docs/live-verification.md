@@ -119,6 +119,21 @@ switch of `installer.menu[0].npm.tag` from `next` to `latest` (extensions PR #82
 Cleanup: PR !972 abandoned, branches `feature/3212-live-1a2b-story` and `live-1a2b/rel` deleted, story 3212 deleted, the scratch folder removed. An `az` query shows nothing with the prefix.
 Proof: `20261118-0600-L-clean-install.png` (rendered summary). Codex cases (one `codex exec` per command) follow after the usage limit resets (2026-11-18 13:28).
 
+## Codex cells on 1.0.1 (2026-11-18)
+
+Codex CLI 0.167.0, `gpt-6-luna`, `@ferronhooi/aihub@1.0.1` (`aihub --version` = 1.0.1), after the usage limit reset (13:28). Auth from the shared test Codex home only (`CODEX_HOME`, never copied),
+everything else in a scratch environment; one `codex exec` per case with the slash command text as the prompt; end state checked with `az` and `git`.
+
+| /pr | /pr-update | /review | /cherry-pick | Proof |
+|---|---|---|---|---|
+| PASS: PR !981, target main, Summary / Changes (commit line + `5 files changed, +71 -0`, filled by the 1.0.1 fallback) / Tests `Not run yet.` / Related `AB#3228`, work item linked | PASS: text appended to Changes, story link and other sections intact | PASS: reply posted on the thread, status `closed` | PASS: PR !984 on target `live-5e9d/rel` | `20261118-1355-L-live-codex-1.0.1.png` |
+
+Finding: a first attempt with the skills only in a scratch `HOME/.agents/skills` found none, because Codex on Windows resolves `~/.agents` through the real user profile and ignores `HOME`; it then searched the
+real `~/.agents` and the shared Codex home (read only) and followed legacy Hub rules found there. The attempt created nothing. The valid run uses the skills inside the scratch clone
+(`.agents/skills`, git-excluded, without `_shared`, which no skill needs since 1.0.1), the repository route Codex reads natively. Clean-install note: for Codex the repository skills folder is the reliable isolation point.
+
+Ids created and removed: story 3228, PRs !981 and !984 (abandoned), branches of the prefix live-5e9d (feature, release, cherry-pick). An `az` query and `git ls-remote` show nothing left.
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
