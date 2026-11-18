@@ -162,20 +162,20 @@ Column **Old Hub** names the legacy tool (`-` = the old Hub did not have it). Co
 ## Test Plans
 | Capability | Old Hub | REST (`testplan/...`, `test/...`) | `aihub` command | Status |
 |---|---|---|---|---|
-| Plans, suites (tree), test cases of a suite | - | `testplan/plans`, `suites`, `TestCase` | `aihub testplan plans|suites|cases` | build |
-| Test points of a suite and their outcome | testplan_list_points | `suites/{id}/TestPoint` | `aihub testplan points` | build |
-| Set the outcome of a point | testplan_set_outcome | PATCH `TestPoint` | `aihub testplan outcome --dry-run` | build |
-| Test runs and results (failed first) of a build | test_publish_results (write side) | `test/runs`, `results` | `aihub testplan runs|results` | build |
+| Plans, suites (tree), test cases of a suite | - | `testplan/plans`, `suites`, `TestCase` | `aihub testplan plans|suites|cases` | exists |
+| Test points of a suite and their outcome | testplan_list_points | `suites/{id}/TestPoint` | `aihub testplan points` | exists |
+| Set the outcome of a point | testplan_set_outcome | PATCH `TestPoint` | `aihub testplan outcome --dry-run` | exists |
+| Test runs and results (failed first) of a build | test_publish_results (write side) | `test/runs`, `results` | `aihub testplan runs|results` | exists |
 | Publish results (Robot, JUnit) | test_publish_results, robot_post_results | `test/runs` (POST) | `aihub robot` | exists |
-| Create plans, suites and cases | - | POST `testplan/...` | `aihub testplan create-plan|create-suite|create-case` | build |
+| Create plans, suites and cases | - | POST `testplan/...` | `aihub testplan create-plan|create-suite|create-case` | exists |
 | Test configurations, test variables | - | `testplan/configurations` | - | out: configuration is portal work |
 
 ## Artifacts (feeds)
 | Capability | Old Hub | REST (`feeds.dev.azure.com`) | `aihub` command | Status |
 |---|---|---|---|---|
-| Feeds (project and organisation) | - | `packaging/feeds` | `aihub artifacts feeds` | build |
-| Packages of a feed (filter, type) | - | `feeds/{feed}/packages` | `aihub artifacts packages` | build |
-| Versions of a package | - | `packages/{id}/versions` | `aihub artifacts versions` | build |
+| Feeds (project and organisation) | - | `packaging/feeds` | `aihub artifacts feeds` | exists |
+| Packages of a feed (filter, type) | - | `feeds/{feed}/packages` | `aihub artifacts packages` | exists |
+| Versions of a package | - | `packages/{id}/versions` | `aihub artifacts versions` | exists |
 | Publish, promote, delete a package version | - | views, `pkgs.dev.azure.com` | - | out: publishing is part of the pipeline that builds the package, promotion is a release decision |
 | Feed permissions and retention | - | `packaging/feeds/{id}/permissions` | `aihub devops permissions` (read) | build |
 
