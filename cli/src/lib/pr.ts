@@ -141,11 +141,49 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
     isDraft: !!o.draft,
     ...(wi ? { workItemRefs: [{ id: String(wi) }] } : {}),
   });
-  return line(o, { id: created.pullRequestId, url: client.prUrl(created.pullRequestId), action: "created", summary }, `PR !${created.pullRequestId} created`, client, summary);
+  const after = await runAfterCreate(ctx, team, created.pullRequestId, wi, target);
+  return line(o, { id: created.pullRequestId, url: client.prUrl(created.pullRequestId), action: "created", summary, afterCreate: after }, `PR !${created.pullRequestId} created`, client, summary + (after.length ? `; after create: ${after.join("; ")}` : ""));
 }
 
-function line(o: { json?: boolean }, j: { id: number; url: string; action: string; summary: string }, text: string, c: AdoClient, summary: string): string {
+function line(o: { json?: boolean }, j: { id: number; url: string; action: string; summary: string; afterCreate?: string[] }, text: string, c: AdoClient, summary: string): string {
   return o.json ? JSON.stringify(j) : `${text}: ${c.prUrl(j.id)} (${summary})`;
+}
+
+/**
+ * team.yaml pullRequest.afterCreate: set the story state and ask for auto-complete once a NEW pull request exists. A failure never undoes the PR;
+ * it is reported in the result. Auto-complete is only requested when the target branch has a blocking policy (policies stay required: without
+ * one Azure DevOps would merge the PR at once), and it never bypasses a policy.
+ */
+async function runAfterCreate(ctx: Ctx, team: ReturnType<typeof loadTeam>, id: number, story: number | undefined, target: string): Promise<string[]> {
+  const cfg = team.pullRequest?.afterCreate;
+  if (!cfg) return [];
+  const notes: string[] = [];
+  const { client } = repoClient(ctx);
+  if (cfg.storyState) {
+    if (!story) notes.push(`story state '${cfg.storyState}' skipped: no story linked`);
+    else {
+      try {
+        const { setWorkItemState } = await import("./workitems.js");
+        await setWorkItemState(client, story, cfg.storyState);
+        notes.push(`story AB#${story} -> ${cfg.storyState}`);
+      } catch (e) {
+        notes.push(`story state not set: ${(e as Error).message.split("\n")[0]}`);
+      }
+    }
+  }
+  if (cfg.autoComplete) {
+    try {
+      const { hasBlockingPolicy } = await import("./policy.js");
+      if (!(await hasBlockingPolicy(client, branchRef(target)))) notes.push(`auto-complete not requested: '${target}' has no blocking policy, it would merge at once (complete it yourself when it is ready)`);
+      else {
+        const { prComplete } = await import("./review.js");
+        notes.push((await prComplete(ctx, { pr: String(id), auto: true })).replace(/ \(https?:[^)]*\)$/, "").replace(/^PR !\d+: /, ""));
+      }
+    } catch (e) {
+      notes.push(`auto-complete not set: ${(e as Error).message.split("\n")[0]}`);
+    }
+  }
+  return notes;
 }
 
 export interface UpdateOpts {
