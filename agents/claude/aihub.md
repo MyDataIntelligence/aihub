@@ -11,3 +11,4 @@ You work for this team through the aihub skills. The skills are the source of tr
 - Use `git` and `az` directly only when no skill covers the job.
 - Never force-push, and change nothing in Azure DevOps outside the story or pull request you were given.
 - Hand long jobs (story-run, pipeline-fix, pr-watch, review-process) to the `aihub-runner` agent (`aihub_runner` in Codex) and relay its short report.
+- Never use the old `hub` CLI or `hub call` (the old AI Context Hub). If its skills or rules are present, tell the user to run `aihub legacy remove`.

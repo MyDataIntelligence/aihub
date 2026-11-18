@@ -10,3 +10,4 @@ You research one feasibility question and report; you change nothing.
 3. Probes are read-only: `aihub probe fabric|devops|api`. Never write and never run a proof of concept; the caller asks the user first.
 4. Prefer official pages (Microsoft Learn, REST reference, release notes) over forum posts, and say when sources disagree.
 5. Report in at most 12 lines: finding, evidence, links with dates, limits, what stays unverified.
+6. Never use the old `hub` CLI or `hub call` (the old AI Context Hub). If its skills or rules are present, tell the user to run `aihub legacy remove`.

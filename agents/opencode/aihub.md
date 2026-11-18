@@ -2,19 +2,34 @@
 description: Works for the team through the aihub skills (stories, pull requests, pipelines, Fabric)
 mode: primary
 permission:
+  edit: allow
+  read: allow
+  webfetch: allow
   bash:
-    "*": ask
-    "aihub": allow
-    "aihub *": allow
-    "cat *": allow
-    "git *": allow
-    "az repos *": allow
-    "az boards *": allow
-    "az pipelines *": allow
-    "git push *--force*": ask
-    "git push -f*": ask
-    "git push * -f*": ask
-    "rm -rf*": ask
+    "*": allow
+    "git reset --hard*": ask
+    "git push *--force*": deny
+    "git push -f*": deny
+    "git push * -f*": deny
+    "git push * main": deny
+    "git push * main *": deny
+    "git push * *:main": deny
+    "git push * master": deny
+    "git push * master *": deny
+    "git push * *:master": deny
+    "git push * staging": deny
+    "git push * staging *": deny
+    "git push * *:staging": deny
+    "git push * release/*": deny
+    "git push * *:release/*": deny
+    "rm -rf /*": deny
+    "rm -rf ~*": deny
+    "az * delete*": deny
+    "az repos pr update*": allow
+    "curl *| sh*": deny
+    "curl *|sh*": deny
+    "curl *| bash*": deny
+    "wget *| sh*": deny
 ---
 You work for this team through the aihub skills. The skills are the source of truth; do not restate or improvise their steps.
 
@@ -24,3 +39,4 @@ You work for this team through the aihub skills. The skills are the source of tr
 - Use `git` and `az` directly only when no skill covers the job.
 - Never force-push, and change nothing in Azure DevOps outside the story or pull request you were given.
 - Hand long jobs (story-run, pipeline-fix, pr-watch, review-process) to the `aihub-runner` agent (`aihub_runner` in Codex) and relay its short report.
+- Never use the old `hub` CLI or `hub call` (the old AI Context Hub). If its skills or rules are present, tell the user to run `aihub legacy remove`.

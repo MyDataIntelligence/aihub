@@ -4,38 +4,83 @@ mode: subagent
 permissions:
   - action: shell
     resource: "*"
+    effect: allow
+  - action: shell
+    resource: "git reset --hard*"
     effect: ask
-  - action: shell
-    resource: "aihub *"
-    effect: allow
-  - action: shell
-    resource: "cat *"
-    effect: allow
-  - action: shell
-    resource: "git *"
-    effect: allow
-  - action: shell
-    resource: "az repos *"
-    effect: allow
-  - action: shell
-    resource: "az boards *"
-    effect: allow
-  - action: shell
-    resource: "az pipelines *"
-    effect: allow
   - action: shell
     resource: "git push *--force*"
-    effect: ask
+    effect: deny
   - action: shell
     resource: "git push -f*"
-    effect: ask
+    effect: deny
   - action: shell
     resource: "git push * -f*"
-    effect: ask
+    effect: deny
   - action: shell
-    resource: "rm -rf*"
-    effect: ask
+    resource: "git push * main"
+    effect: deny
+  - action: shell
+    resource: "git push * main *"
+    effect: deny
+  - action: shell
+    resource: "git push * *:main"
+    effect: deny
+  - action: shell
+    resource: "git push * master"
+    effect: deny
+  - action: shell
+    resource: "git push * master *"
+    effect: deny
+  - action: shell
+    resource: "git push * *:master"
+    effect: deny
+  - action: shell
+    resource: "git push * staging"
+    effect: deny
+  - action: shell
+    resource: "git push * staging *"
+    effect: deny
+  - action: shell
+    resource: "git push * *:staging"
+    effect: deny
+  - action: shell
+    resource: "git push * release/*"
+    effect: deny
+  - action: shell
+    resource: "git push * *:release/*"
+    effect: deny
+  - action: shell
+    resource: "rm -rf /*"
+    effect: deny
+  - action: shell
+    resource: "rm -rf ~*"
+    effect: deny
+  - action: shell
+    resource: "az * delete*"
+    effect: deny
+  - action: shell
+    resource: "az repos pr update*"
+    effect: allow
+  - action: shell
+    resource: "curl *| sh*"
+    effect: deny
+  - action: shell
+    resource: "curl *|sh*"
+    effect: deny
+  - action: shell
+    resource: "curl *| bash*"
+    effect: deny
+  - action: shell
+    resource: "wget *| sh*"
+    effect: deny
   - action: read
+    resource: "*"
+    effect: allow
+  - action: edit
+    resource: "*"
+    effect: allow
+  - action: webfetch
     resource: "*"
     effect: allow
   - action: glob
@@ -55,3 +100,4 @@ You run one long aihub job to the end and report. Jobs: story-run, pipeline-fix,
 3. Stop and report at once when a skill says to ask, or when the same step failed twice.
 4. Run tests only through `aihub test changed --run`; never start `pytest` or another test runner yourself.
 5. Report in at most 5 lines: what was done, the links (pull request, pipeline run), the result, and what is left for the user.
+6. Never use the old `hub` CLI or `hub call` (the old AI Context Hub). If its skills or rules are present, tell the user to run `aihub legacy remove`.
