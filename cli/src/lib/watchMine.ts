@@ -8,6 +8,7 @@ import { AihubError } from "./errors.js";
 import { detectClient, eventUrl, storeEvent } from "./open.js";
 import { parseDuration } from "./pipeline.js";
 import { loadTeam } from "./team.js";
+import { isProtected } from "./workitems.js";
 import { isAlive, logEvent, osNotify, readSpecs, removeSpec, spawnDetached, writeSpec, type Notifier, type Spawner, type WatchSpec } from "./watch.js";
 
 /**
@@ -17,13 +18,19 @@ import { isAlive, logEvent, osNotify, readSpecs, removeSpec, spawnDetached, writ
  */
 export const MINE_ID = "mine";
 
-export type MineKind = "thread" | "mention" | "workitem-mention" | "review" | "vote" | "policy" | "pr";
+export type MineKind = "thread" | "mention" | "workitem-mention" | "review" | "vote" | "policy" | "pr" | "build";
 
 export interface MineEvent {
   /** Stable id: the same thing is never reported twice. */
   id: string;
   kind: MineKind;
   message: string;
+  /** First message of the chat the toast button opens (default: the message and "ga verder"). */
+  prompt?: string;
+  /** Toast button label (default Open). */
+  label?: string;
+  /** Agent the chat starts with. */
+  agent?: string;
 }
 
 export interface MineState {
@@ -123,7 +130,33 @@ export function mentionsMe(text: string | undefined, me: Me): boolean {
 
 // ---- one poll ----------------------------------------------------------------------------------------
 
+interface RawBuild {
+  id: number;
+  buildNumber?: string;
+  sourceBranch?: string;
+  result?: string;
+  finishTime?: string;
+  definition?: { name?: string };
+  repository?: { name?: string };
+  _links?: { web?: { href?: string } };
+}
+
+/** My own builds that failed on a feature branch (never a protected one): the toast offers /fix <run url>. */
+export async function buildEvents(client: AdoClient, me: Me, protect: (branch: string) => boolean = (b) => isProtected({}, b)): Promise<MineEvent[]> {
+  const r = await client.get<{ value?: RawBuild[] }>("build/builds", { requestedFor: me.id, statusFilter: "completed", resultFilter: "failed", queryOrder: "finishTimeDescending", $top: 10 });
+  const out: MineEvent[] = [];
+  for (const b of r.value ?? []) {
+    const branch = (b.sourceBranch ?? "").replace("refs/heads/", "");
+    if (!branch || b.sourceBranch?.startsWith("refs/pull/") || protect(branch)) continue;
+    const url = b._links?.web?.href ?? `${client.remote.orgUrl}/${encodeURIComponent(client.remote.project)}/_build/results?buildId=${b.id}`;
+    out.push({ id: `build:${b.id}`, kind: "build", message: `Build ${b.definition?.name ?? ""} #${b.buildNumber ?? b.id} failed on your branch ${branch}`.replace("Build  ", "Build "), prompt: `/fix ${url}`, label: "Fix", agent: "aihub" });
+  }
+  return out;
+}
+
 export interface PollOpts {
+  /** Branch is protected (default: team.yaml branches.protected plus main, master, develop, staging, release/*). */
+  protect?: (branch: string) => boolean;
   /** Only these repositories (names, from team.yaml); empty = every repository of the project. */
   repos?: string[];
 }
@@ -259,6 +292,11 @@ export async function pollMine(client: AdoClient, me: Me, state: MineState, o: P
     }
   }
   events.push(...(await workItemEvents(client, me)));
+  try {
+    events.push(...(await buildEvents(client, me, o.protect)));
+  } catch {
+    /* no build access: the other events still count */
+  }
   return { events, prs };
 }
 
@@ -288,7 +326,8 @@ export async function runMine(ctx: Ctx, spec: WatchSpec, deps: MineDeps = {}): P
   const now = ctx.now ?? Date.now;
   const sleep = ctx.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const notifier = deps.notifier ?? osNotify;
-  const repos = ((loadTeam(root).repositories ?? []) as { name?: string }[]).map((r) => r.name).filter((n): n is string => !!n);
+  const team = loadTeam(root);
+  const repos = ((team.repositories ?? []) as { name?: string }[]).map((r) => r.name).filter((n): n is string => !!n);
   const me = await whoAmI(client);
   let state = readState(root);
   const first = !state;
@@ -299,7 +338,7 @@ export async function runMine(ctx: Ctx, spec: WatchSpec, deps: MineDeps = {}): P
   let seq = 0;
   for (;;) {
     try {
-      const { events, prs } = await pollMine(client, me, state, { repos });
+      const { events, prs } = await pollMine(client, me, state, { repos, protect: (b) => isProtected(team, b) });
       const fresh = newEvents(state, events, now(), first && polls === 0 && !(deps.includeExisting ?? spec.includeExisting));
       state.prs = prs;
       writeState(root, state);
@@ -308,8 +347,8 @@ export async function runMine(ctx: Ctx, spec: WatchSpec, deps: MineDeps = {}): P
         reported.push(e);
         logEvent(root, now(), `mine/${e.kind}`, e.message);
         const id = `${spec.id}-${now().toString(36)}-${++seq}`;
-        storeEvent(ctx.env, { id, repo: spec.repo ?? root, client: spec.client, session: spec.session, message: e.message, prompt: `${e.message} — ga verder`, at: now() });
-        if (spec.notify && !(await notifier("aihub", e.message, { label: "Open", url: eventUrl(id) }))) ctx.out(`${e.message}\n  open it with: aihub open --event ${id}`);
+        storeEvent(ctx.env, { id, repo: spec.repo ?? root, client: spec.client, session: spec.session, message: e.message, prompt: e.prompt ?? `${e.message} — ga verder`, agent: e.agent, at: now() });
+        if (spec.notify && !(await notifier("aihub", e.message, { label: e.label ?? "Open", url: eventUrl(id) }))) ctx.out(`${e.message}\n  open it with: aihub open --event ${id}`);
       }
     } catch (e) {
       if (++failures >= 5) {
