@@ -82,6 +82,24 @@ Ids created and removed afterwards: stories 2781, 2787, 2804, 2808; PRs 778 and 
 `cherry-pick/pr778-to-live-e8a2-rel`, `cherry-pick/pr786-to-live-a9c4-rel` for the prefixes live-d5f1, live-e8a2, live-f3b7, live-a9c4. An `az` query shows no open PR, work item or
 branch with these prefixes.
 
+## Rerun of the red cells on @next.28 (2026-11-18)
+
+Same isolation, installed `@ferronhooi/aihub@0.1.0-next.28` (contains #27 pr-update keeps CLI sections, #28 replies schema, #30 cherry-pick `--pr`, #32 scoped opencode permission).
+For opencode `aihub skills install --client opencode` now wrote only
+`permission.external_directory["<config>/skills/**"] = "allow"` into `opencode.json` (no global allow, no other permission keys in the scratch config);
+`aihub doctor` reported `OK permission:opencode`. End state checked with `az` and `git` (second source).
+
+| Client | /pr | /pr-update | /review | /cherry-pick | Proof |
+|---|---|---|---|---|---|
+| opencode 1.19.5, `openai/gpt-6-luna` | PASS (!968, template sections, target main, AB# link, work item related; no permission prompt) | PASS (bullet added, AB# story link kept) | PASS (reply posted, thread status `fixed`) | PASS (PR !971 on target `live-b2c6/rel`) | `20261118-0530-L-live-opencode-rerun.png` |
+| Copilot CLI | PASS (!969) | PASS (bullet added, AB# kept) | PASS (reply posted, thread `fixed`) | PASS (PR !970 on target `live-c7d1/rel`) | `20261118-0530-L-live-copilot-rerun.png` |
+| Codex 0.167.0 | still blocked by the usage limit (until 2026-11-18 13:28) | | | | |
+
+Notes: a first attempt of the rerun did not start because Azure CLI lost its login under the overridden `HOME` (fixed with `AZURE_CONFIG_DIR`, a harness detail, not an aihub problem);
+Copilot's first `/review` ran before its thread existed because the harness read the PR number with a wrong regex, so the cell was repeated with the thread in place.
+Ids created and removed: stories 3211 and 2840; PRs !968, !969, !970, !971 (abandoned); branches of the prefixes live-b2c6 and live-c7d1 (feature, release, cherry-pick). An `az` query shows
+no open PR, work item or branch with these prefixes. The findings table above (17-11, next.20) is kept as the "before".
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
