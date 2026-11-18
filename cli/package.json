@@ -12,7 +12,7 @@
     "pack"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=18.17"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-pack.mjs",
@@ -26,7 +26,7 @@
     "vitest": "^2.1.8"
   },
   "dependencies": {
-    "tedious": "^18.6.2",
+    "tedious": "^19.2.2",
     "yaml": "^2.6.1"
   },
   "repository": {
