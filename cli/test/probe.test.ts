@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { interpret, normalizeFabricPath, shapeOf } from "../src/lib/probe.js";
+import { missingHeadings, REPORT_TEMPLATE } from "../src/lib/research.js";
 import { main } from "../src/router.js";
 import { ctxFor, fakeFetch, makeRepo, tmp, type Route } from "./helpers.js";
 
@@ -82,6 +83,35 @@ describe("aihub probe fabric", () => {
   });
 });
 
+describe("safe default workspace", () => {
+  const REAL: Route = { match: /api\.fabric\.microsoft\.com\/v1\/workspaces(\?|$)/, respond: () => ({ body: { value: [{ id: WS, displayName: "DEV-real-project" }] } }) };
+  it("without --workspace and without an aihub-test-dev workspace the answer is UNKNOWN, and no item endpoint is called", async () => {
+    const caps: Route = { match: /\/v1\/capacities/, respond: () => ({ body: { value: [] } }) };
+    const r = await go([REAL, caps], ["probe", "fabric", "capacity", "--feature", "copyjob", "--json"]);
+    const j = JSON.parse(r.out);
+    expect(j).toMatchObject({ answer: "unknown", status: null });
+    expect(j.meaning).toContain("maak een aihub-test-dev-workspace");
+    expect(r.calls.some((c) => /copyJobs/.test(c.url))).toBe(false);
+    const e = await go([REAL], ["probe", "fabric", "endpoint", "workspaces/{workspace}/items", "--json"]);
+    expect(JSON.parse(e.out).answer).toBe("unknown");
+  });
+
+  it("an explicit --workspace is still honoured", async () => {
+    const r = await go([REAL, { match: /workspaces\/1111[^/]*\/copyJobs/, respond: () => ({ body: { value: [] } }) }], ["probe", "fabric", "endpoint", "workspaces/{workspace}/copyJobs", "--workspace", "DEV-real-project", "--json"]);
+    expect(JSON.parse(r.out).answer).toBe("yes");
+  });
+});
+
+describe("the feasibility skill keeps the mandatory section", () => {
+  it("the report template, the skill reference and the command all name Waar hoort het: Fabric, DevOps/CI-CD of beide?", () => {
+    const H = "Waar hoort het: Fabric, DevOps/CI-CD of beide?";
+    expect(REPORT_TEMPLATE).toContain(`## ${H}`);
+    expect(readFileSync(join(__dirname, "../../skills/feasibility/references/where.md"), "utf8")).toContain(H);
+    expect(readFileSync(join(__dirname, "../../commands/opencode/kan-dit.md"), "utf8")).toContain(H);
+    expect(readFileSync(join(__dirname, "../../skills/feasibility/SKILL.md"), "utf8")).toContain("Waar hoort het");
+  });
+});
+
 describe("aihub probe devops and api", () => {
   it("devops feature: probes the project endpoint with GET", async () => {
     const r = await go([{ match: /_apis\/wiki\/wikis/, respond: () => ({ body: { value: [{ name: "w" }, { name: "x" }] } }) }], ["probe", "devops", "feature", "wiki"]);
@@ -115,13 +145,26 @@ describe("aihub probe devops and api", () => {
 describe("aihub research save", () => {
   it("keeps the report in the git-excluded aihub folder under a dated slug", async () => {
     const f = join(tmp(), "report.md");
-    writeFileSync(f, "# Kan een notebook vanuit DevOps?\n\nVerdict: Ja\n");
+    writeFileSync(f, REPORT_TEMPLATE.replace("<de vraag, een regel>", "Kan een notebook vanuit DevOps?").replace("Ja / Nee / Deels, en de workaround in een zin.", "Verdict: Ja"));
     const r = await go([], ["research", "save", "--file", f, "--json"]);
     expect(r.code).toBe(0);
     const saved = JSON.parse(r.out).saved as string;
     expect(saved).toMatch(/aihub[\\/]research[\\/]\d{4}-\d{2}-\d{2}-kan-een-notebook-vanuit-devops\.md$/);
     expect(existsSync(saved)).toBe(true);
     expect(readFileSync(saved, "utf8")).toContain("Verdict: Ja");
+  });
+
+  it("refuses a report that lacks the Waar hoort het section, and prints the template with every heading", async () => {
+    const f = join(tmp(), "short.md");
+    writeFileSync(f, ["# Q", "", "## Verdict", "Ja", "", "## Hoe", "1", ""].join(String.fromCharCode(10)));
+    const r = await go([], ["research", "save", "--file", f]);
+    expect(r.code).toBe(1);
+    expect(r.errs).toContain("Waar hoort het: Fabric, DevOps/CI-CD of beide?");
+    expect(missingHeadings(REPORT_TEMPLATE)).toEqual([]);
+    const t = await go([], ["research", "template"]);
+    expect(t.out).toContain("### Fabric");
+    expect(t.out).toContain("### Azure DevOps");
+    expect(t.out).toContain("Advies:");
   });
 
   it("refuses a missing or empty file", async () => {
