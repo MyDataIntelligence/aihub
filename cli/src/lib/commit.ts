@@ -1,3 +1,5 @@
+import { existsSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import type { Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { currentBranch, git, pushIfNeeded, repoRoot, workItemFromBranch } from "./git.js";
@@ -10,8 +12,22 @@ export interface CommitOpts {
   story?: number;
   push?: boolean;
   noAdd?: boolean;
+  /** Skip the repository's git hooks. Only when the user explicitly asked for it; the CLI never decides this. */
+  noVerify?: boolean;
   json?: boolean;
 }
+
+/** Names of the git hooks that exist for these stages (respects core.hooksPath); `.sample` files do not count. */
+export function activeHooks(root: string, stages: string[]): string[] {
+  const dir = resolve(root, git(root, ["rev-parse", "--git-path", "hooks"], { allowFail: true }).trim() || ".git/hooks");
+  if (!existsSync(dir)) return [];
+  const have = new Set(readdirSync(dir).filter((f) => !f.endsWith(".sample")));
+  return stages.filter((s) => have.has(s));
+}
+
+export const COMMIT_HOOKS = ["pre-commit", "prepare-commit-msg", "commit-msg", "post-commit"];
+export const PUSH_HOOKS = ["pre-push"];
+const secs = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
 export const DEFAULT_COMMIT_FORMAT = "{type}({scope}): {subject} (AB#{storyId})";
 
@@ -59,12 +75,24 @@ export async function commitChanges(ctx: Ctx, o: CommitOpts): Promise<string> {
   const storyId = o.story ?? workItemFromBranch(branch);
   const scope = o.scope ?? team.commits?.scope ?? inferScope(staged);
   const message = formatCommit(format, { type: o.type, scope, subject: o.subject.trim(), storyId });
-  git(root, ["commit", "-q", "-m", message]);
+  // The repository's hooks may run a long test suite: say so before, and how long it took after, instead of leaving a silent wait.
+  const hooks = o.noVerify ? [] : activeHooks(root, COMMIT_HOOKS);
+  if (hooks.length && !o.json) ctx.out(`git hooks running: ${hooks.join(", ")} (this repository's own hooks; if they run the full test suite it can take minutes)`);
+  const t0 = Date.now();
+  git(root, ["commit", "-q", ...(o.noVerify ? ["--no-verify"] : []), "-m", message]);
+  const commitMs = Date.now() - t0;
   const sha = git(root, ["rev-parse", "--short", "HEAD"]);
   let pushed = false;
+  let pushMs = 0;
+  const pushHooks = o.push && !o.noVerify ? activeHooks(root, PUSH_HOOKS) : [];
   if (o.push) {
-    pushIfNeeded(root, branch);
-    pushed = true;
+    if (pushHooks.length && !o.json) ctx.out(`git hooks running on push: ${pushHooks.join(", ")}`);
+    const t1 = Date.now();
+    pushed = pushIfNeeded(root, branch, o.noVerify);
+    pushMs = Date.now() - t1;
   }
-  return o.json ? JSON.stringify({ sha, message, branch, pushed, files: staged.length }) : `committed ${sha} on ${branch}${pushed ? " and pushed" : ""}: ${message}`;
+  const timing = [hooks.length ? `commit hooks took ${secs(commitMs)}` : "", pushHooks.length ? `push hooks took ${secs(pushMs)}` : ""].filter(Boolean).join(", ");
+  return o.json
+    ? JSON.stringify({ sha, message, branch, pushed, files: staged.length, hooks, pushHooks, commitMs, pushMs, noVerify: !!o.noVerify })
+    : `committed ${sha} on ${branch}${pushed ? " and pushed" : ""}: ${message}${o.noVerify ? " (hooks skipped at the user's request)" : ""}${timing ? ` (${timing})` : ""}`;
 }
