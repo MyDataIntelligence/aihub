@@ -3,10 +3,12 @@ import { AihubError } from "../lib/errors.js";
 import { optInt, parseFlags, posInt } from "../lib/cliargs.js";
 import { getWorkItem, setWorkItemState } from "../lib/workitems.js";
 import { createWorkItem } from "../lib/workitemCreate.js";
+import { WORKITEM_ADMIN_SUBS, run as admin } from "./workitem-admin.js";
 
 /** aihub workitem state --id N --to <state> | create --type Bug|Task --title T --body-file F [--parent N] */
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
+  if (sub && WORKITEM_ADMIN_SUBS.includes(sub)) return admin(argv, ctx);
   const v = parseFlags(rest, {
     id: { type: "string" },
     to: { type: "string" },

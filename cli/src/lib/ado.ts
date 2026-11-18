@@ -49,21 +49,28 @@ export class AdoClient {
     private readonly fetchFn: FetchFn = fetch,
     /** Other Azure DevOps hosts: https://<service>.dev.azure.com/<org>/... (search, feeds, identities). */
     private readonly service?: DevOpsService,
+    /** A team of the project (work/ APIs live under <project>/<team>/_apis). */
+    private readonly team?: string,
   ) {}
+
+  /** The same client in the context of a team (iterations, capacity, boards, backlogs). */
+  forTeam(team: string): AdoClient {
+    return new AdoClient(this.remote, this.auth, this.fetchFn, this.service, team);
+  }
 
   /** The same client against another Azure DevOps host (almsearch, feeds, vssps, ...). */
   forService(service: DevOpsService): AdoClient {
-    return new AdoClient(this.remote, this.auth, this.fetchFn, service);
+    return new AdoClient(this.remote, this.auth, this.fetchFn, service, this.team);
   }
 
   /** The same client for another repository of the project (--repo). */
   forRepo(repo: string): AdoClient {
-    return new AdoClient({ ...this.remote, repo }, this.auth, this.fetchFn, this.service);
+    return new AdoClient({ ...this.remote, repo }, this.auth, this.fetchFn, this.service, this.team);
   }
 
   /** The same client for another project of the organisation (--project). */
   forProject(project: string): AdoClient {
-    return new AdoClient({ ...this.remote, project }, this.auth, this.fetchFn, this.service);
+    return new AdoClient({ ...this.remote, project }, this.auth, this.fetchFn, this.service, this.team);
   }
 
   repoPath(): string {
@@ -80,7 +87,7 @@ export class AdoClient {
     for (const [k, v] of Object.entries(query)) if (v !== undefined) q.set(k, String(v));
     if (!q.has("api-version")) q.set("api-version", API_VERSION); // preview endpoints pass their own, e.g. 7.1-preview.1
     const base = this.service ? this.remote.orgUrl.replace("https://dev.azure.com/", `https://${this.service}.dev.azure.com/`) : this.remote.orgUrl;
-    return `${base}/${orgLevel ? "" : `${encodeURIComponent(this.remote.project)}/`}_apis/${path}?${q.toString()}`;
+    return `${base}/${orgLevel ? "" : `${encodeURIComponent(this.remote.project)}/${this.team ? `${encodeURIComponent(this.team)}/` : ""}`}_apis/${path}?${q.toString()}`;
   }
 
   async request<T = any>(
