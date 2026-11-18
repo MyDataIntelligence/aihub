@@ -44,9 +44,9 @@ describe("watch --mine: a failed build on my own branch", () => {
 
   it("the stored event starts opencode and Claude Code with --agent aihub", () => {
     const ev = { id: "e1", repo: "/r", client: "opencode" as const, message: "m", prompt: "/fix https://x/_build/results?buildId=1", agent: "aihub", at: 1 };
-    expect(resumeArgs(ev)).toEqual(["opencode", "--continue", "--agent", "aihub", "--prompt", ev.prompt]);
+    expect(resumeArgs(ev)).toEqual(["opencode", "--agent", "aihub", "--prompt", ev.prompt]);
     expect(resumeArgs({ ...ev, client: "claude" })).toEqual(["claude", "--continue", "--agent", "aihub", ev.prompt]);
-    expect(resumeArgs({ ...ev, agent: undefined })).toEqual(["opencode", "--continue", "--prompt", ev.prompt]);
+    expect(resumeArgs({ ...ev, agent: undefined })).toEqual(["opencode", "--prompt", ev.prompt]);
     expect(planOpen(ev, "linux").text).toContain("'--agent' 'aihub'");
   });
 });
