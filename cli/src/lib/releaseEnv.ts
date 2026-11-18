@@ -142,7 +142,7 @@ export async function computeEnvDiff(
       if (prInfo.has(id)) continue;
       try {
         const pr = (await getPr(client, id)) as PullRequest & { workItemRefs?: { id: string }[]; lastMergeCommit?: { commitId: string } };
-        prInfo.set(id, { id, title: pr.title, commit: pr.lastMergeCommit?.commitId ?? sha, stories: (pr.workItemRefs ?? []).map((w) => Number(w.id)) });
+        prInfo.set(id, { id, title: pr.title, commit: pr.lastMergeCommit?.commitId ?? sha, stories: await storiesOf(client, id, pr.workItemRefs) });
       } catch {
         prInfo.set(id, { id, title: `PR !${id}`, commit: sha, stories: [] });
       }
@@ -195,6 +195,18 @@ export async function computeEnvDiff(
     ...direct.map((d) => ({ commit: d.commit, title: d.title })),
   ];
   return { diff: { from, to, fromBranch, toBranch, commits: commits.length, items: sorted, prs, direct, stories, fabric }, plan: { items: planItems } };
+}
+
+/** Work items of a PR: the dedicated endpoint (a GET of the PR itself does not list them), the PR's own refs as the fallback. */
+async function storiesOf(client: AdoClient, id: number, refs?: { id: string }[]): Promise<number[]> {
+  try {
+    const r = await client.get<{ value?: { id: string | number }[] }>(`${client.repoPath()}/pullrequests/${id}/workitems`);
+    const ids = (r.value ?? []).map((w) => Number(w.id)).filter((n) => Number.isInteger(n));
+    if (ids.length) return ids;
+  } catch {
+    /* use the refs */
+  }
+  return (refs ?? []).map((w) => Number(w.id));
 }
 
 async function defaultStageReader(ctx: Ctx): Promise<StageReader> {
