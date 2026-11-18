@@ -73,7 +73,7 @@ robot:                             # Robot integration tests for `aihub robot` (
       tests: []                    # path patterns of the suite's Robot files, e.g. ["tests/robot/orders/**"] (optional)
 
 dataChecks:                        # optional: used by `aihub pr data-diff` (read-only numbers before/after in the PR)
-  item: <lakehouse-or-warehouse>   # Warehouse or Lakehouse (name) that exists in the baseline and the feature workspace (required with dataChecks)
+  item: <lakehouse-or-warehouse>   # Warehouse or Lakehouse (name) that exists in the baseline and the feature workspace; needed as soon as dataChecks is used
   baseline: <workspace>            # workspace with the baseline data; default: the fabric.workspaces entry of the PR's target branch, else the dev workspace (optional)
   feature: <workspace>             # workspace of the branch; default: the fabric.workspaces entry whose branches match the PR's source branch (optional)
   section: "Data before/after"     # PR section heading, default "Data before/after" (nl: "Data vóór/na") (optional)
