@@ -3,6 +3,7 @@
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
 ## 1.0.3
+- `aihub pr list [--mine|--reviewer|--branch] [--status] [--repo] [--json]`, `aihub pr show --pr N [--json]`, reviewers with votes in `aihub status --json` (`pr.reviewers`) and `aihub watch events [--limit] [--since] [--json]` for tools such as the VS Code extension. Shapes: docs/cli-json.md.
 - Optional `aihub` and `aihub-runner` agents for opencode (format follows the installed 1.x or 2.x), GitHub Copilot, Codex and Claude Code (`--client claude`, opt-in), installed by `aihub skills install` (`--no-agents` skips, `--into-repo` writes them into the repository, an edited file is never overwritten); `aihub doctor` reports them. Release notes: docs/releases/1.0.3.md.
 
 ## 1.0.2

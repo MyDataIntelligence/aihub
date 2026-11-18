@@ -39,4 +39,4 @@ Status: 1.0.0 (see [docs/releases/1.0.0.md](docs/releases/1.0.0.md)).
 
 ## Commands
 
-`aihub pr create|update|changes`, `comments get|reply`, `cherry-pick --from <pr|sha|story> --to <branch>... [--pr]`, `branch update [--rebase]`, `story show|create|refine`, `pipeline follow|status|runs|logs|run`, `batch --select "<query>" --run "<subcommand with {target}>"`, `work`, `watch [--pr N|--mine]`, `note`, `status`, `repos list|clone`, `workitem create`, `story context`, `pr checks|requeue`, `pipeline retry`. Prose goes in files (`--body-file`); `--json` is optional everywhere.
+`aihub pr create|update|changes`, `comments get|reply`, `cherry-pick --from <pr|sha|story> --to <branch>... [--pr]`, `branch update [--rebase]`, `story show|create|refine`, `pipeline follow|status|runs|logs|run`, `batch --select "<query>" --run "<subcommand with {target}>"`, `work`, `pr list|show`, `watch [--pr N|--mine|events]`, `note`, `status`, `repos list|clone`, `workitem create`, `story context`, `pr checks|requeue`, `pipeline retry`. Prose goes in files (`--body-file`); `--json` is optional everywhere.
