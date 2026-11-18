@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, resolve } from "node:path";
 import type { CommandFn } from "../router.js";
 import type { Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
@@ -6,6 +6,7 @@ import { currentBranch, originDefaultBranch, repoRoot, workItemFromBranch } from
 import { ARTIFACT_EXCLUDES, mustGit, tryGit } from "./gitx.js";
 import { linkPrs } from "./crossRepoOps.js";
 import { resolveRepoDirs } from "./repos.js";
+import { appendJournal } from "./journal.js";
 import { findSet, type SetInfo } from "./setInfo.js";
 import { getStatus, type Status } from "./status.js";
 import { defaultTargetFor, loadTeam } from "./team.js";
@@ -117,8 +118,11 @@ export async function runAllRepos(name: string, args: string[], ctx: Ctx, regist
     }
     const row = rowOf(d.name, d.dir, status, name === "status" ? (status?.next ?? "") : result.slice(0, 110), failed);
     rows.push(row);
+    // every repository keeps its own journal line (the router does not journal --all-repos itself)
+    appendJournal(d.dir, name, rest, !failed, [row.result || (status?.next ?? "")], failed ? result : "", (ctx.now ?? Date.now)());
   }
-  ctx.out(`${set ? `set story-${set.story}: ` : ""}${name}${sub ? ` ${sub}` : ""} in ${dirs.length} repo(s)`);
+  const short = (x: string) => (/^skipped|^failed/.test(x) ? x : x.replace(/ on \S+ and pushed/, " and pushed").split(": ")[0]).slice(0, 60);
+  ctx.out(`${name}${sub ? ` ${sub}` : ""} --all-repos${set ? ` (set story-${set.story})` : ""}: ${rows.map((r) => `${r.repo} ${short(r.result) || "done"}`).join("; ")}`);
   for (const l of table(rows, name === "status")) ctx.out(l);
   if (name === "pr" && sub === "create" && story) {
     if (rows.filter((r) => r.status?.pr).length > 1) {
@@ -132,4 +136,17 @@ export async function runAllRepos(name: string, args: string[], ctx: Ctx, regist
   }
   const bad = rows.filter((r) => r.failed);
   if (bad.length) throw new AihubError(`${name}${sub ? ` ${sub}` : ""} failed in ${bad.map((r) => r.repo).join(", ")} (the other repositories were done; details: ${bad.map((r) => `${r.repo}: ${r.result}`).join("; ")})`);
+}
+
+/** A line for the end of a single-repository commit or pr create inside a worktree set: the other repositories are not forgotten. */
+export function setHint(cwd: string, kind: "commit" | "pr create"): string {
+  const set = findSet(cwd);
+  if (!set || set.repos.length < 2) return "";
+  const here = resolve(cwd);
+  const others = set.repos.filter((r) => !here.toLowerCase().startsWith(resolve(r.path).toLowerCase()));
+  const busy = kind === "commit" ? others.filter((r) => { try { return changedFiles(r.path) > 0; } catch { return false; } }) : others;
+  if (!busy.length) return "";
+  return kind === "commit"
+    ? `note: set story-${set.story}: ${busy.map((r) => r.name).join(", ")} also ha${busy.length > 1 ? "ve" : "s"} uncommitted changes; aihub commit --all-repos does every repository at once`
+    : `note: set story-${set.story} also has ${busy.map((r) => r.name).join(", ")}; aihub pr create --all-repos does every repository with commits and cross-links the PRs`;
 }

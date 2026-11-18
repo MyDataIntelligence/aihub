@@ -54,12 +54,27 @@ describe("worktree set: --all-repos", () => {
     const r = await run(s.a, ["commit", "--all-repos", "--type", "feat", "--subject", "add the thing"]);
     expect(r.errs).toBe("");
     expect(r.code).toBe(0);
-    expect(r.out).toMatch(/set story-5: commit in 2 repo\(s\)/);
+    expect(r.out).toMatch(/commit --all-repos \(set story-5\): repo-a committed .*; repo-b skipped: nothing to commit/);
     expect(r.out).toMatch(/repo-a\s+no\s+/);
     expect(r.out).toMatch(/repo-b\s+no\s+.*skipped: nothing to commit/);
     expect(sh(s.a, ["log", "-1", "--format=%s"])).toContain("add the thing");
     expect(sh(s.a, ["show", "--name-only", "--format=", "HEAD"])).not.toContain("pycache");
     expect(sh(s.b, ["log", "-1", "--format=%s"])).toBe("team");
+    // each repository keeps its own journal line, with its branch
+    expect(readJournal(s.b)[0]).toMatchObject({ branch: "feature/5-set-demo", status: "ok" });
+    expect(readJournal(s.b)[0].result).toContain("skipped");
+    expect(readJournal(s.a)[0].result).toContain("committed");
+  });
+
+  it("a plain commit in a set reminds that the other repositories have changes; worktree list works from inside the set", async () => {
+    const s = makeSet();
+    write(s.a, "a.txt", "1\n");
+    write(s.b, "b.txt", "2\n");
+    const r = await run(s.a, ["commit", "--type", "feat", "--subject", "only a"]);
+    expect(r.out).toContain("note: set story-5: repo-b also has uncommitted changes; aihub commit --all-repos");
+    const l = await run(s.a, ["worktree", "list"]);
+    expect(l.out).toContain("story 5");
+    expect(l.out).toContain("repo-b");
   });
 
   it("continues after an error in one repository and fails at the end naming it", async () => {
@@ -131,7 +146,7 @@ describe("journal and resume", () => {
     expect(await main(["status", "--resume"], ctx, commands)).toBe(0);
     expect(calls).toHaveLength(0);
     const out = lines.join("\n");
-    expect(out).toMatch(/Last time: aihub note add waiting for the API owner .* \(30 min ago\)/);
+    expect(out).toMatch(/Last time: aihub commit .* \(30 min ago\)/);
     expect(out).toContain("Plan done/left: committed / ");
     expect(out).toContain("Next step: there are uncommitted changes");
     expect(out).toContain("Note: waiting for the API owner");

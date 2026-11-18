@@ -177,7 +177,7 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
   const outLines: string[] = [];
   const base: Ctx = dryRun && !ownDryRun ? { ...ctx, out: (l) => ctx.out(`  (simulated) ${l}`) } : ctx;
   const run: Ctx = { ...base, out: (l) => (outLines.push(l), base.out(l)) };
-  const journal = isJournaled(name, args);
+  const journal = isJournaled(name, args) && !wantsAllRepos(name, args);
   const keep = (ok: boolean, err = "") => {
     if (journal) appendJournal(ctx.cwd, name, args, ok, name === "pipeline" && args[0] === "follow" ? [...outLines].reverse() : outLines, err, (ctx.now ?? Date.now)());
   };

@@ -54,8 +54,8 @@ export function resume(ctx: Ctx): Resume {
   const story = workItemFromBranch(branch);
   const nowMs = (ctx.now ?? Date.now)();
   const all = readJournal(root);
-  // this branch's lines: the journal is per repository, so keep the ones since the last `story start` (any branch) that mention it, else the tail
-  const mine = all.filter((e) => e.command.includes(branch) || (story !== undefined && new RegExp(`(--id|--story|AB#|story-?)\\s*${story}\\b`).test(e.command)));
+  // this branch's lines (the journal is per repository and records the branch); a story command that names the story counts too
+  const mine = all.filter((e) => e.branch === branch || (story !== undefined && new RegExp(`(--id|--story|AB#|story-?)\\s*${story}\\b`).test(e.command)));
   const scope = mine.length ? mine : all.slice(-8);
   const ok = scope.filter((e) => e.status === "ok");
   const done = MILESTONES.filter((m) => ok.some((e) => m.match.test(e.command) && (m.key !== "green" || /green/.test(e.result)))).map((m) => (nl ? m.nl : m.en));
@@ -63,7 +63,9 @@ export function resume(ctx: Ctx): Resume {
   const rest = MILESTONES.filter((m) => !doneKeys.includes(m)).map((m) => (nl ? m.nl : m.en));
   const dirty = hasWorkToCommit(root);
   const unpushed = unpushedCount(root);
-  const last = scope[scope.length - 1] ?? all[all.length - 1];
+  // a note is shown on its own line; it is not the last step
+  const steps = scope.filter((e) => !/^aihub note /.test(e.command));
+  const last = steps[steps.length - 1] ?? scope[scope.length - 1] ?? all[all.length - 1];
   const notes = readNotes(root, branch);
   const note = notes[notes.length - 1]?.text.replace(/\s+/g, " ");
 
@@ -72,6 +74,7 @@ export function resume(ctx: Ctx): Resume {
   else if (dirty) next = nl ? "er zijn niet-gecommitte wijzigingen: aihub commit --type <type> --subject \"...\" --push" : "there are uncommitted changes: aihub commit --type <type> --subject \"...\" --push";
   else if (unpushed > 0) next = nl ? `${unpushed} commit(s) niet gepusht: aihub commit --push of git push` : `${unpushed} unpushed commit(s): aihub commit --push or git push`;
   else if (last?.status === "failed") next = nl ? `de laatste stap mislukte (${last.command}): lees de fout, herstel, draai opnieuw` : `the last step failed (${last.command}): read the error, fix it, run it again`;
+  else if (last && /^aihub (commit|pr update)/.test(last.command) && doneKeys.some((m) => m.key === "pr")) next = nl ? "aihub pipeline follow (de PR bestaat al)" : "aihub pipeline follow (the PR exists)";
   else if (last && doneKeys.length < MILESTONES.length && !/story finish/.test(last.command)) next = last.next;
   else next = last?.next ?? (nl ? "aihub status" : "aihub status");
 

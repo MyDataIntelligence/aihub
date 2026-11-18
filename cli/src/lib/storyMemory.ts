@@ -34,7 +34,7 @@ function checkouts(ctx: Ctx): { name: string; dir: string }[] {
   return [...out.values()];
 }
 
-const mentions = (e: JournalEntry, story: number): boolean => new RegExp(`(feature/|story/|--id |--story |AB#|story-?|\\bid )${story}\\b|/${story}[-_]`).test(`${e.command} ${e.result}`);
+const mentions = (e: JournalEntry, story: number): boolean => new RegExp(`[/_-]${story}(?=[-_/]|$)`).test(e.branch) || new RegExp(`(--id |--story |AB#|story-?|\\bid )${story}\\b`).test(`${e.command} ${e.result}`);
 
 function storyJournals(ctx: Ctx, story: number): RepoJournal[] {
   return checkouts(ctx)

@@ -2,15 +2,17 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { aihubDir, ensureDir } from "./aihubDir.js";
 import { repoRoot } from "./git.js";
+import { tryGit } from "./gitx.js";
 
 /**
  * One line per aihub command in `<git common dir>/aihub/journal.md`: local memory that is never committed, shared by all
- * worktrees of a repository. Format: `- <iso time> | <command> | ok|failed | <result> | next: <hint>`.
+ * worktrees of a repository. Format: `- <iso time> | <branch> | <command> | ok|failed | <result> | next: <hint>`.
  */
 export const journalFile = (root: string): string => aihubDir(root, "journal.md");
 
 export interface JournalEntry {
   at: string;
+  branch: string;
   command: string;
   status: "ok" | "failed";
   result: string;
@@ -74,9 +76,10 @@ export function appendJournal(cwd: string, name: string, args: string[], ok: boo
     const result = clip(oneLine(first), 160);
     const command = clip(oneLine(`aihub ${name} ${args.join(" ")}`), 200);
     const at = new Date(nowMs).toISOString().replace(/\.\d+Z$/, "Z");
+    const branch = oneLine(tryGit(root, ["rev-parse", "--abbrev-ref", "HEAD"]).out) || "-";
     const f = journalFile(root);
     ensureDir(dirname(f));
-    appendFileSync(f, `- ${at} | ${command} | ${ok ? "ok" : "failed"} | ${result || "(no output)"} | next: ${nextHint(name, args, ok, result)}\n`, "utf8");
+    appendFileSync(f, `- ${at} | ${branch} | ${command} | ${ok ? "ok" : "failed"} | ${result || "(no output)"} | next: ${nextHint(name, args, ok, result)}\n`, "utf8");
   } catch {
     /* not in a repository, or the folder is read-only: the journal is a convenience, never a failure */
   }
@@ -92,8 +95,8 @@ export function readJournal(root: string): JournalEntry[] {
   if (!existsSync(f)) return [];
   const out: JournalEntry[] = [];
   for (const l of readFileSync(f, "utf8").replace(/\r\n/g, "\n").split("\n")) {
-    const m = /^- (\S+) \| (.*?) \| (ok|failed) \| (.*?) \| next: (.*)$/.exec(l);
-    if (m) out.push({ at: m[1], command: m[2], status: m[3] as "ok" | "failed", result: m[4], next: m[5] });
+    const m = /^- (\S+) \| (.*?) \| (.*?) \| (ok|failed) \| (.*?) \| next: (.*)$/.exec(l);
+    if (m) out.push({ at: m[1], branch: m[2], command: m[3], status: m[4] as "ok" | "failed", result: m[5], next: m[6] });
   }
   return out;
 }
