@@ -70,7 +70,7 @@ function intFlag(v: Flags, name: string, fallback?: number): number | undefined 
   return n;
 }
 
-async function identityIds(c: AdoClient, raw: string): Promise<string[]> {
+export async function identityIds(c: AdoClient, raw: string): Promise<string[]> {
   const out: string[] = [];
   for (const r of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(r)) {
