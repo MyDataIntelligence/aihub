@@ -55,7 +55,14 @@ export class BarLoader {
       this.opts.fabric ? this.fabric(status.branch ?? "") : null,
       this.soft(async () => (await readJson<{ mine?: boolean }[]>(this.run, ["watch", "list"], cwd)).some((w) => w.mine)),
     ]);
-    return buildModel({ status, checks: checks ?? undefined, fabric, watching: !!watching, events: readEvents(this.opts.env), now: (this.opts.now ?? Date.now)() });
+    const events = (await this.soft(() => this.cliEvents())) ?? readEvents(this.opts.env);
+    return buildModel({ status, checks: checks ?? undefined, fabric, watching: !!watching, events, now: (this.opts.now ?? Date.now)() });
+  }
+
+  /** `aihub watch events` (CLI 1.0.3+); an older CLI fails and the caller falls back to reading the event files. */
+  private async cliEvents(): Promise<BarEvent[]> {
+    const rows = await readJson<{ id: string; message: string; epoch?: number; at?: string; repo?: string }[]>(this.run, ["watch", "events", "--limit", "5"], this.opts.cwd);
+    return rows.map((r) => ({ id: r.id, message: r.message, at: typeof r.epoch === "number" ? r.epoch : Date.parse(r.at ?? "") || 0, repo: r.repo }));
   }
 
   /** A failed side read must not take the whole bar down. */

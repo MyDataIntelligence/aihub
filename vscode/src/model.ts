@@ -10,7 +10,7 @@ export interface StatusJson {
   repo?: string;
   branch?: string;
   story?: { id: number; title: string; state: string } | null;
-  pr?: { id: number; title: string; status: string; draft: boolean; url: string; votes?: unknown } | null;
+  pr?: { id: number; title: string; status: string; draft: boolean; url: string; votes?: unknown; reviewers?: unknown } | null;
   pipeline?: { name: string; state: string }[];
   checks?: Checks;
   openThreads?: number;
@@ -78,6 +78,7 @@ export interface PrModel {
   url: string;
   /** Votes of the reviewers: from the CLI when it prints them, else the reviewers policy. */
   votes: { approved: number; waiting: number; rejected: number; summary: string };
+  reviewers: { name: string; vote: number; voteName?: string; required?: boolean }[];
   blockers: string[];
   canComplete?: boolean;
 }
@@ -136,7 +137,9 @@ export function votesFromPolicies(policies: PolicyJson[] | undefined): PrModel["
 export function toPr(status: StatusJson, checks?: PrChecksJson): PrModel | null {
   const p = status.pr;
   if (!p) return null;
-  const own = p.votes !== undefined ? countVotes(p.votes) : undefined;
+  // CLI 1.0.3 lists the reviewers with their votes; older CLIs do not, then the reviewers policy is the fallback.
+  const list = p.reviewers ?? p.votes;
+  const own = list !== undefined ? countVotes(list) : undefined;
   return {
     id: p.id,
     title: text(p.title),
@@ -144,6 +147,7 @@ export function toPr(status: StatusJson, checks?: PrChecksJson): PrModel | null 
     draft: !!p.draft,
     url: text(p.url),
     votes: own ?? votesFromPolicies(checks?.policies) ?? { approved: 0, waiting: 0, rejected: 0, summary: "no votes" },
+    reviewers: asArray<PrModel["reviewers"][number]>(list).filter((r) => r && typeof r.vote === "number"),
     blockers: asArray<string>(checks?.blockers),
     canComplete: checks?.canComplete,
   };
@@ -208,8 +212,10 @@ export function checksTone(c: Checks): Tone {
 export const checksIcon = (c: Checks) => (c === "green" ? "check" : c === "red" ? "error" : c === "running" ? "sync~spin" : "circle-outline");
 
 export function prLabel(pr: PrModel): string {
-  const state = pr.status === "active" ? (pr.draft ? "draft" : "active") : pr.status;
-  return `!${pr.id} ${state}${pr.votes.summary !== "no votes" ? ` · ${pr.votes.summary}` : ""}`;
+  const state = pr.status === "active" ? (pr.draft ? " draft" : "") : ` ${pr.status}`;
+  const v = pr.votes;
+  const votes = [v.approved ? `${v.approved}✓` : "", v.waiting ? `${v.waiting}⏳` : "", v.rejected ? `${v.rejected}✗` : ""].filter(Boolean).join(" ");
+  return `!${pr.id}${state}${votes ? ` ${votes}` : ""}`;
 }
 
 export function fabricTone(f: FabricModel): Tone {
