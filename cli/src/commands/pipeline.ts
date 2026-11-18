@@ -1,3 +1,4 @@
+import * as admin from "./pipeline-admin.js";
 import { num, parse } from "../lib/args.js";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
@@ -7,6 +8,7 @@ import { parseRunRef, pipelineFailed, pipelineFollow, pipelineLogs, pipelineRetr
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
+  if (admin.PIPELINE_ADMIN_SUBS.includes(sub)) return admin.run(argv, ctx);
   const v = parse(rest, {
     pr: { type: "string" },
     branch: { type: "string" },
