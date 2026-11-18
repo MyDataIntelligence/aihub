@@ -2,9 +2,14 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
-## 1.0.4
+## 1.0.5
 - `aihub pipeline approvals approve|reject` now refuses ACC and PRD approvals even though the Azure DevOps answer names no environment: the environment is read from the run's pipeline YAML, and the command refuses when it cannot tell (give `--allow-env <stage>` only when the developer asked for that stage).
 - Pipelines proven live in ferron-test: `pipeline artifacts --download` now downloads pipeline artifacts (published with `publish:`) from the artifacts host, `pipeline approvals list|approve|reject` finds the environment of an approval (through the run timeline) so the ACC/PRD guard sees its real name, and `pipeline env checks` prints an approver known only by id.
+- Learn, slices 3 and 4: `aihub learn diagram --kind architecture|lineage|repo|flow` (Mermaid from facts only), `learn flow|glossary|week|onboarding|item`, iDiagram push (`--idiagram` import with Play story, `--board/--story` rich boards via /boards/build; base URL from AIHUB_IDIAGRAM_URL), `aihub learn level set junior|medior|senior` and `aihub learn after-pr on|off` (one-line lesson offer after `pr create`/`story finish`, off by default).
+- The Fix button of a toast starts a NEW opencode session in the repository with `--agent aihub --prompt "/fix <run-url>"` (it used to resume another project's session).
+- VS Code extension 3.0.0 released alongside (GitHub release vscode-v3.0.0): compact bar, chat actions with the aihub agent, review threads, Branch menu, Worktree Sets, Learn view. Release notes: docs/releases/1.0.5.md.
+
+## 1.0.4
 - Learn, slice 2: personal store `aihub learn save|list|show|forget|concepts|quiz` (~/.config/aihub/learn, nothing in the repository) and, in the VS Code extension, the Learn view, a lesson page with rendered Mermaid pictures and a guided tour.
 - Learn, slice 1: `aihub learn change|repo|validate` (facts of a change or repository as JSON in about a second: hunks, changed names, callers, tests, dbt lineage; schema check of a written explanation), skill `learn` and `/leer` that write the lesson with Mermaid pictures first. See docs/learn.md.
 - dbt support: `aihub dbt detect|check` (project, adapter, versions, setup problems), `aihub dbt <build|run|test|compile|seed|snapshot|show|ls|deps|debug|parse|retry|freshness|docs|run-operation>` on the local dbt CLI with selectors, `--state`/`--defer`, compact output and `--json`; `aihub dbt failures` (failed test, compiled SQL, first failing rows), `aihub dbt lineage`, `aihub dbt impact [--base] [--state <dir>|auto] [--write]` (changed models, downstream models, tests, exposures, Fabric items; code-owned PR section), `aihub dbt yaml check|scaffold` (model entry or unit-test skeleton). `aihub test changed` plans dbt builds for changed models (`tests.dbt` in team.yaml). New skill `dbt` with a reference; implement, pr-create and test-run point to it. Writes on a Fabric adapter stay behind `aihub fabric dbt run --workspace`.
