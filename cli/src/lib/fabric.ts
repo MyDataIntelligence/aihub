@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultExec, type Exec } from "./auth.js";
@@ -213,14 +213,17 @@ export interface FabricAuthDeps {
   tokenVar?: string;
 }
 
-export function makeFabricAuth(deps: FabricAuthDeps): () => Promise<string> {
+/** A token provider; `invalidate` drops the in-memory and the cached token so the next call asks `az` again. */
+export type AuthFn = (() => Promise<string>) & { invalidate?: () => void };
+
+export function makeFabricAuth(deps: FabricAuthDeps): AuthFn {
   const exec = deps.exec ?? defaultExec;
   const now = deps.now ?? Date.now;
   const resource = deps.resource ?? FABRIC_RESOURCE;
   const tokenVar = deps.tokenVar ?? "AIHUB_FABRIC_TOKEN";
   const cacheFile = deps.cacheFile ?? join(tmpdir(), resource === FABRIC_RESOURCE ? "aihub-fabric-token.json" : resource === ONELAKE_RESOURCE ? "aihub-onelake-token.json" : `aihub-token-${resource.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}.json`);
   let cached: string | undefined;
-  return async () => {
+  const get: AuthFn = async () => {
     if (cached) return cached;
     if (deps.env[tokenVar]) return (cached = `Bearer ${deps.env[tokenVar]}`);
     try {
@@ -248,6 +251,15 @@ export function makeFabricAuth(deps: FabricAuthDeps): () => Promise<string> {
       throw new AihubError("not signed in to Fabric: run 'az login' or set AIHUB_FABRIC_TOKEN");
     }
   };
+  get.invalidate = () => {
+    cached = undefined;
+    try {
+      rmSync(cacheFile, { force: true });
+    } catch {
+      /* the cache is optional */
+    }
+  };
+  return get;
 }
 
 // ---- client ----------------------------------------------------------------
@@ -286,11 +298,11 @@ export interface FabricClientOpts {
   waitScale?: number;
   maxRetries?: number;
   /** Auth for OneLake (storage) calls. */
-  storageAuth?: () => Promise<string>;
+  storageAuth?: AuthFn;
   /** Auth for the Power BI REST API (refresh history). */
-  powerbiAuth?: () => Promise<string>;
+  powerbiAuth?: AuthFn;
   /** Auth for Kusto (KQL database query service). */
-  kustoAuth?: () => Promise<string>;
+  kustoAuth?: AuthFn;
   /** The identity behind the three auth functions (for hints and reporting). */
   identity?: import("./fabric-auth.js").FabricIdentity;
 }
@@ -335,7 +347,7 @@ export class FabricClient {
     return this.opts.identity;
   }
   constructor(
-    private readonly auth: () => Promise<string>,
+    private readonly auth: AuthFn,
     private readonly fetchFn: typeof fetch,
     private readonly opts: FabricClientOpts = {},
   ) {
@@ -351,11 +363,13 @@ export class FabricClient {
   /** One HTTP call with 429 back-off (Retry-After, else exponential). `path` may be an absolute URL (OneLake). */
   async request(method: string, path: string, body?: unknown, o: { storage?: boolean; powerbi?: boolean; kusto?: boolean; accept?: string; raw?: string | Uint8Array; headers?: Record<string, string> } = {}): Promise<Res> {
     const url = /^https?:\/\//.test(path) ? path : `${FABRIC_API}${path}`;
+    let refreshed = false;
     for (let attempt = 0; ; attempt++) {
+      const provider: AuthFn = o.storage && this.opts.storageAuth ? this.opts.storageAuth : o.powerbi && this.opts.powerbiAuth ? this.opts.powerbiAuth : o.kusto && this.opts.kustoAuth ? this.opts.kustoAuth : this.auth;
       const res = await this.fetchFn(url, {
         method,
         headers: {
-          Authorization: await (o.storage && this.opts.storageAuth ? this.opts.storageAuth() : o.powerbi && this.opts.powerbiAuth ? this.opts.powerbiAuth() : o.kusto && this.opts.kustoAuth ? this.opts.kustoAuth() : this.auth()),
+          Authorization: await provider(),
           Accept: o.accept ?? "application/json",
           ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
           ...(o.headers ?? {}),
@@ -366,6 +380,12 @@ export class FabricClient {
       if (res.status === 429 && attempt < this.maxRetries) {
         const ra = Number(res.headers.get("retry-after"));
         await this.wait((Number.isFinite(ra) && ra > 0 ? ra : 2 ** attempt) * 1000);
+        continue;
+      }
+      // a cached token can be stale or from another identity (live: OneLake answered 401 until the cache file was deleted): ask az once more
+      if (res.status === 401 && provider.invalidate && !refreshed) {
+        refreshed = true;
+        provider.invalidate();
         continue;
       }
       if (res.status === 401) throw new FabricHttpError("not signed in to Fabric: run 'az login' or set AIHUB_FABRIC_TOKEN", 401);
