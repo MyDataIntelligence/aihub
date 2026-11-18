@@ -16,6 +16,8 @@ aihub pr update --pr <url|N> --section "<heading>" --append-text "<short text>"
 
 `--pr` takes the dev.azure.com link or the number (omit it for the PR of the current branch). Use `--replace-text` to replace the section, `--append-file f.md` / `--replace-file f.md` for long prose. Keep the team language.
 
+After a data-changing push and when `team.yaml` has `dataChecks:`, refresh the numbers with `aihub pr data-diff --write`.
+
 Do not run `git status`, `aihub pr changes`, `--help` or read the template first. Do not ask questions.
 
 Example: "voeg onder Testen toe: handmatig getest" with a link -> `aihub pr update --pr https://dev.azure.com/org/proj/_git/repo/pullrequest/42 --section "Testen" --append-text "Handmatig getest."`
