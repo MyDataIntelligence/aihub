@@ -6,3 +6,4 @@ coverage/
 cli/pack/
 build/
 vscode/resources/codicon.*
+vscode/resources/mermaid.min.js

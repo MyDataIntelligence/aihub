@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isTestPath, parseHunks } from "../src/lib/learn.js";
@@ -150,5 +150,73 @@ describe("aihub learn validate", () => {
     const bad = await go(makeRepo().dir, ["learn", "validate", "--file", f]);
     expect(bad.code).toBe(1);
     expect(bad.out).toContain("kind must be");
+  });
+});
+
+function goHome(dir: string, home: string, args: string[]) {
+  const f = fakeFetch([]);
+  const { ctx, lines, errs } = ctxFor(dir, f.fn);
+  ctx.env = { ...ctx.env, AIHUB_LEARN_HOME: home };
+  return main(args, ctx).then((code) => ({ code, out: lines.join("\n"), errs: errs.join("\n"), home }));
+}
+
+describe("the personal learn store", () => {
+  it("saves a validated lesson under the user home, never in the repository, and lists and shows it", async () => {
+    const dir = world();
+    const home = tmp("aihub-learn-");
+    const ex = join(tmp(), "e.json");
+    const facts = join(tmp(), "f.json");
+    writeFileSync(ex, JSON.stringify(GOOD));
+    writeFileSync(facts, (await go(dir, ["learn", "change", "--json"])).out);
+    const saved = await goHome(dir, home, ["learn", "save", "--file", ex, "--facts", facts, "--json"]);
+    expect(saved.code).toBe(0);
+    const meta = JSON.parse(saved.out);
+    expect(meta).toMatchObject({ repo: "work", concepts: 1, quiz: 1, source: { branch: "feature/42-guard" } });
+    expect(existsSync(join(home, "lessons", `${meta.id}.json`))).toBe(true);
+    expect(sh(dir, ["status", "--porcelain"])).not.toContain("learn");
+    const list = JSON.parse((await goHome(dir, home, ["learn", "list", "--json"])).out);
+    expect(list.map((m: { id: string }) => m.id)).toEqual([meta.id]);
+    const shown = JSON.parse((await goHome(dir, home, ["learn", "show", "--id", meta.id, "--json"])).out);
+    expect(shown.explanation.oneSentence).toBe(GOOD.oneSentence);
+    expect(shown.facts.files.length).toBe(3);
+    expect((await goHome(dir, home, ["learn", "list", "--all", "--json"])).out).toContain(meta.id);
+  });
+
+  it("refuses to save an invalid explanation and says why", async () => {
+    const ex = join(tmp(), "bad.json");
+    writeFileSync(ex, JSON.stringify({ ...GOOD, kind: "nope" }));
+    const home = tmp("aihub-learn-");
+    const r = await goHome(makeRepo().dir, home, ["learn", "save", "--file", ex]);
+    expect(r.code).toBe(1);
+    expect(r.errs).toContain("nothing was saved");
+    expect(existsSync(join(home, "lessons"))).toBe(false);
+  });
+
+  it("keeps lessons of another repository out of list unless --all", async () => {
+    const home = tmp("aihub-learn-");
+    const ex = join(tmp(), "e.json");
+    writeFileSync(ex, JSON.stringify(GOOD));
+    await goHome(world(), home, ["learn", "save", "--file", ex]);
+    expect(JSON.parse((await goHome(makeRepo().dir, home, ["learn", "list", "--json"])).out)).toEqual([]);
+    expect(JSON.parse((await goHome(makeRepo().dir, home, ["learn", "list", "--all", "--json"])).out)).toHaveLength(1);
+  });
+
+  it("lists concepts, marks one as learned, and keeps quiz scores", async () => {
+    const dir = world();
+    const home = tmp("aihub-learn-");
+    const ex = join(tmp(), "e.json");
+    writeFileSync(ex, JSON.stringify(GOOD));
+    const id = JSON.parse((await goHome(dir, home, ["learn", "save", "--file", ex, "--json"])).out).id;
+    let rows = JSON.parse((await goHome(dir, home, ["learn", "concepts", "--json"])).out);
+    expect(rows).toEqual([{ name: "Guard clause", eli5: "Eerst de rare gevallen.", example: "if factor < 0", lessons: [id], learned: false }]);
+    await goHome(dir, home, ["learn", "concepts", "--mark", "guard clause"]);
+    rows = JSON.parse((await goHome(dir, home, ["learn", "concepts", "--json"])).out);
+    expect(rows[0].learned).toBe(true);
+    const quiz = JSON.parse((await goHome(dir, home, ["learn", "quiz", "--id", id, "--json"])).out);
+    expect(quiz[0].item.answerIndex).toBe(1);
+    expect((await goHome(dir, home, ["learn", "quiz", "--score", id, "--correct", "1", "--of", "1"])).out).toContain("kept 1/1");
+    expect((await goHome(dir, home, ["learn", "quiz", "--score", id, "--correct", "3", "--of", "1"])).code).toBe(1);
+    await goHome(dir, home, ["learn", "forget", "--id", id]);
+    expect(JSON.parse((await goHome(dir, home, ["learn", "list", "--json"])).out)).toEqual([]);
   });
 });
