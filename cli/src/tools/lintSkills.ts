@@ -48,6 +48,7 @@ export const COMMANDS: CommandSpec[] = [
   { name: "release", skill: "release", description: "Release stories or PRs to target branches", hint: "stories or PRs and target branches" },
   { name: "kan-dit", skill: "feasibility", description: "Research whether something is possible (Fabric, Azure DevOps, ...)", hint: "the question: can this be done?", extra: "First run `aihub research template > report.md`; your answer is that file with every section filled, including \"Waar hoort het: Fabric, DevOps/CI-CD of beide?\"." },
   { name: "can-it", skill: "feasibility", description: "Research whether something is possible (Fabric, Azure DevOps, ...)", hint: "the question: can this be done?", extra: "First run `aihub research template > report.md`; your answer is that file with every section filled, including \"Waar hoort het: Fabric, DevOps/CI-CD of beide?\"." },
+  { name: "leer", skill: "learn", description: "Explain a change or the repository with pictures", hint: "PR id, branch or repository" },
   { name: "wiki", skill: "wiki", description: "Write or update a wiki page", hint: "page and subject" },
 ];
 
