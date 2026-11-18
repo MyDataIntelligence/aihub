@@ -6,6 +6,12 @@ import { withRule } from "../src/lib/teamLearn.js";
 import { commands, main } from "../src/router.js";
 import { ctxFor, fakeFetch, makeRepo, sh, tmp, write, type Route } from "./helpers.js";
 
+// the proposals commit in a throw-away worktree with the developer's own git identity; CI has none
+for (const k of ["AUTHOR", "COMMITTER"]) {
+  process.env[`GIT_${k}_NAME`] = "Test User";
+  process.env[`GIT_${k}_EMAIL`] = "test@example.com";
+}
+
 const PR_BASE = "/ferron-org/test-project/_apis/git/repositories/test-repo/pullrequests";
 const TEAM = "language: en\nrepositories:\n  - name: test-repo\n    defaultTarget: main\n";
 const FIXES = `# Known fixes
