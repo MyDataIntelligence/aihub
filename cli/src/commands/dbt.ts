@@ -114,7 +114,7 @@ export function verbArgs(verb: string, v: V, macro?: string): string[] {
   if (v["fail-fast"] && ["build", "run", "test", "seed"].includes(verb)) a.push("--fail-fast");
   if (v.threads) a.push("--threads", String(int(v.threads, "threads", 1)));
   if (v.limit && verb === "show") a.push("--limit", String(int(v.limit, "limit", 5)));
-  if (verb === "show") a.push("--target-path", SHOW_TARGET);
+  if (verb === "show") a.push("--indirect-selection", "empty", "--target-path", SHOW_TARGET);
   return a;
 }
 

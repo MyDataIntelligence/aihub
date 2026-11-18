@@ -111,7 +111,7 @@ export function columnsOf(p: Project, runner: Runner | undefined, n: Node, m: Ma
     }
   }
   if (!runner) return n.columns.map((name) => ({ name }));
-  const args = n.kind === "source" ? ["show", "--inline", `select * from {{ source('${n.name.split(".")[0]}', '${n.name.split(".")[1]}') }}`] : ["show", "--select", `${n.name},resource_type:${n.kind}`];
+  const args = n.kind === "source" ? ["show", "--inline", `select * from {{ source('${n.name.split(".")[0]}', '${n.name.split(".")[1]}') }}`] : ["show", "--select", n.name, "--indirect-selection", "empty"];
   const r = runner.run([...args, "--limit", "1", "--output", "json", "--log-format", "json", "--target-path", SHOW_TARGET], 180_000);
   for (const line of r.stdout.split(/\r?\n/)) {
     if (!line.startsWith("{")) continue;
