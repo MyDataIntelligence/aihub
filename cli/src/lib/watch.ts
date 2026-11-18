@@ -14,7 +14,12 @@ import { parsePrRef } from "./pr.js";
 export type Until = "done" | "comment" | "vote";
 export const UNTILS: Until[] = ["done", "comment", "vote"];
 
+import { parseFabricJob, sameTarget, targetLabel, type RunTarget } from "./watchRun.js";
+import { parseRunRef } from "./pipeline.js";
+
 export interface WatchSpec {
+  /** `watch --run|--robot|--fabric-job`: one long run to follow, not a PR or branch. */
+  target?: RunTarget;
   id: string;
   pr?: number;
   branch?: string;
@@ -287,6 +292,10 @@ export interface StartOpts {
   client?: string;
   session?: string;
   json?: boolean;
+  /** A pipeline run id (or build link), a Robot build id, or `<workspace>/<item>/<job id>`. */
+  run?: string;
+  robot?: string;
+  fabricJob?: string;
 }
 
 export function startWatch(
@@ -296,6 +305,7 @@ export function startWatch(
   alive: (pid?: number) => boolean = isAlive,
   register: () => boolean = () => false,
 ): string {
+  if (o.run || o.robot || o.fabricJob) return startRunWatch(ctx, o, spawner, alive, register);
   const { root } = repoClient(ctx);
   const until = (o.until ?? "done") as Until;
   if (!UNTILS.includes(until)) throw new AihubError(`--until must be one of ${UNTILS.join(", ")}`);
@@ -327,6 +337,35 @@ export function startWatch(
   return o.json ? JSON.stringify({ id: spec.id, pid: spec.pid, target, until }) : `watching ${target} in the background (${how}). List: aihub watch list. Stop: aihub watch stop --id ${spec.id}`;
 }
 
+function startRunWatch(ctx: Ctx, o: StartOpts, spawner: Spawner, alive: (pid?: number) => boolean, register: () => boolean): string {
+  const { root } = repoClient(ctx);
+  if ([o.run, o.robot, o.fabricJob].filter(Boolean).length > 1) throw new AihubError("pass one of --run, --robot or --fabric-job");
+  if (o.pr || o.branch) throw new AihubError("--run, --robot and --fabric-job follow one run; do not combine them with --pr or --branch");
+  const target: RunTarget = o.fabricJob ? parseFabricJob(o.fabricJob) : { kind: o.robot ? "robot" : "run", build: parseRunRef((o.robot ?? o.run)!) };
+  const label = targetLabel(target);
+  const dup = readSpecs(root).find((s) => alive(s.pid) && sameTarget(s.target, target));
+  if (dup) return o.json ? JSON.stringify({ id: dup.id, existing: true }) : `already following ${label} (watch ${dup.id}); stop it with: aihub watch stop --id ${dup.id}`;
+  const now = (ctx.now ?? Date.now)();
+  const spec: WatchSpec = {
+    id: `${now.toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`,
+    until: "done",
+    target,
+    notify: !!o.notify,
+    timeoutMs: parseDuration(o.timeout, 4 * 3_600_000, { flag: "--timeout", unitRequired: true }),
+    intervalMs: parseDuration(o.interval ?? "30s", 30_000, { flag: "--interval", unitRequired: true }),
+    started: now,
+    repo: root,
+    client: detectClient(ctx.env, o.client),
+    session: o.session ?? ctx.env.AIHUB_SESSION_ID,
+  };
+  if (spec.notify) register();
+  writeSpec(root, spec);
+  spec.pid = spawner(root, spec.id);
+  writeSpec(root, spec);
+  const how = `${spec.notify ? "toast when it ends, with a Fix button on failure" : "no toast"}; events go to .git/aihub/events.log`;
+  return o.json ? JSON.stringify({ id: spec.id, pid: spec.pid, target: label }) : `following ${label} in the background (${how}). List: aihub watch list. Stop: aihub watch stop --id ${spec.id}`;
+}
+
 export function listWatches(ctx: Ctx, o: { json?: boolean }, alive: (pid?: number) => boolean = isAlive): string {
   const { root } = repoClient(ctx);
   const rows: { spec: WatchSpec; alive: boolean }[] = [];
@@ -339,7 +378,7 @@ export function listWatches(ctx: Ctx, o: { json?: boolean }, alive: (pid?: numbe
   if (!rows.length) return "no running watches";
   return rows
     .map(({ spec: s }) => {
-      const what = s.mine ? `all my PRs, mentions and reviews, every ${Math.round(s.intervalMs / 1000)} s` : `${s.pr ? `PR !${s.pr}` : `branch ${s.branch}`}  until ${s.until}`;
+      const what = s.target ? targetLabel(s.target) : s.mine ? `all my PRs, mentions and reviews, every ${Math.round(s.intervalMs / 1000)} s` : `${s.pr ? `PR !${s.pr}` : `branch ${s.branch}`}  until ${s.until}`;
       return `${s.id}  ${what}${s.notify ? "  notify" : ""}  pid ${s.pid}  since ${new Date(s.started).toISOString().slice(0, 16).replace("T", " ")}`;
     })
     .join("\n");
@@ -366,7 +405,8 @@ export async function runDetached(ctx: Ctx, id: string): Promise<void> {
   const spec = readSpecs(root).find((s) => s.id === id);
   if (!spec) throw new AihubError(`watch '${id}' not found`);
   try {
-    await runWatch(ctx, spec);
+    if (spec.target) await (await import("./watchRun.js")).runTargetWatch(ctx, spec);
+    else await runWatch(ctx, spec);
   } finally {
     removeSpec(root, id);
   }

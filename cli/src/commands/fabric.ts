@@ -462,7 +462,7 @@ async function runStatus(s: Setup, sub: "run" | "status"): Promise<void> {
   });
   ctx.out(`started ${item.type} ${item.displayName} in ${ws.name} (${ws.environment}): job ${jobId}`);
   if (!v.wait) {
-    ctx.out(`follow with: aihub fabric status --item ${item.displayName} --job ${jobId}`);
+    ctx.out(`follow with: aihub fabric status --item ${item.displayName} --job ${jobId}\nor in the background: aihub watch --fabric-job ${ws.name}/${item.displayName}/${jobId} --notify`);
     return;
   }
   const j = await waitForJob(client, wsId, item.id, jobId, { pollMs: Number(ctx.env.AIHUB_POLL_MS ?? 5000) });
