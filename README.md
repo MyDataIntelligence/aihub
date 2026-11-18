@@ -8,11 +8,26 @@ Agent Skills plus one small CLI that let a coding agent (opencode, GitHub Copilo
 
 ## Install
 
+One line (checks Node 18+, installs the CLI and the skills for opencode, Codex and Copilot, runs `aihub doctor`; re-run to update):
+
+```sh
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/MyDataIntelligence/aihub/main/install.ps1 | iex
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/MyDataIntelligence/aihub/main/install.sh | sh
+```
+
+Or double-click `Install-aihub.cmd`. Flags: `-Next` / `--next` (test version), `-Uninstall` / `--uninstall`, `-WhatIf` / `--dry-run` (print the plan). Or by hand:
+
 ```sh
 npm i -g @ferronhooi/aihub
-npx skills add MyDataIntelligence/aihub -g -a opencode -a github-copilot -a codex
+aihub skills install
 aihub init        # in a team repository: proposes team.yaml + templates as a PR
 aihub doctor      # checks sign-in, remote, templates and team file
 ```
 
-Status: under construction (see the GitHub issues).
+Status: 1.0.0 (see [docs/releases/1.0.0.md](docs/releases/1.0.0.md)).
+
+## Commands
+
+`aihub pr create|update|changes`, `comments get|reply`, `cherry-pick --from <pr|sha|story> --to <branch>... [--pr]`, `branch update [--rebase]`, `story show|create|refine`, `pipeline follow|status|runs|logs|run`, `batch --select "<query>" --run "<subcommand with {target}>"`, `work`, `watch [--pr N|--mine]`, `note`, `status`, `repos list|clone`, `workitem create`, `story context`, `pr checks|requeue`, `pipeline retry`. Prose goes in files (`--body-file`); `--json` is optional everywhere.

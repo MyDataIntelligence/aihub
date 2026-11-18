@@ -26,12 +26,20 @@ export interface CommandSpec {
 /** The slash commands, each loading one skill. Files must equal expectedCommand(). */
 export const COMMANDS: CommandSpec[] = [
   { name: "pr", skill: "pr-create", description: "Create a pull request", hint: "optional story id or remarks" },
+  { name: "commit", skill: "commit", description: "Commit the working changes", hint: "optional type and remarks" },
   { name: "pr-update", skill: "pr-update", description: "Update the open pull request", hint: "optional remarks" },
   { name: "cherry-pick", skill: "branch-sync", description: "Cherry-pick a PR to other branches", hint: "PR id and target branches" },
   { name: "story", skill: "story-create", description: "Create a story", hint: "what the story is about" },
   { name: "refine", skill: "story-refine", description: "Refine a story", hint: "story id" },
   { name: "review", skill: "review-process", description: "Process review comments", hint: "optional PR id" },
   { name: "watch", skill: "pr-watch", description: "Follow a PR and its pipeline", hint: "optional PR id or link" },
+  { name: "test", skill: "test-run", description: "Run the Fabric or Robot tests for this branch", hint: "fabric or robot, optional item or suite" },
+  { name: "start", skill: "story-start", description: "Start a story: branch, link, state", hint: "story id and optional repositories" },
+  { name: "finish", skill: "story-finish", description: "Finish a story: clean up and close", hint: "story id" },
+  { name: "review-pr", skill: "pr-review", description: "Review someone else's pull request", hint: "PR id or link" },
+  { name: "explain", skill: "pr-explain", description: "Explain a pull request", hint: "PR id or link" },
+  { name: "release", skill: "release", description: "Release stories or PRs to target branches", hint: "stories or PRs and target branches" },
+  { name: "wiki", skill: "wiki", description: "Write or update a wiki page", hint: "page and subject" },
 ];
 
 export function expectedCommand(kind: "opencode" | "copilot", c: CommandSpec): string {

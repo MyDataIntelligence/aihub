@@ -8,29 +8,38 @@ description: "Use when the user starts an Azure DevOps team task and it is uncle
 Any Azure DevOps team request. Route it at once; do not explain the pack.
 
 ## Steps
-Map the intent to a skill, then follow that skill:
+A direct command needs no routing: "maak een PR" -> run `aihub pr create --summary-text "..."`; "voeg onder <sectie> toe" with a PR link -> `aihub pr update --pr <url> --section "<heading>" --append-text "..."`. No exploring first. Otherwise map the intent:
 
 | Intent or input | Skill |
 |---|---|
-| new story, "maak een story" | story-create |
-| refine, "verfijn", story id without code | story-refine |
-| build a story, "implementeer", "werk uit" | implement |
+| new story, bug or task | story-create |
+| refine, "verfijn" | story-refine |
+| "implementeer", "werk uit" | implement |
 | "maak een PR", "create PR" | pr-create |
-| "update de PR", new commits on open PR | pr-update |
-| PR link `.../pullrequest/<id>`, "watch", "volg de build" | pr-watch |
-| review comments, "verwerk de comments" | review-process |
-| cherry-pick, "update branch", merge target | branch-sync |
+| "update de PR" | pr-update |
+| PR link, "watch", "volg de build" | pr-watch |
+| "verwerk de comments" | review-process |
+| cherry-pick, "update branch" | branch-sync |
 | failing pipeline, "build is rood" | pipeline-fix |
-| release, "maak een release", several repos | release |
+| "start story 123" | story-start |
+| "rond af", clean up, complete the PR | story-finish |
+| worktree set, several repos | worktrees |
+| "run story 123" | story-run |
+| review someone else's PR | pr-review |
+| "leg de PR uit", explain a PR | pr-explain |
+| wiki, other repo, Terraform | wiki, devops-repos, terraform |
+| screenshot, voice notes | evidence, voice-notes |
+| change team.yaml or a template | team-settings |
+| release, release train | release |
 
-Slash commands `/pr /pr-update /cherry-pick /story /refine /review /watch` map to the same skills.
+Resumed session: run `aihub status`.
 
 Example: the user sends a pullrequest link, so follow pr-watch with that id.
 
 ## What the CLI fills
-Templates, target branch, story links and repository come from `team.yaml` (see the [team schema](../_shared/references/team.schema.yaml)). Never ask the user for them.
+Templates, target branch, story links and repository come from `team.yaml` ([schema](../_shared/references/team.schema.yaml)); never ask the user for them. Read the `guidelines:` files first.
 
 ## If it fails
 Run `aihub doctor` and show its output. If `team.yaml` is missing, tell the user to run `aihub init` in the team repo.
 
-Rules: a direct command ("maak een PR") is executed at once with 0 questions. Local git (status, diff, commit, push of the own branch) uses your own tools. Write content in the language of the team template. Never invent work item ids or links.
+Rules: a direct command ("maak een PR") is executed at once with 0 questions. Local git uses your own tools. Content follows the team template language. Never invent work item ids or links.

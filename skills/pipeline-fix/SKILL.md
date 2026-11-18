@@ -9,10 +9,12 @@ description: "Use when a build or pipeline failed: 'pipeline is rood', 'fix the 
 
 ## Steps
 1. Get the failing stage and log excerpt: `aihub pipeline follow`.
+   More log: `aihub pipeline logs --run <id> --search "<text>"`; earlier runs: `aihub pipeline runs`.
 2. Reproduce locally with your own tools if cheap (same test or lint command).
 3. Fix the cause, not the check. Never weaken a test.
 4. Commit per the commit template, push the own branch with git.
-5. Follow again until green:
+5. A flaky or infrastructure failure needs no code change: `aihub pipeline retry --run <id>` re-runs the failed stage; `aihub pr checks --pr 42` shows what blocks the PR and `aihub pr requeue --pr 42 --policy build` re-queues a failed build policy.
+6. Follow again until green:
 
 ```sh
 aihub pipeline follow

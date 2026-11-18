@@ -8,21 +8,26 @@ description: "Use when the user wants a new user story or work item created: 'cr
 The user describes new work and wants it in Azure DevOps.
 
 ## Steps
-1. Write the story text into a file following the team story template ([default](../_shared/assets/story-template.md), or the team's own copy). Fill only what the user said; leave unknown sections empty.
-2. Run one command:
+1. Print the team story template: `aihub story template`. Its `##` headings are the sections to write, in the team's language.
+2. Write the story file and run the create command in ONE shell call. Use exactly those headings, in that order. Fill EVERY section from what the user said: the user-story sentence in the template's own form, at least two verifiable acceptance criteria as bullets, and the team's "nothing to add" word where nothing applies.
 
 ```sh
-aihub story create --title "Export report as CSV" --body-file story.md
+cat > story.md <<'EOS'
+## <first heading of the template>
+<text>
+
+## <second heading of the template>
+<text>
+EOS
+aihub story create --title "<short title>" --body-file story.md
 ```
 
-3. Report the id and link the CLI prints. Do not guess them.
+A bug or task instead: `aihub workitem create --type Bug --title "..." --body-file bug.md [--parent 123]`. Report the id and link the CLI prints. Do not ask questions.
 
-Example: "maak een story voor CSV-export" gives `aihub story create --title "CSV-export van het rapport" --body-file story.md` and then the printed id.
+Example: "maak een story voor CSV-export" -> `aihub story template`, then the file filled in with the template's headings and `aihub story create --title "CSV-export van het rapport" --body-file story.md`.
 
 ## What the CLI fills
-Work item type, area and iteration, parent link, tags and the template skeleton come from `team.yaml` (`workItems`). Do not ask the user about template sections.
+Work item type, area and iteration, parent link and tags come from `team.yaml` (`workItems`). Sections you leave out become the team's empty text.
 
 ## If it fails
 Missing field or template error: run `aihub doctor`, fix the file, retry once. Never invent a work item id or link.
-
-Rules: a direct command is done at once with 0 questions. Write in the template language (for example Dutch). Local git uses your own tools.

@@ -1,0 +1,46 @@
+# Team file for aihub. Every key has one line of explanation. Values below are a synthetic example: replace them.
+# Full schema: skills/_shared/references/team.schema.yaml in the aihub repository; see docs/team-yaml.md there.
+version: 1                       # schema version, keep 1
+language: nl                     # language of stories, PR text and comments (nl or en)
+
+azureDevOps:
+  organization: ferron-test      # Azure DevOps organization name (the part after dev.azure.com/)
+  project: test-project          # project name
+
+repositories:                    # repositories of the team (at least one)
+  - name: test-project           # exact repository name in Azure DevOps
+    aliases: [tp]                # short names you may say in chat, for example "maak een PR in tp"
+    defaultTarget: main          # branch a new pull request targets
+    releaseBranches: ["release/*"]   # release branch patterns, used by cherry-pick and release
+
+pullRequest:
+  template: .azuredevops/pull_request_template.md   # path of the PR template in the repository
+  title: "{storyId}: {storyTitle}"                   # title pattern; placeholders {storyId} {storyTitle} {branch}
+  emptySection: "n.v.t."         # text the CLI writes into a template section that stays empty
+
+workItems:
+  storyType: User Story          # work item type used for stories (Bug, Task, Product Backlog Item, ...)
+  storyTemplate: .agents/skills/_shared/assets/story-template.md   # story template path
+  states:
+    active: Active               # state set by `aihub story start`
+    finished: Done               # state set by `aihub story finish`
+
+branches:
+  feature: "feature/{storyId}-{slug}"   # pattern for feature branches
+  protected:                            # branches the CLI never pushes to or force-updates
+    - main
+    - "release/*"
+
+cherryPick:
+  groups:                        # named sets of target branches, used as `aihub cherry-pick --to <group>`
+    supported: ["release/1.2", "release/1.3"]   # example group: the releases that still get fixes
+
+pipelines:                       # pipelines `aihub pipeline` and `aihub pr watch` follow
+  - repository: test-project     # repository this pipeline belongs to
+    name: test-project-ci        # pipeline name or id
+    required: true               # true: a red run blocks the pull request
+
+guidelines:                      # repository files the agent reads before writing code or text
+  - .github/guidelines/aihub.md  # example hook: your own rules, see the file itself
+
+# Optional sections (see docs/team-yaml.md in the aihub repository): fabric: (workspaces) and robot: (integration tests).

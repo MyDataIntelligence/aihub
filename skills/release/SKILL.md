@@ -1,35 +1,32 @@
 ---
 name: release
-description: "Use when several repositories or branches must be released together: 'maak een release', 'create a release', 'release alle repos', 'batch cherry-pick'."
+description: "Use when stories or PRs must be released: 'maak een release', 'release story 12 en 13 naar main en staging', 'release train', 'release alle repos', 'batch cherry-pick', '/release'."
 ---
-# Release with batch
+# Release
 
 ## When
-A release touches more than one repository or target branch.
+Merged work goes to a release branch, to several target branches, or to several repositories together.
 
 ## Steps
-1. Describe the batch in a file: repositories (names or aliases from `team.yaml`), source PRs, target release branches.
-
-```yaml
-- repo: test-project
-  from: [42, 43]
-  to: [release/1.2]
-```
-
-2. Run it in one call:
+1. Release train in one repository: plan first.
 
 ```sh
-aihub batch --file release.yaml
+aihub release plan --stories 12,13 --target main --also-cherry-pick-to staging --out plan.yaml
 ```
 
-3. Show the resulting PR links per repository.
+   `--prs`, `--stories`, `--commits` and `--tags v1,v2` (commits between two tags, or the one tag) can be mixed; `--version 1.2.0` names the branch `release/1.2.0`, cut from the target.
+2. Show the plan (PRs in merge order, targets, skipped PRs with the reason). Ask once only when something was skipped.
+3. Run it: `aihub release run --plan-file plan.yaml`. It makes a release branch per target, cherry-picks, pushes and opens a PR per target.
+4. A few PRs to one existing release branch: `aihub cherry-pick --from 42,43 --to release/1.2 --pr`.
+5. Many PRs, branches or repositories: `aihub batch --select "ids:42,43" --run "cherry-pick --from {target} --to release/1.2 --pr"`.
+6. Show the resulting PR links; follow them with pr-watch.
 
-Example: two PRs to one release branch is one `release.yaml` and one command.
+Example: "release 12 en 13 naar main en staging" is the plan above, then `aihub release run --plan-file plan.yaml`.
 
 ## What the CLI fills
-Repository resolution, branch checks, ordering, one PR per target, summary table. Do not ask the user per repository.
+Merge commits of the PRs, release branch names, the PR template, story links and a per-step result. A conflict stops that target only and names the files.
 
 ## If it fails
-One repo fails: the CLI reports it per repo; fix that one (see branch-sync) and rerun only it. Never invent ids or links.
+Resolve a conflict by hand (see branch-sync), then rerun with a new `--name`; for batch use `aihub batch --retry-failed <batchId>`. Never force-push, never invent ids or links.
 
-Rules: direct command, 0 questions. Local git uses your own tools. Content language follows the team template.
+Rules: direct commands, 0 questions beyond skipped PRs. Local git uses your own tools. Content language follows the team template.
