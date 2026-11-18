@@ -3,7 +3,7 @@
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
 ## 1.0.3
-- Optional `aihub` and `aihub-runner` agents for opencode and GitHub Copilot, installed by `aihub skills install` (`--no-agents` skips, `--into-repo` writes them into the repository, an edited file is never overwritten); `aihub doctor` reports them. Release notes: docs/releases/1.0.3.md.
+- Optional `aihub` and `aihub-runner` agents for opencode (format follows the installed 1.x or 2.x), GitHub Copilot, Codex and Claude Code (`--client claude`, opt-in), installed by `aihub skills install` (`--no-agents` skips, `--into-repo` writes them into the repository, an edited file is never overwritten); `aihub doctor` reports them. Release notes: docs/releases/1.0.3.md.
 
 ## 1.0.2
 - `/story-run` slash command; `aihub test changed [--run]` runs only the tests for changed files; skills never run the whole suite locally; `aihub commit` names the git hooks it runs and how long they took, `--no-verify` only on request. Release notes: docs/releases/1.0.2.md.

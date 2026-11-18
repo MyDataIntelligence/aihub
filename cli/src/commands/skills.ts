@@ -6,7 +6,7 @@ import { diffClient } from "../lib/skillsDiff.js";
 import { installClients, parseClients, uninstallClients, updateClients, type ClientReport } from "../lib/install.js";
 
 const USAGE =
-  "usage: aihub skills install|update|diff|uninstall [--client opencode|github-copilot|codex|all] [--into-repo] [--no-agents]\n" +
+  "usage: aihub skills install|update|diff|uninstall [--client opencode|github-copilot|codex|claude|all] [--into-repo] [--no-agents]\n" +
   "  install    copy the bundled skills and slash commands, and the optional aihub agents (opencode, github-copilot) into each client's global folder\n" +
   "  update     rewrite the copies of every client that has them from the bundled pack (files you edited stay)\n" +
   "  diff       show your edits to the installed skills (and copies behind the bundled pack)\n" +

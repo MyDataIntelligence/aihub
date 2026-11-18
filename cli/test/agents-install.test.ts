@@ -16,6 +16,8 @@ function fakeHome() {
     CODEX_HOME: join(h, ".codex"),
     COPILOT_HOME: join(h, ".copilot"),
     OPENCODE_CONFIG_DIR: join(h, ".config", "opencode"),
+    AIHUB_OPENCODE_VERSION: "1.19.5",
+    CLAUDE_CONFIG_DIR: join(h, ".claude"),
   };
   return { h, env };
 }
@@ -28,17 +30,18 @@ async function run(args: string[], env: NodeJS.ProcessEnv, cwd = tmp()) {
 }
 
 describe("aihub skills install: optional agents", () => {
-  it("installs aihub and aihub-runner for opencode and github-copilot, none for codex", async () => {
+  it("installs aihub and aihub-runner for opencode, github-copilot and codex, not for claude unless asked", async () => {
     const { h, env } = fakeHome();
     const r = await run(["skills", "install", "--global"], env);
     expect(r.errs).toEqual([]);
     expect(r.code).toBe(0);
-    const oc = join(h, ".config", "opencode", "agents");
+    const oc = join(h, ".config", "opencode", "agent");
     expect(existsSync(join(oc, "aihub.md"))).toBe(true);
     expect(existsSync(join(oc, "aihub-runner.md"))).toBe(true);
     expect(existsSync(join(h, ".copilot", "agents", "aihub.agent.md"))).toBe(true);
     expect(existsSync(join(h, ".copilot", "agents", "aihub-runner.agent.md"))).toBe(true);
-    expect(existsSync(join(h, ".codex", "agents"))).toBe(false);
+    expect(existsSync(join(h, ".codex", "agents", "aihub.toml"))).toBe(true);
+    expect(existsSync(join(h, ".claude"))).toBe(false);
     // the version marker comes after the front matter, which stays first
     const text = readFileSync(join(oc, "aihub.md"), "utf8");
     expect(text.startsWith("---\n")).toBe(true);
@@ -59,15 +62,15 @@ describe("aihub skills install: optional agents", () => {
     const { h, env } = fakeHome();
     await run(["skills", "install", "--global", "--no-agents"], env);
     expect(existsSync(join(h, ".config", "opencode", "skills", "start-here", "SKILL.md"))).toBe(true);
-    expect(existsSync(join(h, ".config", "opencode", "agents"))).toBe(false);
+    expect(existsSync(join(h, ".config", "opencode", "agent"))).toBe(false);
     expect(existsSync(join(h, ".copilot", "agents"))).toBe(false);
     await run(["skills", "update"], env);
-    expect(existsSync(join(h, ".config", "opencode", "agents"))).toBe(false);
+    expect(existsSync(join(h, ".config", "opencode", "agent"))).toBe(false);
   });
 
   it("never touches the user's own agents, nor an edited aihub agent", async () => {
     const { h, env } = fakeHome();
-    const dir = join(h, ".config", "opencode", "agents");
+    const dir = join(h, ".config", "opencode", "agent");
     await run(["skills", "install", "--global", "--client", "opencode"], env);
     writeFileSync(join(dir, "mine.md"), "---\ndescription: mine\n---\nmy agent\n");
     const edited = readFileSync(join(dir, "aihub.md"), "utf8") + "\nMy extra rule.\n";
@@ -97,14 +100,14 @@ describe("aihub skills install: optional agents", () => {
     const { h, env } = fakeHome();
     await run(["skills", "install", "--global"], env);
     await run(["skills", "uninstall"], env);
-    expect(existsSync(join(h, ".config", "opencode", "agents"))).toBe(false);
+    expect(existsSync(join(h, ".config", "opencode", "agent"))).toBe(false);
     expect(existsSync(join(h, ".copilot", "agents"))).toBe(false);
   });
 
   it("update refreshes agents that are installed", async () => {
     const { h, env } = fakeHome();
     await run(["skills", "install", "--global", "--client", "opencode"], env);
-    const dir = join(h, ".config", "opencode", "agents");
+    const dir = join(h, ".config", "opencode", "agent");
     const f = join(dir, "aihub-runner.md");
     const stamped = readFileSync(f, "utf8");
     // an older aihub version in the marker, otherwise as aihub wrote it: update rewrites it
@@ -117,23 +120,60 @@ describe("aihub skills install: optional agents", () => {
     expect(readFileSync(f, "utf8")).toBe(stamped);
   });
 
-  it("--into-repo writes .opencode/agents and .github/agents in the repository", async () => {
+  it("--into-repo writes .opencode/agent and .github/agents in the repository", async () => {
     const { env } = fakeHome();
     const { dir: repo } = makeRepo();
     const r = await run(["skills", "install", "--into-repo"], env, repo);
     expect(r.errs).toEqual([]);
-    expect(existsSync(join(repo, ".opencode", "agents", "aihub.md"))).toBe(true);
+    expect(existsSync(join(repo, ".opencode", "agent", "aihub.md"))).toBe(true);
     expect(existsSync(join(repo, ".github", "agents", "aihub.agent.md"))).toBe(true);
     expect(existsSync(join(repo, ".agents", "agents"))).toBe(false);
   });
 
-  it("the opencode agent allows aihub and git and asks before force pushes and rm -rf", async () => {
+  it("the opencode 1.x agent allows aihub and git and asks before force pushes and rm -rf (permission map)", async () => {
     const { h, env } = fakeHome();
     await run(["skills", "install", "--global", "--client", "opencode"], env);
-    const text = readFileSync(join(h, ".config", "opencode", "agents", "aihub.md"), "utf8");
-    const effect = (resource: string) => new RegExp(`resource: "${resource.replace(/[*]/g, "\\*")}"\\n\\s+effect: (\\w+)`).exec(text)?.[1];
+    const text = readFileSync(join(h, ".config", "opencode", "agent", "aihub.md"), "utf8");
+    expect(text).toContain("permission:\n  bash:\n");
+    const effect = (pattern: string) => new RegExp(`^    "${pattern.replace(/[*]/g, "\\*")}": (\\w+)$`, "m").exec(text)?.[1];
     for (const r of ["aihub *", "git *", "az repos *", "az boards *", "az pipelines *"]) expect(effect(r), r).toBe("allow");
     for (const r of ["git push *--force*", "rm -rf*"]) expect(effect(r), r).toBe("ask");
+  });
+
+  it("opencode 2.x gets agents/ with a permissions list, and a switch moves the unmodified files", async () => {
+    const { h, env } = fakeHome();
+    const base = join(h, ".config", "opencode");
+    await run(["skills", "install", "--global", "--client", "opencode"], env);
+    expect(existsSync(join(base, "agent", "aihub.md"))).toBe(true);
+    const v2 = { ...env, AIHUB_OPENCODE_VERSION: "2.0.1" };
+    await run(["skills", "install", "--global", "--client", "opencode"], v2);
+    const text = readFileSync(join(base, "agents", "aihub.md"), "utf8");
+    expect(text).toContain("permissions:\n  - action: shell");
+    expect(text).not.toContain("permission:\n  bash");
+    expect(existsSync(join(base, "agent"))).toBe(false);
+    // and back; uninstall finds either folder
+    await run(["skills", "install", "--global", "--client", "opencode"], env);
+    expect(existsSync(join(base, "agent", "aihub.md"))).toBe(true);
+    expect(existsSync(join(base, "agents"))).toBe(false);
+    await run(["skills", "install", "--global", "--client", "opencode"], v2);
+    await run(["skills", "uninstall", "--client", "opencode"], env);
+    expect(existsSync(join(base, "agents"))).toBe(false);
+  });
+
+  it("codex agents are TOML in CODEX_HOME/agents; claude is opt-in and gets skills, commands and agents", async () => {
+    const { h, env } = fakeHome();
+    await run(["skills", "install", "--global", "--client", "codex"], env);
+    const toml = readFileSync(join(h, ".codex", "agents", "aihub-runner.toml"), "utf8");
+    expect(toml).toMatch(/^# aihub \S+\nname = "aihub-runner"\n/);
+    expect(toml).toContain('developer_instructions = """');
+    await run(["skills", "install", "--global", "--client", "claude"], env);
+    expect(existsSync(join(h, ".claude", "skills", "start-here", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(h, ".claude", "commands", "pr.md"))).toBe(true);
+    const agent = readFileSync(join(h, ".claude", "agents", "aihub.md"), "utf8");
+    expect(agent).toMatch(/^---\nname: aihub\n/);
+    expect(agent).toContain("tools: Bash, Read");
+    await run(["skills", "uninstall", "--client", "claude"], env);
+    expect(existsSync(join(h, ".claude", "agents"))).toBe(false);
   });
 });
 
@@ -153,11 +193,12 @@ describe("aihub doctor: agents", () => {
     const before = await doctor(env);
     expect(by(before, "agents:opencode").status).toBe("OK");
     expect(by(before, "agents:opencode").detail).toContain("not installed");
-    expect(before.find((c) => c.name === "agents:codex")).toBeUndefined();
+    expect(by(before, "agents:codex").status).toBe("OK");
+    expect(before.find((c) => c.name === "agents:claude")).toBeUndefined();
     await run(["skills", "install", "--global"], env);
     const after = await doctor(env);
     expect(by(after, "agents:opencode").detail).not.toContain("not installed");
-    expect(by(after, "agents:opencode").detail).toContain("agents");
+    expect(by(after, "agents:opencode").detail).toContain("1.x format");
     expect(by(after, "agents:github-copilot").status).toBe("OK");
   });
 });
