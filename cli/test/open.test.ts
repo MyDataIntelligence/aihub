@@ -15,8 +15,8 @@ const ev = (over: Partial<OpenEvent> = {}): OpenEvent => ({
 });
 
 describe("launch plan per client (nothing is launched)", () => {
-  it("opencode continues the last session, or the named one, with the first message", () => {
-    expect(planOpen(ev(), "linux").text).toBe("cd 'C:/work/test-repo' && 'opencode' '--continue' '--prompt' 'PR 553: pipeline rood in stap Tests — ga verder'");
+  it("opencode continues the named session, or starts a new one in the repository, with the first message", () => {
+    expect(planOpen(ev(), "linux").text).toBe("cd 'C:/work/test-repo' && 'opencode' '--prompt' 'PR 553: pipeline rood in stap Tests — ga verder'");
     expect(planOpen(ev({ session: "ses_1" }), "linux").text).toContain("'--session' 'ses_1' '--prompt'");
   });
 
@@ -37,7 +37,7 @@ describe("launch plan per client (nothing is launched)", () => {
     const wt = planOpen(ev({ message: "it's red", prompt: "it's red — ga verder" }), "win32", true);
     expect(wt.cmd).toBe("wt.exe");
     expect(wt.args.slice(0, 5)).toEqual(["-d", "C:/work/test-repo", "powershell.exe", "-NoExit", "-Command"]);
-    expect(wt.args[5]).toBe("& 'opencode' '--continue' '--prompt' 'it''s red — ga verder'");
+    expect(wt.args[5]).toBe("& 'opencode' '--prompt' 'it''s red — ga verder'");
     const plain = planOpen(ev(), "win32", false);
     expect(plain.cmd).toBe("cmd.exe");
     expect(plain.args.slice(0, 5)).toEqual(["/c", "start", "", "/D", "C:/work/test-repo"]);
@@ -62,7 +62,7 @@ describe("aihub open", () => {
     expect(openEvent(ctx, { url: eventUrl("w1-2") }, launcher, "linux")).toContain("opened claude");
     expect(openEvent(ctx, { last: true }, launcher, "linux")).toContain("newer");
     expect(plans.map((p) => p.cmd)).toEqual(["x-terminal-emulator", "x-terminal-emulator", "x-terminal-emulator"]);
-    expect(openEvent(ctx, { event: "w1-1", print: true }, launcher, "linux")).toContain("'--continue'");
+    expect(openEvent(ctx, { event: "w1-1", print: true }, launcher, "linux")).toContain("'opencode' '--prompt'");
     expect(plans).toHaveLength(3);
     expect(openEvent(ctx, { last: true }, () => false, "linux")).toContain("could not launch a terminal here; run: cd");
   });
