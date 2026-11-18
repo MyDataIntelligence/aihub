@@ -30,7 +30,7 @@ async function run(args: string[], env: NodeJS.ProcessEnv, cwd = tmp()) {
 }
 
 describe("aihub skills install: optional agents", () => {
-  it("installs aihub and aihub-runner for opencode, github-copilot and codex, not for claude unless asked", async () => {
+  it("installs aihub, aihub-runner and aihub-researcher for opencode, github-copilot and codex, not for claude unless asked", async () => {
     const { h, env } = fakeHome();
     const r = await run(["skills", "install", "--global"], env);
     expect(r.errs).toEqual([]);
@@ -48,7 +48,7 @@ describe("aihub skills install: optional agents", () => {
     expect(text).toMatch(/\n---\n<!-- aihub \S+ -->\n/);
     // the manifest records every agent file with its checksum
     const man = JSON.parse(readFileSync(join(oc, ".aihub-manifest.json"), "utf8")) as { files: Record<string, string> };
-    expect(Object.keys(man.files).sort()).toEqual(["aihub-runner.md", "aihub.md"]);
+    expect(Object.keys(man.files).sort()).toEqual(["aihub-researcher.md", "aihub-runner.md", "aihub.md"]);
   });
 
   it("accepts --client copilot as an alias for github-copilot", async () => {

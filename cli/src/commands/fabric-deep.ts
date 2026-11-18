@@ -349,17 +349,20 @@ async function sparkLinks(client: FabricClient, wsId: string, item: FabricItem, 
   }
 }
 
+/** Without --workspace, the per-branch workspace of the current branch ("<prefix> <branch label>"): sets s.v.workspace. */
+export async function resolveBranchWorkspace(s: Setup, client: FabricClient): Promise<void> {
+  if (s.v.workspace || !s.branch) return;
+  const prefixes = [...(s.prefixes ?? [])];
+  const w = branchWorkspace(await client.workspaces(), s.branch, prefixes, (x) => x.displayName);
+  if (!w) throw new AihubError(`no single workspace named '${prefixes[0] ?? "<prefix>"} ${s.branch.split("/").pop()}' for branch ${s.branch}; pass --workspace, or set fabric.branchWorkspacePrefixes in team.yaml`);
+  s.v.workspace = [w.displayName];
+}
+
 /** `aihub fabric failures`: newest failed (and active) runs of a branch's workspace, with the root cause chain. */
 export async function failuresCmd(s: Setup): Promise<void> {
   const client = makeClient(s.ctx, s.v);
   let t: Target;
-  if (!s.v.workspace && s.branch) {
-    const prefixes = [...(s.prefixes ?? [])];
-    const all = await client.workspaces();
-    const w = branchWorkspace(all, s.branch, prefixes, (x) => x.displayName);
-    if (!w) throw new AihubError(`no single workspace named '${prefixes[0] ?? "<prefix>"} ${s.branch.split("/").pop()}' for branch ${s.branch}; pass --workspace, or set fabric.branchWorkspacePrefixes in team.yaml`);
-    s.v.workspace = [w.displayName];
-  }
+  await resolveBranchWorkspace(s, client);
   t = await target(s, client, false);
   const items = (await client.items(t.id)).filter((i) => ["DataPipeline", "Notebook"].includes(i.type)).slice(0, 50);
   const rows: { item: FabricItem; job: JobInstance }[] = [];

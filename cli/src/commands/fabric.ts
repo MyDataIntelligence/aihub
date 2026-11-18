@@ -27,7 +27,7 @@ import {
 } from "../lib/fabric.js";
 import { collectJobLogs, collectRefreshLogs, workspaceRuns } from "../lib/fabric-logs.js";
 import { classifyError } from "../lib/fabric-diag.js";
-import { CAPACITY_HINT, connectionWriteCmd, dbtCmd, failuresCmd, livyCmd, notebookTestCmd, sparkCmd, sqlCmd, udfCmd } from "./fabric-deep.js";
+import { CAPACITY_HINT, connectionWriteCmd, dbtCmd, failuresCmd, resolveBranchWorkspace, livyCmd, notebookTestCmd, sparkCmd, sqlCmd, udfCmd } from "./fabric-deep.js";
 import { apiCmd, onelakeCmd, queryCmd } from "./fabric-api.js";
 import { authCmd, capacitiesCmd, connectionsCmd, deploymentCmd, environmentCmd, lakehouseLoad, lakehouseMaintenance, schedulesCmd, shortcutsCmd, workspaceCmd } from "./fabric-extra.js";
 import { didYouMean } from "../lib/fabric.js";
@@ -592,6 +592,7 @@ async function jobsCmd(s: Setup): Promise<void> {
 async function logsCmd(s: Setup): Promise<void> {
   const { v } = s;
   const client = makeClient(s.ctx, s.v);
+  if (!v.workspaces) await resolveBranchWorkspace(s, client);
   const t = await target(s, client, false);
   const search = v.search as string | undefined;
   const tail = v.tail ? num(v, "tail", 1) : undefined;

@@ -25,6 +25,8 @@ export interface DataTable {
 export interface DataChecks {
   /** Warehouse or Lakehouse (name) that exists in both workspaces */
   item: string;
+  /** Lakehouse (default) or Warehouse: a lakehouse name is ambiguous with its SQL endpoint, so the type is always passed */
+  itemType?: "Lakehouse" | "Warehouse";
   baseline?: string;
   feature?: string;
   section?: string;
@@ -37,7 +39,7 @@ export interface Rows {
 }
 
 /** Runs one SELECT in a workspace; `how` says through what (SQL endpoint or Livy). */
-export type DataRunner = (workspace: string, item: string, sql: string) => Promise<Rows & { how: string }>;
+export type DataRunner = (workspace: string, item: string, sql: string, itemType?: string) => Promise<Rows & { how: string }>;
 
 export interface Metric {
   table: string;
@@ -109,7 +111,7 @@ async function measure(run: DataRunner, ws: string, item: string, checks: DataCh
   for (const t of checks.tables) {
     try {
       const q = queryFor(t);
-      const r = await run(ws, item, q.sql);
+      const r = await run(ws, item, q.sql, checks.itemType ?? "Lakehouse");
       how = how || r.how;
       const row = r.rows[0] ?? [];
       r.columns.forEach((c, i) => {
@@ -221,9 +223,9 @@ export function fabricRunner(ctx: Ctx, fabricRun: (argv: string[], ctx: Ctx) => 
     await fabricRun([...argv, "--json"], { ...ctx, out: (l) => out.push(l) });
     return JSON.parse(out.join("\n"));
   };
-  return async (workspace, item, sql) => {
+  return async (workspace, item, sql, itemType = "Lakehouse") => {
     try {
-      const r = (await call(["sql", "--workspace", workspace, "--item", item, "--query", sql])).result as { columns: string[]; rows: unknown[][] };
+      const r = (await call(["sql", "--workspace", workspace, "--item", item, "--type", itemType, "--query", sql])).result as { columns: string[]; rows: unknown[][] };
       return { columns: r.columns, rows: r.rows, how: "the SQL endpoint" };
     } catch (sqlError) {
       try {

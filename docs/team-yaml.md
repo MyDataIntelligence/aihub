@@ -85,6 +85,7 @@ listed, docs and config are ignored, and it never falls back to the whole suite:
 ```yaml
 dataChecks:
   item: lh_orders              # Lakehouse or Warehouse that exists in both workspaces
+  itemType: Lakehouse          # Lakehouse (default) or Warehouse
   baseline: DEV-shared         # optional; default: the workspace of the PR's target branch, else the dev workspace
   feature: DEV-anna            # optional; default: the workspace whose fabric.workspaces branches match the source branch
   tables:

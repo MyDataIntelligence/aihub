@@ -286,6 +286,12 @@ describe("failures: root cause chain", () => {
     expect(r.out).toContain("likely cause: missing-table-or-path");
     expect(r.out).toContain("aihub fabric logs --workspace Team Data 12 Export --item pl_main --job pjob-1");
   });
+  it("logs resolves the branch workspace itself, like failures", async () => {
+    const r = await go(routes, ["logs", "--branch", "feature/12-export"], { setup: (c) => (c.env.AIHUB_HOME = tmp()) });
+    expect(r.out).toContain("Team Data 12 Export");
+    const none = await go([get(/\/v1\/workspaces$/, { value: [{ id: "1", displayName: "x" }] })], ["logs", "--branch", "feature/12-export"]);
+    expect(none.errs[0]).toContain("no single workspace named 'team data");
+  });
   it("needs a single workspace for the branch", async () => {
     const r = await go([get(/\/v1\/workspaces$/, { value: [{ id: "1", displayName: "x" }] })], ["failures", "--branch", "feature/12-export"]);
     expect(r.errs[0]).toContain("no single workspace named 'team data");
