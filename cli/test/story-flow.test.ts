@@ -68,6 +68,15 @@ describe("aihub story start", () => {
     expect(r.lines.join("\n")).toContain("uncommitted changes");
     expect(sh(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("main");
   });
+
+  it("switches to the story branch when only untracked files are present (pycache, scratch files)", async () => {
+    const parent = newParent();
+    const { dir } = makeNamedRepo(parent, "test-repo");
+    write(dir, "__pycache__/x.pyc", "x\n");
+    const r = await run(dir, storyRoutes(6, { title: "Schoon genoeg" }), ["story", "start", "--id", "6"]);
+    expect(r.lines.join("\n")).not.toContain("uncommitted changes");
+    expect(sh(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("feature/6-schoon-genoeg");
+  });
 });
 
 describe("aihub story link", () => {

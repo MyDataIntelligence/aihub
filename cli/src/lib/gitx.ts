@@ -24,6 +24,9 @@ export function mustGit(cwd: string, args: string[]): string {
 
 export const isDirty = (dir: string): boolean => mustGit(dir, ["status", "--porcelain"]) !== "";
 
+/** Changes to tracked files only: untracked files (build output, scratch files) never stop `git switch`, which refuses by itself when one would be overwritten. */
+export const hasTrackedChanges = (dir: string): boolean => mustGit(dir, ["status", "--porcelain", "--untracked-files=no"]) !== "";
+
 export const refSha = (dir: string, ref: string): string => {
   const r = tryGit(dir, ["rev-parse", "--verify", "--quiet", ref]);
   return r.ok ? r.out.trim() : "";
