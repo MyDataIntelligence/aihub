@@ -81,6 +81,11 @@ robot:                             # Robot integration tests for `aihub robot` (
       paths: []                    # path patterns of the flow, e.g. ["src/flows/orders/**"] (optional)
       tests: []                    # path patterns of the suite's Robot files, e.g. ["tests/robot/orders/**"] (optional)
 
+pullRequest:                       # optional extras of `aihub pr create`
+  afterCreate:                     # done right after a NEW pull request exists; a failure is reported, the PR stays
+    storyState: Review             # set the linked story to this state (must exist in the process; the error lists the states)
+    autoComplete: true             # ask for auto-complete, only when the target branch has a blocking policy (policies stay required, never bypassed)
+
 dataChecks:                        # optional: used by `aihub pr data-diff` (read-only numbers before/after in the PR)
   item: <lakehouse-or-warehouse>   # Warehouse or Lakehouse (name) that exists in the baseline and the feature workspace; needed as soon as dataChecks is used
   itemType: Lakehouse              # Lakehouse (default) or Warehouse; a lakehouse name is ambiguous with its SQL endpoint, so the type is always passed (optional)

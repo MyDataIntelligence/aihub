@@ -4,7 +4,12 @@ import { parse } from "yaml";
 
 export interface TeamConfig {
   repositories?: { name?: string; defaultTarget?: string }[];
-  pullRequest?: { emptySection?: string; optionalSections?: string[] };
+  pullRequest?: {
+    emptySection?: string;
+    optionalSections?: string[];
+    /** done by `aihub pr create` right after a new PR exists: story state, auto-complete (only when the target branch has a blocking policy) */
+    afterCreate?: { storyState?: string; autoComplete?: boolean };
+  };
   workItems?: {
     storyType?: string;
     storyTemplate?: string;

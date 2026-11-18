@@ -18,6 +18,8 @@ aihub pr update --pr <url|N> --section "<heading>" --append-text "<short text>"
 
 After a data-changing push and when `team.yaml` has `dataChecks:`, refresh the numbers with `aihub pr data-diff --write`.
 
+Test evidence: `aihub pr tests add --from-run <build id>` (or `--from-robot`, `--from-fabric-job <ws>/<item>/<job>`) adds an honest row from the real run. Long output: `aihub pr comment --closed --title "<what>" --text "<markdown>" --link-section <section>`.
+
 Do not run `git status`, `aihub pr changes`, `--help` or read the template first. Do not ask questions.
 
 Example: "voeg onder Testen toe: handmatig getest" with a link -> `aihub pr update --pr https://dev.azure.com/org/proj/_git/repo/pullrequest/42 --section "Testen" --append-text "Handmatig getest."`
