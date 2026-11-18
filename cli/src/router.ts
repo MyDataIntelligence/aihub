@@ -35,6 +35,8 @@ import * as repos from "./commands/repos.js";
 import * as open from "./commands/open.js";
 import * as commit from "./commands/commit.js";
 import * as testCmd from "./commands/test.js";
+import * as probe from "./commands/probe.js";
+import * as research from "./commands/research.js";
 import * as legacy from "./commands/legacy.js";
 import * as prList from "./commands/pr-list.js";
 
@@ -83,6 +85,8 @@ export const commands: Record<string, CommandFn> = {
   commit: commit.run,
   test: testCmd.run,
   legacy: legacy.run,
+  probe: probe.run,
+  research: research.run,
 };
 
 export const VERSION = cliVersion();
@@ -94,6 +98,8 @@ export const HELP: Record<string, string> = {
   story: "aihub story template   (prints the team story template: the headings to use)\naihub story create --title \"<title>\" --body-file story.md   (one ## <heading> section per template heading, all filled)",
   branch: "aihub branch update [--branch B] [--target T] [--rebase]",
   test: testCmd.TEST_USAGE,
+  probe: probe.PROBE_USAGE,
+  research: research.RESEARCH_USAGE,
 };
 
 /**

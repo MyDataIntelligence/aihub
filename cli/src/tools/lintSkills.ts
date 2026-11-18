@@ -41,6 +41,8 @@ export const COMMANDS: CommandSpec[] = [
   { name: "review-pr", skill: "pr-review", description: "Review someone else's pull request", hint: "PR id or link" },
   { name: "explain", skill: "pr-explain", description: "Explain a pull request", hint: "PR id or link" },
   { name: "release", skill: "release", description: "Release stories or PRs to target branches", hint: "stories or PRs and target branches" },
+  { name: "kan-dit", skill: "feasibility", description: "Research whether something is possible (Fabric, Azure DevOps, ...)", hint: "the question: can this be done?" },
+  { name: "can-it", skill: "feasibility", description: "Research whether something is possible (Fabric, Azure DevOps, ...)", hint: "the question: can this be done?" },
   { name: "wiki", skill: "wiki", description: "Write or update a wiki page", hint: "page and subject" },
 ];
 

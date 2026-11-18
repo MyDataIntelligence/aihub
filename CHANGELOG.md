@@ -2,6 +2,9 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.0.5
+- Feasibility mode: skill `feasibility` and slash commands `/kan-dit` and `/can-it` research whether an idea is possible (docs, community, live probes) and answer with a fixed report (Verdict, Hoe, Bewijs, Bronnen, Grenzen, Inschatting, Open vragen). New subagent `aihub-researcher`. New read-only `aihub probe fabric endpoint|capacity`, `aihub probe devops feature`, `aihub probe api --get <url>` (YES/NO/UNKNOWN with the raw status, never item contents) and `aihub research save --file report.md [--wiki <page>]`. See docs/feasibility.md.
+
 ## 1.0.4
 - `aihub pr data-diff [--pr N] [--write]`: read-only before/after numbers (count, nulls, sums, distinct, custom SELECT per table, `dataChecks:` in team.yaml) from the baseline and the feature workspace as a table with deltas and a verdict; `--write` puts it in the PR section "Data before/after". Never ACC/PRD. Release notes: docs/releases/1.0.4.md.
 

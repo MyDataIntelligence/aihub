@@ -6,6 +6,7 @@
 |---|---|---|
 | `aihub` | primary | Stories, pull requests, pipelines, reviews, Fabric through the skills |
 | `aihub-runner` | subagent | One long job: story-run, pipeline-fix, pr-watch, review-process; reports in at most 5 lines |
+| `aihub-researcher` | subagent | One research angle of a feasibility question (docs, community or live probes); read-only; reports with sources |
 
 The source files live in `agents/<format>/` (`opencode`, `opencode2`, `copilot`, `codex`, `claude`): one body, a front matter per client. `npm run lint:skills` checks that the bodies are equal and that every front matter is valid.
 
