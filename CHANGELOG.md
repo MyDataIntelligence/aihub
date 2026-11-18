@@ -2,6 +2,9 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.0.4
+- `aihub pr data-diff [--pr N] [--write]`: read-only before/after numbers (count, nulls, sums, distinct, custom SELECT per table, `dataChecks:` in team.yaml) from the baseline and the feature workspace as a table with deltas and a verdict; `--write` puts it in the PR section "Data before/after". Never ACC/PRD. Release notes: docs/releases/1.0.4.md.
+
 ## 1.0.3
 - `aihub legacy remove [--yes] [--keep-data] [--keep-settings] [--repos <dir>]`: lists, then removes, everything the old AI Context Hub put on the machine (extension below 3.0.0, `hub` CLI package and PATH entry, its skills, agent, rules block and hooks, data, per-repo `.aihub`, exclude lines and git hook blocks); only what is provably Hub-owned, your own files and hooks stay. See docs/legacy-removal.md.
 - `aihub init` also proposes `.github/instructions/<area>.instructions.md` skeletons (`applyTo:` front matter, empty rule bullets, for the file types the repository really has) and a marked aihub block in `AGENTS.md` (created, or appended only when the file has no aihub line); each only when missing. `--no-instructions` and `--no-agents-md` skip them.
