@@ -1,10 +1,13 @@
 import * as vscode from "vscode";
 import { actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
 import { checkCli, CliError, INSTALL_COMMAND, makeRunner, type Runner } from "./cli";
+import { chatOpenArgs, copilotAgentInstalled } from "./agents";
 import { BarLoader } from "./data";
 import { renderBody, renderError, renderPage } from "./html";
 import { statusItems, type BarError, type BarModel, type StatusItem, type Tone } from "./model";
 import { Refresher, type Result } from "./refresher";
+import { registerGitCommands } from "./gitUi";
+import { registerWorktreeCommands } from "./worktreeUi";
 
 const cfg = () => vscode.workspace.getConfiguration("aihub");
 
@@ -183,6 +186,10 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     return this.last && !this.last.ok ? this.last.error : undefined;
   }
 
+  logLine(line: string) {
+    this.log.appendLine(`${new Date().toISOString()} ${line}`);
+  }
+
   showLog() {
     this.log.show(true);
   }
@@ -207,12 +214,25 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
       t.sendText(action.text, false);
       return;
     }
-    const base = { query: action.text, isPartialQuery: true };
+    const name = String(cfg().get("chatAgentName", "aihub"));
+    const installed = copilotAgentInstalled(name, this.cwd);
+    const args = chatOpenArgs(action.text, { agentName: name, agentInstalled: installed, agentMode: !!cfg().get("chatAgentMode", true) });
+    this.log.appendLine(`${new Date().toISOString()} chat.open ${JSON.stringify(args)}`);
     try {
-      await vscode.commands.executeCommand("workbench.action.chat.open", cfg().get("chatAgentMode", true) ? { ...base, mode: "agent" } : base);
+      await vscode.commands.executeCommand("workbench.action.chat.open", args);
     } catch {
-      await vscode.commands.executeCommand("workbench.action.chat.open", base);
+      await vscode.commands.executeCommand("workbench.action.chat.open", { query: action.text, isPartialQuery: true });
     }
+    if (!installed) void this.offerAgentInstall(name);
+  }
+
+  /** Once per machine: the aihub agent is not installed, so the chat opened with the default agent. */
+  private async offerAgentInstall(name: string) {
+    if (this.ctx.globalState.get("aihub.agentOfferShown")) return;
+    await this.ctx.globalState.update("aihub.agentOfferShown", true);
+    const copy = "Copy install command";
+    const pick = await vscode.window.showInformationMessage(`The "${name}" chat agent is not installed, so the default agent was used. Install it with: aihub skills install`, copy);
+    if (pick === copy) await vscode.env.clipboard.writeText("aihub skills install");
   }
 
   private async openOpencodeTerminal(): Promise<vscode.Terminal | undefined> {
@@ -267,6 +287,8 @@ export function activate(ctx: vscode.ExtensionContext) {
       if (choice === copy) await vscode.env.clipboard.writeText(INSTALL_COMMAND);
     }),
   );
+  registerGitCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
+  registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
   bar.start();
 }
 
