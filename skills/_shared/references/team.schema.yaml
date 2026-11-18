@@ -53,6 +53,11 @@ fabric:                            # Fabric workspaces for `aihub fabric` (optio
       id: <guid>                   # workspace id (optional; looked up by name when absent)
       environment: dev             # dev | feature | test | acc | prd (optional); acc and prd are never run by the CLI
       branches: []                 # branch patterns tested in this workspace, e.g. ["feature/*"]; several matches run in each (optional)
+  environments:                    # which git branch and deployment pipeline stage an environment is, for `aihub release plan --from DEV --to ACC` (optional)
+    DEV:                           # environment name you say (DEV, ACC, ...)
+      branch: develop              # git branch that holds it (optional; needed for release plan --from/--to)
+      stage: Development           # deployment pipeline stage name or order, default the environment name (optional)
+  deploymentPipeline: <pipeline>   # Fabric deployment pipeline whose stage items are compared for new/deleted items (optional; without it the plan is git only)
   workspaceGroups:                 # named sets of workspaces for `aihub fabric run --workspaces <name>` (optional)
     <group>: []                    # group name and the workspace names in it, e.g. [DEV-anna, DEV-shared] (optional)
 
