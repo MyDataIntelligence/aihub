@@ -118,7 +118,9 @@ const ps = (s: string) => `'${s.replace(/'/g, "''")}'`;
 export function resumeArgs(ev: OpenEvent): string[] | undefined {
   switch (ev.client) {
     case "opencode":
-      return ["opencode", ...(ev.session ? ["--session", ev.session] : ["--continue"]), ...(ev.agent ? ["--agent", ev.agent] : []), "--prompt", ev.prompt];
+      // Without a session id there is no way to know which session is ours: --continue picks the newest session of ANY project
+      // (proven live: Fix opened another story's session), so a new session in the repository starts with the prompt instead.
+      return ["opencode", ...(ev.session ? ["--session", ev.session] : []), ...(ev.agent ? ["--agent", ev.agent] : []), "--prompt", ev.prompt];
     case "codex":
       return ev.session ? ["codex", "resume", ev.session, ev.prompt] : ["codex", "resume", "--last", ev.prompt];
     case "claude":
