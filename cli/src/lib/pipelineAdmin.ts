@@ -80,9 +80,21 @@ export async function defDelete(c: AdoClient, ctx: Ctx, v: Flags, ref: string): 
   emit(ctx, v, { id: d.id, deleted: !trace.dryRun }, `${trace.dryRun ? "dry-run: would delete" : "deleted"} pipeline #${d.id} '${d.name}'`);
 }
 
+/** The YAML pipeline of this repository that runs `file` (its yamlFilename), else the first YAML pipeline of the repository. */
+export async function pipelineForFile(c: AdoClient, root: string, file: string | undefined): Promise<string> {
+  const repo = await c.get<{ id: string }>(c.repoPath());
+  const defs = (await c.list<Definition>("build/definitions", { repositoryId: repo.id, repositoryType: "TfsGit", includeAllProperties: true })).filter((d) => d.process?.yamlFilename);
+  if (!defs.length) throw new AihubError("this repository has no YAML pipeline to validate against; create one with: aihub pipeline def create --name N --yaml <file>");
+  const slash = (p: string) => p.replace(/\\/g, "/");
+  const rel = file ? slash(resolve(file)).replace(slash(resolve(root)), "").replace(/^[/]/, "").toLowerCase() : "";
+  const hit = defs.find((d) => String(d.process?.yamlFilename).replace(/^[/]/, "").toLowerCase() === rel) ?? defs[0];
+  return String(hit.id);
+}
+
 /** Expand the YAML of a pipeline without running it: the final YAML, or the errors Azure DevOps reports. */
-export async function validate(c: AdoClient, ctx: Ctx, v: Flags, ref: string): Promise<void> {
+export async function validate(c: AdoClient, ctx: Ctx, v: Flags, ref: string, conventions: { name?: string; requiredTemplates?: string[] }[] = []): Promise<void> {
   const d = await findDef(c, ref);
+  const required = conventions.find((p) => String(p.name).toLowerCase() === d.name.toLowerCase() || String(p.name) === String(d.id))?.requiredTemplates ?? [];
   const body: any = { previewRun: true, resources: { repositories: { self: { refName: `refs/heads/${typeof v.branch === "string" ? v.branch : String(d.repository?.defaultBranch ?? "main").replace("refs/heads/", "")}` } } } };
   if (typeof v.file === "string") {
     try {
@@ -94,7 +106,9 @@ export async function validate(c: AdoClient, ctx: Ctx, v: Flags, ref: string): P
   try {
     const r = await c.request<{ finalYaml?: string }>("POST", `pipelines/${d.id}/runs`, { body, query: { "api-version": "7.1" } });
     const final = r.data.finalYaml ?? "";
-    emit(ctx, v, { pipeline: d.name, valid: true, finalYamlLines: final.split("\n").length }, v["show-yaml"] ? final : `pipeline '${d.name}': the YAML is valid (${final.split("\n").length} lines after template expansion; --show-yaml prints it)`);
+    const missing = required.filter((t) => !final.includes(t) && !(typeof body.yamlOverride === "string" && body.yamlOverride.includes(t)));
+    const note = missing.length ? `\n  team convention (team.yaml pipelines[].requiredTemplates): missing ${missing.join(", ")}` : "";
+    emit(ctx, v, { pipeline: d.name, valid: true, finalYamlLines: final.split("\n").length, missingRequiredTemplates: missing }, v["show-yaml"] ? final : `pipeline '${d.name}': the YAML is valid (${final.split("\n").length} lines after template expansion; aihub pipeline expand prints it)${note}`);
   } catch (e) {
     if (!(e instanceof AihubError) || !/failed \(400\)|\(400\)/.test(e.message)) throw e;
     const why = e.message.replace(/^Azure DevOps POST [^:]*: ?/, "");
@@ -115,7 +129,7 @@ export async function artifacts(c: AdoClient, ctx: Ctx, v: Flags, action: string
   const r = await c.get<{ value?: { id: number; name: string; resource?: { type?: string; downloadUrl?: string; properties?: { artifactsize?: string } } }[] }>(`build/builds/${run}/artifacts`);
   const list = r.value ?? [];
   if (action === "list") return emit(ctx, v, list.map((a) => ({ name: a.name, type: a.resource?.type, bytes: Number(a.resource?.properties?.artifactsize ?? 0) })), list.length ? table([["artifact", "type", "size"], ...list.map((a) => [a.name, a.resource?.type ?? "", a.resource?.properties?.artifactsize ? `${Math.round(Number(a.resource.properties.artifactsize) / 1024)} KB` : ""])]) : `run ${run} has no artifacts`);
-  const name = typeof v.artifact === "string" ? v.artifact : list.length === 1 ? list[0].name : "";
+  const name = typeof v.artifact === "string" ? v.artifact : typeof v.download === "string" ? v.download : list.length === 1 ? list[0].name : "";
   const a = list.find((x) => x.name === name);
   if (!a) throw new AihubError(`give --artifact <name>; this run has: ${list.map((x) => x.name).join(", ") || "none"}`);
   const url = a.resource?.downloadUrl;
