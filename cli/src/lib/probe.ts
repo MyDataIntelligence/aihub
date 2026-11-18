@@ -85,6 +85,12 @@ async function fabricGet(ctx: Ctx, path: string): Promise<{ status: number; data
   }
 }
 
+const NO_SAFE_WORKSPACE = "geef --workspace of maak een aihub-test-dev-workspace (zonder --workspace gebruikt een probe alleen een workspace die met aihub-test-dev begint)";
+
+class NoSafeWorkspace extends Error {}
+
+const noSafeWorkspace = (probe: string): ProbeResult => ({ probe, answer: "unknown", status: null, meaning: NO_SAFE_WORKSPACE, readOnly: true });
+
 async function workspaceId(ctx: Ctx, name: string | undefined): Promise<{ id: string; name: string }> {
   const { makeClient } = await import("../commands/fabric.js");
   const all = await makeClient(ctx, {}).workspaces();
@@ -93,8 +99,9 @@ async function workspaceId(ctx: Ctx, name: string | undefined): Promise<{ id: st
     if (!hit) throw new AihubError(`Fabric workspace '${name}' not found for your account`);
     return { id: hit.id, name: hit.displayName };
   }
-  const pick = all.find((w) => /^aihub-test-dev/i.test(w.displayName)) ?? all[0];
-  if (!pick) throw new AihubError("your account sees no Fabric workspace; pass --workspace");
+  // never "the first workspace the account sees": that could be a real one. Only a test workspace is used by default.
+  const pick = all.find((w) => /^aihub-test-dev/i.test(w.displayName));
+  if (!pick) throw new NoSafeWorkspace();
   return { id: pick.id, name: pick.displayName };
 }
 
@@ -128,8 +135,13 @@ export function normalizeFabricPath(raw: string): string {
 export async function probeFabricEndpoint(ctx: Ctx, rawPath: string, o: { workspace?: string }): Promise<ProbeResult> {
   let path = normalizeFabricPath(rawPath);
   if (/\{workspace[A-Za-z_]*\}/.test(path)) {
-    const w = await workspaceId(ctx, o.workspace);
-    path = path.replace(/\{workspace[A-Za-z_]*\}/g, w.id);
+    try {
+      const w = await workspaceId(ctx, o.workspace);
+      path = path.replace(/\{workspace[A-Za-z_]*\}/g, w.id);
+    } catch (e) {
+      if (e instanceof NoSafeWorkspace) return noSafeWorkspace(`fabric GET /v1${path}`);
+      throw e;
+    }
   }
   const { status, data } = await fabricGet(ctx, path);
   const i = interpret(status);
@@ -146,7 +158,13 @@ export async function probeFabricCapacity(ctx: Ctx, o: { feature?: string; works
   }
   const f = FABRIC_FEATURES[o.feature.toLowerCase()];
   if (!f) throw new AihubError(`unknown feature '${o.feature}'; known: ${Object.keys(FABRIC_FEATURES).join(", ")}`);
-  const w = await workspaceId(ctx, o.workspace);
+  let w: { id: string; name: string };
+  try {
+    w = await workspaceId(ctx, o.workspace);
+  } catch (e) {
+    if (e instanceof NoSafeWorkspace) return { ...noSafeWorkspace(`fabric feature ${o.feature} (${f.what})`), facts: { capacities: list } };
+    throw e;
+  }
   const { status, data } = await fabricGet(ctx, f.path.replace("{ws}", w.id));
   const i = interpret(status);
   return {
