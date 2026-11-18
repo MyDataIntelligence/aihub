@@ -143,8 +143,20 @@ export function parseReplies(yamlText: string): Reply[] {
   });
 }
 
-export async function commentsReply(ctx: Ctx, o: { pr?: string; repliesFile: string; json?: boolean }): Promise<string> {
-  const replies = parseReplies(readUtf8(o.repliesFile));
+/** Inline replies: "<threadId>:<status>:<text>" (text may contain colons; status is fixed|wontFix|closed|active, or empty to only reply). */
+export function parseInlineReply(s: string, i = 0): Reply {
+  const m = /^(\d+):([A-Za-z]*):([\s\S]*)$/.exec(s.trim());
+  if (!m) throw new AihubError(`--reply ${i + 1}: use "<threadId>:<status>:<text>", for example --reply "7:fixed:Aangepast: null-check toegevoegd."`);
+  const status = m[2] || undefined;
+  if (status && !(REPLY_STATUSES as readonly string[]).includes(status)) throw new AihubError(`--reply ${i + 1}: status '${status}' must be one of ${REPLY_STATUSES.join("|")}`);
+  const text = m[3].trim();
+  if (!text && !status) throw new AihubError(`--reply ${i + 1}: needs text and/or status`);
+  return { threadId: Number(m[1]), text: text || undefined, status: status as Reply["status"] };
+}
+
+export async function commentsReply(ctx: Ctx, o: { pr?: string; repliesFile?: string; replies?: string[]; json?: boolean }): Promise<string> {
+  const replies = [...(o.repliesFile ? parseReplies(readUtf8(o.repliesFile)) : []), ...(o.replies ?? []).map(parseInlineReply)];
+  if (!replies.length) throw new AihubError("aihub comments reply needs --replies-file <file.yaml> or one or more --reply \"<threadId>:<status>:<text>\"");
   const { root, client } = repoClient(ctx);
   const pr = await resolvePr(ctx, client, root, o.pr);
   const base = `${client.repoPath()}/pullrequests/${pr.pullRequestId}/threads`;

@@ -1,0 +1,1 @@
+{"result":{"workspace":"FEAT 1234 add export","failed":[{"item":"load_orders","job":"j-1"}],"active":1,"chain":[{"level":0,"kind":"pipeline","name":"daily","status":"Failed"},{"level":1,"kind":"notebook","name":"load_orders","status":"Failed","error":"AnalysisException: table orders_raw not found"}]}}

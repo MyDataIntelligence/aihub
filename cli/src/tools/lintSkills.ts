@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
 
 export interface LintOptions {
   /** Case-insensitive names that must never appear in the pack. */
@@ -82,7 +83,7 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const ABSOLUTE = /(?<![A-Za-z0-9])[A-Za-z]:\\|(?<![A-Za-z0-9])[A-Za-z]:\/(?!\/)|\/Users\/|\/home\/[a-z]|~\//;
 
-function checkText(file: string, text: string, forbidden: string[], errors: string[]): void {
+export function checkText(file: string, text: string, forbidden: string[], errors: string[]): void {
   const lower = text.toLowerCase();
   for (const f of forbidden) if (f && lower.includes(f.toLowerCase())) errors.push(`${file}: forbidden name "${f}"`);
   if (ABSOLUTE.test(text)) errors.push(`${file}: absolute path`);
@@ -112,6 +113,15 @@ export function lintSkills(skillsDir: string, opts: LintOptions = {}): string[] 
     const text = fs.readFileSync(file, "utf8");
     // `npx skills add` copies each skill folder on its own: a link into _shared (or any underscore folder) would not exist there
     if (/\]\(\.\.\/_/.test(text)) errors.push(`${file}: links into an underscore folder (_shared); a skill must be self-contained`);
+    // a strict YAML reader (Codex) refuses a skill whose front matter is not valid YAML, e.g. unescaped quotes inside a quoted description
+    const rawFm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+    if (rawFm) {
+      try {
+        parseYaml(rawFm[1]);
+      } catch (e) {
+        errors.push(`${file}: front matter is not valid YAML (${(e as Error).message.split("\n")[0]})`);
+      }
+    }
     const fm = parseFrontMatter(text);
     if (!fm) {
       errors.push(`${file}: front matter missing`);
@@ -161,6 +171,112 @@ export function lintSkills(skillsDir: string, opts: LintOptions = {}): string[] 
   return errors;
 }
 
+export const AGENT_MAX_LINES = 25;
+export const AGENT_MAX_TOKENS = 400;
+
+/** One folder per client format under agents/: the front matter differs, the body is one text. */
+const AGENT_SETS: Array<{ kind: "opencode" | "opencode2" | "copilot" | "codex" | "claude"; ext: string }> = [
+  { kind: "opencode", ext: ".md" },
+  { kind: "opencode2", ext: ".md" },
+  { kind: "copilot", ext: ".agent.md" },
+  { kind: "codex", ext: ".toml" },
+  { kind: "claude", ext: ".md" },
+];
+
+const EFFECTS = ["allow", "ask", "deny"];
+
+/** Agent files: valid front matter (or TOML keys), the keys each client needs, a short body that is identical for every client, no hard-coded paths or names. */
+export function lintAgents(agentsDir: string, skillNames: string[], opts: { forbidden?: string[] } = {}): string[] {
+  const errors: string[] = [];
+  const forbidden = opts.forbidden ?? DEFAULT_FORBIDDEN;
+  const bodies = new Map<string, Map<string, string>>();
+  for (const { kind, ext } of AGENT_SETS) {
+    const dir = path.join(agentsDir, kind);
+    if (!fs.existsSync(dir)) {
+      errors.push(`${dir}: missing`);
+      continue;
+    }
+    for (const f of fs.readdirSync(dir)) {
+      const file = path.join(dir, f);
+      if (!f.endsWith(ext)) {
+        errors.push(`${file}: agent files for ${kind} must end in ${ext}`);
+        continue;
+      }
+      const name = f.slice(0, -ext.length);
+      const text = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      checkText(file, text, forbidden, errors);
+      let description: unknown;
+      let body: string;
+      if (kind === "codex") {
+        const t = /^name = "([^"\n]+)"\ndescription = "([^"\n]+)"\ndeveloper_instructions = """\n([\s\S]*?)\n"""\n?$/.exec(text.replace(/^# aihub \S+\n/, ""));
+        if (!t) {
+          errors.push(`${file}: expected name, description and developer_instructions (triple-quoted), in that order`);
+          continue;
+        }
+        if (t[1] !== name.replace(/-/g, "_")) errors.push(`${file}: name "${t[1]}" must equal the file name with underscores "${name.replace(/-/g, "_")}"`);
+        description = t[2];
+        body = t[3].trim();
+      } else {
+        const m = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text);
+        if (!m) {
+          errors.push(`${file}: front matter missing`);
+          continue;
+        }
+        let fm: Record<string, unknown>;
+        try {
+          fm = (parseYaml(m[1]) ?? {}) as Record<string, unknown>;
+        } catch (e) {
+          errors.push(`${file}: front matter is not valid YAML (${(e as Error).message.split("\n")[0]})`);
+          continue;
+        }
+        body = m[2].trim();
+        description = fm.description;
+        if (kind === "opencode" || kind === "opencode2") {
+          if (fm.mode !== "primary" && fm.mode !== "subagent") errors.push(`${file}: mode must be primary or subagent`);
+        }
+        if (kind === "opencode") {
+          const bash = (fm.permission as { bash?: unknown } | undefined)?.bash;
+          if (!bash || typeof bash !== "object" || Array.isArray(bash) || !Object.keys(bash).length) errors.push(`${file}: permission.bash must be a non-empty map`);
+          else for (const [p, e] of Object.entries(bash)) if (!EFFECTS.includes(e as string)) errors.push(`${file}: permission.bash "${p}" must be allow, ask or deny`);
+        } else if (kind === "opencode2") {
+          const perms = fm.permissions;
+          if (!Array.isArray(perms) || !perms.length) errors.push(`${file}: permissions must be a non-empty list`);
+          else
+            for (const [i, r] of perms.entries()) {
+              const rule = r as Record<string, unknown>;
+              if (typeof rule?.action !== "string" || typeof rule?.resource !== "string" || !EFFECTS.includes(rule?.effect as string)) {
+                errors.push(`${file}: permissions[${i}] needs action, resource and effect allow|ask|deny`);
+              }
+            }
+        } else if (kind === "copilot") {
+          if (fm.name !== name) errors.push(`${file}: name "${String(fm.name)}" must equal the file name "${name}"`);
+          if (!Array.isArray(fm.tools) || !fm.tools.length) errors.push(`${file}: tools must be a non-empty list`);
+        } else {
+          if (fm.name !== name) errors.push(`${file}: name "${String(fm.name)}" must equal the file name "${name}"`);
+          if (typeof fm.tools !== "string" || !fm.tools.trim()) errors.push(`${file}: tools must be a comma separated string`);
+        }
+      }
+      if (typeof description !== "string" || !description.trim()) errors.push(`${file}: description missing`);
+      const lines = body.split("\n").filter((l) => l.trim()).length;
+      if (lines > AGENT_MAX_LINES) errors.push(`${file}: body is ${lines} lines, max ${AGENT_MAX_LINES}`);
+      if (tokens(body) > AGENT_MAX_TOKENS) errors.push(`${file}: body is ~${tokens(body)} tokens, max ${AGENT_MAX_TOKENS}`);
+      // an agent points at skills and never repeats them: every skill it names must exist
+      for (const s of body.matchAll(/(?:skill|skills) `([a-z-]+)`|`([a-z-]+)` skill/g)) {
+        const n = s[1] ?? s[2];
+        if (!skillNames.includes(n)) errors.push(`${file}: names the skill "${n}" which does not exist`);
+      }
+      if (!bodies.has(name)) bodies.set(name, new Map());
+      bodies.get(name)!.set(kind, body);
+    }
+  }
+  for (const [name, byKind] of bodies) {
+    const missing = AGENT_SETS.filter((s) => !byKind.has(s.kind)).map((s) => s.kind);
+    if (missing.length) errors.push(`agent ${name}: missing for ${missing.join(", ")}`);
+    if (new Set(byKind.values()).size > 1) errors.push(`agent ${name}: the bodies differ between the clients (one text, several front matters)`);
+  }
+  return errors;
+}
+
 function main(): void {
   const args = process.argv.slice(2);
   let forbidden: string[] | undefined;
@@ -172,6 +288,11 @@ function main(): void {
   forbidden ??= process.env.AIHUB_FORBIDDEN_NAMES?.split(",").map((s) => s.trim()).filter(Boolean);
   const dir = path.resolve(rest[0] ?? "../skills");
   const errors = lintSkills(dir, { forbidden });
+  const agentsDir = path.resolve(dir, "..", "agents");
+  if (fs.existsSync(agentsDir)) {
+    const names = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith("_")).map((e) => e.name);
+    errors.push(...lintAgents(agentsDir, names, { forbidden }));
+  }
   if (errors.length) {
     for (const e of errors) console.error(e);
     console.error(`lint:skills failed with ${errors.length} error(s)`);

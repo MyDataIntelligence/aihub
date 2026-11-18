@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { parseRemote } from "./ado.js";
 import { defaultExec, type Exec, ADO_RESOURCE } from "./auth.js";
-import { CLIENTS, clientDirs } from "./clients.js";
+import { CLIENTS, clientDirs, opencodeVersion } from "./clients.js";
 import type { Ctx } from "./context.js";
 import { originDefaultBranch, remoteUrl, repoRoot, showFile } from "./git.js";
 import { permissionState } from "./opencodePermission.js";
-import { compareVersions, installedVersion } from "./install.js";
+import { clientHasAgents, compareVersions, installedVersion } from "./install.js";
 import { cliVersion, packRoot } from "./pack.js";
 import { requiredPaths, validateTeam } from "./schema.js";
 import { defaultTargetFor, loadTeam, readUtf8, TEAM_FILE } from "./team.js";
@@ -132,6 +132,8 @@ export function runChecks(ctx: Ctx): Check[] {
     ]
       .map((p) => ({ ...p, version: installedVersion(p.dir) }))
       .filter((p) => p.version !== undefined);
+    // Claude Code is opt-in: nothing to report until it has been installed
+    if (c === "claude" && !found.length && !clientHasAgents(ctx.env, c)) continue;
     const stale = found.filter((p) => compareVersions(p.version!, current) < 0);
     const where = found.map((p) => `${p.label} ${p.dir} (aihub ${p.version})`).join(", ");
     checks.push(
@@ -141,6 +143,22 @@ export function runChecks(ctx: Ctx): Check[] {
           ? fix(`skills:${c}`, `stale copy, older than the CLI ${current}: ${where}`, "run 'aihub skills update'")
           : ok(`skills:${c}`, where),
     );
+    const agents = clientDirs(c, ctx.env, { global: true }).agents;
+    if (agents) {
+      // the agents are optional: not installed is fine, a stale copy or the wrong opencode format is not
+      const where = [agents.dir, agents.other].find((d) => d && agentsVersion(d) !== undefined);
+      const v = where ? agentsVersion(where) : undefined;
+      const want = c === "opencode" ? ` (opencode ${opencodeVersion(ctx.env) ?? "not found, 1.x format"}: ${agents.source === "opencode2" ? "2.x format, agents/ with permissions" : "1.x format, agent/ with a permission map"})` : "";
+      checks.push(
+        !where
+          ? ok(`agents:${c}`, `optional aihub agents not installed (aihub skills install --client ${c} adds them)${want}`)
+          : where !== agents.dir
+            ? fix(`agents:${c}`, `agents are in ${where}, the format of the other opencode version${want}`, "run 'aihub skills update'")
+            : v && compareVersions(v, current) < 0
+              ? fix(`agents:${c}`, `stale agents, older than the CLI ${current}: ${where} (aihub ${v})`, "run 'aihub skills update'")
+              : ok(`agents:${c}`, `${where} (aihub ${v ?? current})${want}`),
+      );
+    }
     if (c === "opencode" && found.some((p) => p.label === "global")) {
       const s = permissionState(ctx.env);
       checks.push(
@@ -150,6 +168,18 @@ export function runChecks(ctx: Ctx): Check[] {
       );
     }
   }  return checks;
+}
+
+/** The aihub version in the marker of the installed aihub agent file. */
+function agentsVersion(dir: string): string | undefined {
+  for (const f of ["aihub.md", "aihub.agent.md", "aihub.toml"]) {
+    try {
+      return /(?:<!-- |^# )aihub (\S+?)(?: -->|$)/m.exec(readFileSync(join(dir, f), "utf8"))?.[1];
+    } catch {
+      /* try the next name */
+    }
+  }
+  return undefined;
 }
 
 export function formatChecks(checks: Check[]): string[] {

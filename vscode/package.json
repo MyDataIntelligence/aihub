@@ -1,0 +1,780 @@
+{
+  "name": "ai-context-hub",
+  "displayName": "AI Context Hub",
+  "description": "A thin status bar and panel over the aihub CLI: story, branch, pull request, pipeline, review threads, Fabric runs and watch events. Actions open in your chat (Copilot Chat or opencode).",
+  "version": "3.0.0-dev.0",
+  "publisher": "FerronHooi",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MyDataIntelligence/aihub",
+    "directory": "vscode"
+  },
+  "icon": "resources/icon.png",
+  "engines": {
+    "vscode": "^1.95.0",
+    "node": ">=18"
+  },
+  "categories": [
+    "Other",
+    "SCM Providers"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "aihubBar",
+          "title": "AI Context Hub",
+          "icon": "resources/hub.svg"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "aihub.worktreeSets",
+          "name": "Worktree Sets",
+          "visibility": "collapsed"
+        }
+      ],
+      "aihubBar": [
+        {
+          "type": "webview",
+          "id": "aihub.bar",
+          "name": "AI Context Hub",
+          "icon": "resources/hub.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "aihub.refresh",
+        "title": "AI Context Hub: Refresh status",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "aihub.showBar",
+        "title": "AI Context Hub: Show the bar"
+      },
+      {
+        "command": "aihub.actions",
+        "title": "AI Context Hub: Actions (send to chat)..."
+      },
+      {
+        "command": "aihub.sendToChat",
+        "title": "AI Context Hub: Send a command to chat"
+      },
+      {
+        "command": "aihub.openPr",
+        "title": "AI Context Hub: Open the pull request in the browser"
+      },
+      {
+        "command": "aihub.openLog",
+        "title": "AI Context Hub: Open the log"
+      },
+      {
+        "command": "aihub.installHelp",
+        "title": "AI Context Hub: How to install the aihub CLI"
+      },
+      {
+        "command": "aihub.git.resetToRef",
+        "title": "Reset to Branch or Commit...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.git.checkMergeConflicts",
+        "title": "Check for Merge Conflicts...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.git.cleanUpUnrelated",
+        "title": "Clean Up Unrelated Changes...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.git.squash",
+        "title": "Squash Branch Commits...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.git.switchBranch",
+        "title": "Switch Branch...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.create",
+        "title": "Create Worktrees...",
+        "category": "AI Context Hub",
+        "icon": "$(add)"
+      },
+      {
+        "command": "aihub.worktrees.openSet",
+        "title": "Open Set in New Window",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.openSetHere",
+        "title": "Open Set in This Window",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.openInNewWindow",
+        "title": "Open Worktree Set in New Window",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.addRepos",
+        "title": "Add Repositories to Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.syncSet",
+        "title": "Sync Set (fetch + fast-forward)",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.pushSet",
+        "title": "Push Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.createPullRequests",
+        "title": "Create Pull Requests...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.removeSet",
+        "title": "Remove Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.removeRepoFromSet",
+        "title": "Remove from Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.cleanup",
+        "title": "Clean Up Merged Worktrees...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.revealSet",
+        "title": "Reveal Set Folder",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.saveGroup",
+        "title": "Save Repo Group...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.deleteGroup",
+        "title": "Delete Repo Group...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.setActions",
+        "title": "Set Actions...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.refresh",
+        "title": "Refresh Worktree Sets",
+        "category": "AI Context Hub",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "aihub.chat.story-run",
+        "title": "Run the story",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.start",
+        "title": "Start story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.commit",
+        "title": "Commit message / commit...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.pr",
+        "title": "Create Pull Request...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.pr-update",
+        "title": "Update Pull Request...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.review",
+        "title": "Process review comments...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.pipeline-fix",
+        "title": "Fix the failing pipeline...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.watch",
+        "title": "Follow this PR until merged",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.fabric-failures",
+        "title": "Explain the Fabric failures...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.explain",
+        "title": "Explain this change...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.finish",
+        "title": "Finish story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.story",
+        "title": "Write story from idea...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.refine",
+        "title": "Refine story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.review-pr",
+        "title": "Review someone else's PR...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.cherry-pick",
+        "title": "Cherry-Pick to Other Repositories...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.release",
+        "title": "Create release...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.wiki",
+        "title": "Update the wiki...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.test",
+        "title": "Run or generate Robot tests...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.editor.ask",
+        "title": "Ask question about the selection...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.editor.suggestFix",
+        "title": "Suggest fix for the selection...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.thread.resolve",
+        "title": "Resolve",
+        "category": "AI Context Hub",
+        "icon": "$(check)"
+      },
+      {
+        "command": "aihub.thread.wontFix",
+        "title": "Won't fix",
+        "category": "AI Context Hub",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "aihub.thread.reactivate",
+        "title": "Reactivate",
+        "category": "AI Context Hub",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "aihub.thread.fixInChat",
+        "title": "Fix in chat",
+        "category": "AI Context Hub",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "aihub.thread.reply",
+        "title": "Reply",
+        "category": "AI Context Hub"
+      }
+    ],
+    "configuration": {
+      "title": "AI Context Hub",
+      "properties": {
+        "aihub.chatTarget": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "copilot",
+            "opencode"
+          ],
+          "default": "auto",
+          "description": "Where actions go. auto: an open opencode terminal if there is one, otherwise Copilot Chat. The text is put in the chat input; you press Enter yourself."
+        },
+        "aihub.refreshIntervalSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 15,
+          "description": "How often the status is refreshed while the window has focus. The window also refreshes when it gets focus and when the git branch changes. No polling while the window is not focused."
+        },
+        "aihub.fabric.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Fabric section (runs and failures of the branch's feature workspace via aihub fabric). Hidden automatically when the branch has no workspace."
+        },
+        "aihub.cliPath": {
+          "type": "string",
+          "default": "aihub",
+          "description": "The aihub command. Change this only when aihub is not on the PATH."
+        },
+        "aihub.timeoutSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "description": "Time limit for one aihub call."
+        },
+        "aihub.chatAgentName": {
+          "type": "string",
+          "default": "aihub",
+          "description": "The Copilot Chat agent selected when an action opens the chat (installed by aihub skills install). When it is not installed the default agent is used and the install command is offered once."
+        },
+        "aihub.chatAgentMode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open Copilot Chat in agent mode, so the slash commands (/pr, /review, ...) of the aihub pack work."
+        },
+        "aihub.worktrees.setsRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Folder that holds the worktree sets (one folder per branch). Empty: C:\\git\\worktrees on Windows, ~/git/worktrees elsewhere."
+        },
+        "aihub.worktrees.repoRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Folders scanned for repositories when creating a set. Empty: the parent folders of the workspace folders."
+        },
+        "aihub.worktrees.scanDepth": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 5,
+          "description": "How many folder levels below each repo root are scanned for repositories."
+        },
+        "aihub.worktrees.baseBranches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "staging",
+            "main"
+          ],
+          "description": "Base branches offered for a new branch in a set."
+        },
+        "aihub.worktrees.remote": {
+          "type": "string",
+          "default": "origin",
+          "description": "Remote used to fetch, sync and push sets."
+        }
+      }
+    },
+    "submenus": [
+      {
+        "id": "aihub.cm.Group",
+        "label": "AI Context Hub"
+      },
+      {
+        "id": "aihub.cm.Branch",
+        "label": "Branch"
+      },
+      {
+        "id": "aihub.cm.DevOps",
+        "label": "DevOps"
+      },
+      {
+        "id": "aihub.cm.Pr",
+        "label": "Pull request"
+      },
+      {
+        "id": "aihub.cm.Pipeline",
+        "label": "Pipeline"
+      },
+      {
+        "id": "aihub.cm.Wiki",
+        "label": "Project wiki"
+      },
+      {
+        "id": "aihub.cm.Robot",
+        "label": "Robot tests"
+      },
+      {
+        "id": "aihub.cm.Editor",
+        "label": "AI Context Hub"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "submenu": "aihub.cm.Group",
+          "when": "workspaceFolderCount > 0",
+          "group": "7_aihub@1"
+        }
+      ],
+      "aihub.cm.Group": [
+        {
+          "submenu": "aihub.cm.Branch",
+          "group": "1_branch@1"
+        },
+        {
+          "submenu": "aihub.cm.DevOps",
+          "group": "2_hub@1"
+        },
+        {
+          "submenu": "aihub.cm.Pr",
+          "group": "2_hub@2"
+        },
+        {
+          "submenu": "aihub.cm.Pipeline",
+          "group": "2_hub@3"
+        },
+        {
+          "submenu": "aihub.cm.Wiki",
+          "group": "2_hub@4"
+        },
+        {
+          "submenu": "aihub.cm.Robot",
+          "group": "2_hub@5"
+        }
+      ],
+      "aihub.cm.Branch": [
+        {
+          "command": "aihub.git.resetToRef",
+          "group": "1_branch@1"
+        },
+        {
+          "command": "aihub.git.checkMergeConflicts",
+          "group": "1_branch@2"
+        },
+        {
+          "command": "aihub.git.cleanUpUnrelated",
+          "group": "1_branch@3"
+        },
+        {
+          "command": "aihub.git.squash",
+          "group": "1_branch@4"
+        },
+        {
+          "command": "aihub.git.switchBranch",
+          "group": "1_branch@5"
+        }
+      ],
+      "scm/title": [
+        {
+          "submenu": "aihub.cm.Branch",
+          "when": "scmProvider == git",
+          "group": "9_aihub@1"
+        },
+        {
+          "submenu": "aihub.cm.DevOps",
+          "when": "scmProvider == git",
+          "group": "9_aihub@2"
+        },
+        {
+          "submenu": "aihub.cm.Pr",
+          "when": "scmProvider == git",
+          "group": "9_aihub@2"
+        },
+        {
+          "submenu": "aihub.cm.Pipeline",
+          "when": "scmProvider == git",
+          "group": "9_aihub@2"
+        },
+        {
+          "command": "aihub.chat.commit",
+          "when": "scmProvider == git",
+          "group": "9_aihub@3"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "submenu": "aihub.cm.Branch",
+          "when": "scmProvider == git",
+          "group": "9_aihub@1"
+        }
+      ],
+      "scm/resourceGroup/context": [
+        {
+          "submenu": "aihub.cm.Branch",
+          "when": "scmProvider == git",
+          "group": "9_aihub@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "aihub.worktrees.create",
+          "when": "view == aihub.worktreeSets",
+          "group": "navigation@1"
+        },
+        {
+          "command": "aihub.worktrees.refresh",
+          "when": "view == aihub.worktreeSets",
+          "group": "navigation@2"
+        },
+        {
+          "command": "aihub.worktrees.cleanup",
+          "when": "view == aihub.worktreeSets",
+          "group": "1_manage@1"
+        },
+        {
+          "command": "aihub.worktrees.saveGroup",
+          "when": "view == aihub.worktreeSets",
+          "group": "2_groups@1"
+        },
+        {
+          "command": "aihub.worktrees.deleteGroup",
+          "when": "view == aihub.worktreeSets",
+          "group": "2_groups@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "aihub.worktrees.openSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "1_open@1"
+        },
+        {
+          "command": "aihub.worktrees.openSetHere",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "1_open@2"
+        },
+        {
+          "command": "aihub.worktrees.addRepos",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "aihub.worktrees.syncSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "3_git@1"
+        },
+        {
+          "command": "aihub.worktrees.pushSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "3_git@2"
+        },
+        {
+          "command": "aihub.worktrees.createPullRequests",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "3_git@3"
+        },
+        {
+          "command": "aihub.worktrees.revealSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "4_files@1"
+        },
+        {
+          "command": "aihub.worktrees.removeSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "9_remove@1"
+        },
+        {
+          "command": "aihub.worktrees.removeRepoFromSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSetRepo",
+          "group": "9_remove@1"
+        }
+      ],
+      "aihub.cm.DevOps": [
+        {
+          "command": "aihub.chat.story",
+          "group": "1_x@1"
+        },
+        {
+          "command": "aihub.chat.refine",
+          "group": "1_x@2"
+        },
+        {
+          "command": "aihub.chat.start",
+          "group": "1_x@3"
+        },
+        {
+          "command": "aihub.chat.story-run",
+          "group": "1_x@4"
+        },
+        {
+          "command": "aihub.chat.finish",
+          "group": "1_x@5"
+        }
+      ],
+      "aihub.cm.Pr": [
+        {
+          "command": "aihub.chat.pr",
+          "group": "1_x@1"
+        },
+        {
+          "command": "aihub.chat.pr-update",
+          "group": "1_x@2"
+        },
+        {
+          "command": "aihub.chat.review",
+          "group": "1_x@3"
+        },
+        {
+          "command": "aihub.chat.review-pr",
+          "group": "1_x@4"
+        },
+        {
+          "command": "aihub.chat.watch",
+          "group": "1_x@5"
+        },
+        {
+          "command": "aihub.chat.cherry-pick",
+          "group": "1_x@6"
+        },
+        {
+          "command": "aihub.chat.release",
+          "group": "1_x@7"
+        },
+        {
+          "command": "aihub.chat.explain",
+          "group": "1_x@8"
+        }
+      ],
+      "aihub.cm.Pipeline": [
+        {
+          "command": "aihub.chat.pipeline-fix",
+          "group": "1_x@1"
+        }
+      ],
+      "aihub.cm.Wiki": [
+        {
+          "command": "aihub.chat.wiki",
+          "group": "1_x@1"
+        }
+      ],
+      "aihub.cm.Robot": [
+        {
+          "command": "aihub.chat.test",
+          "group": "1_x@1"
+        }
+      ],
+      "timeline/item/context": [
+        {
+          "command": "aihub.chat.cherry-pick",
+          "group": "9_aihub@1"
+        }
+      ],
+      "aihub.cm.Editor": [
+        {
+          "command": "aihub.editor.ask",
+          "group": "1_x@1"
+        },
+        {
+          "command": "aihub.editor.suggestFix",
+          "group": "1_x@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "submenu": "aihub.cm.Editor",
+          "when": "editorHasSelection && resourceScheme == file",
+          "group": "9_aihub@1"
+        }
+      ],
+      "comments/commentThread/title": [
+        {
+          "command": "aihub.thread.resolve",
+          "group": "inline@1",
+          "when": "commentController == aihub && commentThread == aihubOpen"
+        },
+        {
+          "command": "aihub.thread.wontFix",
+          "group": "inline@2",
+          "when": "commentController == aihub && commentThread == aihubOpen"
+        },
+        {
+          "command": "aihub.thread.fixInChat",
+          "group": "inline@3",
+          "when": "commentController == aihub && commentThread == aihubOpen"
+        },
+        {
+          "command": "aihub.thread.reactivate",
+          "group": "inline@1",
+          "when": "commentController == aihub && commentThread == aihubResolved"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "aihub.thread.reply",
+          "group": "inline",
+          "when": "commentController == aihub"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "aihub.thread.resolve",
+          "when": "false"
+        },
+        {
+          "command": "aihub.thread.wontFix",
+          "when": "false"
+        },
+        {
+          "command": "aihub.thread.reactivate",
+          "when": "false"
+        },
+        {
+          "command": "aihub.thread.fixInChat",
+          "when": "false"
+        },
+        {
+          "command": "aihub.thread.reply",
+          "when": "false"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "aihub.worktreeSets",
+        "contents": "No worktree sets yet.\n[Create worktrees](command:aihub.worktrees.create)\nOne branch in several repositories, in one folder and one workspace."
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run",
+    "package": "npm run build && node -e \"require('fs').mkdirSync('../build',{recursive:true})\" && vsce package --no-dependencies --out ../build/"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.6",
+    "@types/vscode": "^1.95.0",
+    "@vscode/codicons": "^0.0.46-24",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}
