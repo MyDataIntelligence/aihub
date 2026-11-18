@@ -39,6 +39,7 @@ export function parseRemote(url: string): AdoRemote {
 export const API_VERSION = "7.1";
 
 export type AuthProvider = () => Promise<string>;
+export type DevOpsService = "almsearch" | "feeds" | "vssps" | "vsrm" | "vsaex";
 type Query = Record<string, string | number | boolean | undefined>;
 
 export class AdoClient {
@@ -46,7 +47,31 @@ export class AdoClient {
     readonly remote: AdoRemote,
     private readonly auth: AuthProvider,
     private readonly fetchFn: FetchFn = fetch,
+    /** Other Azure DevOps hosts: https://<service>.dev.azure.com/<org>/... (search, feeds, identities). */
+    private readonly service?: DevOpsService,
+    /** A team of the project (work/ APIs live under <project>/<team>/_apis). */
+    private readonly team?: string,
   ) {}
+
+  /** The same client in the context of a team (iterations, capacity, boards, backlogs). */
+  forTeam(team: string): AdoClient {
+    return new AdoClient(this.remote, this.auth, this.fetchFn, this.service, team);
+  }
+
+  /** The same client against another Azure DevOps host (almsearch, feeds, vssps, ...). */
+  forService(service: DevOpsService): AdoClient {
+    return new AdoClient(this.remote, this.auth, this.fetchFn, service, this.team);
+  }
+
+  /** The same client for another repository of the project (--repo). */
+  forRepo(repo: string): AdoClient {
+    return new AdoClient({ ...this.remote, repo }, this.auth, this.fetchFn, this.service, this.team);
+  }
+
+  /** The same client for another project of the organisation (--project). */
+  forProject(project: string): AdoClient {
+    return new AdoClient({ ...this.remote, project }, this.auth, this.fetchFn, this.service, this.team);
+  }
 
   repoPath(): string {
     return `git/repositories/${encodeURIComponent(this.remote.repo)}`;
@@ -61,7 +86,8 @@ export class AdoClient {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(query)) if (v !== undefined) q.set(k, String(v));
     if (!q.has("api-version")) q.set("api-version", API_VERSION); // preview endpoints pass their own, e.g. 7.1-preview.1
-    return `${this.remote.orgUrl}/${orgLevel ? "" : `${encodeURIComponent(this.remote.project)}/`}_apis/${path}?${q.toString()}`;
+    const base = this.service ? this.remote.orgUrl.replace("https://dev.azure.com/", `https://${this.service}.dev.azure.com/`) : this.remote.orgUrl;
+    return `${base}/${orgLevel ? "" : `${encodeURIComponent(this.remote.project)}/${this.team ? `${encodeURIComponent(this.team)}/` : ""}`}_apis/${path}?${q.toString()}`;
   }
 
   async request<T = any>(
@@ -124,6 +150,14 @@ export class AdoClient {
     return out;
   }
 
+  put<T = any>(path: string, body: unknown, query?: Query): Promise<T> {
+    return this.request<T>("PUT", path, { body, query }).then((r) => r.data);
+  }
+
+  del<T = any>(path: string, query?: Query): Promise<T> {
+    return this.request<T>("DELETE", path, { query }).then((r) => r.data);
+  }
+
   post<T = any>(path: string, body: unknown, query?: Query): Promise<T> {
     return this.request<T>("POST", path, { body, query }).then((r) => r.data);
   }
@@ -144,6 +178,16 @@ export class AdoClient {
   /** PUT/POST raw bytes (attachments). */
   sendBytes<T = any>(method: "PUT" | "POST", path: string, bytes: Uint8Array, query?: Query): Promise<T> {
     return this.request<T>(method, path, { rawBody: bytes, contentType: "application/octet-stream", query }).then((r) => r.data);
+  }
+
+  /** Download bytes from an absolute Azure DevOps URL (artifact zips); the same sign-in, capped at maxBytes. */
+  async fetchBytes(fullUrl: string, maxBytes = 200 * 1024 * 1024): Promise<Uint8Array> {
+    if (!/^https:\/\/([a-z0-9-]+\.)?(dev\.azure\.com|visualstudio\.com)\//i.test(fullUrl)) throw new AihubError(`refusing to download from ${fullUrl}: not an Azure DevOps address`);
+    const res = await this.fetchFn(fullUrl, { headers: { Authorization: await this.auth() } });
+    if (!res.ok) throw new AihubError(`download failed (${res.status})`);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.length > maxBytes) throw new AihubError(`the download is ${Math.round(buf.length / 1048576)} MB, more than the ${Math.round(maxBytes / 1048576)} MB limit`);
+    return buf;
   }
 
   getText(path: string, query?: Query): Promise<string> {

@@ -5,6 +5,7 @@ import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { git, mergeBase, originDefaultBranch, repoRoot } from "./git.js";
 import { anyGlob } from "./glob.js";
+import { dbtPlans, type DbtPlan, type DbtTestsConfig } from "./dbt-changed.js";
 import { defaultTargetFor, loadTeam } from "./team.js";
 
 /**
@@ -18,6 +19,8 @@ export interface TestsConfig {
   command?: string;
   /** explicit rules: changed files matching `source` run the tests matching `tests` */
   map?: { source: string | string[]; tests: string | string[] }[];
+  /** dbt projects: how the changed models are tested (see DbtTestsConfig) */
+  dbt?: DbtTestsConfig;
 }
 
 export interface TestPlan {
@@ -28,6 +31,8 @@ export interface TestPlan {
   /** changed code files that no test maps to */
   unmapped: string[];
   commands: string[];
+  /** dbt projects this branch changes: the models to build and test */
+  dbt: DbtPlan[];
 }
 
 const PY_TEST = /(^|\/)(test_[^/]+|[^/]+_test)\.py$/i;
@@ -100,7 +105,7 @@ export function commandsFor(files: string[], template?: string): string[] {
   if (template) return [template.replace(/\{tests\}/g, files.map(q).join(" "))];
   const py = files.filter((f) => /\.py$/i.test(f));
   const js = files.filter((f) => !/\.py$/i.test(f));
-  return [...(py.length ? [`pytest ${py.map(q).join(" ")}`] : []), ...(js.length ? [`npx vitest run ${js.map(q).join(" ")}`] : [])];
+  return [...(py.length ? [`python -m pytest ${py.map(q).join(" ")}`] : []), ...(js.length ? [`npx vitest run ${js.map(q).join(" ")}`] : [])];
 }
 
 /** Committed since the merge base, plus uncommitted and untracked, minus deleted files. */
@@ -118,8 +123,8 @@ export interface TestChangedOpts {
   json?: boolean;
 }
 
-export function testChanged(ctx: Ctx, o: TestChangedOpts, runner: (cmd: string, cwd: string) => number = defaultRunner): string {
-  const root = repoRoot(ctx.cwd);
+/** The branch this work targets and its merge base: --base, the team's default target for the repository, origin's default branch. */
+export function resolveBase(ctx: Ctx, root: string, baseArg?: string): { target: string; base: string; team: ReturnType<typeof loadTeam> } {
   const team = loadTeam(root);
   let repoName = "";
   try {
@@ -127,9 +132,15 @@ export function testChanged(ctx: Ctx, o: TestChangedOpts, runner: (cmd: string, 
   } catch {
     /* no Azure DevOps remote: the target comes from origin's default branch */
   }
-  const target = o.base ?? (repoName ? defaultTargetFor(team, repoName) : undefined) ?? (originDefaultBranch(root) || "main");
+  const target = baseArg ?? (repoName ? defaultTargetFor(team, repoName) : undefined) ?? (originDefaultBranch(root) || "main");
   const base = mergeBase(root, target);
   if (!base) throw new AihubError(`no merge base with '${target}' (git fetch, or pass --base <branch>)`);
+  return { target, base, team };
+}
+
+export function testChanged(ctx: Ctx, o: TestChangedOpts, runner: (cmd: string, cwd: string) => number = defaultRunner): string {
+  const root = repoRoot(ctx.cwd);
+  const { target, base, team } = resolveBase(ctx, root, o.base);
   const cfg = ((team as { tests?: TestsConfig }).tests ?? {}) as TestsConfig;
   const changed = changedFiles(root, base);
   const all = git(root, ["ls-files", "--cached", "--others", "--exclude-standard"], { allowFail: true })
@@ -137,7 +148,8 @@ export function testChanged(ctx: Ctx, o: TestChangedOpts, runner: (cmd: string, 
     .filter(Boolean)
     .map((f) => f.replace(/\\/g, "/"));
   const plan = planTests(root, changed, all, cfg);
-  const result: TestPlan = { base: base.slice(0, 7), baseRef: target, changed, ...plan };
+  const dbt = dbtPlans(ctx, root, changed, base, target, cfg.dbt ?? {});
+  const result: TestPlan = { base: base.slice(0, 7), baseRef: target, changed, ...plan, dbt };
 
   const lines: string[] = [];
   if (!o.json) {
@@ -145,11 +157,17 @@ export function testChanged(ctx: Ctx, o: TestChangedOpts, runner: (cmd: string, 
     if (plan.tests.length) {
       lines.push(`tests to run (${plan.tests.length}):`, ...plan.tests.map((t) => `  ${t.file}  (for ${t.for.join(", ")})`));
       lines.push(...plan.commands.map((c) => `command: ${c}`));
-    } else lines.push("no tests map to the changed files: run nothing locally, the pipeline runs the full suite");
+    } else if (!dbt.length) lines.push("no tests map to the changed files: run nothing locally, the pipeline runs the full suite");
+    for (const d of dbt) {
+      lines.push(`dbt project ${d.project} (${d.route === "other" ? "local adapter" : `Fabric ${d.route}`}): ${d.changed.length} changed node(s), ${d.downstream} downstream model(s)`);
+      if (d.command) lines.push(`command: ${d.command}`);
+      lines.push(...d.notes.map((n) => `  note: ${n}`));
+    }
     if (plan.unmapped.length) lines.push(`no test found for: ${plan.unmapped.join(", ")} (add tests.map in team.yaml, or write the test)`);
   }
-  if (o.run && plan.commands.length) {
-    for (const c of plan.commands) {
+  const runnable = [...plan.commands, ...dbt.filter((d) => d.command && !d.needsWorkspace).map((d) => d.command!)];
+  if (o.run && runnable.length) {
+    for (const c of runnable) {
       if (!o.json) lines.push(`running: ${c}`);
       const code = runner(c, root);
       if (code !== 0) {
@@ -159,7 +177,7 @@ export function testChanged(ctx: Ctx, o: TestChangedOpts, runner: (cmd: string, 
     }
     if (!o.json) lines.push("changed tests passed");
   }
-  return o.json ? JSON.stringify({ ...result, ran: !!o.run && plan.commands.length > 0 }) : lines.join("\n");
+  return o.json ? JSON.stringify({ ...result, ran: !!o.run && runnable.length > 0 }) : lines.join("\n");
 }
 
 function defaultRunner(cmd: string, cwd: string): number {

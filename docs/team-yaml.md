@@ -69,7 +69,7 @@ Check the file with `aihub doctor`. Change it through a pull request (see [onboa
 
 ```yaml
 tests:
-  command: "pytest {tests}"        # {tests} becomes the quoted test files; default pytest for .py, npx vitest run for JS/TS
+  command: "python -m pytest {tests}" # {tests} becomes the quoted test files; default python -m pytest for .py (puts the repo root on sys.path, so top-level packages import), npx vitest run for JS/TS
   map:                             # rules for code the name/import heuristics do not match
     - source: "etl/**"             # changed files matching these globs (a string or a list)
       tests: "tests/etl/**"        # run the repository files matching these globs
@@ -79,6 +79,68 @@ tests:
 uncommitted and untracked files) and with `--run` runs only those. Without `tests:` it uses the defaults: for Python `test_<module>.py`, `<module>_test.py` and test
 files that import the module; for JS/TS `<name>.test.ts`, `<name>.spec.ts` and specs that import the file; a changed test file runs itself. Code without a test is
 listed, docs and config are ignored, and it never falls back to the whole suite: the pipeline runs that.
+
+## After a pull request is created (optional)
+
+```yaml
+pullRequest:
+  afterCreate:
+    storyState: Review      # the linked story moves to this state
+    autoComplete: true      # auto-complete when the target branch has a blocking policy; never bypasses a policy
+```
+
+`aihub pr create` does this right after a NEW pull request exists (not when it only updates one). A failure never undoes the PR, it is reported on the result line
+("story state not set: ..." lists the states of the process). Without a blocking policy on the target branch auto-complete is not requested, because Azure DevOps would
+merge the PR at once.
+
+## PR helpers: detail comment and test evidence
+
+- `aihub pr comment [--pr N] --title "<what>" (--text <markdown>|--body-file f) [--closed] [--link-section <section>]` posts a detail comment as a thread (`--closed`: already resolved) and adds
+  `Details: [<title>](<PR url>?_a=overview&discussionId=<thread>)` to the section, so long output stays out of the description.
+- `aihub pr tests add [--pr N] --from-run <build> | --from-robot <build> | --from-fabric-job <workspace>/<item>/<job> [--name <n>]` adds one row to the test table of the PR from the REAL run: name, result
+  (pass, fail or partial, from the run, with the test counts when Azure DevOps has them), link and duration. The template's placeholder row and the "Not run yet." line make room for it; the same run is
+  refreshed, never duplicated; a run that is still going is refused.
+
+## Data before/after in the PR (optional)
+
+```yaml
+dataChecks:
+  item: lh_orders              # Lakehouse or Warehouse that exists in both workspaces
+  itemType: Lakehouse          # Lakehouse (default) or Warehouse
+  baseline: DEV-shared         # optional; default: the workspace of the PR's target branch, else the dev workspace
+  feature: DEV-anna            # optional; default: the workspace whose fabric.workspaces branches match the source branch
+  tables:
+    - name: gold.orders
+      count: true
+      nulls: [customer_id]
+      sums: [amount]
+      distinct: [customer_id]
+      sql: ""                  # optional custom SELECT (one row, every column a metric)
+```
+
+`aihub pr data-diff [--pr N] [--write] [--baseline W] [--feature W] [--json]` runs the same read-only checks in the baseline and the feature workspace and prints a before/after table with deltas
+and a one-line verdict. Identifiers are validated (plain letters, digits, underscore), a custom SELECT goes through the same read-only guard as `aihub fabric sql`. It reads through the SQL endpoint
+(`fabric sql`) and falls back to Livy (Spark SQL in the Lakehouse), and says which one it used. ACC and PRD workspaces are refused. `--write` replaces the PR section "Data before/after"
+("Data vóór/na" for a Dutch team, or `dataChecks.section`) with the table, like Changes it is code-owned.
+
+## Release plan between environments (optional)
+
+```yaml
+fabric:
+  deploymentPipeline: orders-pipe    # optional: the Fabric deployment pipeline to compare (stage items); without it the plan is git only
+  environments:
+    DEV:
+      branch: develop                # git branch that holds the environment
+      stage: Development             # deployment pipeline stage name or order (default: the environment name)
+    ACC:
+      branch: staging
+      stage: Acceptance
+```
+
+`aihub release plan --from DEV --to ACC [--target <branch>] [--also-cherry-pick-to <branch>] [--out plan.yaml] [--notes-out notes.md] [--json]` is read only. Git (`origin/<ACC branch>..origin/<DEV branch>`, first-parent commits)
+says which Fabric items changed (git-integration folders `<name>.<Type>/`) and through which pull requests and stories (the Azure DevOps merge-commit query, with "Merged PR n" in the message as the fallback).
+The deployment pipeline stage items say which items are new (only in the from stage) or deleted (only in the to stage). The result lists per item the status, PRs and stories, the cherry-pick list in merge order,
+and release notes in the team language; `--out` writes a plan that `aihub release run --plan-file` can execute (default target: the to-environment's branch). Deploying stays the guarded `aihub fabric deployment deploy`.
 
 ## Fabric and Robot (optional)
 
@@ -163,5 +225,6 @@ crossRepo:                               # settings for `aihub port` and `aihub 
 | `crossRepo.pathMaps` | Named lists of `from`/`to` directory prefixes. The longest `from` wins; files outside every map are reported, never dropped silently. `aihub port --path-map "src=>dst"` adds an ad-hoc map. |
 | `crossRepo.testTarget` | Repository and active branch that `aihub crossrepo test-resources` pushes to when `--to-repo`/`--target` are absent. |
 | `crossRepo.testResources` | Source repository, glob list and optional target directory prefix for the same command. |
+| `.agents/skills/_shared/references/known-fixes.md` | Errors the team fixed before (heading = error line, body = fix). Created by `aihub fix remember` through a pull request, read by `aihub fix known` and the pipeline-fix skill. `aihub team learn` appends rules to the first file under `guidelines:` (else `team-knowledge.md` next to it) the same way. |
 
-`aihub port` writes a new branch `port/<source>-from-<repo>` in the target repository (a conflict pushes nothing); `aihub crossrepo status|link-prs --story N` follow a story over several repositories. See the `cross-repo` skill.
+`aihub port` writes a new branch `port/<source>-from-<repo>` in the target repository (a conflict pushes nothing); `aihub crossrepo impact --from <pr|sha>` shows which files a change reaches in the other repositories (read-only); `aihub crossrepo status|link-prs --story N` follow a story over several repositories. See the `cross-repo` skill.

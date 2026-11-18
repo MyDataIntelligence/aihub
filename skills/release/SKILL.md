@@ -17,6 +17,7 @@ aihub release plan --stories 12,13 --target main --also-cherry-pick-to staging -
    `--prs`, `--stories`, `--commits` and `--tags v1,v2` (commits between two tags, or the one tag) can be mixed; `--version 1.2.0` names the branch `release/1.2.0`, cut from the target.
 2. Show the plan (PRs in merge order, targets, skipped PRs with the reason). Ask once only when something was skipped.
 3. Run it: `aihub release run --plan-file plan.yaml`. It makes a release branch per target, cherry-picks, pushes and opens a PR per target.
+   What moves from one environment to the next: `aihub release plan --from DEV --to ACC --out plan.yaml --notes-out notes.md` (items new/changed/deleted with their PRs and stories, the cherry-pick list, release notes; read only; needs `fabric.environments` in team.yaml). Deploying stays `aihub fabric deployment deploy`.
 4. A few PRs to one existing release branch: `aihub cherry-pick --from 42,43 --to release/1.2 --pr`.
 5. Many PRs, branches or repositories: `aihub batch --select "ids:42,43" --run "cherry-pick --from {target} --to release/1.2 --pr"`.
 6. Show the resulting PR links; follow them with pr-watch.

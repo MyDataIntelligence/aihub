@@ -4,7 +4,12 @@ import { parse } from "yaml";
 
 export interface TeamConfig {
   repositories?: { name?: string; defaultTarget?: string }[];
-  pullRequest?: { emptySection?: string; optionalSections?: string[] };
+  pullRequest?: {
+    emptySection?: string;
+    optionalSections?: string[];
+    /** done by `aihub pr create` right after a new PR exists: story state, auto-complete (only when the target branch has a blocking policy) */
+    afterCreate?: { storyState?: string; autoComplete?: boolean };
+  };
   workItems?: {
     storyType?: string;
     storyTemplate?: string;
@@ -21,7 +26,7 @@ export interface TeamConfig {
   commits?: { format?: string; types?: string[]; scope?: string };
   tests?: { command?: string; map?: { source: string | string[]; tests: string | string[] }[] };
   cherryPick?: { groups?: Record<string, string[]> };
-  pipelines?: { repository?: string; name?: string; required?: boolean }[];
+  pipelines?: { repository?: string; name?: string; required?: boolean; purpose?: string; yaml?: string; validates?: string[]; requiredTemplates?: string[] }[];
   [k: string]: unknown;
 }
 

@@ -12,7 +12,7 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 - Not live-verified: all rows are tested against synthetic REST fixtures only.
 
 ## Command surface (grouped)
-`workspaces`, `workspace show|roles|create|assign-capacity`, `spark sessions|app|logs`, `livy run`, `failures`, `sql`, `connection create|update|delete`, `udf invoke`, `notebook-test prepare|run|verify`, `dbt detect|results|scaffold|run|upload|save-job|get-job`, `capacities`, `connections`, `gateways`, `items`, `item show|definition|create|update|rename|delete`, `jobs`, `job show|cancel|logs`, `status`, `run [--cancel]`, `logs`, `schedules`, `lakehouse tables|files|load|maintenance`, `shortcuts`, `onelake list|read|write|mkdir|delete|move`, `dax`, `kql`, `graphql`, `environment publish|libraries`, `git status|update|commit`, `deployment list|stages|deploy`, `auth status|sp ...`, `plan`, `api <tool>`.
+`workspaces`, `workspace show|roles|create|assign-capacity`, `spark sessions|app|logs|stop`, `livy run`, `failures`, `sql`, `connection create|update|delete`, `udf invoke`, `notebook-test prepare|run|verify`, `dbt detect|results|scaffold|run|upload|save-job|get-job`, `capacities`, `connections`, `gateways`, `items`, `item show|definition|create|update|rename|delete`, `jobs`, `job show|cancel|logs`, `status`, `run [--cancel]`, `logs`, `schedules`, `lakehouse tables|files|load|maintenance`, `shortcuts`, `onelake list|read|write|mkdir|delete|move`, `dax`, `kql`, `graphql`, `environment publish|libraries`, `git status|update|commit`, `deployment list|stages|deploy`, `auth status|sp ...`, `plan`, `api <tool>`.
 
 ## Tools
 
@@ -35,7 +35,7 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 | get_workspace | read | GET workspaces/{ws} | `aihub fabric workspace show` (also `api get_workspace`) | ported |
 | create_workspace | write | POST workspaces | `aihub fabric workspace create` (also `api create_workspace`) | ported |
 | update_workspace | write | PATCH workspaces/{ws} | `aihub fabric api update_workspace` | ported (generic) |
-| delete_workspace | write | DELETE workspaces/{ws} | `aihub fabric api delete_workspace` | ported (generic) |
+| delete_workspace | write | DELETE workspaces/{ws} | `aihub fabric workspace delete --yes` (also `api delete_workspace`) | ported |
 | create_feature_workspace | write | custom handler | `aihub fabric workspace create --name <DEV-...>` | ported |
 | provision_workspace_identity | write | POST workspaces/{ws}/provisionIdentity | `aihub fabric api provision_workspace_identity` | ported (generic) |
 | list_capacities | read | GET capacities | `aihub fabric capacities` (also `api list_capacities`) | ported |

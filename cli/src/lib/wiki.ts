@@ -10,7 +10,7 @@ interface Wiki {
   type?: string;
 }
 
-async function pickWiki(c: AdoClient, name?: string): Promise<Wiki> {
+export async function pickWiki(c: AdoClient, name?: string): Promise<Wiki> {
   const wikis = await c.list<Wiki>("wiki/wikis");
   if (!wikis.length) throw new AihubError("this project has no wiki");
   if (name) {

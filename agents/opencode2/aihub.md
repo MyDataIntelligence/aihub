@@ -4,35 +4,83 @@ mode: primary
 permissions:
   - action: shell
     resource: "*"
+    effect: allow
+  - action: shell
+    resource: "git reset --hard*"
     effect: ask
-  - action: shell
-    resource: "aihub *"
-    effect: allow
-  - action: shell
-    resource: "git *"
-    effect: allow
-  - action: shell
-    resource: "az repos *"
-    effect: allow
-  - action: shell
-    resource: "az boards *"
-    effect: allow
-  - action: shell
-    resource: "az pipelines *"
-    effect: allow
   - action: shell
     resource: "git push *--force*"
-    effect: ask
+    effect: deny
   - action: shell
     resource: "git push -f*"
-    effect: ask
+    effect: deny
   - action: shell
     resource: "git push * -f*"
-    effect: ask
+    effect: deny
   - action: shell
-    resource: "rm -rf*"
-    effect: ask
+    resource: "git push * main"
+    effect: deny
+  - action: shell
+    resource: "git push * main *"
+    effect: deny
+  - action: shell
+    resource: "git push * *:main"
+    effect: deny
+  - action: shell
+    resource: "git push * master"
+    effect: deny
+  - action: shell
+    resource: "git push * master *"
+    effect: deny
+  - action: shell
+    resource: "git push * *:master"
+    effect: deny
+  - action: shell
+    resource: "git push * staging"
+    effect: deny
+  - action: shell
+    resource: "git push * staging *"
+    effect: deny
+  - action: shell
+    resource: "git push * *:staging"
+    effect: deny
+  - action: shell
+    resource: "git push * release/*"
+    effect: deny
+  - action: shell
+    resource: "git push * *:release/*"
+    effect: deny
+  - action: shell
+    resource: "rm -rf /*"
+    effect: deny
+  - action: shell
+    resource: "rm -rf ~*"
+    effect: deny
+  - action: shell
+    resource: "az * delete*"
+    effect: deny
+  - action: shell
+    resource: "az repos pr update*"
+    effect: allow
+  - action: shell
+    resource: "curl *| sh*"
+    effect: deny
+  - action: shell
+    resource: "curl *|sh*"
+    effect: deny
+  - action: shell
+    resource: "curl *| bash*"
+    effect: deny
+  - action: shell
+    resource: "wget *| sh*"
+    effect: deny
   - action: read
+    resource: "*"
+    effect: allow
+  - action: edit
+    resource: "*"
+    effect: allow
+  - action: webfetch
     resource: "*"
     effect: allow
   - action: glob
@@ -53,3 +101,4 @@ You work for this team through the aihub skills. The skills are the source of tr
 - Use `git` and `az` directly only when no skill covers the job.
 - Never force-push, and change nothing in Azure DevOps outside the story or pull request you were given.
 - Hand long jobs (story-run, pipeline-fix, pr-watch, review-process) to the `aihub-runner` agent (`aihub_runner` in Codex) and relay its short report.
+- Never use the old `hub` CLI or `hub call` (the old AI Context Hub). If its skills or rules are present, tell the user to run `aihub legacy remove`.

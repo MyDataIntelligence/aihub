@@ -6,6 +6,7 @@
 |---|---|---|
 | `aihub` | primary | Stories, pull requests, pipelines, reviews, Fabric through the skills |
 | `aihub-runner` | subagent | One long job: story-run, pipeline-fix, pr-watch, review-process; reports in at most 5 lines |
+| `aihub-researcher` | subagent | One research angle of a feasibility question (docs, community or live probes); read-only; reports with sources |
 
 The source files live in `agents/<format>/` (`opencode`, `opencode2`, `copilot`, `codex`, `claude`): one body, a front matter per client. `npm run lint:skills` checks that the bodies are equal and that every front matter is valid.
 
@@ -36,7 +37,7 @@ The source files live in `agents/<format>/` (`opencode`, `opencode2`, `copilot`,
 
 ## Permissions
 
-- **opencode**: the agent file carries the permissions. `aihub`, `aihub *`, `git *`, `az repos *`, `az boards *`, `az pipelines *` run without a prompt; `git push` with a force flag and `rm -rf*` ask; every other shell command asks (patterns are ordered, the last match wins). Reading, searching, editing and loading skills keep opencode's default. `opencode run` (no terminal to answer) rejects what would ask. Checked live with opencode 1.19.5: `aihub --version` and `git status` ran, `git push --force origin HEAD` and `echo x` were stopped.
+- **opencode**: the agent file carries the permissions, and the `aihub` and `aihub-runner` agents **allow by default**: shell commands (pytest, python, npm, dbt, cat, ls, ...), edits, reads and web fetches run without a prompt. Only a short list is denied: `git push --force`/`-f`, a direct `git push` to `main`, `master`, `staging` or `release/*` (use a pull request), `rm -rf /*` and `rm -rf ~*`, every `az ... delete` (except `az repos pr update`) and `curl|wget ... | sh|bash`; `git reset --hard*` asks. Patterns are ordered, the last match wins. The `aihub-researcher` stays read-only (it asks for anything but `aihub` and `git`). `opencode run` (no terminal to answer) therefore no longer stops on `python -m pytest`. Checked live with opencode 1.19.5 (see docs/live-verification.md); the 2.x `permissions` list is written to the same rules but was not run (no opencode 2.x on the test machine).
 - **VS Code and Copilot**: an agent file lists tools (`execute`, `read`, `edit`, `search`, `web`, `agent`) but cannot grant terminal approval. That is the VS Code setting `chat.tools.terminal.autoApprove`, in your user settings. A suggested pattern:
 
   ```json
@@ -46,9 +47,13 @@ The source files live in `agents/<format>/` (`opencode`, `opencode2`, `copilot`,
   }
   ```
 
-  A `false` rule always asks, and it wins over a `true` rule. VS Code calls the setting a convenience, not a security boundary.
-- **Codex**: a custom agent file cannot change the sandbox or approvals; subagents inherit them from the session (`/permissions`). The files therefore carry instructions only.
-- **Claude Code**: an agent file only lists tools (`Bash, Read, Edit, ...`). Allow the commands in `settings.json`, for example `"permissions": { "allow": ["Bash(aihub:*)", "Bash(git:*)"], "ask": ["Bash(git push --force:*)", "Bash(rm -rf:*)"] }`.
+  Allow the commands you trust, for example `"/^(aihub|git|az|npm|python|pytest|dbt)\b/": true`. A `false` rule always asks, and it wins over a `true` rule. VS Code calls the setting a convenience, not a security boundary.
+- **Codex**: a custom agent file cannot change the sandbox or approvals; subagents inherit them from the session (`/permissions`). The files therefore carry instructions only. To stop the prompts, start Codex with a profile that sets `approval_policy = "never"` and `sandbox_mode = "workspace-write"` in `~/.codex/config.toml` (`[profiles.aihub]`, then `codex --profile aihub`); the sandbox, not the prompt, then limits what it can touch.
+- **Claude Code**: an agent file only lists tools (`Bash, Read, Edit, ...`). Allow the commands in `settings.json`, for example `"permissions": { "allow": ["Bash(aihub:*)", "Bash(git:*)", "Bash(python:*)", "Bash(npm:*)", "Bash(dbt:*)"], "deny": ["Bash(git push --force:*)", "Bash(rm -rf /:*)"] }`. `aihub skills install` prints these settings for the clients it installed.
+
+## The old AI Context Hub
+
+If the old Hub is still installed (its `hub` CLI, skills `aihub-*` with the Hub marker, the Hub rules block, hooks), its skills and rules win over aihub and an agent runs `hub call ...` even when the `aihub` agent is selected. Every aihub agent says never to use the old `hub` CLI; `aihub doctor` reports `legacy-hub` with the fix `aihub legacy remove --dry-run`, and `aihub skills install` prints the same warning. See docs/legacy-removal.md.
 
 ## Sources (checked 2026-11-18)
 

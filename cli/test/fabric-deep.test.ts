@@ -1,7 +1,10 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { branchLabel, branchWorkspace, classifyError, codeRefusals, errorsOnly, failedCell, normalizedName, parseSqlHost, searchLines, sparkStage, sqlGuard, stagesSummary, tailLines } from "../src/lib/fabric-diag.js";
+import { isDroppedConnection, parseSqlJson } from "../src/lib/fabric-sql-fallback.js";
+import { makeFabricAuth } from "../src/lib/fabric.js";
 import { buildTestPlan, testStrategy } from "../src/lib/fabric-testplan.js";
 import { main } from "../src/router.js";
 import { ctxFor, fakeFetch, makeRepo, sh, tmp, write, type Route } from "./helpers.js";
@@ -283,6 +286,12 @@ describe("failures: root cause chain", () => {
     expect(r.out).toContain("likely cause: missing-table-or-path");
     expect(r.out).toContain("aihub fabric logs --workspace Team Data 12 Export --item pl_main --job pjob-1");
   });
+  it("logs resolves the branch workspace itself, like failures", async () => {
+    const r = await go(routes, ["logs", "--branch", "feature/12-export"], { setup: (c) => (c.env.AIHUB_HOME = tmp()) });
+    expect(r.out).toContain("Team Data 12 Export");
+    const none = await go([get(/\/v1\/workspaces$/, { value: [{ id: "1", displayName: "x" }] })], ["logs", "--branch", "feature/12-export"]);
+    expect(none.errs[0]).toContain("no single workspace named 'team data");
+  });
   it("needs a single workspace for the branch", async () => {
     const r = await go([get(/\/v1\/workspaces$/, { value: [{ id: "1", displayName: "x" }] })], ["failures", "--branch", "feature/12-export"]);
     expect(r.errs[0]).toContain("no single workspace named 'team data");
@@ -478,5 +487,74 @@ describe("remaining legacy rows", () => {
     const r = await go([], ["connection", "create", "--body-file", f]);
     expect(r.errs[0]).toContain("no secret may be inline");
     expect(r.errs[0]).not.toContain("plain-secret");
+  });
+});
+
+describe("sql fallback (.NET SqlClient on Windows)", () => {
+  it("normalises what ConvertTo-Json makes of one column or one row", () => {
+    expect(parseSqlJson('{"columns":"name","rows":[["dbo"],["sys"]]}')).toEqual({ columns: ["name"], rows: [["dbo"], ["sys"]] });
+    expect(parseSqlJson('{"columns":["a","b"],"rows":[1,"x"]}')).toEqual({ columns: ["a", "b"], rows: [[1], ["x"]] });
+    expect(parseSqlJson('{"columns":["a"],"rows":[]}')).toEqual({ columns: ["a"], rows: [] });
+  });
+  it("sees a dropped connection, not a query error", () => {
+    expect(isDroppedConnection("Connection lost - socket hang up (host x)")).toBe(true);
+    expect(isDroppedConnection("Invalid object name 'x'")).toBe(false);
+  });
+  it("gives the SQL audience its own token cache file (it used to share the OneLake one, so the SQL endpoint got a storage token)", async () => {
+    const sqlFile = join(tmpdir(), "aihub-token-https-database-windows-net.json");
+    rmSync(sqlFile, { force: true });
+    const exec = () => JSON.stringify({ accessToken: "sql-token", expires_on: 4_000_000_000 });
+    expect(await makeFabricAuth({ env: {}, exec, resource: "https://database.windows.net", now: () => 1 })()).toBe("Bearer sql-token");
+    expect(JSON.parse(readFileSync(sqlFile, "utf8")).token).toBe("sql-token");
+    rmSync(sqlFile, { force: true });
+  });
+});
+
+const jwtOf = (oid: string) => `h.${Buffer.from(JSON.stringify({ oid })).toString("base64url")}.s`;
+
+describe("sql on a lakehouse with a same-named SQL endpoint", () => {
+  it("picks the Lakehouse instead of reporting the name as ambiguous", async () => {
+    const both = get(new RegExp(`/workspaces/${WS}/items$`), { value: [{ id: "lh-1", displayName: "lh_test", type: "Lakehouse" }, { id: "ep-1", displayName: "lh_test", type: "SQLEndpoint" }] });
+    const lh = get(new RegExp(`/workspaces/${WS}/lakehouses/lh-1$`), { properties: { sqlEndpointProperties: { connectionString: "abc.datawarehouse.fabric.microsoft.com" } } });
+    const seen: any[] = [];
+    const r = await go([both, lh], ["sql", "--workspace", "DEV-test-project", "--item", "lh_test", "--query", "select 1 as x"], { setup: (c) => (c.sql = async (ep: any) => (seen.push(ep), { columns: ["x"], rows: [[1]] })) });
+    expect(r.code).toBe(0);
+    expect(seen[0]).toMatchObject({ host: "abc.datawarehouse.fabric.microsoft.com", database: "lh_test" });
+  });
+});
+
+describe("spark stop", () => {
+  const sessions = get(new RegExp(`/workspaces/${WS}/spark/livySessions$`), {
+    value: [
+      // shape of the real monitoring API: item.itemId, lower-case itemType, a lakehouse Livy session reports its own id as job id
+      { livyId: "L1", state: "Idle", item: { itemId: "nb-1" }, itemType: "notebook", itemName: "nb_load", jobInstanceId: "job-1", submitter: { id: "me-oid" } },
+      { livyId: "L2", state: "InProgress", item: { itemId: "lh-1" }, itemType: "lakehouse", itemName: "lh_test", jobInstanceId: "L2", submitter: { id: "me-oid" } },
+      { livyId: "L3", state: "Succeeded", item: { itemId: "nb-1" }, itemType: "notebook", itemName: "nb_load", jobInstanceId: "job-0", submitter: { id: "me-oid" } },
+      { livyId: "L4", state: "Idle", item: { itemId: "nb-1" }, itemType: "notebook", itemName: "nb_load", jobInstanceId: "job-4", submitter: { id: "colleague-oid" } },
+    ],
+  });
+  it("dry-run lists only the active sessions and changes nothing", async () => {
+    const r = await go([sessions], ["spark", "stop", "--workspace", "DEV-test-project", "--all-mine", "--dry-run"]);
+    expect(r.out).toContain("cancel the job L1");
+    expect(r.out).toContain("close the Livy session L2");
+    expect(r.out).not.toContain("L3");
+    expect(r.calls.every((c: any) => c.method === "GET")).toBe(true);
+  });
+  it("--all-mine needs --yes; with it the Livy session is deleted and the notebook job cancelled", async () => {
+    const no = await go([sessions], ["spark", "stop", "--workspace", "DEV-test-project", "--all-mine"]);
+    expect(no.errs[0]).toContain("add --yes");
+    const r = await go([sessions, send("DELETE", /lakehouses\/lh-1\/livyapi\/versions\/2023-12-01\/sessions\/L2$/), send("POST", /items\/nb-1\/jobs\/instances\/job-1\/cancel$/)], ["spark", "stop", "--workspace", "DEV-test-project", "--all-mine", "--yes"]);
+    expect(r.out).toContain("stopped 2 Spark session(s)");
+  });
+  it("--all-mine with a user token stops only sessions submitted by that identity (live: item id came out as 'undefined' before)", async () => {
+    const env = { AIHUB_FABRIC_TOKEN: jwtOf("me-oid") };
+    const r = await go([sessions, send("DELETE", /lakehouses\/lh-1\/livyapi\/versions\/2023-12-01\/sessions\/L2$/), send("POST", /items\/nb-1\/jobs\/instances\/job-1\/cancel$/)], ["spark", "stop", "--workspace", "DEV-test-project", "--all-mine", "--yes"], { env });
+    expect(r.out).toContain("stopped 2 Spark session(s)");
+    expect(r.calls.filter((c: any) => c.method !== "GET")).toHaveLength(2);
+    expect(r.calls.some((c: any) => /job-4|undefined/.test(c.url))).toBe(false);
+  });
+  it("needs --session or --all-mine, and a known session", async () => {
+    expect((await go([sessions], ["spark", "stop", "--workspace", "DEV-test-project"])).errs[0]).toContain("usage");
+    expect((await go([sessions], ["spark", "stop", "--workspace", "DEV-test-project", "--session", "nope"])).errs[0]).toContain("no Spark session nope");
   });
 });

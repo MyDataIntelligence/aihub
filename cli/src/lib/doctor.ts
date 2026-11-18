@@ -13,6 +13,7 @@ import { cliVersion, packRoot } from "./pack.js";
 import { requiredPaths, validateTeam } from "./schema.js";
 import { defaultTargetFor, loadTeam, readUtf8, TEAM_FILE } from "./team.js";
 import { resolveTemplate } from "./templates.js";
+import { legacyFootprint, LEGACY_FIX } from "./legacy.js";
 
 export interface Check {
   name: string;
@@ -167,7 +168,18 @@ export function runChecks(ctx: Ctx): Check[] {
           : fix("permission:opencode", s.state === "unreadable" ? `${s.file} has comments, aihub cannot edit it` : "opencode will ask before a skill reads its templates (and 'opencode run' rejects that)", s.state === "unreadable" ? `add "permission": {"external_directory": {"${s.pattern}": "allow"}}` : "aihub skills install --client opencode"),
       );
     }
-  }  return checks;
+  }
+  try {
+    const old = legacyFootprint(ctx.env, ctx.cwd);
+    checks.push(
+      old.found.length
+        ? fix("legacy-hub", `the old AI Context Hub is still installed (${old.found.join(", ")}); its skills and rules make agents run 'hub call' instead of aihub`, LEGACY_FIX)
+        : ok("legacy-hub", "no old AI Context Hub found"),
+    );
+  } catch {
+    /* an unreadable folder must not fail the doctor */
+  }
+  return checks;
 }
 
 /** The aihub version in the marker of the installed aihub agent file. */

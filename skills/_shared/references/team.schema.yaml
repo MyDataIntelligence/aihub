@@ -46,6 +46,10 @@ pipelines:                         # pipelines to follow per repository (optiona
   - repository: <repository>      # repository name this pipeline belongs to
     name: <pipeline>               # pipeline name or id
     required: true                 # true when a red run blocks the PR
+    purpose: validates main        # what this pipeline is for, one line (optional)
+    yaml: ci/ci.yml               # the YAML file in the repository (optional)
+    validates: ["main", "release/*"]   # branches this pipeline validates (optional)
+    requiredTemplates: ["templates/test.yml"]   # templates the YAML must use; `aihub pipeline validate` reports a missing one (optional)
 
 fabric:                            # Fabric workspaces for `aihub fabric` (optional)
   workspaces:                      # list of workspaces the CLI may know about
@@ -53,6 +57,11 @@ fabric:                            # Fabric workspaces for `aihub fabric` (optio
       id: <guid>                   # workspace id (optional; looked up by name when absent)
       environment: dev             # dev | feature | test | acc | prd (optional); acc and prd are never run by the CLI
       branches: []                 # branch patterns tested in this workspace, e.g. ["feature/*"]; several matches run in each (optional)
+  environments:                    # which git branch and deployment pipeline stage an environment is, for `aihub release plan --from DEV --to ACC` (optional)
+    DEV:                           # environment name you say (DEV, ACC, ...)
+      branch: develop              # git branch that holds it (optional; needed for release plan --from/--to)
+      stage: Development           # deployment pipeline stage name or order, default the environment name (optional)
+  deploymentPipeline: <pipeline>   # Fabric deployment pipeline whose stage items are compared for new/deleted items (optional; without it the plan is git only)
   workspaceGroups:                 # named sets of workspaces for `aihub fabric run --workspaces <name>` (optional)
     <group>: []                    # group name and the workspace names in it, e.g. [DEV-anna, DEV-shared] (optional)
 
@@ -71,6 +80,25 @@ robot:                             # Robot integration tests for `aihub robot` (
     - name: <suite>                # suite name passed to the pipeline as parameter `suite` (optional)
       paths: []                    # path patterns of the flow, e.g. ["src/flows/orders/**"] (optional)
       tests: []                    # path patterns of the suite's Robot files, e.g. ["tests/robot/orders/**"] (optional)
+
+pullRequest:                       # optional extras of `aihub pr create`
+  afterCreate:                     # done right after a NEW pull request exists; a failure is reported, the PR stays
+    storyState: Review             # set the linked story to this state (must exist in the process; the error lists the states)
+    autoComplete: true             # ask for auto-complete, only when the target branch has a blocking policy (policies stay required, never bypassed)
+
+dataChecks:                        # optional: used by `aihub pr data-diff` (read-only numbers before/after in the PR)
+  item: <lakehouse-or-warehouse>   # Warehouse or Lakehouse (name) that exists in the baseline and the feature workspace; needed as soon as dataChecks is used
+  itemType: Lakehouse              # Lakehouse (default) or Warehouse; a lakehouse name is ambiguous with its SQL endpoint, so the type is always passed (optional)
+  baseline: <workspace>            # workspace with the baseline data; default: the fabric.workspaces entry of the PR's target branch, else the dev workspace (optional)
+  feature: <workspace>             # workspace of the branch; default: the fabric.workspaces entry whose branches match the PR's source branch (optional)
+  section: "Data before/after"     # PR section heading, default "Data before/after" (nl: "Data vóór/na") (optional)
+  tables:                          # what to measure per table
+    - name: gold.orders            # schema.table
+      count: true                  # row count (default true)
+      nulls: [customer_id]         # NULL count per column
+      sums: [amount]               # SUM per column
+      distinct: [customer_id]      # COUNT(DISTINCT) per column
+      sql: ""                      # optional custom SELECT returning one row; every column becomes a metric
 
 crossRepo:                         # cross-repo settings for `aihub port` and `aihub crossrepo` (optional)
   pathMaps:                        # named path mappings, usable as `aihub port --map <name>` (optional)

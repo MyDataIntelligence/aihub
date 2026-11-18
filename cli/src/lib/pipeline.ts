@@ -252,6 +252,49 @@ export async function pipelineLogs(ctx: Ctx, o: { run: number; step?: string; se
   return out.join("\n");
 }
 
+/** A run id from a number or a build link (`...?buildId=123`, `.../results?buildId=123&view=logs`). */
+export function parseRunRef(s: string): number {
+  const m = /^\d+$/.test(s.trim()) ? s.trim() : /[?&]buildId=(\d+)/.exec(s)?.[1];
+  const n = Number(m);
+  if (!Number.isInteger(n) || n <= 0) throw new AihubError(`'${s}' is not a run id or a build link`);
+  return n;
+}
+
+const PROTECTED_DEFAULT = ["main", "master", "develop", "staging", "release/*"];
+const isProtectedBranch = (patterns: string[], branch: string) =>
+  patterns.some((p) => new RegExp("^" + p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$").test(branch));
+
+/**
+ * `aihub pipeline logs --failed`: the failing steps of a run (a link, an id, or the newest failed run of this branch), led by
+ * the branch, whether it is protected and how many runs in a row are red: the facts the /fix loop stops on
+ * (3 red rounds, protected branch).
+ */
+export async function pipelineFailed(ctx: Ctx, o: { run?: string; tail?: number; json?: boolean }, protectedPatterns: string[] = []): Promise<string> {
+  const { client, root } = repoClient(ctx);
+  let build: Build | undefined;
+  if (o.run) build = await client.get<Build>(`build/builds/${parseRunRef(o.run)}`);
+  else {
+    const { builds } = await selectBuilds(client, root, {});
+    build = builds.find((b) => b.status === "completed" && b.result === "failed");
+    if (!build) return "no failed run on this branch";
+  }
+  const branch = shortBranch(build.sourceBranch ?? "");
+  const isProt = !!branch && isProtectedBranch([...PROTECTED_DEFAULT, ...protectedPatterns], branch);
+  const history = build.sourceBranch && !build.sourceBranch.startsWith("refs/pull/") ? await buildsFor(client, build.sourceBranch, undefined, 10) : [];
+  let red = 0;
+  for (const b of history) {
+    if (b.status !== "completed") continue;
+    if (b.result === "failed") red++;
+    else break;
+  }
+  const rounds = red || 1;
+  const head = `run ${build.id} ${stateOf(build)} on ${branch || "(unknown branch)"}; protected: ${isProt ? "yes" : "no"}; red runs in a row: ${rounds}`;
+  const stop = isProt ? "STOP: protected branch, do not fix; report it." : rounds >= 3 ? "STOP after 3 red rounds: report what you tried." : "";
+  const logs = await pipelineLogs(ctx, { run: build.id, tail: o.tail });
+  if (o.json) return JSON.stringify({ run: build.id, branch, protected: isProt, red: rounds, stop: stop || undefined, logs });
+  return [head, stop, logs].filter(Boolean).join("\n");
+}
+
 export async function pipelineRun(ctx: Ctx, o: { name?: string; branch?: string; paramsFile?: string; json?: boolean }): Promise<string> {
   if (!o.name) throw new AihubError("aihub pipeline run needs --name <pipeline>");
   const { root, client } = repoClient(ctx);

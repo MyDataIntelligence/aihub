@@ -29,7 +29,7 @@ describe("aihub init --no-pr", () => {
     expect(existsSync(join(dir, ".agents/skills/_shared/assets/story-template.md"))).toBe(true);
     // only team knowledge goes into the repository: no skills, no slash commands
     expect(existsSync(join(dir, ".opencode"))).toBe(false);
-    expect(existsSync(join(dir, ".github"))).toBe(false);
+    expect(existsSync(join(dir, ".github", "prompts"))).toBe(false); // slash commands only with --into-repo
     expect(lines.some((l) => l.startsWith("created  " + TEAM))).toBe(true);
     // the file we wrote passes our own doctor schema
     const schema = readFileSync(join(__dirname, "..", "..", "skills/_shared/references/team.schema.yaml"), "utf8");

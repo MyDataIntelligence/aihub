@@ -14,7 +14,7 @@ Run this ONE command from the repository, nothing before it:
 aihub pr create --summary-text "<1-2 sentences: what and why, in the team language>"
 ```
 
-Show the PR link it prints. Do not run `git status`/`diff`/`log` first, do not read the template or `team.yaml`, do not look up the story, do not ask questions.
+Show the PR link it prints (team.yaml `pullRequest.afterCreate` may also set the story state and auto-complete; the result line says so). When `team.yaml` has `dataChecks:`, then run `aihub pr data-diff --write` (read-only before/after numbers in the PR; never ACC/PRD). When the branch changes a dbt project, run `aihub dbt impact --write` first (affected models, tests, exposures in the PR; skill `dbt`). Do not run `git status`/`diff`/`log` first, do not read the template or `team.yaml`, do not look up the story, do not ask questions.
 
 Optional, only when the user gave more: `--title "<t>"`, `--draft`, `--target <branch>`, `--work-item <id>`, `--body-file pr.md` (markdown with `## <template heading>` sections for long prose).
 

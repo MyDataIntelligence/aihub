@@ -1,5 +1,7 @@
-import { parse } from "yaml";
+import { existsSync } from "node:fs";
+import { parse, stringify } from "yaml";
 import { getPr, type AdoClient, type PullRequest, shortBranch } from "./ado.js";
+import { aihubDir } from "./aihubDir.js";
 import { getThreads, type ThreadView } from "./comments.js";
 import { repoClient, type Ctx } from "./context.js";
 import { diffLines } from "./diff.js";
@@ -34,12 +36,12 @@ export interface FileChange {
 
 const getFull = (c: AdoClient, id: number) => getPr(c, id) as Promise<PrFull>;
 
-async function latestIteration(c: AdoClient, id: number): Promise<Iteration | undefined> {
+export async function latestIteration(c: AdoClient, id: number): Promise<Iteration | undefined> {
   const its = await c.list<Iteration>(`${c.repoPath()}/pullrequests/${id}/iterations`);
   return its.sort((a, b) => b.id - a.id)[0];
 }
 
-async function changesOf(c: AdoClient, id: number, it: Iteration | undefined): Promise<FileChange[]> {
+export async function changesOf(c: AdoClient, id: number, it: Iteration | undefined): Promise<FileChange[]> {
   if (!it) return [];
   const r = await c.get<{ changeEntries?: { changeType?: string; item?: { path?: string; isFolder?: boolean } }[] }>(
     `${c.repoPath()}/pullrequests/${id}/iterations/${it.id}/changes`,
@@ -132,11 +134,8 @@ export function parseReviewComments(yamlText: string): ReviewComment[] {
   });
 }
 
-export async function reviewPost(ctx: Ctx, o: { pr: string; commentsFile: string; json?: boolean }): Promise<string> {
-  const comments = parseReviewComments(readUtf8(o.commentsFile));
-  const { client } = repoClient(ctx);
-  const id = parsePrRef(o.pr);
-  await getFull(client, id);
+/** One thread per comment, on the right file and line when it has them. */
+async function postThreads(client: AdoClient, id: number, comments: ReviewComment[]): Promise<{ threadId: number; where: string }[]> {
   const created: { threadId: number; where: string }[] = [];
   for (const c of comments) {
     const body: Record<string, unknown> = { comments: [{ parentCommentId: 0, content: c.text, commentType: 1 }], status: 1 };
@@ -147,7 +146,105 @@ export async function reviewPost(ctx: Ctx, o: { pr: string; commentsFile: string
     const r = await client.post<{ id?: number }>(`${client.repoPath()}/pullrequests/${id}/threads`, body);
     created.push({ threadId: r.id ?? 0, where: c.file ? `${c.file}${c.line ? `:${c.line}` : ""}` : "(general)" });
   }
+  return created;
+}
+
+export async function reviewPost(ctx: Ctx, o: { pr: string; commentsFile: string; json?: boolean }): Promise<string> {
+  const comments = parseReviewComments(readUtf8(o.commentsFile));
+  const { client } = repoClient(ctx);
+  const id = parsePrRef(o.pr);
+  await getFull(client, id);
+  const created = await postThreads(client, id, comments);
   return o.json ? JSON.stringify({ pr: id, created }) : `!${id}: ${created.length} thread(s) created (${created.map((c) => `${c.threadId} ${c.where}`).join(", ")})`;
+}
+
+// ---- pre-review: prepare, numbered findings, post only the picked ones ---------------------------------
+
+export const SEVERITIES = ["blocker", "major", "minor", "nit"] as const;
+export type Severity = (typeof SEVERITIES)[number];
+
+export interface Finding {
+  n: number;
+  severity: Severity;
+  file?: string;
+  line?: number;
+  text: string;
+  suggestion?: string;
+}
+
+/** Where the agent writes its numbered findings for a PR (local, never committed). */
+export const findingsPath = (root: string, pr: number): string => aihubDir(root, "review", `pr-${pr}.yaml`);
+
+/** `aihub review prepare --pr N`: the PR compactly (description, changed files with numbered diff lines, open threads) and where to write the findings. */
+export async function reviewPrepare(ctx: Ctx, o: { pr: string; maxFiles?: number; maxDiffLines?: number; json?: boolean }): Promise<string> {
+  const { root } = repoClient(ctx);
+  const id = parsePrRef(o.pr);
+  const path = findingsPath(root, id);
+  const show = await reviewShow(ctx, { pr: o.pr, maxFiles: o.maxFiles ?? 15, maxDiffLines: o.maxDiffLines ?? 60, json: o.json });
+  if (o.json) return JSON.stringify({ ...(JSON.parse(show) as object), findingsFile: path, format: "yaml list of {n, severity: blocker|major|minor|nit, file, line, text, suggestion}" });
+  return [
+    `PRE-REVIEW !${id}: nothing is posted until the developer picks findings.`,
+    `Write your findings to ${path} as a YAML list, numbered from 1: {n, severity: blocker|major|minor|nit, file, line, text, suggestion}.`,
+    "Use the new-file line numbers of the diff below. Then show the numbered list and ask which to post: aihub review post --pr " + id + " --pick 1,3",
+    "",
+    show,
+  ].join("\n");
+}
+
+export function parseFindings(yamlText: string): Finding[] {
+  const doc = parse(yamlText) as unknown;
+  const list = Array.isArray(doc) ? doc : (doc as { findings?: unknown })?.findings;
+  if (!Array.isArray(list) || !list.length) throw new AihubError("findings file must be a yaml list of {n, severity, file, line, text, suggestion}");
+  const seen = new Set<number>();
+  return list.map((r: Record<string, unknown>, i) => {
+    const text = r.text === undefined || r.text === null ? "" : String(r.text).trim();
+    if (!text) throw new AihubError(`findings[${i}]: text is missing`);
+    const n = r.n === undefined || r.n === null ? i + 1 : Number(r.n);
+    if (!Number.isInteger(n) || n <= 0) throw new AihubError(`findings[${i}]: n must be a positive number`);
+    if (seen.has(n)) throw new AihubError(`findings[${i}]: number ${n} is used twice`);
+    seen.add(n);
+    const severity = String(r.severity ?? "minor").toLowerCase() as Severity;
+    if (!SEVERITIES.includes(severity)) throw new AihubError(`findings[${i}]: severity must be ${SEVERITIES.join(", ")}`);
+    const c = parseReviewComments(stringify([{ file: r.file, line: r.line, text }]))[0];
+    const suggestion = r.suggestion === undefined || r.suggestion === null ? undefined : String(r.suggestion).trim() || undefined;
+    return { n, severity, file: c.file, line: c.line, text, suggestion };
+  });
+}
+
+/** "1,3,5", "2-4", "all" -> numbers; a number that is not a finding is an error (nothing is posted). */
+export function parsePick(pick: string, findings: Finding[]): number[] {
+  const have = new Set(findings.map((f) => f.n));
+  if (pick.trim().toLowerCase() === "all") return [...have];
+  const out: number[] = [];
+  for (const part of pick.split(",").map((s) => s.trim()).filter(Boolean)) {
+    const range = /^(\d+)-(\d+)$/.exec(part);
+    const nums = range ? Array.from({ length: Math.max(0, Number(range[2]) - Number(range[1]) + 1) }, (_, k) => Number(range[1]) + k) : [Number(part)];
+    for (const n of nums) {
+      if (!Number.isInteger(n) || !have.has(n)) throw new AihubError(`--pick ${part}: there is no finding ${Number.isInteger(n) ? n : part} (have ${[...have].join(", ")}); nothing was posted`);
+      if (!out.includes(n)) out.push(n);
+    }
+  }
+  if (!out.length) throw new AihubError("--pick is empty; nothing was posted");
+  return out;
+}
+
+const findingText = (f: Finding): string => `[${f.severity}] ${f.text}${f.suggestion ? `\n\nSuggestion: ${f.suggestion}` : ""}`;
+
+/** `aihub review post --pr N [--findings-file f] [--pick 1,3,5]`: without --pick it lists the findings and posts nothing. */
+export async function reviewPostPicked(ctx: Ctx, o: { pr: string; findingsFile?: string; pick?: string; json?: boolean }): Promise<string> {
+  const { root, client } = repoClient(ctx);
+  const id = parsePrRef(o.pr);
+  const file = o.findingsFile ?? findingsPath(root, id);
+  if (!existsSync(file)) throw new AihubError(`no findings file at ${file}; run 'aihub review prepare --pr ${id}' and write the findings there`);
+  const findings = parseFindings(readUtf8(file));
+  if (!o.pick) {
+    const rows = findings.map((f) => `${f.n}. [${f.severity}] ${f.file ? `${f.file.replace(/^\//, "")}${f.line ? `:${f.line}` : ""}` : "(general)"} ${f.text}`);
+    return o.json ? JSON.stringify({ pr: id, posted: false, findings }) : `!${id}: nothing posted (no --pick). Findings:\n${rows.join("\n")}\nPost with: aihub review post --pr ${id} --pick 1,3`;
+  }
+  const picked = parsePick(o.pick, findings);
+  await getFull(client, id);
+  const created = await postThreads(client, id, picked.map((n) => findings.find((f) => f.n === n)!).map((f) => ({ file: f.file, line: f.line, text: findingText(f) })));
+  return o.json ? JSON.stringify({ pr: id, posted: true, picked, created }) : `!${id}: ${created.length} thread(s) created for finding(s) ${picked.join(", ")} (${created.map((c) => `${c.threadId} ${c.where}`).join(", ")}); the other findings were not posted`;
 }
 
 // ---- pr explain ------------------------------------------------------------

@@ -22,6 +22,8 @@ export interface CommandSpec {
   skill: string;
   description: string;
   hint: string;
+  /** One more line after the load line, for a command whose first step must not be skipped. */
+  extra?: string;
 }
 
 /** The slash commands, each loading one skill. Files must equal expectedCommand(). */
@@ -32,6 +34,9 @@ export const COMMANDS: CommandSpec[] = [
   { name: "cherry-pick", skill: "branch-sync", description: "Cherry-pick a PR to other branches", hint: "PR id and target branches" },
   { name: "story", skill: "story-create", description: "Create a story", hint: "what the story is about" },
   { name: "story-run", skill: "story-run", description: "Run a story end to end to a green PR", hint: "story id or link" },
+  { name: "fix", skill: "pipeline-fix", description: "Fix a failed build or Fabric run on your own branch", hint: "run link or id (empty: newest failed run of this branch)" },
+  { name: "standup", skill: "standup", description: "What I did since yesterday, in 3 to 5 lines", hint: "optional window, e.g. 2d" },
+  { name: "handoff", skill: "standup", description: "Hand over my open work as a short note", hint: "optional name of the colleague" },
   { name: "refine", skill: "story-refine", description: "Refine a story", hint: "story id" },
   { name: "review", skill: "review-process", description: "Process review comments", hint: "optional PR id" },
   { name: "watch", skill: "pr-watch", description: "Follow a PR and its pipeline", hint: "optional PR id or link" },
@@ -41,11 +46,15 @@ export const COMMANDS: CommandSpec[] = [
   { name: "review-pr", skill: "pr-review", description: "Review someone else's pull request", hint: "PR id or link" },
   { name: "explain", skill: "pr-explain", description: "Explain a pull request", hint: "PR id or link" },
   { name: "release", skill: "release", description: "Release stories or PRs to target branches", hint: "stories or PRs and target branches" },
+  { name: "kan-dit", skill: "feasibility", description: "Research whether something is possible (Fabric, Azure DevOps, ...)", hint: "the question: can this be done?", extra: "First run `aihub research template > report.md`; your answer is that file with every section filled, including \"Waar hoort het: Fabric, DevOps/CI-CD of beide?\"." },
+  { name: "can-it", skill: "feasibility", description: "Research whether something is possible (Fabric, Azure DevOps, ...)", hint: "the question: can this be done?", extra: "First run `aihub research template > report.md`; your answer is that file with every section filled, including \"Waar hoort het: Fabric, DevOps/CI-CD of beide?\"." },
+  { name: "leer", skill: "learn", description: "Explain a change or the repository with pictures", hint: "PR id, branch or repository" },
   { name: "wiki", skill: "wiki", description: "Write or update a wiki page", hint: "page and subject" },
 ];
 
 export function expectedCommand(kind: "opencode" | "copilot", c: CommandSpec): string {
-  const load = `Load the \`${c.skill}\` skill and follow it exactly.`;
+  const load = `Load the \`${c.skill}\` skill and follow it exactly.${c.extra ? `
+${c.extra}` : ""}`;
   if (kind === "opencode") {
     return `---\ndescription: ${c.description}\n---\n${load}\nArguments: $ARGUMENTS\n`;
   }
