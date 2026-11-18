@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
+import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
 import { checkCli, CliError, INSTALL_COMMAND, makeRunner, type Runner } from "./cli";
 import { chatOpenArgs, copilotAgentInstalled } from "./agents";
 import { BarLoader } from "./data";
@@ -213,16 +213,19 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   async sendToChat(actionId: string): Promise<void> {
     const action = actionById(actionId);
     if (!action) return;
+    await this.sendText(action.text);
+  }
+
+  /** Puts any text in the chat input (an action, or a question about a selection). */
+  async sendText(text: string): Promise<void> {
+    const action = { text };
     const setting = cfg().get<ChatSetting>("chatTarget", "auto");
     const term = vscode.window.terminals.find((t) => isOpencodeTerminalName(t.name));
     const target: ChatTarget = pickTarget(setting, !!term);
     this.log.appendLine(`${new Date().toISOString()} chat ${target}: ${action.text}`);
     if (target === "opencode") {
       const t = term ?? (await this.openOpencodeTerminal());
-      if (!t) {
-        void vscode.window.showInformationMessage("No opencode terminal is open. Start opencode in a terminal, or set aihub.chatTarget to copilot.");
-        return;
-      }
+      if (!t) return void vscode.window.showInformationMessage("Could not start opencode. Install it, or set aihub.chatTarget to copilot.");
       t.show(false);
       t.sendText(action.text, false);
       return;
@@ -248,17 +251,26 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     if (pick === copy) await vscode.env.clipboard.writeText("aihub skills install");
   }
 
+  /** The opencode VS Code extension's command when it is installed, else a terminal named opencode that starts opencode with the aihub agent. */
   private async openOpencodeTerminal(): Promise<vscode.Terminal | undefined> {
     const cmds = await vscode.commands.getCommands(true);
     const open = ["opencode.openTerminal", "opencode.openNewTerminal"].find((c) => cmds.includes(c));
-    if (!open) return undefined;
-    await vscode.commands.executeCommand(open);
-    for (let i = 0; i < 10; i++) {
-      const t = vscode.window.terminals.find((x) => isOpencodeTerminalName(x.name));
-      if (t) return t;
-      await new Promise((r) => setTimeout(r, 300));
+    if (open) {
+      await vscode.commands.executeCommand(open);
+      for (let i = 0; i < 10; i++) {
+        const t = vscode.window.terminals.find((x) => isOpencodeTerminalName(x.name));
+        if (t) return t;
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      return vscode.window.activeTerminal;
     }
-    return vscode.window.activeTerminal;
+    const name = String(cfg().get("chatAgentName", "aihub"));
+    const t = vscode.window.createTerminal({ name: "opencode", cwd: this.cwd });
+    t.show(false);
+    t.sendText(`opencode --agent ${name}`, true);
+    // give the TUI time to start before the text goes to its prompt
+    await new Promise((r) => setTimeout(r, 12000));
+    return t;
   }
 
   dispose() {
@@ -300,6 +312,15 @@ export function activate(ctx: vscode.ExtensionContext) {
       if (choice === copy) await vscode.env.clipboard.writeText(INSTALL_COMMAND);
     }),
   );
+  for (const a of ACTIONS) ctx.subscriptions.push(vscode.commands.registerCommand(`aihub.chat.${a.id}`, () => bar.sendToChat(a.id)));
+  const selection = (verb: string) => async () => {
+    const ed = vscode.window.activeTextEditor;
+    if (!ed || ed.selection.isEmpty) return;
+    const rel = vscode.workspace.asRelativePath(ed.document.uri);
+    const text = `${verb} in ${rel} lines ${ed.selection.start.line + 1}-${ed.selection.end.line + 1}: `;
+    await bar.sendText(text);
+  };
+  ctx.subscriptions.push(vscode.commands.registerCommand("aihub.editor.ask", selection("Question about the code")), vscode.commands.registerCommand("aihub.editor.suggestFix", selection("Suggest a fix for the code")));
   registerGitCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
   registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
   bar.start();

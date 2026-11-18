@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { ACTIONS } from "../src/actions";
 import { chatOpenArgs, copilotAgentFiles, copilotAgentInstalled } from "../src/agents";
 import { here } from "./helpers";
 
@@ -28,6 +29,21 @@ describe("package.json contributions", () => {
 
   it("has the worktree set commands of the old Worktree Sets view", () => {
     for (const id of ["create", "openSet", "openSetHere", "addRepos", "syncSet", "pushSet", "createPullRequests", "removeSet", "removeRepoFromSet", "cleanup", "revealSet", "saveGroup", "deleteGroup", "refresh"]) expect(declared.has(`aihub.worktrees.${id}`)).toBe(true);
+  });
+});
+
+describe("chat actions in the menus", () => {
+  it("has a command per action, and every action is in a submenu or the bar menu", () => {
+    const declared = new Set<string>(c.commands.map((x: { command: string }) => x.command));
+    const inMenus = new Set<string>(Object.values<{ command?: string }[]>(c.menus).flat().map((x) => x.command ?? ""));
+    for (const a of ACTIONS) {
+      expect(declared.has(`aihub.chat.${a.id}`), a.id).toBe(true);
+      if (a.id !== "fabric-failures" && a.id !== "pipeline-fix") expect(inMenus.has(`aihub.chat.${a.id}`) || a.id === "commit", a.id).toBe(true);
+    }
+  });
+
+  it("keeps the old submenu names under AI Context Hub", () => {
+    expect(c.submenus.filter((s: { id: string }) => /DevOps|\.Pr$|Pipeline|Wiki|Robot/.test(s.id)).map((s: { label: string }) => s.label).sort()).toEqual(["DevOps", "Pipeline", "Project wiki", "Pull request", "Robot tests"]);
   });
 });
 

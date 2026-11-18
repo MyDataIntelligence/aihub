@@ -187,6 +187,106 @@
         "title": "Refresh Worktree Sets",
         "category": "AI Context Hub",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "aihub.chat.story-run",
+        "title": "Run the story",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.start",
+        "title": "Start story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.commit",
+        "title": "Commit message / commit...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.pr",
+        "title": "Create Pull Request...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.pr-update",
+        "title": "Update Pull Request...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.review",
+        "title": "Process review comments...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.pipeline-fix",
+        "title": "Fix the failing pipeline...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.watch",
+        "title": "Follow this PR until merged",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.fabric-failures",
+        "title": "Explain the Fabric failures...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.explain",
+        "title": "Explain this change...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.finish",
+        "title": "Finish story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.story",
+        "title": "Write story from idea...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.refine",
+        "title": "Refine story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.review-pr",
+        "title": "Review someone else's PR...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.cherry-pick",
+        "title": "Cherry-Pick to Other Repositories...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.release",
+        "title": "Create release...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.wiki",
+        "title": "Update the wiki...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.chat.test",
+        "title": "Run or generate Robot tests...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.editor.ask",
+        "title": "Ask question about the selection...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.editor.suggestFix",
+        "title": "Suggest fix for the selection...",
+        "category": "AI Context Hub"
       }
     ],
     "configuration": {
@@ -280,6 +380,30 @@
       {
         "id": "aihub.cm.Branch",
         "label": "Branch"
+      },
+      {
+        "id": "aihub.cm.DevOps",
+        "label": "DevOps"
+      },
+      {
+        "id": "aihub.cm.Pr",
+        "label": "Pull request"
+      },
+      {
+        "id": "aihub.cm.Pipeline",
+        "label": "Pipeline"
+      },
+      {
+        "id": "aihub.cm.Wiki",
+        "label": "Project wiki"
+      },
+      {
+        "id": "aihub.cm.Robot",
+        "label": "Robot tests"
+      },
+      {
+        "id": "aihub.cm.Editor",
+        "label": "AI Context Hub"
       }
     ],
     "menus": {
@@ -294,6 +418,26 @@
         {
           "submenu": "aihub.cm.Branch",
           "group": "1_branch@1"
+        },
+        {
+          "submenu": "aihub.cm.DevOps",
+          "group": "2_hub@1"
+        },
+        {
+          "submenu": "aihub.cm.Pr",
+          "group": "2_hub@2"
+        },
+        {
+          "submenu": "aihub.cm.Pipeline",
+          "group": "2_hub@3"
+        },
+        {
+          "submenu": "aihub.cm.Wiki",
+          "group": "2_hub@4"
+        },
+        {
+          "submenu": "aihub.cm.Robot",
+          "group": "2_hub@5"
         }
       ],
       "aihub.cm.Branch": [
@@ -323,6 +467,26 @@
           "submenu": "aihub.cm.Branch",
           "when": "scmProvider == git",
           "group": "9_aihub@1"
+        },
+        {
+          "submenu": "aihub.cm.DevOps",
+          "when": "scmProvider == git",
+          "group": "9_aihub@2"
+        },
+        {
+          "submenu": "aihub.cm.Pr",
+          "when": "scmProvider == git",
+          "group": "9_aihub@2"
+        },
+        {
+          "submenu": "aihub.cm.Pipeline",
+          "when": "scmProvider == git",
+          "group": "9_aihub@2"
+        },
+        {
+          "command": "aihub.chat.commit",
+          "when": "scmProvider == git",
+          "group": "9_aihub@3"
         }
       ],
       "scm/resourceState/context": [
@@ -411,6 +575,103 @@
           "command": "aihub.worktrees.removeRepoFromSet",
           "when": "view == aihub.worktreeSets && viewItem == aihubSetRepo",
           "group": "9_remove@1"
+        }
+      ],
+      "aihub.cm.DevOps": [
+        {
+          "command": "aihub.chat.story",
+          "group": "1_x@1"
+        },
+        {
+          "command": "aihub.chat.refine",
+          "group": "1_x@2"
+        },
+        {
+          "command": "aihub.chat.start",
+          "group": "1_x@3"
+        },
+        {
+          "command": "aihub.chat.story-run",
+          "group": "1_x@4"
+        },
+        {
+          "command": "aihub.chat.finish",
+          "group": "1_x@5"
+        }
+      ],
+      "aihub.cm.Pr": [
+        {
+          "command": "aihub.chat.pr",
+          "group": "1_x@1"
+        },
+        {
+          "command": "aihub.chat.pr-update",
+          "group": "1_x@2"
+        },
+        {
+          "command": "aihub.chat.review",
+          "group": "1_x@3"
+        },
+        {
+          "command": "aihub.chat.review-pr",
+          "group": "1_x@4"
+        },
+        {
+          "command": "aihub.chat.watch",
+          "group": "1_x@5"
+        },
+        {
+          "command": "aihub.chat.cherry-pick",
+          "group": "1_x@6"
+        },
+        {
+          "command": "aihub.chat.release",
+          "group": "1_x@7"
+        },
+        {
+          "command": "aihub.chat.explain",
+          "group": "1_x@8"
+        }
+      ],
+      "aihub.cm.Pipeline": [
+        {
+          "command": "aihub.chat.pipeline-fix",
+          "group": "1_x@1"
+        }
+      ],
+      "aihub.cm.Wiki": [
+        {
+          "command": "aihub.chat.wiki",
+          "group": "1_x@1"
+        }
+      ],
+      "aihub.cm.Robot": [
+        {
+          "command": "aihub.chat.test",
+          "group": "1_x@1"
+        }
+      ],
+      "timeline/item/context": [
+        {
+          "command": "aihub.chat.cherry-pick",
+          "group": "9_aihub@1"
+        }
+      ],
+      "aihub.cm.Editor": [
+        {
+          "command": "aihub.editor.ask",
+          "group": "1_x@1"
+        },
+        {
+          "command": "aihub.editor.suggestFix",
+          "group": "1_x@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "submenu": "aihub.cm.Editor",
+          "when": "editorHasSelection && resourceScheme == file",
+          "group": "9_aihub@1"
         }
       ]
     },
