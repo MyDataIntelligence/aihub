@@ -3,9 +3,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AihubError } from "../lib/errors.js";
 import { FabricHttpError, guardEnv, inferEnv, type FabricClient, type FabricItem, type JobInstance } from "../lib/fabric.js";
-import { classifyError, codeRefusals, errorsOnly, failedCell, parseSqlHost, rememberRun, searchLines, SPARK_VIEWS, sparkExecutor, sparkJob, sparkSql, sparkStage, sparkTask, sqlGuard, stagesSummary, tailLines, branchWorkspace, type SparkView } from "../lib/fabric-diag.js";
+import { causeOfChain, classifyError, codeRefusals, errorsOnly, failedCell, parseSqlHost, rememberRun, searchLines, SPARK_VIEWS, sparkExecutor, sparkJob, sparkSql, sparkStage, sparkTask, sqlGuard, stagesSummary, tailLines, branchWorkspace, type SparkView } from "../lib/fabric-diag.js";
 import { COMMANDS, findProfiles, findProjects, jobDefinition, projectFiles, readRunResults, logTail, safeProjectDir, scaffoldFiles, setHash, writeScaffold, routeOf, MAX_FILES } from "../lib/fabric-dbt.js";
-import { durationText, extractStack, oneLine, toTable } from "../lib/fabric-ops.js";
+import { durationText, extractStack, oneLine, parseUtc, toTable } from "../lib/fabric-ops.js";
 import { redact } from "../lib/fabric-redact.js";
 import { readKeyVaultSecret } from "../lib/fabric-auth.js";
 import { dryRun, emit, itemArg, makeClient, need, target, where, type Setup, type Target } from "./fabric.js";
@@ -220,8 +220,8 @@ interface Link {
 
 async function activityRuns(client: FabricClient, wsId: string, runId: string, job?: { start?: string; end?: string }): Promise<any[]> {
   const day = 86_400_000;
-  const after = new Date((Date.parse(job?.start ?? "") || Date.now()) - day).toISOString();
-  const before = new Date((Date.parse(job?.end ?? "") || Date.now()) + day).toISOString();
+  const after = new Date((parseUtc(job?.start) || Date.now()) - day).toISOString();
+  const before = new Date((parseUtc(job?.end) || Date.now()) + day).toISOString();
   const r = await client.request("POST", `/workspaces/${wsId}/datapipelines/pipelineruns/${runId}/queryactivityruns`, { filters: [], orderBy: [{ orderBy: "ActivityRunStart", order: "ASC" }], lastUpdatedAfter: after, lastUpdatedBefore: before });
   return Array.isArray(r.data) ? r.data : (r.data.value ?? r.data.data ?? []);
 }
@@ -265,8 +265,8 @@ async function sparkLinks(client: FabricClient, wsId: string, item: FabricItem, 
     const sessions = await client.list<Session>(`/workspaces/${wsId}/${segOf(item)}/${item.id}/livySessions`);
     let sess = jobId ? sessions.find((x) => String(x.jobInstanceId ?? "").toLowerCase() === jobId.toLowerCase()) : undefined;
     if (!sess && window?.start) {
-      const t0 = Date.parse(window.start) - 60_000;
-      sess = sessions.filter((x) => Date.parse(String(x.startDateTime ?? x.submittedDateTime)) >= t0).sort((a, b) => String(a.startDateTime).localeCompare(String(b.startDateTime)))[0];
+      const t0 = parseUtc(window.start) - 60_000;
+      sess = sessions.filter((x) => parseUtc(String(x.startDateTime ?? x.submittedDateTime)) >= t0).sort((a, b) => String(a.startDateTime).localeCompare(String(b.startDateTime)))[0];
     }
     if (!sess) {
       links.push({ level, kind: "spark session", name: item.displayName, error: "no Spark session found for this run" });
@@ -331,9 +331,8 @@ export async function failuresCmd(s: Setup): Promise<void> {
     chain = await rootCause(client, t.id, failed[0].item, failed[0].job);
     lines.push(`root cause chain of the newest failure (${failed[0].item.displayName}):`);
     for (const l of chain) lines.push(`${"  ".repeat(l.level)}${l.kind} ${l.name}${l.status ? ` [${l.status}]` : ""}${l.error ? `: ${l.error}` : ""}${l.detail && l.level > 0 ? ` (${l.detail})` : ""}`);
-    const deepest = [...chain].reverse().find((l) => l.error);
-    if (deepest) {
-      const c = classifyError(`${deepest.error} ${deepest.detail ?? ""}`);
+    if (chain.some((l) => l.error)) {
+      const c = causeOfChain(chain);
       lines.push(`likely cause: ${c.kind}: ${c.hint}`);
     }
     lines.push(`details: aihub fabric logs --workspace ${t.ws.name} --item ${failed[0].item.displayName} --job ${failed[0].job.id}`);
@@ -353,6 +352,8 @@ async function tediousQuery(ep: { host: string; port: number; database: string }
     });
     const rows: unknown[][] = [];
     let columns: string[] = [];
+    // Without an "error" listener a dropped socket is an unhandled event and kills the process with a stack trace (found by the live Fabric check).
+    conn.on("error", (err) => reject(new AihubError(`the SQL connection failed: ${redact(err.message)} (host ${ep.host}:${ep.port}; a firewall, VPN or private link can block port ${ep.port})`)));
     conn.on("connect", (err) => {
       if (err) return reject(new AihubError(`could not connect to the SQL endpoint: ${redact(err.message)}`));
       const req = new Request(query, (e) => {

@@ -30,7 +30,7 @@ import { connectionWriteCmd, dbtCmd, failuresCmd, livyCmd, notebookTestCmd, spar
 import { apiCmd, onelakeCmd, queryCmd } from "./fabric-api.js";
 import { authCmd, capacitiesCmd, connectionsCmd, deploymentCmd, environmentCmd, lakehouseLoad, lakehouseMaintenance, schedulesCmd, shortcutsCmd, workspaceCmd } from "./fabric-extra.js";
 import { didYouMean } from "../lib/fabric.js";
-import { durationText, filterLines, formatSections, oneLine, parseSince, readDefinitionDir, toTable, writeDefinitionParts } from "../lib/fabric-ops.js";
+import { durationText, filterLines, formatSections, oneLine, parseSince, parseUtc, readDefinitionDir, toTable, writeDefinitionParts } from "../lib/fabric-ops.js";
 import { git, repoRoot } from "../lib/git.js";
 import { FabricIdentity, identityJson } from "../lib/fabric-auth.js";
 import { redact } from "../lib/fabric-redact.js";
@@ -574,7 +574,7 @@ async function jobsCmd(s: Setup): Promise<void> {
   const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
   const it = await itemArg(s, client, t.id);
-  const jobs = (await client.jobs(t.id, it.id)).sort((a, b) => Date.parse(b.startTimeUtc ?? "") - Date.parse(a.startTimeUtc ?? ""));
+  const jobs = (await client.jobs(t.id, it.id)).sort((a, b) => parseUtc(b.startTimeUtc) - parseUtc(a.startTimeUtc));
   const top = jobs.slice(0, num(s.v, "top", 20));
   const rows = top.map((j) => [j.startTimeUtc ?? "-", j.status, j.id, durationText(j.startTimeUtc, j.endTimeUtc), j.invokeType ?? "-", oneLine(j.failureReason?.message, 80)]);
   emit(s, top, top.length ? [`${top.length} of ${jobs.length} job(s) of ${it.type} ${it.displayName} in ${where(t)}`, toTable([["started", "status", "job", "duration", "invoke", "failure"], ...rows])].join("\n") : `no jobs yet for ${it.displayName}`);

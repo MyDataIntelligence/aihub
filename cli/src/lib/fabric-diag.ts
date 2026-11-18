@@ -103,6 +103,16 @@ const CAUSES: [RegExp, Cause][] = [
   [/Spark session .*(dead|killed|failed to start)|SessionFailed|LIVY_SESSION/i, { kind: "spark-session", hint: "the Spark session ended: check the Livy log and capacity, then rerun" }],
 ];
 
+/** The likely cause of a root-cause chain: the deepest link that matches a known pattern (a "no Spark session found" link at the bottom must not hide the capacity error above it). */
+export function causeOfChain(links: { error?: string; detail?: string }[]): Cause {
+  for (const l of [...links].reverse()) {
+    if (!l.error) continue;
+    const c = classifyError(`${l.error} ${l.detail ?? ""}`);
+    if (c.kind !== "unknown") return c;
+  }
+  return classifyError("");
+}
+
 /** Classify an error text into a short cause with a hint (best effort, first match wins). */
 export function classifyError(text: string): Cause {
   for (const [re, c] of CAUSES) if (re.test(text)) return c;

@@ -118,7 +118,8 @@ export async function onelakeCmd(s: Setup, sub: string | undefined): Promise<voi
   if (!["list", "read", "write", "mkdir", "delete", "move"].includes(sub ?? "")) throw new AihubError("usage: aihub fabric onelake list|read|write|mkdir|delete|move --workspace W --lakehouse L --path P");
   const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, write);
-  const lh = await client.resolveItem(t.id, need(s.v, "lakehouse", "name|id"));
+  // A lakehouse always has a SQL analytics endpoint with the same name: --lakehouse means the Lakehouse item, never "ambiguous".
+  const lh = await client.resolveItem(t.id, need(s.v, "lakehouse", "name|id"), "Lakehouse");
   const path = (s.v.path as string | undefined) ?? "";
   if (sub === "list") {
     const root = /^Tables(\/|$)/.test(path) ? "" : "Files";

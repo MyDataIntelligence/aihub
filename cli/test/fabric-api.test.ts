@@ -548,3 +548,47 @@ describe("usage", () => {
     expect(existsSync(".")).toBe(true);
   });
 });
+
+describe("lakehouse named like its SQL endpoint, and load paths (found by the live Fabric check)", () => {
+  const twin = get(new RegExp(`/workspaces/${WS}/items$`), { value: [...ITEMS, { id: "sql-1", displayName: "lh_test", type: "SQLEndpoint" }] });
+  it("--lakehouse means the Lakehouse, not the same-named SQL endpoint (onelake commands)", async () => {
+    const dfs: Route = { match: /onelake\.dfs\.fabric\.microsoft\.com/, respond: () => ({ body: { paths: [] } }) };
+    const r = await go([twin, dfs], ["onelake", "list", "--workspace", "DEV-test-project", "--lakehouse", "lh_test", "--path", "Files/landing"]);
+    expect(r.errs).toEqual([]);
+    expect(r.calls.find((c) => c.url.includes("onelake"))!.url).toContain("lh-1");
+  });
+  it("lakehouse load accepts a path with or without the Files/ prefix", async () => {
+    const a = await go([twin], ["lakehouse", "load", "--workspace", "DEV-test-project", "--lakehouse", "lh_test", "--table", "orders", "--path", "Files/landing/o.csv", "--dry-run"]);
+    expect(a.out).toContain("load Files/landing/o.csv into table 'orders'");
+    expect(a.out).not.toContain("Files/Files");
+    const b = await go([twin], ["lakehouse", "load", "--workspace", "DEV-test-project", "--lakehouse", "lh_test", "--table", "orders", "--path", "landing/o.csv", "--dry-run"]);
+    expect(b.out).toContain("load Files/landing/o.csv into table 'orders'");
+  });
+});
+
+describe("zoneless UTC job times and the cause of a failure chain (found by the live Fabric check)", () => {
+  it("parseUtc reads a Fabric job timestamp without zone as UTC, whatever the local time zone is", async () => {
+    const { parseUtc } = await import("../src/lib/fabric-ops.js");
+    expect(parseUtc("2026-11-18T18:20:06.7111314")).toBe(Date.parse("2026-11-18T18:20:06.711Z"));
+    expect(parseUtc("2026-11-18T18:20:06Z")).toBe(Date.parse("2026-11-18T18:20:06Z"));
+    expect(parseUtc("Wed, 18 Nov 2026 18:13:59 GMT")).toBe(Date.parse("2026-11-18T18:13:59Z"));
+    expect(parseUtc(undefined)).toBeNaN();
+  });
+  it("logs --since keeps a run whose startTimeUtc has no zone suffix", async () => {
+    const jobs = get(/items\/nb-1\/jobs\/instances$/, { value: [{ id: "jz", status: "Failed", startTimeUtc: "2026-03-01T11:30:00.1234567", endTimeUtc: "2026-03-01T11:30:01.5", failureReason: { message: "boom" } }] });
+    const none = { match: /jobs\/instances$/, respond: () => ({ body: { value: [] } }) } as Route;
+    const r = await go([itemsRoute, jobs, none], ["logs", "--workspace", "DEV-test-project", "--since", "1h", "--status", "failed"]);
+    expect(r.out).toContain("1 run(s) since 1h");
+    expect(r.out).toContain("jz");
+  });
+  it("causeOfChain classifies the capacity error although the deepest link is 'no Spark session found'", async () => {
+    const { causeOfChain } = await import("../src/lib/fabric-diag.js");
+    const chain = [
+      { error: "Exception: Failed to create Livy session. Error: [TooManyRequestsForCapacity] HTTP Response code 430: This Spark job can't be run" },
+      { error: "no Spark session found for this run" },
+    ];
+    expect(causeOfChain(chain).kind).toBe("capacity");
+    expect(causeOfChain([{ error: "no Spark session found for this run" }]).kind).toBe("unknown");
+    expect(causeOfChain([{ error: "cell 2: x -> Table or view not found" }, { error: "no Spark session found" }]).kind).toBe("missing-table-or-path");
+  });
+});
