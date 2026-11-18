@@ -54,7 +54,7 @@ The same files are in [`team-pack/`](../team-pack/README.md) (also attached to e
 `aihub init [--repo .] [--no-pr] [--language nl|en] [--into-repo]` never overwrites existing files. It prefills `team.yaml` from the git
 remote and proposes the story and commit templates, a pull request template (only when none exists where Azure DevOps
 looks) (team knowledge only; skills and slash commands live in the user folders and are installed by `aihub skills install`; `--into-repo`
-also writes the slash commands into `.opencode/command/` and `.github/prompts/`). It creates the branch `chore/aihub-team-pack`,
+also writes the slash commands into `.opencode/command/` and `.github/prompts/`). With the pack it also proposes (each only when missing) `.github/instructions/<area>.instructions.md` skeletons with `applyTo:` front matter and empty rule bullets for the file types the repository really has, and a short marked block in `AGENTS.md` (created, or appended when the file has no aihub line); `--no-instructions` and `--no-agents-md` skip them. It creates the branch `chore/aihub-team-pack`,
 commits, pushes and opens a pull request that lists created and skipped files; review and merge it. With `--no-pr` it
 only writes the files. `aihub doctor [--json]` prints one `OK` or `FIX` line per check (Node, git, remote, sign-in
 method, `team.yaml` against the schema, PR template location, skills per client) with the fix.
