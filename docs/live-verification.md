@@ -301,3 +301,9 @@ Proof PNG (rendered summary): `20261118-2230-L-pr-gold-helpers.png`.
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
 
 Workspace `aihub-test-dev-20261118b` (second round, sql fix, spark stop) was deleted on 2026-11-18 with `fabric workspace delete --yes`; the Fabric API answers WorkspaceNotFound for its id.
+
+## `aihub watch --run` and `--fabric-job` live (2026-11-18)
+
+- **Toast with the Fix button.** `watch --run` on build 239 (failed, feature branch, ferron-test) with `--notify` raised a real Windows toast (Do Not Disturb was on, so it sat in the notification centre): `aihub: run 239 (AI-Context-Hub-Ruff-Check) failed on feature/1915-story-run-herhaling` with a **Fix** button. Proof PNG `20261118-2155-L-watch-toast-fix.png`. The button was not clicked (it opens the chat through `aihub://`, which is not registered for the dev build).
+- **Fabric job.** Own workspace `aihub-test-dev-watch1` on the trial capacity, DataPipeline `pl_wait` (Wait 20 s): `fabric run` printed the job id, `watch --fabric-job <ws>/pl_wait/<job>` followed it in the background and recorded `Fabric job ... completed`; the watch ended itself. The workspace was deleted afterwards (`WorkspaceNotFound`). Proof PNG `20261118-2157-L-watch-fabric-job.png`.
+- **Test Plans and Artifacts** (`aihub testplan`, `aihub artifacts`): reads live in ferron-test (runs and results of build 265, feeds); creating a plan answered 403 (no Test Plans license), so the writes are covered by tests only. Proof PNG `20261118-2212-L-testplan-artifacts.png`.
