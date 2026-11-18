@@ -55,8 +55,11 @@ function ado(c1: string, c2: string): Route[] {
   return [
     // only the first commit is known to the query: the second one must be found through its message
     { method: "POST", match: new RegExp(PR + "/pullrequestquery\\?"), respond: () => ({ body: { results: [{ [c1]: [{ pullRequestId: 11 }] }] } }) },
-    { match: new RegExp(PR + "/pullrequests/11\\?"), respond: () => ({ body: { pullRequestId: 11, title: "Faster load", status: "completed", lastMergeCommit: { commitId: c1 }, workItemRefs: [{ id: "101" }], sourceRefName: "refs/heads/f", targetRefName: "refs/heads/develop" } }) },
-    { match: new RegExp(PR + "/pullrequests/12\\?"), respond: () => ({ body: { pullRequestId: 12, title: "New lakehouse", status: "completed", lastMergeCommit: { commitId: c2 }, workItemRefs: [{ id: "102" }], sourceRefName: "refs/heads/g", targetRefName: "refs/heads/develop" } }) },
+    { match: new RegExp(PR + "/pullrequests/11\\?"), respond: () => ({ body: { pullRequestId: 11, title: "Faster load", status: "completed", lastMergeCommit: { commitId: c1 }, sourceRefName: "refs/heads/f", targetRefName: "refs/heads/develop" } }) },
+    { match: new RegExp(PR + "/pullrequests/12\\?"), respond: () => ({ body: { pullRequestId: 12, title: "New lakehouse", status: "completed", lastMergeCommit: { commitId: c2 }, sourceRefName: "refs/heads/g", targetRefName: "refs/heads/develop" } }) },
+    // a GET of the PR does not list its work items (live finding): the dedicated endpoint does
+    { match: new RegExp(PR + "/pullrequests/11/workitems\\?"), respond: () => ({ body: { value: [{ id: "101" }] } }) },
+    { match: new RegExp(PR + "/pullrequests/12/workitems\\?"), respond: () => ({ body: { value: [{ id: "102" }] } }) },
     { match: /_apis\/wit\/workitems\/101\?/, respond: () => ({ body: { fields: { "System.Title": "Sneller laden" } } }) },
     { match: /_apis\/wit\/workitems\/102\?/, respond: () => ({ body: { fields: { "System.Title": "Nieuw lakehouse" } } }) },
   ];
