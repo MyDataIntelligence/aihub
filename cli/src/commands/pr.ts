@@ -1,3 +1,4 @@
+import { afterPrOffer } from "../lib/learnProfile.js";
 import { parseArgs } from "node:util";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
@@ -62,6 +63,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     ctx.out(created);
     const hint = v.json || v["dry-run"] ? "" : setHint(ctx.cwd, "pr create");
     if (hint) ctx.out(hint);
+    const offer = v.json || v["dry-run"] ? "" : afterPrOffer(ctx);
+    if (offer) ctx.out(offer);
     return;
   }
   if (sub === "update") {

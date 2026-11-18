@@ -4,7 +4,9 @@ import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import { changeFacts, formatChange, formatRepo, repoFacts, type ChangeFacts } from "../lib/learn.js";
 import { validateExplanation } from "../lib/learnSchema.js";
-import { diagramFor, glossary, idiagramStatus, itemFacts, onboarding, teamFlow, week } from "../lib/learnMore.js";
+import { pushToIDiagram, storyFor } from "../lib/idiagram.js";
+import { diagramFor, glossary, itemFacts, onboarding, teamFlow, week } from "../lib/learnMore.js";
+import { profile, setAfterPr, setLevel } from "../lib/learnProfile.js";
 import { learnConcepts, learnForget, learnHome, learnList, learnMark, learnQuiz, learnSave, learnScore, learnShow } from "../lib/learnStore.js";
 
 const NL = String.fromCharCode(10);
@@ -18,7 +20,8 @@ export const LEARN_USAGE = [
   "aihub learn list [--all] [--json] | show --id ID [--json] | forget --id ID    your saved lessons (this repository, or --all)",
   "aihub learn concepts [--all] [--mark NAME|--unmark NAME] [--json]            the concepts of your lessons and which you marked as learned",
   "aihub learn quiz [--id ID] [--score ID --correct N --of M] [--json]          the questions of a lesson (or of the newest ones); --score keeps a result",
-  "aihub learn diagram [--kind architecture|lineage|repo|flow] [--pr|--branch|--range] [--idiagram] [--json]   a Mermaid picture built from facts (callers, dbt lineage, folders, the team flow)",
+  "aihub learn diagram [--kind architecture|lineage|repo|flow] [--pr|--branch|--range] [--idiagram] [--json]   a Mermaid picture built from facts (callers, dbt lineage, folders, the team flow); --idiagram also pushes it to iDiagram and returns the board and Play story links",
+  "aihub learn level [set junior|medior|senior] | after-pr [on|off]            your level (the skill's style) and whether pr create / story finish offer a lesson (off by default; team.yaml learn.afterPr sets the default)",
   "aihub learn flow | glossary | week [--days N] | onboarding [--json]          how the team works, the repository's own terms, what you did this week, a welcome bundle",
   "aihub learn item <file|pipeline.yml|dbt model.sql|Fabric item folder> [--json]    facts of one thing: definitions, imports, stages, lineage, who uses it",
   "    The CLI gives facts and keeps your lessons (git and files, under a second); the learn skill writes the lesson.",
@@ -51,8 +54,21 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const out = (data: unknown, text: string) => ctx.out(v.json ? JSON.stringify(data) : text);
   if (sub === "diagram") {
     const d = await diagramFor(ctx, { kind: o_kind(v.kind), range: { pr: v.pr, branch: v.branch, range: v.range } });
-    const extra = v.idiagram ? idiagramStatus(ctx.env) : undefined;
-    return out({ ...d, ...(extra ? { idiagram: extra } : {}) }, [`${d.title}  (${d.kind}; ${d.basedOn})`, d.empty ? "nothing to draw from the facts: no callers, tests or edges found" : "", "```mermaid", d.mermaid, "```", extra?.message ?? ""].filter((x) => x !== "").join(NL));
+    const extra = v.idiagram && !d.empty ? await pushToIDiagram(ctx, { id: `${d.kind}-${Date.now().toString(36)}`, mermaid: d.mermaid, story: storyFor(d.mermaid, d.title) }) : undefined;
+    return out({ ...d, ...(extra ? { idiagram: extra } : {}) }, [`${d.title}  (${d.kind}; ${d.basedOn})`, d.empty ? "nothing to draw from the facts: no callers, tests or edges found" : "", "```mermaid", d.mermaid, "```", extra ? (extra.status === "created" ? `iDiagram: ${extra.url}${extra.playUrl ? `${NL}Play story: ${extra.playUrl}` : ""}` : `iDiagram: ${extra.status}: ${extra.reason}`) : ""].filter((x) => x !== "").join(NL));
+  }
+  if (sub === "level") {
+    const set = pos[0] === "set" ? setLevel(ctx, pos[1] ?? "") : undefined;
+    const p = set ?? profile(ctx);
+    return out(p, `level: ${p.level} (${p.style})${NL}after a PR: ${p.afterPr ? "on" : "off"} (${p.afterPrSource})`);
+  }
+  if (sub === "after-pr") {
+    if (pos[0] !== "on" && pos[0] !== "off") {
+      const p = profile(ctx);
+      return out(p, `after a PR: ${p.afterPr ? "on" : "off"} (${p.afterPrSource}); aihub learn after-pr on|off changes it`);
+    }
+    const p = setAfterPr(ctx, pos[0] === "on");
+    return out(p, `after a PR: ${p.afterPr ? "on: pr create and story finish end with an offer for a lesson" : "off"}`);
   }
   if (sub === "flow") {
     const f = teamFlow(ctx);

@@ -51,6 +51,7 @@ export function validateExplanation(json: unknown, facts?: ChangeFacts): Validat
       j.diagrams.forEach((d: unknown, i: number) => {
         if (!isObj(d) || !isStr(d.title)) return e(`diagrams[${i}].title is required`);
         if (!DIAGRAM_KINDS.includes(d.kind as (typeof DIAGRAM_KINDS)[number])) e(`diagrams[${i}].kind must be one of ${DIAGRAM_KINDS.join(", ")}`);
+        for (const k of ["idiagramUrl", "playUrl"]) if (d[k] !== undefined && !(typeof d[k] === "string" && /^https:\/\/|^http:\/\/(localhost|127\.0\.0\.1)/.test(d[k] as string))) e(`diagrams[${i}].${k} must be an https link`);
         diagrams.push({ where: `diagrams[${i}].mermaid`, src: d.mermaid });
       });
   }

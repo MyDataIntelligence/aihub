@@ -32,7 +32,9 @@ In VS Code the **Learn** view (Explorer) lists your lessons and concepts. A less
 | Command | Gives |
 |---|---|
 | `aihub learn diagram [--kind architecture\|lineage\|repo\|flow] [--pr\|--branch\|--range] [--json]` | a Mermaid picture built from facts: who calls the changed names and which tests mention them, dbt lineage (of the change, or of the whole repository), the folders, the team flow. `basedOn` says what it was built from; `empty` is true when nothing was found and then nothing is drawn |
-| `--idiagram` | reports only whether iDiagram is configured (`AIHUB_IDIAGRAM_URL`). Pushing a board is not implemented; the Mermaid is complete without it |
+| `--idiagram` | pushes a flowchart to iDiagram (your own app, default `https://idiagram.vercel.app`, `AIHUB_IDIAGRAM_URL` for another) with a story of scenes (the whole flow, then one scene per changed block) and returns the board link and the Play story link; a port of the legacy client. Only the Mermaid and the scenes are sent. A failure is a result and the Mermaid stays |
+| `aihub learn level [set junior\|medior\|senior]` | your level: the style the skill writes in (junior: every term and analogies; senior: brief) |
+| `aihub learn after-pr [on\|off]` | off by default; when on (or `learn: afterPr: true` in team.yaml) `pr create` and `story finish` end with one line: "Wil je een les van deze wijziging?" |
 | `aihub learn flow` | how the team works (story, branch, commits, PR, pipeline, review, merge) from `team.yaml`; generic when there is none |
 | `aihub learn glossary` | the repository's own terms: README bullets and headings, dbt models and sources, folders |
 | `aihub learn week [--days N]` | your commits and most touched files |
@@ -43,4 +45,4 @@ All of it comes from git and files; Azure DevOps and Fabric are not called. Past
 
 ## Later slices
 
-the learner profile and `learn.afterPr`. The store is per user only; there is no team-shared store.
+the learner profile . The store is per user only; there is no team-shared store.
