@@ -41,6 +41,7 @@ import * as library from "./commands/library.js";
 import * as testCmd from "./commands/test.js";
 import * as legacy from "./commands/legacy.js";
 import * as prList from "./commands/pr-list.js";
+import * as prAdmin from "./commands/pr-admin.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -51,7 +52,7 @@ export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
  */
 export const commands: Record<string, CommandFn> = {
   pr: (argv, ctx) =>
-    prList.PR_LIST_SUBS.includes(argv[0]) ? prList.run(argv, ctx) : prPolicy.PR_POLICY_SUBS.includes(argv[0]) ? prPolicy.run(argv, ctx) : review.PR_EXTRA_SUBS.includes(argv[0]) ? review.runPrExtra(argv, ctx) : pr.run(argv, ctx),
+    prAdmin.PR_ADMIN_SUBS.includes(argv[0]) ? prAdmin.run(argv, ctx) : prList.PR_LIST_SUBS.includes(argv[0]) ? prList.run(argv, ctx) : prPolicy.PR_POLICY_SUBS.includes(argv[0]) ? prPolicy.run(argv, ctx) : review.PR_EXTRA_SUBS.includes(argv[0]) ? review.runPrExtra(argv, ctx) : pr.run(argv, ctx),
   comments: comments.run,
   init: init.run,
   skills: skills.run,
