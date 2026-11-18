@@ -42,6 +42,15 @@ async function findSession(client: FabricClient, wsId: string, item: FabricItem,
 
 export const CAPACITY_HINT = (ws: string) => `the capacity is full (a trial capacity runs one Spark session at a time): free it with: aihub fabric spark stop --workspace ${ws} --all-mine --dry-run`;
 
+/** Object id (`oid`) of the signed-in identity, read from the unverified Fabric token; undefined for an opaque token. */
+function oidOf(token: string): string | undefined {
+  try {
+    return JSON.parse(Buffer.from(token.replace(/^Bearer /, "").split(".")[1], "base64url").toString("utf8")).oid;
+  } catch {
+    return undefined;
+  }
+}
+
 const ENDED = /^(dead|killed|error|failed|cancelled|canceled|succeeded|success|completed|stopped|shutting_down|notstarted)$/i;
 
 /** `aihub fabric spark stop`: closes idle or stuck Spark sessions that block the capacity (Livy API session: DELETE; notebook session: cancel its job). Dev/feature workspaces only. */
@@ -50,12 +59,17 @@ async function sparkStop(s: Setup, client: FabricClient): Promise<void> {
   const one = s.v.session as string | undefined;
   if (!one && !s.v["all-mine"]) throw new AihubError("usage: aihub fabric spark stop --workspace W (--session <livyId> | --all-mine) [--dry-run] [--yes]");
   const all = await client.list<Session>(`/workspaces/${t.id}/spark/livySessions`);
-  const pick = one ? all.filter((x) => x.livyId?.toLowerCase() === one.toLowerCase()) : all.filter((x) => !ENDED.test(String(x.state ?? "")));
+  // --all-mine: only sessions the signed-in identity submitted (oid of the Fabric token; an opaque token cannot tell, then every active session counts)
+  const me = one ? undefined : oidOf(await client.identity!.token("fabric"));
+  const pick = one ? all.filter((x) => x.livyId?.toLowerCase() === one.toLowerCase()) : all.filter((x) => !ENDED.test(String(x.state ?? "")) && (!me || String((x as any).submitter?.id ?? "").toLowerCase() === me.toLowerCase()));
   if (!pick.length) {
     if (one) throw new AihubError(`no Spark session ${one} in ${where(t)}; list them with: aihub fabric spark sessions --workspace ${t.ws.name}`);
     return emit(s, { stopped: [] }, `no active Spark session in ${where(t)}`);
   }
-  const how = (x: Session) => (x.itemType === "Lakehouse" || !x.jobInstanceId ? "close the Livy session" : "cancel the notebook job");
+  // the monitoring API names the item in `item.itemId` and writes the type in lower case ("lakehouse"); a Lakehouse Livy API session reports its own id as job id
+  const itemOf = (x: Session) => String((x.item as { itemId?: string } | undefined)?.itemId ?? x.itemId);
+  const isLivy = (x: Session) => String(x.itemType).toLowerCase() === "lakehouse" || !x.jobInstanceId;
+  const how = (x: Session) => (isLivy(x) ? "close the Livy session" : "cancel the job");
   const plan = pick.map((x) => `${how(x)} ${x.livyId} (${String(x.state ?? "?")}, ${String(x.itemName ?? x.itemId ?? "?")}) in ${where(t)}`);
   if (s.v["dry-run"]) return dryRun(s, plan);
   if (!one && !s.v.yes) throw new AihubError(`--all-mine stops ${pick.length} session(s) in ${where(t)}; add --yes after checking with --dry-run`);
@@ -63,8 +77,8 @@ async function sparkStop(s: Setup, client: FabricClient): Promise<void> {
   const failed: string[] = [];
   for (const x of pick) {
     try {
-      if (x.itemType === "Lakehouse" || !x.jobInstanceId) await client.request("DELETE", `/workspaces/${t.id}/lakehouses/${String(x.itemId)}/livyapi/versions/2023-12-01/sessions/${x.livyId}`);
-      else await client.cancelJob(t.id, String(x.itemId), x.jobInstanceId);
+      if (isLivy(x)) await client.request("DELETE", `/workspaces/${t.id}/${String(x.itemType).toLowerCase() === "notebook" ? "notebooks" : "lakehouses"}/${itemOf(x)}/livyapi/versions/2023-12-01/sessions/${x.livyId}`);
+      else await client.cancelJob(t.id, itemOf(x), x.jobInstanceId!);
       stopped.push(x.livyId);
     } catch (e) {
       failed.push(`${x.livyId}: ${(e as Error).message}`);
@@ -415,7 +429,8 @@ export async function sqlCmd(s: Setup): Promise<void> {
   const query = sqlGuard(q);
   const client = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
-  const it = await itemArg(s, client, t.id);
+  // a Lakehouse always has a SQLEndpoint item with the same name: without --type look for the Lakehouse, then the Warehouse
+  const it = s.v.type ? await itemArg(s, client, t.id) : await client.resolveItem(t.id, need(s.v, "item", "name|id"), "Lakehouse").catch(() => client.resolveItem(t.id, need(s.v, "item", "name|id"), "Warehouse")).catch(() => itemArg(s, client, t.id));
   const route = it.type === "Warehouse" ? "warehouses" : it.type === "Lakehouse" ? "lakehouses" : undefined;
   if (!route) throw new AihubError(`${it.type} '${it.displayName}' has no SQL endpoint (Warehouse or Lakehouse)`);
   const props = ((await client.request("GET", `/workspaces/${t.id}/${route}/${it.id}`)).data as any).properties ?? {};

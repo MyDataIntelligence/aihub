@@ -504,17 +504,32 @@ describe("sql fallback (.NET SqlClient on Windows)", () => {
   });
 });
 
+const jwtOf = (oid: string) => `h.${Buffer.from(JSON.stringify({ oid })).toString("base64url")}.s`;
+
+describe("sql on a lakehouse with a same-named SQL endpoint", () => {
+  it("picks the Lakehouse instead of reporting the name as ambiguous", async () => {
+    const both = get(new RegExp(`/workspaces/${WS}/items$`), { value: [{ id: "lh-1", displayName: "lh_test", type: "Lakehouse" }, { id: "ep-1", displayName: "lh_test", type: "SQLEndpoint" }] });
+    const lh = get(new RegExp(`/workspaces/${WS}/lakehouses/lh-1$`), { properties: { sqlEndpointProperties: { connectionString: "abc.datawarehouse.fabric.microsoft.com" } } });
+    const seen: any[] = [];
+    const r = await go([both, lh], ["sql", "--workspace", "DEV-test-project", "--item", "lh_test", "--query", "select 1 as x"], { setup: (c) => (c.sql = async (ep: any) => (seen.push(ep), { columns: ["x"], rows: [[1]] })) });
+    expect(r.code).toBe(0);
+    expect(seen[0]).toMatchObject({ host: "abc.datawarehouse.fabric.microsoft.com", database: "lh_test" });
+  });
+});
+
 describe("spark stop", () => {
   const sessions = get(new RegExp(`/workspaces/${WS}/spark/livySessions$`), {
     value: [
-      { livyId: "L1", state: "Idle", itemId: "nb-1", itemType: "Notebook", itemName: "nb_load", jobInstanceId: "job-1" },
-      { livyId: "L2", state: "Idle", itemId: "lh-1", itemType: "Lakehouse", itemName: "lh_test" },
-      { livyId: "L3", state: "Succeeded", itemId: "nb-1", itemType: "Notebook", itemName: "nb_load", jobInstanceId: "job-0" },
+      // shape of the real monitoring API: item.itemId, lower-case itemType, a lakehouse Livy session reports its own id as job id
+      { livyId: "L1", state: "Idle", item: { itemId: "nb-1" }, itemType: "notebook", itemName: "nb_load", jobInstanceId: "job-1", submitter: { id: "me-oid" } },
+      { livyId: "L2", state: "InProgress", item: { itemId: "lh-1" }, itemType: "lakehouse", itemName: "lh_test", jobInstanceId: "L2", submitter: { id: "me-oid" } },
+      { livyId: "L3", state: "Succeeded", item: { itemId: "nb-1" }, itemType: "notebook", itemName: "nb_load", jobInstanceId: "job-0", submitter: { id: "me-oid" } },
+      { livyId: "L4", state: "Idle", item: { itemId: "nb-1" }, itemType: "notebook", itemName: "nb_load", jobInstanceId: "job-4", submitter: { id: "colleague-oid" } },
     ],
   });
   it("dry-run lists only the active sessions and changes nothing", async () => {
     const r = await go([sessions], ["spark", "stop", "--workspace", "DEV-test-project", "--all-mine", "--dry-run"]);
-    expect(r.out).toContain("cancel the notebook job L1");
+    expect(r.out).toContain("cancel the job L1");
     expect(r.out).toContain("close the Livy session L2");
     expect(r.out).not.toContain("L3");
     expect(r.calls.every((c: any) => c.method === "GET")).toBe(true);
@@ -524,6 +539,13 @@ describe("spark stop", () => {
     expect(no.errs[0]).toContain("add --yes");
     const r = await go([sessions, send("DELETE", /lakehouses\/lh-1\/livyapi\/versions\/2023-12-01\/sessions\/L2$/), send("POST", /items\/nb-1\/jobs\/instances\/job-1\/cancel$/)], ["spark", "stop", "--workspace", "DEV-test-project", "--all-mine", "--yes"]);
     expect(r.out).toContain("stopped 2 Spark session(s)");
+  });
+  it("--all-mine with a user token stops only sessions submitted by that identity (live: item id came out as 'undefined' before)", async () => {
+    const env = { AIHUB_FABRIC_TOKEN: jwtOf("me-oid") };
+    const r = await go([sessions, send("DELETE", /lakehouses\/lh-1\/livyapi\/versions\/2023-12-01\/sessions\/L2$/), send("POST", /items\/nb-1\/jobs\/instances\/job-1\/cancel$/)], ["spark", "stop", "--workspace", "DEV-test-project", "--all-mine", "--yes"], { env });
+    expect(r.out).toContain("stopped 2 Spark session(s)");
+    expect(r.calls.filter((c: any) => c.method !== "GET")).toHaveLength(2);
+    expect(r.calls.some((c: any) => /job-4|undefined/.test(c.url))).toBe(false);
   });
   it("needs --session or --all-mine, and a known session", async () => {
     expect((await go([sessions], ["spark", "stop", "--workspace", "DEV-test-project"])).errs[0]).toContain("usage");
