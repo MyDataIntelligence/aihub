@@ -88,11 +88,28 @@ export const VERSION = cliVersion();
 /** One-line usage per command, printed for `aihub <command> --help` (an agent that asks for help must not get an option error). */
 export const HELP: Record<string, string> = {
   "cherry-pick": 'aihub cherry-pick --from <pr N|url|commit sha|story id> --to <branch> [--to <branch>...|--to-group <name>] [--summary-text "<1-2 sentences>"] [--no-pr|--direct]\n    Cherry-picks in a temp worktree, pushes a cherry-pick/... branch per target and opens a PR per target (template, story link) unless --no-pr.',
-  comments: "aihub comments get [--pr <url|N>]\naihub comments reply [--pr <url|N>] --replies-file replies.yaml\n    replies.yaml: a list of {threadId, text, status} with status fixed|wontFix|closed|active (thread: and resolve: true also work).",
+  comments: "aihub comments get [--pr <url|N>]\naihub comments reply [--pr <url|N>] --reply \"<threadId>:<status>:<text>\" [--reply ...]   (no file needed)\naihub comments reply [--pr <url|N>] --replies-file replies.yaml\n    replies.yaml: a list of {threadId, text, status} with status fixed|wontFix|closed|active (thread: and resolve: true also work).",
   story: "aihub story template   (prints the team story template: the headings to use)\naihub story create --title \"<title>\" --body-file story.md   (one ## <heading> section per template heading, all filled)",
   branch: "aihub branch update [--branch B] [--target T] [--rebase]",
   test: testCmd.TEST_USAGE,
 };
+
+/**
+ * "--append-text - a bullet" is a value, not an option: Node's parser refuses a value that starts with a dash, but markdown bullets do.
+ * A token that starts with "- " (dash and space) after a long option is joined as --option=value.
+ */
+export function mergeDashValues(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    const next = args[i + 1];
+    if (a.startsWith("--") && !a.includes("=") && next !== undefined && /^- /.test(next)) {
+      out.push(`${a}=${next}`);
+      i++;
+    } else out.push(a);
+  }
+  return out;
+}
 
 /** Returns the process exit code. */
 export async function main(argv: string[], ctx: Ctx, registry: Record<string, CommandFn> = commands): Promise<number> {
@@ -118,7 +135,7 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
   const ownDryRun = name === "fabric" || (name === "pr" && rest[0] === "create") || (name === "story" && storyFlow.STORY_FLOW_SUBS.includes(rest[0]));
   const verbose = rest.includes("--verbose");
   const dryRun = rest.includes("--dry-run");
-  const args = rest.filter((a) => a !== "--verbose" && (ownDryRun || a !== "--dry-run"));
+  const args = mergeDashValues(rest.filter((a) => a !== "--verbose" && (ownDryRun || a !== "--dry-run")));
   let planned = 0;
   setTrace({
     dryRun,
