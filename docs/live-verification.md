@@ -148,6 +148,11 @@ opencode and Copilot tolerated it, Codex skipped the skill. Fixed in PR #52 (sin
 
 Ids created and removed: story 3370, PR !1063 (abandoned), branches of the prefix live-7c1f. An `az` query and `git ls-remote` show nothing left. Proof: `20261118-1850-L-live-codex-userdir.png` (rendered summary).
 
+## Reviewer votes live (2026-11-18)
+
+`aihub pr show --json`, `aihub status --json` (`pr.reviewers`) and `aihub pr list` showed the votes of a fresh PR in ferron-test where the one test identity added itself as reviewer: `az repos pr set-vote --vote approve` gave `{"name":"Ferron Hooi","vote":10,"voteName":"approved","required":false}`
+in both JSON views and `wait-for-author` gave vote -5 / "waiting for the author" (also in the text of `pr list` and `pr show`). PR !1078 abandoned, branch `live-9d3e/votes` deleted, nothing left.
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
