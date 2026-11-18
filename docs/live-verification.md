@@ -407,3 +407,7 @@ Same isolated setup with `@ferronhooi/aihub@latest` = **1.0.4** (`npm view` dist
 | `aihub skills install --client all` | OK; prints the old-Hub warning, the opencode note, and the Copilot/Codex auto-approve notes |
 | `aihub doctor` `legacy-hub` | `FIX legacy-hub: the old AI Context Hub is still installed (the old hub CLI) ... -> aihub legacy remove --dry-run` in the shell as it is: the user's real old `hub` CLI is on the PATH (`%LOCALAPPDATA%\AIContextHub\cli`), nothing was touched. With that folder taken out of the PATH: `OK legacy-hub: no old AI Context Hub found` |
 | opencode 1.19.5 + Luna, agent files from the npm 1.0.4 package, isolated homes | `python -m pytest --version` ran without a prompt (pytest 7.4.4); `git push origin main` was refused by the agent's rule and the bare origin stayed at `init` (the first attempt ended with an opencode server error, the retry ran) |
+
+## Pipeline coverage with data (2026-11-18)
+
+Synthetic pipeline `live-8cd052-cov` in ferron-test/test-project: one script step wrote a Cobertura file (3 of 4 lines, 1 of 2 branches covered) and `PublishCodeCoverageResults@1` published it (run 285, succeeded). `aihub pipeline coverage --run 285` answered Lines 3/4 75 % and Branches 1/2 50 %, as JSON too. Proof: PNG 20261118-2250-L-pipeline-coverage-live in the AIContextHub proof folder. Removed afterwards (verified): pipeline #18 and branch `live-8cd052/cov`; run 285 stays (builds cannot be deleted).
