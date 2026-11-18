@@ -69,7 +69,7 @@ Check the file with `aihub doctor`. Change it through a pull request (see [onboa
 
 ```yaml
 tests:
-  command: "pytest {tests}"        # {tests} becomes the quoted test files; default pytest for .py, npx vitest run for JS/TS
+  command: "python -m pytest {tests}" # {tests} becomes the quoted test files; default python -m pytest for .py (puts the repo root on sys.path, so top-level packages import), npx vitest run for JS/TS
   map:                             # rules for code the name/import heuristics do not match
     - source: "etl/**"             # changed files matching these globs (a string or a list)
       tests: "tests/etl/**"        # run the repository files matching these globs
@@ -79,6 +79,27 @@ tests:
 uncommitted and untracked files) and with `--run` runs only those. Without `tests:` it uses the defaults: for Python `test_<module>.py`, `<module>_test.py` and test
 files that import the module; for JS/TS `<name>.test.ts`, `<name>.spec.ts` and specs that import the file; a changed test file runs itself. Code without a test is
 listed, docs and config are ignored, and it never falls back to the whole suite: the pipeline runs that.
+
+## Data before/after in the PR (optional)
+
+```yaml
+dataChecks:
+  item: lh_orders              # Lakehouse or Warehouse that exists in both workspaces
+  baseline: DEV-shared         # optional; default: the workspace of the PR's target branch, else the dev workspace
+  feature: DEV-anna            # optional; default: the workspace whose fabric.workspaces branches match the source branch
+  tables:
+    - name: gold.orders
+      count: true
+      nulls: [customer_id]
+      sums: [amount]
+      distinct: [customer_id]
+      sql: ""                  # optional custom SELECT (one row, every column a metric)
+```
+
+`aihub pr data-diff [--pr N] [--write] [--baseline W] [--feature W] [--json]` runs the same read-only checks in the baseline and the feature workspace and prints a before/after table with deltas
+and a one-line verdict. Identifiers are validated (plain letters, digits, underscore), a custom SELECT goes through the same read-only guard as `aihub fabric sql`. It reads through the SQL endpoint
+(`fabric sql`) and falls back to Livy (Spark SQL in the Lakehouse), and says which one it used. ACC and PRD workspaces are refused. `--write` replaces the PR section "Data before/after"
+("Data vóór/na" for a Dutch team, or `dataChecks.section`) with the table, like Changes it is code-owned.
 
 ## Fabric and Robot (optional)
 

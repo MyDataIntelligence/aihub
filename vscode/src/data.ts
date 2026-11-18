@@ -1,6 +1,6 @@
 import { CliError, readJson, type Runner } from "./cli";
 import { TtlCache } from "./cache";
-import { buildModel, toFabric, type BarEvent, type BarModel, type FabricModel, type PrChecksJson, type StatusJson } from "./model";
+import { buildModel, toFabric, unwrap, type BarEvent, type BarModel, type FabricModel, type PrChecksJson, type StatusJson } from "./model";
 
 export interface LoadOptions {
   cwd: string;
@@ -61,7 +61,9 @@ export class BarLoader {
     if (hit !== undefined) return hit === FABRIC_NONE ? null : hit;
     try {
       const failures = await readJson<unknown>(this.run, ["fabric", "failures"], this.opts.cwd);
-      const logs = await this.soft(() => readJson<unknown>(this.run, ["fabric", "logs", "--since", "24h", "--top", "8"], this.opts.cwd));
+      // `fabric logs` does not derive the branch workspace by itself (only `failures` does): pass the one `failures` found
+      const ws = (unwrap<{ workspace?: string }>(failures) ?? {}).workspace;
+      const logs = ws ? await this.soft(() => readJson<unknown>(this.run, ["fabric", "logs", "--workspace", ws, "--since", "24h", "--top", "8"], this.opts.cwd)) : undefined;
       const model = toFabric(failures, logs);
       this.cache.set(key, model ?? FABRIC_NONE);
       return model;

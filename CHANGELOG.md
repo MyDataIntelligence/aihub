@@ -4,6 +4,7 @@ One `## <version>` heading per release, one bullet per change. `aihub update` sh
 
 ## 1.0.4
 - `aihub watch --mine` also watches your own builds: a failed build on your own feature branch (never main, staging, release) raises a toast with a Fix button; it opens the chat with the `aihub` agent and `/fix <run url>`. New `/fix` command and skill `pipeline-fix` (works without a story): `aihub pipeline logs --failed [--run <id|url>]` prints branch, protected flag and red rounds first and says STOP on a protected branch or after 3 red rounds; flaky or infrastructure causes are reported, not fixed. Fabric runs: `aihub fabric failures`. Release notes: docs/releases/1.0.4.md.
+- `aihub pr data-diff [--pr N] [--write]`: read-only before/after numbers (count, nulls, sums, distinct, custom SELECT per table, `dataChecks:` in team.yaml) from the baseline and the feature workspace as a table with deltas and a verdict; `--write` puts it in the PR section "Data before/after". Never ACC/PRD. Release notes: docs/releases/1.0.4.md.
 
 ## 1.0.3
 - `aihub legacy remove [--yes] [--keep-data] [--keep-settings] [--repos <dir>]`: lists, then removes, everything the old AI Context Hub put on the machine (extension below 3.0.0, `hub` CLI package and PATH entry, its skills, agent, rules block and hooks, data, per-repo `.aihub`, exclude lines and git hook blocks); only what is provably Hub-owned, your own files and hooks stay. See docs/legacy-removal.md.

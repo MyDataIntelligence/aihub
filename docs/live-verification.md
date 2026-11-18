@@ -212,6 +212,35 @@ Findings that are not bugs of the CLI: a table load and every notebook run open 
 way to stop a Spark session, only to wait; `failures` now says so); driver logs of a Spark application appear some minutes after it ended (404 "no available log file" before, which the CLI reports per section).
 Proof PNG: `20261118-1951-F-fabric-live.png` in the proof folder of the benchmark machine.
 
+## One story end to end through the `aihub` agent (2026-11-18)
+
+World: opencode 1.19.5 with the `aihub` agent and Luna (`openai/gpt-6-luna`, shared test opencode home through `XDG_DATA_HOME`, auth never copied), `@ferronhooi/aihub@next` (1.0.2-next.58 to 1.0.3-next.75) in a scratch npm prefix, all other homes isolated. A fresh clone of `test-project` (tests plus a git `pre-commit` hook that runs pytest, and a `team.yaml` from `aihub init --no-pr` with `tests.command: "python -m pytest {tests}"`). Prompts were typed as a developer would, in Dutch; every step ran as one `opencode run --agent aihub`.
+
+| Step | Prompt | Result | Second source |
+|---|---|---|---|
+| story-create | "Maak een story: ..." | story 3397 in 4 tool calls (`aihub story template`, `story create`), 0 questions | `az boards work-item show` |
+| story-refine | "Refine story 3397." | proposal shown, no gaps, 0 questions | `aihub story show` |
+| `/story-run 3397` | | `aihub-runner` subagent: `story start`, implement, `aihub test changed --run` (only the new tests), commit, push, `pr create`, `pipeline follow`; PR !1087 | `az repos pr show`: active, story linked; `git diff`: 2 files |
+| `aihub commit` | | `git hooks running: pre-commit (...)` and `commit hooks took 0.7 s` printed | story 3400 on next.75 |
+| pipeline | | `no pipeline run found after waiting`: the only build policy of `test-project` is on `ci-checks-demo`, no pipeline builds `main` or a feature branch. Reported, not green-verified | `az repos policy list`, `az pipelines runs list --branch` |
+| 2 review comments | added with `az devops invoke ... pullRequestThreads` | threads 1879 and 1880 | REST |
+| `/review 1087` | | runner replied to both threads and closed them in one call, no code change needed (`strip()` and the whitespace test already covered both) | REST: status `closed`, 2 comments each |
+| `/cherry-pick` to `release/aihub-e2e-<stamp>` (from main) | | PR !1088, 1 commit | `az repos pr show`; `git diff` release vs cherry-pick branch = the 2 story files |
+| questions asked | | 0 in every step | transcript |
+
+Bugs found and fixed (all through PRs to `staging`, vitest, self-merged):
+
+| Bug | Found by | Fix |
+|---|---|---|
+| `aihub story start` kept `main` checked out because `tests/__pycache__` (untracked) counted as "uncommitted changes"; the work would have been committed on `main` | first run | #61: only changes to tracked files block the switch |
+| `aihub status` said "commit the open changes" for untracked `__pycache__`, so the runner stopped; `aihub commit` (`git add -A`) committed the `.pyc` files of a repository without `.gitignore` | second and third run | #64: status and commit ignore untracked build output (`__pycache__`, `*.pyc`, `.pytest_cache`, `node_modules`, `.venv`, `.DS_Store`) |
+| the runner started `python -m pytest` after `aihub test changed --run` | first run | #61: runner body says tests run only through `aihub test changed --run` |
+| one run committed with plain `git commit` (no hooks line) because `implement` only names `aihub commit` when `team.yaml` has `commits.format` | PR !1087 run | #74: `story-run` says `aihub commit ... --push` |
+
+Not a bug, but worth knowing: `pytest <file>` cannot import top-level packages without a conftest; the run stopped honestly with `ModuleNotFoundError` until `tests.command` was set to `python -m pytest {tests}` in `team.yaml`.
+
+Cleanup: PRs !1077 (earlier check), !1086, !1087, !1088, !1089 abandoned; all feature, cherry-pick and release branches deleted; stories 3397 and 3400 deleted. Proof: `20261118-1953-L-story-e2e.png` and `20261118-1953-L-story-e2e-transcript.txt` in the proof folder of the benchmark machine.
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
