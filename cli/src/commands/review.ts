@@ -1,7 +1,7 @@
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import { optInt, parseFlags } from "../lib/cliargs.js";
-import { prComplete, prExplain, reviewPost, reviewShow } from "../lib/review.js";
+import { prComplete, prExplain, reviewPost, reviewPostPicked, reviewPrepare, reviewShow } from "../lib/review.js";
 
 export const PR_EXTRA_SUBS = ["explain", "complete"];
 
@@ -16,6 +16,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const v = parseFlags(rest, {
     pr: { type: "string" },
     "comments-file": { type: "string" },
+    "findings-file": { type: "string" },
+    pick: { type: "string" },
     "max-files": { type: "string" },
     "max-diff-lines": { type: "string" },
     "no-diff": { type: "boolean" },
@@ -31,9 +33,13 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
         json: !!v.json,
       }),
     );
+  } else if (sub === "prepare") {
+    ctx.out(await reviewPrepare(ctx, { pr: need(v.pr, "--pr"), maxFiles: optInt(v["max-files"], "--max-files"), maxDiffLines: optInt(v["max-diff-lines"], "--max-diff-lines"), json: !!v.json }));
+  } else if (sub === "post" && !v["comments-file"]) {
+    ctx.out(await reviewPostPicked(ctx, { pr: need(v.pr, "--pr"), findingsFile: v["findings-file"] as string | undefined, pick: v.pick as string | undefined, json: !!v.json }));
   } else if (sub === "post") {
     ctx.out(await reviewPost(ctx, { pr: need(v.pr, "--pr"), commentsFile: need(v["comments-file"], "--comments-file"), json: !!v.json }));
-  } else throw new AihubError("usage: aihub review show --pr <n|url> | review post --pr <n> --comments-file <file.yaml>");
+  } else throw new AihubError("usage: aihub review show|prepare --pr <n|url> | review post --pr <n> [--pick 1,3,5] [--findings-file f] | review post --pr <n> --comments-file <file.yaml>");
 }
 
 /** aihub pr explain|complete (the other pr subcommands live in commands/pr.ts). */
