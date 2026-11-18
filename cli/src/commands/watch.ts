@@ -6,7 +6,7 @@ import { parseDuration } from "../lib/pipeline.js";
 import { MINE_ID, registerAtLogon, removeAtLogon, runDetachedMine, startMine } from "../lib/watchMine.js";
 import { listWatches, runDetached, startWatch, stopWatches } from "../lib/watch.js";
 
-/** aihub watch --mine [--notify] [--interval 2m] [--at-logon] | --remove-at-logon | --pr N|--branch B [--until done|comment|vote] [--notify] [--client C] [--session S] | list | stop [--id X] */
+/** aihub watch --run <id|link> | --robot <build> | --fabric-job <ws/item/job> [--notify]: follow one long run in the background; aihub watch --mine [--notify] [--interval 2m] [--at-logon] | --remove-at-logon | --pr N|--branch B [--until done|comment|vote] [--notify] [--client C] [--session S] | list | stop [--id X] */
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const sub = argv[0] && !argv[0].startsWith("-") ? argv[0] : undefined;
   const v = parse(sub ? argv.slice(1) : argv, {
@@ -20,6 +20,9 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     client: { type: "string" },
     session: { type: "string" },
     mine: { type: "boolean" },
+    run: { type: "string" },
+    robot: { type: "string" },
+    "fabric-job": { type: "string" },
     limit: { type: "string" },
     since: { type: "string" },
     "include-existing": { type: "boolean" },
@@ -48,6 +51,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const out = startMine(ctx, { notify: v.notify, interval: v.interval, client: v.client, session: v.session, includeExisting: v["include-existing"], json: v.json }, undefined, undefined, () => ensureProtocol());
     ctx.out(out);
     if (v["at-logon"]) ctx.out(registerAtLogon(ctx, v.interval ?? "2m"));
+    return;
+  }
+  if (v.run || v.robot || v["fabric-job"]) {
+    ctx.out(startWatch(ctx, { run: v.run, robot: v.robot, fabricJob: v["fabric-job"], pr: v.pr, branch: v.branch, notify: v.notify, timeout: v.timeout, interval: v.interval, client: v.client, session: v.session, json: v.json }, undefined, undefined, () => ensureProtocol()));
     return;
   }
   if (sub) throw new AihubError("usage: aihub watch --mine [--notify] [--interval 2m] [--at-logon] | watch --remove-at-logon | aihub watch --pr <n>|--branch <b> [--until done|comment|vote] [--notify] [--client opencode|codex|claude|copilot] [--session <id>] [--timeout 2h] | watch list | watch stop [--id X] | watch events [--limit N] [--since 2h] [--json]");

@@ -12,13 +12,13 @@ description: "Use when a build or pipeline failed: '/fix <run url>', 'pipeline i
 2. Stop and report, no fix, when the line says STOP (protected branch such as main, staging, release/*; or 3 red rounds).
 3. Name the root cause in one sentence. Flaky or infrastructure (agent offline, quota, timeout without code cause): report it, `aihub pipeline retry --run <id>` once at most, change no code.
 4. Otherwise fix the cause on the own branch, never weaken a test; check with `aihub test changed --run`, never the whole suite.
-5. `aihub commit --type fix --subject "<what>" --push`, then `aihub pipeline follow`.
+5. `aihub commit --type fix --subject "<what>" --push`, then follow the rerun in the background: `aihub watch --run <new run id> --notify` (`aihub pipeline runs --top 1` gives the id). Say "ik volg het op de achtergrond" and end your turn; the toast reports the result. `aihub pipeline follow` only when the user asks to wait.
 6. Red again: back to step 1 (a new round). After the third red round stop and report what you tried.
 
 ```sh
 aihub pipeline logs --failed --run "https://dev.azure.com/org/proj/_build/results?buildId=123"
 aihub commit --type fix --subject "handle empty export" --push
-aihub pipeline follow
+aihub watch --run 124 --notify
 ```
 
 ## What the CLI fills

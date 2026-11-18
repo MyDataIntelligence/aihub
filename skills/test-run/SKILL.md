@@ -12,8 +12,11 @@ The branch changes Fabric items (notebooks, pipelines) or a flow with Robot inte
 
 ```sh
 aihub fabric plan
-aihub fabric run --item nb_load_orders --wait
+aihub fabric run --item nb_load_orders
+aihub watch --fabric-job DEV-test-project/nb_load_orders/<job id> --notify
 ```
+
+Follow runs in the background ("ik volg het op de achtergrond"); `--wait` only on request.
 
 Several workspaces ("in beide DEV's"): repeat `--workspace` or use `--workspaces <group>`.
 
@@ -21,7 +24,8 @@ Several workspaces ("in beide DEV's"): repeat `--workspace` or use `--workspaces
 
 ```sh
 aihub robot needed
-aihub robot run --on staging --suite orders
+aihub robot run --on staging --suite orders --no-wait
+aihub watch --robot <build id> --notify
 ```
 
 3. Parameters: `--params-file params.json` (Fabric), `--include <tag>` (Robot).
