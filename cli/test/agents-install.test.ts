@@ -164,7 +164,7 @@ describe("aihub skills install: optional agents", () => {
     const { h, env } = fakeHome();
     await run(["skills", "install", "--global", "--client", "codex"], env);
     const toml = readFileSync(join(h, ".codex", "agents", "aihub-runner.toml"), "utf8");
-    expect(toml).toMatch(/^# aihub \S+\nname = "aihub-runner"\n/);
+    expect(toml).toMatch(/^# aihub \S+\nname = "aihub_runner"\n/);
     expect(toml).toContain('developer_instructions = """');
     await run(["skills", "install", "--global", "--client", "claude"], env);
     expect(existsSync(join(h, ".claude", "skills", "start-here", "SKILL.md"))).toBe(true);
