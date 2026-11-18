@@ -15,6 +15,8 @@ function makeSet() {
   const a = makeNamedRepo(parent, "repo-a");
   const b = makeNamedRepo(parent, "repo-b");
   for (const r of [a, b]) {
+    sh(r.dir, ["config", "user.name", "Test"]);
+    sh(r.dir, ["config", "user.email", "test@example.invalid"]);
     write(r.dir, ".agents/skills/_shared/references/team.yaml", TEAM);
     sh(r.dir, ["add", "."]);
     sh(r.dir, ["commit", "-m", "team"]);
