@@ -5,6 +5,7 @@ import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { isDirty, listWorktrees, mustGit, refSha, samePath, tryGit, unpushedCount } from "./gitx.js";
 import { clientForDir, fetchOrigin, resolveRepoDirs } from "./repos.js";
+import { findSet } from "./setInfo.js";
 import { baseFor } from "./story-flow.js";
 import { loadTeam } from "./team.js";
 import { getWorkItem, storyBranchName } from "./workitems.js";
@@ -111,7 +112,8 @@ function status(path: string): string {
 
 export function listSets(ctx: Ctx, o: { root?: string; json?: boolean }): string {
   const { root } = repoClient(ctx);
-  const sets = readSets(resolve(o.root ?? defaultSetsRoot(root)));
+  const here = o.root ? undefined : findSet(ctx.cwd);
+  const sets = readSets(resolve(o.root ?? (here ? dirname(here.folder) : defaultSetsRoot(root))));
   if (o.json) return JSON.stringify(sets.map((s) => ({ folder: s.folder, ...s.meta, status: s.meta.repos.map((r) => ({ name: r.name, status: status(r.path) })) })));
   if (!sets.length) return "no worktree sets";
   return sets

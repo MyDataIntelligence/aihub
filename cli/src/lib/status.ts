@@ -6,6 +6,7 @@ import { currentBranch, workItemFromBranch } from "./git.js";
 import { hasWorkToCommit, unpushedCount } from "./gitx.js";
 import { readNotes } from "./notes.js";
 import { latestPerDefinition, selectBuilds, type Build } from "./pipeline.js";
+import { findSet } from "./setInfo.js";
 import { loadTeam } from "./team.js";
 import { getWorkItem, isProtected } from "./workitems.js";
 
@@ -25,6 +26,8 @@ export interface Status {
   done: string[];
   next: string;
   warnings: string[];
+  /** The worktree set this checkout belongs to (aihub worktree create): commit, pr create, pipeline follow and status take --all-repos there. */
+  set?: { story: number; repos: string[] };
 }
 
 const stateOf = (b: Build) => (b.status === "completed" ? (b.result ?? "completed") : (b.status ?? "unknown"));
@@ -149,12 +152,14 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
     done: step.done,
     next: step.next,
     warnings,
+    set: ((x) => (x ? { story: x.story, repos: x.repos.map((r) => r.name) } : undefined))(findSet(root)),
   };
 }
 
 export function formatStatus(s: Status): string {
   const L: string[] = [];
   L.push(`${s.repo} @ ${s.branch}`);
+  if (s.set) L.push(`Set: story-${s.set.story} with ${s.set.repos.join(", ")}: use --all-repos with commit, pr create, pr update, pipeline follow and status to do every repository at once`);
   L.push(s.story ? `Story: ${s.story.id} ${s.story.title} [${s.story.state}]` : "Story: none linked");
   L.push(s.pr ? `PR: !${s.pr.id} ${s.pr.title} [${s.pr.status}${s.pr.draft ? ", draft" : ""}] ${s.pr.url}` : "PR: none");
   if (s.pipeline.length) L.push(`Pipeline: ${s.pipeline.map((p) => `${p.name} ${p.state}`).join("; ")}`);

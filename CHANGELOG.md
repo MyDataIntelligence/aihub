@@ -3,6 +3,7 @@
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
 ## 1.0.4
+- `aihub pipeline approvals approve|reject` now refuses ACC and PRD approvals even though the Azure DevOps answer names no environment: the environment is read from the run's pipeline YAML, and the command refuses when it cannot tell (give `--allow-env <stage>` only when the developer asked for that stage).
 - Pipelines proven live in ferron-test: `pipeline artifacts --download` now downloads pipeline artifacts (published with `publish:`) from the artifacts host, `pipeline approvals list|approve|reject` finds the environment of an approval (through the run timeline) so the ACC/PRD guard sees its real name, and `pipeline env checks` prints an approver known only by id.
 - Learn, slice 2: personal store `aihub learn save|list|show|forget|concepts|quiz` (~/.config/aihub/learn, nothing in the repository) and, in the VS Code extension, the Learn view, a lesson page with rendered Mermaid pictures and a guided tour.
 - Learn, slice 1: `aihub learn change|repo|validate` (facts of a change or repository as JSON in about a second: hunks, changed names, callers, tests, dbt lineage; schema check of a written explanation), skill `learn` and `/leer` that write the lesson with Mermaid pictures first. See docs/learn.md.
