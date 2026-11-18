@@ -419,3 +419,19 @@ Real click on the **Fix** button of the toast raised by `aihub watch --run 239 -
 - **Fix**: without a session id the opencode plan no longer uses `--continue`; it starts a new session in the repository with `--agent aihub --prompt "/fix <run-url>"` (vitest updated).
 - **After the fix, real click**: opencode opened in the repository, agent Aihub, `/fix https://dev.azure.com/ferron-test/.../_build/results?buildId=239` submitted, skill `pipeline-fix` loaded and a subagent started. Proof: `20261118-2304-L-fix-click-after-fix-opencode.png` (before: `20261118-2304-L-fix-click-before-retry.png`). The agent then answered that `aihub` is not on the PATH of the window the click opened (the test wrapper does not set PATH); that is a property of the test setup, not of the click path.
 - Test caveat: every `watch --notify` start re-registers the handler, so a wrapper must be set after the watch has started. Windows opened by this test were closed; the watch was stopped.
+
+## Clean install of the release 1.0.5 and the VS Code extension 3.0.0 (2026-11-18)
+
+Fresh isolated environment (own `HOME`, `APPDATA`, `LOCALAPPDATA`, `XDG_*`, `CODEX_HOME`, `COPILOT_HOME`, `OPENCODE_CONFIG_DIR`, `NPM_CONFIG_PREFIX`, an isolated VS Code profile; real `az login` and `gh` only for the calls). `Install-Extensions.ps1` from the extensions repository **without `-IncludeDev`**, on the day the release was published (`npm latest` = 1.0.5, GitHub release `vscode-v3.0.0`, not a pre-release).
+
+| Run | Result |
+|---|---|
+| 1 (nothing installed) | `aihub installed 1.0.5 (npm @latest + skills for all clients)`, `pycharm-git-vscode installed 0.9.0`, `dbt-lens installed 0.1.1`, `fabric-workbench-vscode installed 0.1.1`, `ai-context-hub installed 3.0.0 (ai-context-hub-3.0.0.vsix from vscode-v3.0.0, sha256 verified)`, `fabric-navigator manual` (the Chrome extension line); exit 0. The installer picked the non-pre-release `vscode-v*` release on its own: no fix needed |
+| 2 (second run) | all five `unchanged` (aihub 1.0.5, 0.9.0, 0.1.1, 0.1.1, 3.0.0); `fabric-navigator manual` again |
+| `aihub doctor` in a synthetic test-project clone | OK node, git, remote, auth, skills/agents for opencode, Copilot and Codex, permission, **`legacy-hub: no old AI Context Hub found`**; FIX only `team.yaml` and `pr-template` (the clone has no team pack) |
+| Regression smoke on 1.0.5 | the same table as for 1.0.4: 76 OK of 81 lines (the other 5 are the script's own wrong arguments and the expected `crossrepo impact` refusal) |
+| VS Code, extension 3.0.0 in an isolated profile | `FerronHooi.ai-context-hub@3.0.0` listed and activated (`ExtensionService#_doActivateExtension FerronHooi.ai-context-hub ... onStartupFinished` in the extension host log), the Explorer shows the **Worktree Sets** and **Learn** views; screenshot `20261118-2356-L-vscode-3.0.0-isolated.png`. The status bar of this clone (branch `main`, no story) shows no story text, so the bar was only visible as its icon and the views, not with data |
+
+Environment notes: the installed VS Code 1.146 on the test PC cannot start a second instance (`Code is currently being updated`, the pending self-update), so the profile was opened with a downloaded VS Code 1.147 (`@vscode/test-electron`); `Install-Extensions` itself used the installed `code` CLI, which works. An earlier attempt to switch to my window by title brought the user's own VS Code window forward by mistake; it was minimized again at once and nothing in it was touched.
+
+Finding: the tag `vscode-v3.0.0` matched the npm release workflow's `v*` filter and left one red run (`npm version` with an invalid version); fixed in the aihub repository (tag filter `v[0-9]*`).
