@@ -101,6 +101,25 @@ and a one-line verdict. Identifiers are validated (plain letters, digits, unders
 (`fabric sql`) and falls back to Livy (Spark SQL in the Lakehouse), and says which one it used. ACC and PRD workspaces are refused. `--write` replaces the PR section "Data before/after"
 ("Data vóór/na" for a Dutch team, or `dataChecks.section`) with the table, like Changes it is code-owned.
 
+## Release plan between environments (optional)
+
+```yaml
+fabric:
+  deploymentPipeline: orders-pipe    # optional: the Fabric deployment pipeline to compare (stage items); without it the plan is git only
+  environments:
+    DEV:
+      branch: develop                # git branch that holds the environment
+      stage: Development             # deployment pipeline stage name or order (default: the environment name)
+    ACC:
+      branch: staging
+      stage: Acceptance
+```
+
+`aihub release plan --from DEV --to ACC [--target <branch>] [--also-cherry-pick-to <branch>] [--out plan.yaml] [--notes-out notes.md] [--json]` is read only. Git (`origin/<ACC branch>..origin/<DEV branch>`, first-parent commits)
+says which Fabric items changed (git-integration folders `<name>.<Type>/`) and through which pull requests and stories (the Azure DevOps merge-commit query, with "Merged PR n" in the message as the fallback).
+The deployment pipeline stage items say which items are new (only in the from stage) or deleted (only in the to stage). The result lists per item the status, PRs and stories, the cherry-pick list in merge order,
+and release notes in the team language; `--out` writes a plan that `aihub release run --plan-file` can execute (default target: the to-environment's branch). Deploying stays the guarded `aihub fabric deployment deploy`.
+
 ## Fabric and Robot (optional)
 
 ```yaml

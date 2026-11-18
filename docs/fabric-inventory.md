@@ -12,7 +12,7 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 - Not live-verified: all rows are tested against synthetic REST fixtures only.
 
 ## Command surface (grouped)
-`workspaces`, `workspace show|roles|create|assign-capacity`, `spark sessions|app|logs`, `livy run`, `failures`, `sql`, `connection create|update|delete`, `udf invoke`, `notebook-test prepare|run|verify`, `dbt detect|results|scaffold|run|upload|save-job|get-job`, `capacities`, `connections`, `gateways`, `items`, `item show|definition|create|update|rename|delete`, `jobs`, `job show|cancel|logs`, `status`, `run [--cancel]`, `logs`, `schedules`, `lakehouse tables|files|load|maintenance`, `shortcuts`, `onelake list|read|write|mkdir|delete|move`, `dax`, `kql`, `graphql`, `environment publish|libraries`, `git status|update|commit`, `deployment list|stages|deploy`, `auth status|sp ...`, `plan`, `api <tool>`.
+`workspaces`, `workspace show|roles|create|assign-capacity`, `spark sessions|app|logs|stop`, `livy run`, `failures`, `sql`, `connection create|update|delete`, `udf invoke`, `notebook-test prepare|run|verify`, `dbt detect|results|scaffold|run|upload|save-job|get-job`, `capacities`, `connections`, `gateways`, `items`, `item show|definition|create|update|rename|delete`, `jobs`, `job show|cancel|logs`, `status`, `run [--cancel]`, `logs`, `schedules`, `lakehouse tables|files|load|maintenance`, `shortcuts`, `onelake list|read|write|mkdir|delete|move`, `dax`, `kql`, `graphql`, `environment publish|libraries`, `git status|update|commit`, `deployment list|stages|deploy`, `auth status|sp ...`, `plan`, `api <tool>`.
 
 ## Tools
 

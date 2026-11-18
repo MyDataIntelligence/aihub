@@ -196,8 +196,9 @@ endpoint through ODBC 18 (pyodbc with an Entra token). Everything was deleted at
 | `run` a DataPipeline (Wait) + `logs` | Completed in 17 s, activity run `wait_five (Wait): Succeeded, 5s` | REST jobs |
 | `run` the pipeline with a notebook activity + `logs`; the same when the capacity was full | Completed; activity run `run_nb_ok (TridentNotebook): Succeeded`; failed case: chain pipeline -> activity -> Spark session, cause `capacity` | REST jobs |
 | `logs --workspace W --since 1h --status failed` | showed 0 runs before fix 3, 4 runs after | REST jobs (4 failed) |
+| `spark stop --all-mine --dry-run` / `--session` (Livy session DELETE, notebook job cancel, dev/feature workspaces only; `fabric run` names it on TooManyRequestsForCapacity) | dry-run live ok; stop covered by unit tests (no active session left to stop) | |
 | `sql` read-only: guard (`delete from ...` refused: only SELECT/WITH), `--dry-run` | ok | |
-| `sql` SELECT on the lakehouse SQL endpoint | **not working on this machine**: the TDS handshake is closed by the endpoint after the TLS hello for tedious 18.6 on Node 22.17 (TLS 1.2 only, strict, other cipher lists tried); the same query through ODBC 18 returns the 3 rows. Now a one-line error instead of a stack trace (fix 5) | ODBC 18 + Entra token: `[(1,'alpha'),(2,'beta'),(3,'gamma')]` |
+| `sql` SELECT on the lakehouse SQL endpoint | **ok on Windows through the fallback** (2026-11-18, own workspace `aihub-test-dev-20261118b`): tedious (16, 18, 19) still gets its connection closed by the endpoint, so on Windows `aihub fabric sql` retries the same read-only query through .NET SqlClient (Windows PowerShell, token and query in environment variables) and returns the rows (`select name from sys.schemas` gives dbo, sys). Also fixed: the SQL, Power BI and Kusto tokens shared the OneLake token cache file, so a cached storage token could be sent to the SQL endpoint. Outside Windows only tedious is tried | ODBC 18 and .NET SqlClient with the Entra token return the rows |
 | `git status` of an unconnected workspace | clear message `Workspace not connected to Git.` (Fabric's text, HTTP 400) | |
 | `auth status` | `signed-in user (az login)`, service principals: none; SP live skipped (none registered, no secret supplied) | |
 | `dax`, `kql` | skipped: they need a semantic model / KQL database with data, which a cheap synthetic workspace does not have | |
@@ -244,3 +245,5 @@ Cleanup: PRs !1077 (earlier check), !1086, !1087, !1088, !1089 abandoned; all fe
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
+
+Workspace `aihub-test-dev-20261118b` (second round, sql fix, spark stop) was deleted on 2026-11-18 with `fabric workspace delete --yes`; the Fabric API answers WorkspaceNotFound for its id.
