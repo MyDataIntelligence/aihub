@@ -287,6 +287,15 @@ account, `fabric deployment list` says so); new and deleted items are covered by
 Cleanup: PRs !1091 (merged into a test branch) and !1098 (abandoned), every `live-3f2a` branch, story 3402 and the workspaces; `az`, `git ls-remote` and `fabric workspaces --filter 3f2a` show nothing. Proof PNGs (rendered summaries):
 `20261118-2115-L-data-diff.png`, `20261118-2115-L-release-env.png`.
 
+## PR gold-standard helpers live (2026-11-18)
+
+In ferron-test on a PR into `ci-checks-demo` (a branch with a blocking Build policy; the change fails ruff on purpose so nothing can merge), `team.yaml` with `pullRequest.afterCreate: {storyState: Doing, autoComplete: true}`:
+`aihub pr create` printed "after create: story AB#3409 -> Doing; auto-complete set, it merges when: Build (ruff) is queued" (`az boards`: state Doing; `az repos pr show`: active, autoCompleteSetBy set).
+`aihub pr tests add --from-run 266` and `--from-robot 15` created the table of the Tests section with a row each (name, result `pass`, link, duration `12s` / `32s`) as the description shows (`az repos pr show`).
+`aihub pr comment --closed --title "Looptijd per stap" --link-section Tests` posted thread 1906 with status `closed` (REST) and the section got `Details: [Looptijd per stap](...?_a=overview&discussionId=1906)`.
+Not live: `--from-fabric-job` (the Fabric test workspaces had been deleted; unit tested against a faked Fabric API). Cleanup: PR abandoned (auto-complete gone), branch and story deleted; `az` and `ls-remote` empty.
+Proof PNG (rendered summary): `20261118-2230-L-pr-gold-helpers.png`.
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
