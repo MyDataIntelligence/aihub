@@ -6,6 +6,7 @@ permission:
     "*": ask
     "aihub": allow
     "aihub *": allow
+    "cat *": allow
     "git *": allow
     "az repos *": allow
     "az boards *": allow

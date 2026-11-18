@@ -84,7 +84,7 @@ export function summarizeBody(body: unknown): string {
 }
 
 /** POST endpoints that only read (queries); they run even in a dry-run. */
-const READ_POSTS = /wiql|workitemsbatch|\/search|pullrequestquery|\/queries|\/reporting/i;
+const READ_POSTS = /wiql|workitemsbatch|(^|\/)search\/|pullrequestquery|\/queries|\/reporting|pagesbatch/i;
 
 export function isRestWrite(method: string, path: string): boolean {
   if (method === "GET" || method === "HEAD") return false;

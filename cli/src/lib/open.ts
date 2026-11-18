@@ -16,6 +16,8 @@ export interface OpenEvent {
   message: string;
   /** First message for the resumed session. */
   prompt: string;
+  /** The agent to start the chat with (opencode and Claude Code `--agent`), e.g. aihub. */
+  agent?: string;
   at: number;
 }
 
@@ -116,11 +118,11 @@ const ps = (s: string) => `'${s.replace(/'/g, "''")}'`;
 export function resumeArgs(ev: OpenEvent): string[] | undefined {
   switch (ev.client) {
     case "opencode":
-      return ["opencode", ...(ev.session ? ["--session", ev.session] : ["--continue"]), "--prompt", ev.prompt];
+      return ["opencode", ...(ev.session ? ["--session", ev.session] : ["--continue"]), ...(ev.agent ? ["--agent", ev.agent] : []), "--prompt", ev.prompt];
     case "codex":
       return ev.session ? ["codex", "resume", ev.session, ev.prompt] : ["codex", "resume", "--last", ev.prompt];
     case "claude":
-      return ev.session ? ["claude", "--resume", ev.session, ev.prompt] : ["claude", "--continue", ev.prompt];
+      return ev.session ? ["claude", "--resume", ev.session, ...(ev.agent ? ["--agent", ev.agent] : []), ev.prompt] : ["claude", "--continue", ...(ev.agent ? ["--agent", ev.agent] : []), ev.prompt];
     default:
       return undefined;
   }
