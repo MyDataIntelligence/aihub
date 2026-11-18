@@ -86,7 +86,7 @@ export const VERSION = cliVersion();
 export const HELP: Record<string, string> = {
   "cherry-pick": 'aihub cherry-pick --from <pr N|url|commit sha|story id> --to <branch> [--to <branch>...|--to-group <name>] [--summary-text "<1-2 sentences>"] [--no-pr|--direct]\n    Cherry-picks in a temp worktree, pushes a cherry-pick/... branch per target and opens a PR per target (template, story link) unless --no-pr.',
   comments: "aihub comments get [--pr <url|N>]\naihub comments reply [--pr <url|N>] --replies-file replies.yaml\n    replies.yaml: a list of {threadId, text, status} with status fixed|wontFix|closed|active (thread: and resolve: true also work).",
-  story: 'aihub story create --title "<title>" --body-file story.md   (sections of the team story template; write all of them)',
+  story: "aihub story template   (prints the team story template: the headings to use)\naihub story create --title \"<title>\" --body-file story.md   (one ## <heading> section per template heading, all filled)",
   branch: "aihub branch update [--branch B] [--target T] [--rebase]",
 };
 

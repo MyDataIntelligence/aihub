@@ -103,3 +103,15 @@ describe("story show and refine", () => {
     expect(desc).toContain("Als gebruiker zoek ik.");
   });
 });
+
+describe("aihub story template", () => {
+  it("prints the team story template of the repo (headings and hints) so a body can use them", async () => {
+    const { dir } = makeRepo();
+    write(dir, ".agents/skills/_shared/references/team.yaml", "workItems:\n  storyTemplate: .agents/skills/_shared/assets/story-template.md\n");
+    write(dir, ".agents/skills/_shared/assets/story-template.md", "## Context\n\n## User story\nAs a <role> I want <goal> so that <reason>.\n");
+    const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
+    expect(await main(["story", "template"], ctx)).toBe(0);
+    expect(lines.join("\n")).toContain("## User story");
+    expect(lines.join("\n")).toContain("As a <role>");
+  });
+});
