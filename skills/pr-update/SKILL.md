@@ -1,6 +1,6 @@
 ---
 name: pr-update
-description: "Use when an open pull request needs new content: 'update de PR', 'werk de PR bij', 'voeg onder <sectie> toe', a dev.azure.com pullrequest link, '/pr-update'."
+description: "Use when an open pull request needs new content: 'update de PR', 'werk de PR bij', 'voeg onder <sectie> toe', a dev.azure.com pullrequest link, '/pr-update'. The whole task is one command: aihub pr update --pr <url|N> --section \"<heading>\" --append-text \"<text>\"."
 ---
 # Update a pull request
 

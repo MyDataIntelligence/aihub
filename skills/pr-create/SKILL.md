@@ -1,6 +1,6 @@
 ---
 name: pr-create
-description: "Use when the user wants a pull request: 'maak een PR', 'create a PR', 'open a pull request', '/pr'."
+description: "Use when the user wants a pull request: 'maak een PR', 'create a PR', 'open a pull request', '/pr'. The whole task is one command: aihub pr create --summary-text \"<1-2 sentences>\"."
 ---
 # Create a pull request
 
