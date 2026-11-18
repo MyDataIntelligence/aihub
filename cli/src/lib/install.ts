@@ -130,6 +130,13 @@ export function commandEntries(source: "opencode" | "copilot", version = cliVers
   return listFiles(src).map((rel) => ({ rel, content: stamp(rel, readPackFile(join(src, rel)), version) }));
 }
 
+/** The optional aihub agents of one client (agents/opencode or agents/copilot in the pack). */
+export function agentEntries(source: "opencode" | "copilot", version = cliVersion()): Entry[] {
+  const src = join(packRoot(), "agents", source);
+  if (!existsSync(src)) return [];
+  return listFiles(src).map((rel) => ({ rel, content: stamp(rel, readPackFile(join(src, rel)), version) }));
+}
+
 export interface ClientReport {
   client: Client;
   dir: string;
@@ -139,16 +146,26 @@ export interface ClientReport {
 export function parseClients(value: string | undefined): Client[] {
   if (!value || value === "all") return [...CLIENTS];
   if ((CLIENTS as string[]).includes(value)) return [value as Client];
-  throw new Error(`unknown client '${value}'; use opencode, github-copilot, codex or all`);
+  if (value === "copilot") return ["github-copilot"];
+  throw new Error(`unknown client '${value}'; use opencode, github-copilot (or copilot), codex or all`);
 }
 
-export function installClients(clients: Client[], env: NodeJS.ProcessEnv, opts: { global: boolean; root?: string }): ClientReport[] {
+/** Does this client already have aihub agents in its global folder? */
+export function clientHasAgents(env: NodeJS.ProcessEnv, client: Client): boolean {
+  const a = clientDirs(client, env, { global: true }).agents;
+  return !!a && Object.keys(readManifest(a.dir).files).length > 0;
+}
+
+/** `agents: false` is --no-agents; "installed" (update) refreshes agents only for clients that already have them. */
+export function installClients(clients: Client[], env: NodeJS.ProcessEnv, opts: { global: boolean; root?: string; agents?: boolean | "installed" }): ClientReport[] {
   const version = cliVersion();
   const out: ClientReport[] = [];
   for (const c of clients) {
     const d = clientDirs(c, env, opts);
     out.push({ client: c, dir: d.skills, results: installEntries(d.skills, skillEntries(version), version) });
     if (d.commands) out.push({ client: c, dir: d.commands.dir, results: installEntries(d.commands.dir, commandEntries(d.commands.source, version), version) });
+    const wantAgents = opts.agents === "installed" ? clientHasAgents(env, c) : opts.agents !== false;
+    if (d.agents && wantAgents) out.push({ client: c, dir: d.agents.dir, results: installEntries(d.agents.dir, agentEntries(d.agents.source, version), version) });
     if (c === "opencode" && opts.global) out.push({ client: c, dir: "permission", results: [ensureSkillsPermission(env)] });
   }
   return out;
@@ -160,6 +177,7 @@ export function uninstallClients(clients: Client[], env: NodeJS.ProcessEnv, opts
     const d = clientDirs(c, env, opts);
     out.push({ client: c, dir: d.skills, results: uninstallDir(d.skills) });
     if (d.commands) out.push({ client: c, dir: d.commands.dir, results: uninstallDir(d.commands.dir) });
+    if (d.agents) out.push({ client: c, dir: d.agents.dir, results: uninstallDir(d.agents.dir) });
     if (c === "opencode" && opts.global) out.push({ client: c, dir: "permission", results: [removeSkillsPermission(env)] });
   }
   return out;
@@ -197,5 +215,5 @@ export function clientHasInstall(env: NodeJS.ProcessEnv, client: Client): boolea
 
 /** Rewrite the copies of every selected client that has them from the bundled pack. */
 export function updateClients(clients: Client[], env: NodeJS.ProcessEnv): ClientReport[] {
-  return installClients(clients.filter((c) => clientHasInstall(env, c)), env, { global: true });
+  return installClients(clients.filter((c) => clientHasInstall(env, c)), env, { global: true, agents: "installed" });
 }

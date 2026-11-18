@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
 
 export interface LintOptions {
   /** Case-insensitive names that must never appear in the pack. */
@@ -82,7 +83,7 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const ABSOLUTE = /(?<![A-Za-z0-9])[A-Za-z]:\\|(?<![A-Za-z0-9])[A-Za-z]:\/(?!\/)|\/Users\/|\/home\/[a-z]|~\//;
 
-function checkText(file: string, text: string, forbidden: string[], errors: string[]): void {
+export function checkText(file: string, text: string, forbidden: string[], errors: string[]): void {
   const lower = text.toLowerCase();
   for (const f of forbidden) if (f && lower.includes(f.toLowerCase())) errors.push(`${file}: forbidden name "${f}"`);
   if (ABSOLUTE.test(text)) errors.push(`${file}: absolute path`);
@@ -161,6 +162,82 @@ export function lintSkills(skillsDir: string, opts: LintOptions = {}): string[] 
   return errors;
 }
 
+/** Agent files: valid YAML front matter, the keys each client needs, a short body that is identical for both clients, no hard-coded paths or names. */
+export const AGENT_MAX_LINES = 25;
+export const AGENT_MAX_TOKENS = 400;
+
+export function lintAgents(agentsDir: string, skillNames: string[], opts: { forbidden?: string[] } = {}): string[] {
+  const errors: string[] = [];
+  const forbidden = opts.forbidden ?? DEFAULT_FORBIDDEN;
+  const bodies = new Map<string, Map<string, string>>();
+  const sets: Array<{ kind: "opencode" | "copilot"; ext: string }> = [
+    { kind: "opencode", ext: ".md" },
+    { kind: "copilot", ext: ".agent.md" },
+  ];
+  for (const { kind, ext } of sets) {
+    const dir = path.join(agentsDir, kind);
+    if (!fs.existsSync(dir)) {
+      errors.push(`${dir}: missing`);
+      continue;
+    }
+    for (const f of fs.readdirSync(dir)) {
+      const file = path.join(dir, f);
+      if (!f.endsWith(ext)) {
+        errors.push(`${file}: agent files for ${kind} must end in ${ext}`);
+        continue;
+      }
+      const name = f.slice(0, -ext.length);
+      const text = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      checkText(file, text, forbidden, errors);
+      const m = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text);
+      if (!m) {
+        errors.push(`${file}: front matter missing`);
+        continue;
+      }
+      let fm: Record<string, unknown>;
+      try {
+        fm = (parseYaml(m[1]) ?? {}) as Record<string, unknown>;
+      } catch (e) {
+        errors.push(`${file}: front matter is not valid YAML (${(e as Error).message.split("\n")[0]})`);
+        continue;
+      }
+      const body = m[2].trim();
+      if (typeof fm.description !== "string" || !fm.description.trim()) errors.push(`${file}: description missing`);
+      if (kind === "opencode") {
+        if (fm.mode !== "primary" && fm.mode !== "subagent") errors.push(`${file}: mode must be primary or subagent`);
+        const perms = fm.permissions;
+        if (!Array.isArray(perms) || !perms.length) errors.push(`${file}: permissions must be a non-empty list`);
+        else
+          for (const [i, r] of perms.entries()) {
+            const rule = r as Record<string, unknown>;
+            if (typeof rule?.action !== "string" || typeof rule?.resource !== "string" || !["allow", "ask", "deny"].includes(rule?.effect as string)) {
+              errors.push(`${file}: permissions[${i}] needs action, resource and effect allow|ask|deny`);
+            }
+          }
+      } else {
+        if (fm.name !== name) errors.push(`${file}: name "${String(fm.name)}" must equal the file name "${name}"`);
+        if (!Array.isArray(fm.tools) || !fm.tools.length) errors.push(`${file}: tools must be a non-empty list`);
+      }
+      const lines = body.split("\n").filter((l) => l.trim()).length;
+      if (lines > AGENT_MAX_LINES) errors.push(`${file}: body is ${lines} lines, max ${AGENT_MAX_LINES}`);
+      if (tokens(body) > AGENT_MAX_TOKENS) errors.push(`${file}: body is ~${tokens(body)} tokens, max ${AGENT_MAX_TOKENS}`);
+      // an agent points at skills and never repeats them: every skill it names must exist
+      for (const s of body.matchAll(/(?:skill|skills) `([a-z-]+)`|`([a-z-]+)` skill/g)) {
+        const n = s[1] ?? s[2];
+        if (!skillNames.includes(n)) errors.push(`${file}: names the skill "${n}" which does not exist`);
+      }
+      if (!bodies.has(name)) bodies.set(name, new Map());
+      bodies.get(name)!.set(kind, body);
+    }
+  }
+  for (const [name, byKind] of bodies) {
+    const [a, b] = [byKind.get("opencode"), byKind.get("copilot")];
+    if (a === undefined || b === undefined) errors.push(`agent ${name}: needs both an opencode and a copilot file`);
+    else if (a !== b) errors.push(`agent ${name}: opencode and copilot bodies differ (one text, two front matters)`);
+  }
+  return errors;
+}
+
 function main(): void {
   const args = process.argv.slice(2);
   let forbidden: string[] | undefined;
@@ -172,6 +249,11 @@ function main(): void {
   forbidden ??= process.env.AIHUB_FORBIDDEN_NAMES?.split(",").map((s) => s.trim()).filter(Boolean);
   const dir = path.resolve(rest[0] ?? "../skills");
   const errors = lintSkills(dir, { forbidden });
+  const agentsDir = path.resolve(dir, "..", "agents");
+  if (fs.existsSync(agentsDir)) {
+    const names = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith("_")).map((e) => e.name);
+    errors.push(...lintAgents(agentsDir, names, { forbidden }));
+  }
   if (errors.length) {
     for (const e of errors) console.error(e);
     console.error(`lint:skills failed with ${errors.length} error(s)`);

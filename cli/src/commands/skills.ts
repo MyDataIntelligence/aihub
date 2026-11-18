@@ -6,11 +6,12 @@ import { diffClient } from "../lib/skillsDiff.js";
 import { installClients, parseClients, uninstallClients, updateClients, type ClientReport } from "../lib/install.js";
 
 const USAGE =
-  "usage: aihub skills install|update|diff|uninstall [--client opencode|github-copilot|codex|all] [--into-repo]\n" +
-  "  install    copy the bundled skills and slash commands into each client's global folder\n" +
+  "usage: aihub skills install|update|diff|uninstall [--client opencode|github-copilot|codex|all] [--into-repo] [--no-agents]\n" +
+  "  install    copy the bundled skills and slash commands, and the optional aihub agents (opencode, github-copilot) into each client's global folder\n" +
   "  update     rewrite the copies of every client that has them from the bundled pack (files you edited stay)\n" +
   "  diff       show your edits to the installed skills (and copies behind the bundled pack)\n" +
   "  uninstall  remove only the files aihub wrote and you did not change\n" +
+  "  --no-agents  install: skip the optional aihub and aihub-runner agents (your default agent is never touched)\n" +
   "  --into-repo  use the current repository instead of the global folders (for teams that keep skills in the repo)";
 
 export function report(reports: ClientReport[], out: (l: string) => void): void {
@@ -27,7 +28,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   if (sub !== "install" && sub !== "update" && sub !== "uninstall" && sub !== "diff") throw new AihubError(USAGE);
   let v: Record<string, string | boolean | undefined>;
   try {
-    v = parseArgs({ args: rest, options: { global: { type: "boolean" }, "into-repo": { type: "boolean" }, client: { type: "string" } } }).values;
+    v = parseArgs({ args: rest, options: { global: { type: "boolean" }, "into-repo": { type: "boolean" }, "no-agents": { type: "boolean" }, client: { type: "string" } } }).values;
   } catch (e) {
     throw new AihubError((e as Error).message);
   }
@@ -58,7 +59,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     if (!any) ctx.out("no differences: installed skills match the bundled pack");
     return;
   }
-  if (sub === "install") report(installClients(clients, ctx.env, opts), ctx.out);
+  if (sub === "install") report(installClients(clients, ctx.env, { ...opts, agents: !v["no-agents"] }), ctx.out);
   else if (sub === "uninstall") report(uninstallClients(clients, ctx.env, opts), ctx.out);
   else {
     if (!opts.global) throw new AihubError("'aihub skills update' refreshes the global copies; for the repository run 'aihub skills install --into-repo' again");
