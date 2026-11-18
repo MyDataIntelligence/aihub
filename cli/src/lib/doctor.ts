@@ -8,7 +8,7 @@ import { CLIENTS, clientDirs } from "./clients.js";
 import type { Ctx } from "./context.js";
 import { originDefaultBranch, remoteUrl, repoRoot, showFile } from "./git.js";
 import { permissionState } from "./opencodePermission.js";
-import { compareVersions, installedVersion } from "./install.js";
+import { clientHasAgents, compareVersions, installedVersion } from "./install.js";
 import { cliVersion, packRoot } from "./pack.js";
 import { requiredPaths, validateTeam } from "./schema.js";
 import { defaultTargetFor, loadTeam, readUtf8, TEAM_FILE } from "./team.js";
@@ -141,6 +141,19 @@ export function runChecks(ctx: Ctx): Check[] {
           ? fix(`skills:${c}`, `stale copy, older than the CLI ${current}: ${where}`, "run 'aihub skills update'")
           : ok(`skills:${c}`, where),
     );
+    if (clientDirs(c, ctx.env, { global: true }).agents) {
+      // the agents are optional: not installed is fine, a stale copy is not
+      const dir = clientDirs(c, ctx.env, { global: true }).agents!.dir;
+      const have = clientHasAgents(ctx.env, c);
+      const v = have ? agentsVersion(dir) : undefined;
+      checks.push(
+        !have
+          ? ok(`agents:${c}`, `optional aihub agents not installed (aihub skills install --client ${c} adds them)`)
+          : v && compareVersions(v, current) < 0
+            ? fix(`agents:${c}`, `stale agents, older than the CLI ${current}: ${dir} (aihub ${v})`, "run 'aihub skills update'")
+            : ok(`agents:${c}`, `${dir} (aihub ${v ?? current})`),
+      );
+    }
     if (c === "opencode" && found.some((p) => p.label === "global")) {
       const s = permissionState(ctx.env);
       checks.push(
@@ -150,6 +163,18 @@ export function runChecks(ctx: Ctx): Check[] {
       );
     }
   }  return checks;
+}
+
+/** The aihub version in the marker of the installed aihub agent file. */
+function agentsVersion(dir: string): string | undefined {
+  for (const f of ["aihub.md", "aihub.agent.md"]) {
+    try {
+      return /<!-- aihub (\S+) -->/.exec(readFileSync(join(dir, f), "utf8"))?.[1];
+    } catch {
+      /* try the next name */
+    }
+  }
+  return undefined;
 }
 
 export function formatChecks(checks: Check[]): string[] {
