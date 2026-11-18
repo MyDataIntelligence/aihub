@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
 
 export interface LintOptions {
   /** Case-insensitive names that must never appear in the pack. */
@@ -112,6 +113,15 @@ export function lintSkills(skillsDir: string, opts: LintOptions = {}): string[] 
     const text = fs.readFileSync(file, "utf8");
     // `npx skills add` copies each skill folder on its own: a link into _shared (or any underscore folder) would not exist there
     if (/\]\(\.\.\/_/.test(text)) errors.push(`${file}: links into an underscore folder (_shared); a skill must be self-contained`);
+    // a strict YAML reader (Codex) refuses a skill whose front matter is not valid YAML, e.g. unescaped quotes inside a quoted description
+    const rawFm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+    if (rawFm) {
+      try {
+        parseYaml(rawFm[1]);
+      } catch (e) {
+        errors.push(`${file}: front matter is not valid YAML (${(e as Error).message.split("\n")[0]})`);
+      }
+    }
     const fm = parseFrontMatter(text);
     if (!fm) {
       errors.push(`${file}: front matter missing`);

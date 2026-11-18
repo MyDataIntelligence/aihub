@@ -99,3 +99,14 @@ describe("the real pack", () => {
     }
   });
 });
+
+describe("front matter must be valid YAML (Codex refused pr-watch for unescaped quotes)", () => {
+  it("flags a double-quoted description with unescaped double quotes inside", () => {
+    const bad = good().replace('description: "Use when testing"', 'description: "Use when testing, "laat me weten" please"');
+    expect(lintSkills(pack("demo", bad)).join("\n")).toMatch(/front matter is not valid YAML/);
+  });
+  it("accepts single quotes inside a double-quoted description", () => {
+    const ok = good().replace('description: "Use when testing"', "description: \"Use when testing, 'laat me weten' please\"");
+    expect(lintSkills(pack("demo", ok)).join("\n")).not.toMatch(/valid YAML/);
+  });
+});

@@ -1,6 +1,6 @@
 ---
 name: pr-watch
-description: "Use when a PR or build must be followed: 'watch the PR', 'volg de build', 'is de pipeline groen', '/watch', a dev.azure.com pullrequest link, "laat me weten als iets mijn reactie nodig heeft"."
+description: "Use when a PR or build must be followed: 'watch the PR', 'volg de build', 'is de pipeline groen', '/watch', a dev.azure.com pullrequest link, 'laat me weten als iets mijn reactie nodig heeft'."
 ---
 # Watch a PR or pipeline
 
