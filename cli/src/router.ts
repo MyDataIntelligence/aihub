@@ -43,6 +43,7 @@ import * as library from "./commands/library.js";
 import * as testCmd from "./commands/test.js";
 import * as probe from "./commands/probe.js";
 import * as research from "./commands/research.js";
+import * as learn from "./commands/learn.js";
 import * as legacy from "./commands/legacy.js";
 import * as fixCmd from "./commands/fix.js";
 import * as teamCmd from "./commands/team.js";
@@ -106,6 +107,7 @@ export const commands: Record<string, CommandFn> = {
   team: teamCmd.run,
   probe: probe.run,
   research: research.run,
+  learn: learn.run,
   standup: standupCmd.run,
   handoff: handoffCmd.run,
 };
@@ -121,6 +123,7 @@ export const HELP: Record<string, string> = {
   test: testCmd.TEST_USAGE,
   probe: probe.PROBE_USAGE,
   research: research.RESEARCH_USAGE,
+  learn: learn.LEARN_USAGE,
 };
 
 /**
