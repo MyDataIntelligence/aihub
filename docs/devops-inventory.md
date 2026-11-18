@@ -87,14 +87,14 @@ Column **Old Hub** names the legacy tool (`-` = the old Hub did not have it). Co
 | Runs: list, status, follow, logs, search logs | pipeline_list_runs, pipeline_status, pipeline_get_failure, pipeline_get_logs, pipeline_search_logs, pipeline_follow | `build/builds`, `timeline`, `logs` | `aihub pipeline runs|status|follow|logs` | exists |
 | Run a pipeline (branch, parameters) | pipeline_run | POST `pipelines/{id}/runs` | `aihub pipeline run` | exists |
 | Retry a failed stage | pipeline_retry_stage | PATCH `build/builds/{id}/stages/{stage}` | `aihub pipeline retry` | exists |
-| Cancel a run | pipeline_cancel | PATCH `build/builds/{id}` cancelling | `aihub pipeline cancel` | built (unit only: no way to keep a run queued on the test project; a completed run is read live) |
+| Cancel a run | pipeline_cancel | PATCH `build/builds/{id}` cancelling | `aihub pipeline cancel` | built, live (run 280 cancelled while waiting for an approval) |
 | Watch a run and notify | pipeline_watch, pipeline_unwatch | polling | `aihub watch` | exists |
 | Preview / validate YAML (expanded YAML, errors) | pipeline_preview_yaml | POST `pipelines/{id}/runs` previewRun | `aihub pipeline validate` | built |
-| Artifacts: list and download | pipeline_download_artifact | `build/builds/{id}/artifacts` | `aihub pipeline artifacts list|download` | built (unit only: no run with artifacts in the test project; download is unit only) |
+| Artifacts: list and download | pipeline_download_artifact | `build/builds/{id}/artifacts` | `aihub pipeline artifacts list|download` | built, live (list and download of a pipeline artifact; download was refused before the artifacts-host fix) |
 | Test results of a run | test_publish_results (write) | `test/runs`, `test/results` | `aihub testplan runs|results` | built |
 | Environments: list, show, create | pipeline_list_environments | `pipelines/environments` | `aihub pipeline env list|show|create` | built |
 | Environment deployments (what ran where) | pipeline_environment_deployments | `pipelines/environments/{id}/environmentdeploymentrecords` | `aihub pipeline env deployments` | built |
-| Approvals and checks: list | pipeline_list_approvals, pipeline_list_checks | `pipelines/approvals`, `pipelines/checks/configurations` | `aihub pipeline approvals list`, `pipeline env checks` | built |
+| Approvals and checks: list | pipeline_list_approvals, pipeline_list_checks | `pipelines/approvals`, `pipelines/checks/configurations` | `aihub pipeline approvals list`, `pipeline env checks` | built, live (environment found through the run timeline) |
 | Approve or reject an approval (refused for ACC/PRD unless `--allow-env`) | pipeline_approve | PATCH `pipelines/approvals` | `aihub pipeline approvals approve|reject` | exists (live in ferron-test: approve and reject on an environment with an approval check; the ACC refusal is live and unit) |
 | Variable groups = Library (see below) | pipeline_list_variable_groups, pipeline_get_variable_group, pipeline_update_variable_group | `distributedtask/variablegroups` | `aihub library ...` | built |
 | Secure files: list (metadata only, never content) | pipeline_list_secure_files | `distributedtask/securefiles` | `aihub pipeline securefiles list` | exists (live with a synthetic secure file) |
