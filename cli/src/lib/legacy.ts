@@ -738,6 +738,40 @@ export function apply(unordered: Item[]): Applied {
 }
 
 /** Folders that are empty after the removal and belong to the old Hub by name. */
+export interface Footprint {
+  /** One short phrase per kind of leftover, for example "6 old Hub skills (copilot)". Empty: no old AI Context Hub found. */
+  found: string[];
+  skills: number;
+  hooks: number;
+  rules: number;
+  cli: boolean;
+}
+
+/**
+ * Is the old AI Context Hub (its `hub` CLI, skills, rules block, agent or hooks) still on this machine? Those files make an agent
+ * run `hub call ...` even when the aihub agent is selected, so `aihub doctor` and `aihub skills install` say so.
+ * Cheap and read-only: no `code`, no registry, no repositories.
+ */
+export function legacyFootprint(env: NodeJS.ProcessEnv, cwd = process.cwd()): Footprint {
+  const none = (): Run => ({ status: 127, stdout: "", stderr: "" });
+  const s = scan({ env, cwd, repos: [], spawn: none });
+  const mine = (g: Group) => s.items.filter((i) => i.group === g);
+  const skills = mine("Skills, agents and rules").filter((i) => /skill/.test(i.what));
+  const rules = mine("Skills, agents and rules").filter((i) => !/skill/.test(i.what));
+  const hooks = mine("Hooks");
+  const pathDirs = (env.PATH ?? env.Path ?? "").split(process.platform === "win32" ? ";" : ":").filter(Boolean);
+  const onPath = pathDirs.some((d) => ["hub", "hub.cmd", "hub.ps1"].some((n) => isFile(join(d, n))) && (isFile(join(d, "HUB_COMMANDS.md")) || isFile(join(d, "lib", "hub-standalone.jar")) || /AIContextHub/i.test(d)));
+  const cli = onPath || mine("CLI package").length > 0;
+  const found: string[] = [];
+  if (cli) found.push("the old hub CLI");
+  if (skills.length) found.push(`${skills.length} old Hub skill${skills.length === 1 ? "" : "s"}`);
+  if (rules.length) found.push(`${rules.length} Hub agent/rules file${rules.length === 1 ? "" : "s"}`);
+  if (hooks.length) found.push(`${hooks.length} Hub hook${hooks.length === 1 ? "" : "s"}`);
+  return { found, skills: skills.length, hooks: hooks.length, rules: rules.length, cli };
+}
+
+export const LEGACY_FIX = "aihub legacy remove --dry-run";
+
 export function sweep(env: NodeJS.ProcessEnv): void {
   const home = env.HOME || env.USERPROFILE || homedir();
   const roots = [env.LOCALAPPDATA ? join(env.LOCALAPPDATA, "AIContextHub") : ""].filter(Boolean);

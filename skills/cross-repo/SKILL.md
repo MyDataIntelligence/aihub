@@ -10,6 +10,7 @@ The same change must also land in a second repository whose paths differ, test r
 ## Steps
 Repositories, path maps and the test target come from `team.yaml` (`repositories[]`, `crossRepo`). When the sentence names the repositories or target, run the command at once; never ask.
 
+0. What does a change reach? `aihub crossrepo impact --from 42` (PR or sha) lists the files that map into other repositories.
 1. Port a change (PR, commits or all merged PRs of a story) with path mapping, into a new branch `port/<source>-from-<repo>` of the other repo:
 
 ```sh
@@ -24,7 +25,7 @@ aihub crossrepo test-resources --from-repo test-project --to-repo test-developer
 
 3. Story spanning repos: `aihub crossrepo status --story 7`, then `aihub crossrepo link-prs --story 7`.
 
-Example: "zet PR 42 ook in test-developers" gives the first command; show the new PR link and the files that were not ported.
+Example: "zet PR 42 ook in test-developers": run the port command, show the PR link and the files not ported.
 
 ## What the CLI fills
 Clone location, default target branch, isolated worktree (your checkout is never touched), path rewriting, commit message, push, PR template, work item link, related-PR sections. Defaults for `--map`, `--target`, `--paths` come from `crossRepo`.

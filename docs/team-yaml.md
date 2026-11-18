@@ -80,6 +80,27 @@ uncommitted and untracked files) and with `--run` runs only those. Without `test
 files that import the module; for JS/TS `<name>.test.ts`, `<name>.spec.ts` and specs that import the file; a changed test file runs itself. Code without a test is
 listed, docs and config are ignored, and it never falls back to the whole suite: the pipeline runs that.
 
+## After a pull request is created (optional)
+
+```yaml
+pullRequest:
+  afterCreate:
+    storyState: Review      # the linked story moves to this state
+    autoComplete: true      # auto-complete when the target branch has a blocking policy; never bypasses a policy
+```
+
+`aihub pr create` does this right after a NEW pull request exists (not when it only updates one). A failure never undoes the PR, it is reported on the result line
+("story state not set: ..." lists the states of the process). Without a blocking policy on the target branch auto-complete is not requested, because Azure DevOps would
+merge the PR at once.
+
+## PR helpers: detail comment and test evidence
+
+- `aihub pr comment [--pr N] --title "<what>" (--text <markdown>|--body-file f) [--closed] [--link-section <section>]` posts a detail comment as a thread (`--closed`: already resolved) and adds
+  `Details: [<title>](<PR url>?_a=overview&discussionId=<thread>)` to the section, so long output stays out of the description.
+- `aihub pr tests add [--pr N] --from-run <build> | --from-robot <build> | --from-fabric-job <workspace>/<item>/<job> [--name <n>]` adds one row to the test table of the PR from the REAL run: name, result
+  (pass, fail or partial, from the run, with the test counts when Azure DevOps has them), link and duration. The template's placeholder row and the "Not run yet." line make room for it; the same run is
+  refreshed, never duplicated; a run that is still going is refused.
+
 ## Data before/after in the PR (optional)
 
 ```yaml
@@ -204,5 +225,6 @@ crossRepo:                               # settings for `aihub port` and `aihub 
 | `crossRepo.pathMaps` | Named lists of `from`/`to` directory prefixes. The longest `from` wins; files outside every map are reported, never dropped silently. `aihub port --path-map "src=>dst"` adds an ad-hoc map. |
 | `crossRepo.testTarget` | Repository and active branch that `aihub crossrepo test-resources` pushes to when `--to-repo`/`--target` are absent. |
 | `crossRepo.testResources` | Source repository, glob list and optional target directory prefix for the same command. |
+| `.agents/skills/_shared/references/known-fixes.md` | Errors the team fixed before (heading = error line, body = fix). Created by `aihub fix remember` through a pull request, read by `aihub fix known` and the pipeline-fix skill. `aihub team learn` appends rules to the first file under `guidelines:` (else `team-knowledge.md` next to it) the same way. |
 
-`aihub port` writes a new branch `port/<source>-from-<repo>` in the target repository (a conflict pushes nothing); `aihub crossrepo status|link-prs --story N` follow a story over several repositories. See the `cross-repo` skill.
+`aihub port` writes a new branch `port/<source>-from-<repo>` in the target repository (a conflict pushes nothing); `aihub crossrepo impact --from <pr|sha>` shows which files a change reaches in the other repositories (read-only); `aihub crossrepo status|link-prs --story N` follow a story over several repositories. See the `cross-repo` skill.

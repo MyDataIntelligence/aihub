@@ -5,23 +5,23 @@ description: "Use when the user asks whether something can be done: 'kan dit?', 
 # Is this possible? Research it, then answer
 
 ## When
-An idea about what Fabric, Azure DevOps or another service can do. Research it; never answer from memory.
+An idea about what Fabric or Azure DevOps can do. Research it, never guess.
 
 ## Steps
-1. Restate the question in one line.
-2. Research three angles, in parallel with the `aihub-researcher` subagent if your client has subagents, else one after the other:
-   - **Docs**: Microsoft Learn, REST reference, release notes, roadmap, known limits.
-   - **Community**: GitHub issues, Microsoft Q&A, Stack Overflow, Reddit. Note each date.
-   - **Live probes** on the user's tenant, read-only: `aihub probe fabric endpoint workspaces/{workspace}/copyJobs` (no leading slash), `aihub probe fabric capacity`, `aihub probe devops feature`, `aihub probe api --get <docs url>`.
-3. A proof of concept only after one yes from the user, in an `aihub-test-dev-*` Fabric workspace or synthetic Azure DevOps objects, cleaned up afterwards.
-4. Answer in the team language with exactly these headings: **Verdict** (Ja / Nee / Deels, with workaround), **Hoe**, **Bewijs** (probe output, PoC), **Bronnen** (link and date), **Grenzen en risico's**, **Inschatting inspanning**, **Open vragen**. Mark what has no source or probe as `niet geverifieerd`.
-5. Offer `aihub research save --file report.md`; add `--wiki <page>` only after a yes.
+1. Restate the question in one line, and first run `aihub research template > report.md`: your answer is that file, filled in.
+2. Research three angles for Fabric and Azure DevOps both, in parallel with `aihub-researcher` subagents if available:
+   - **Docs**: Microsoft Learn, REST reference, release notes, roadmap, limits.
+   - **Community**: GitHub issues, Q&A, Stack Overflow, Reddit, each with its date.
+   - **Live probes**, read-only: `aihub probe fabric endpoint workspaces/{workspace}/copyJobs` (no leading slash), `aihub probe fabric capacity`, `aihub probe devops feature pipelines`, `aihub probe api --get <docs url>`.
+3. A proof of concept only after one yes, in an `aihub-test-dev-*` workspace or synthetic Azure DevOps objects, cleaned up.
+4. Fill every section of `report.md` in the team language, none left out; **Waar hoort het** covers Fabric, Azure DevOps and Samen and ends with one advice line (`references/where.md`). Mark what has no source or probe `niet geverifieerd`. Then show the file.
+5. `aihub research save --file report.md` checks the headings and keeps the report; `--wiki <page>` only after a yes.
 
 ## What the CLI fills
-Probes use the user's own sign-in and print YES, NO or UNKNOWN with the raw status and the answer shape, never item contents.
+Probes use the user's sign-in and print YES, NO or UNKNOWN with the raw status, never item contents.
 
 ## If it fails
-Not signed in: `aihub doctor`. UNKNOWN is not NO: a 403 is a permission or tenant setting, report it as open.
+Not signed in: `aihub doctor`. UNKNOWN is not NO: report a 403 as open.
 
 ## Example
 "Kan een variable library per stage andere waarden hebben?"
@@ -29,4 +29,4 @@ Not signed in: `aihub doctor`. UNKNOWN is not NO: a 403 is a permission or tenan
 aihub probe fabric capacity --feature variablelibrary
 aihub probe api --get https://learn.microsoft.com/fabric/cicd/variable-library/variable-library-overview
 ```
-YES: the item type exists here. The docs excerpt gives the rule. Verdict: Ja, with the page date.
+YES: the item type exists here; the docs excerpt gives the rule. Verdict: Ja.

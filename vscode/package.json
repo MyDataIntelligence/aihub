@@ -40,6 +40,11 @@
           "id": "aihub.worktreeSets",
           "name": "Worktree Sets",
           "visibility": "collapsed"
+        },
+        {
+          "id": "aihub.learn",
+          "name": "Learn",
+          "visibility": "collapsed"
         }
       ],
       "aihubBar": [
@@ -316,6 +321,32 @@
         "command": "aihub.thread.reply",
         "title": "Reply",
         "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.learn.open",
+        "title": "Learn: Open a lesson",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.learn.tour",
+        "title": "Learn: Guided tour of a lesson",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.learn.refresh",
+        "title": "Learn: Refresh",
+        "category": "AI Context Hub",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "aihub.learn.forget",
+        "title": "Learn: Remove a lesson",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.learn.markConcept",
+        "title": "Learn: Mark concept as learned / open",
+        "category": "AI Context Hub"
       }
     ],
     "configuration": {
@@ -557,6 +588,11 @@
           "command": "aihub.worktrees.deleteGroup",
           "when": "view == aihub.worktreeSets",
           "group": "2_groups@2"
+        },
+        {
+          "command": "aihub.learn.refresh",
+          "when": "view == aihub.learn",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -604,6 +640,21 @@
           "command": "aihub.worktrees.removeRepoFromSet",
           "when": "view == aihub.worktreeSets && viewItem == aihubSetRepo",
           "group": "9_remove@1"
+        },
+        {
+          "command": "aihub.learn.tour",
+          "when": "view == aihub.learn && viewItem == aihubLesson",
+          "group": "1_learn@1"
+        },
+        {
+          "command": "aihub.learn.forget",
+          "when": "view == aihub.learn && viewItem == aihubLesson",
+          "group": "9_remove@1"
+        },
+        {
+          "command": "aihub.learn.markConcept",
+          "when": "view == aihub.learn && viewItem == aihubLearnConcept",
+          "group": "1_learn@1"
         }
       ],
       "aihub.cm.DevOps": [
@@ -759,6 +810,10 @@
       {
         "view": "aihub.worktreeSets",
         "contents": "No worktree sets yet.\n[Create worktrees](command:aihub.worktrees.create)\nOne branch in several repositories, in one folder and one workspace."
+      },
+      {
+        "view": "aihub.learn",
+        "contents": "No lessons yet.\nAsk your chat for /leer on a pull request or branch: it explains the change with pictures and saves it here, in your personal store."
       }
     ]
   },
@@ -774,6 +829,7 @@
     "@vscode/codicons": "^0.0.46-24",
     "@vscode/vsce": "^3.2.1",
     "esbuild": "^0.24.0",
+    "mermaid": "^11.17.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
   }

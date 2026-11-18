@@ -4,6 +4,7 @@ import { AihubError } from "../lib/errors.js";
 import { repoRoot } from "../lib/git.js";
 import { diffClient } from "../lib/skillsDiff.js";
 import { installClients, parseClients, uninstallClients, updateClients, type ClientReport } from "../lib/install.js";
+import { LEGACY_FIX, legacyFootprint } from "../lib/legacy.js";
 
 const USAGE =
   "usage: aihub skills install|update|diff|uninstall [--client opencode|github-copilot|codex|claude|all] [--into-repo] [--no-agents]\n" +
@@ -59,7 +60,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     if (!any) ctx.out("no differences: installed skills match the bundled pack");
     return;
   }
-  if (sub === "install") report(installClients(clients, ctx.env, { ...opts, agents: !v["no-agents"] }), ctx.out);
+  if (sub === "install") {
+    report(installClients(clients, ctx.env, { ...opts, agents: !v["no-agents"] }), ctx.out);
+    for (const line of installNotes(ctx, clients)) ctx.out(line);
+  }
   else if (sub === "uninstall") report(uninstallClients(clients, ctx.env, opts), ctx.out);
   else {
     if (!opts.global) throw new AihubError("'aihub skills update' refreshes the global copies; for the repository run 'aihub skills install --into-repo' again");
@@ -67,4 +71,19 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     if (!r.length) throw new AihubError("no client has aihub skills yet; run 'aihub skills install'");
     report(r, ctx.out);
   }
+}
+/** Lines printed after `aihub skills install`: the old Hub still wins in the agents, and how each client auto-approves commands. */
+function installNotes(ctx: Ctx, clients: string[]): string[] {
+  const out: string[] = [];
+  try {
+    const old = legacyFootprint(ctx.env, ctx.cwd);
+    if (old.found.length) out.push(`warning: the old AI Context Hub is still installed (${old.found.join(", ")}); agents keep running 'hub call' instead of aihub. Run: ${LEGACY_FIX}`);
+  } catch {
+    /* never fail an install because of this check */
+  }
+  if (clients.includes("opencode")) out.push("note: the opencode aihub agent runs commands without asking (git push to main/staging/release, force pushes and a short dangerous list are denied)");
+  if (clients.includes("github-copilot")) out.push('note: Copilot and VS Code ask before each terminal command; set "chat.tools.terminal.autoApprove" in your user settings, for example {"/^(aihub|git|az|npm|python|dbt)\\b/": true, "/^git push\\b.*(--force|\\s-f\\b)/": false} (docs/agents.md)');
+  if (clients.includes("codex")) out.push('note: Codex asks per session; use a profile with approval_policy = "never" and sandbox_mode = "workspace-write" (docs/agents.md)');
+  if (clients.includes("claude")) out.push('note: Claude Code: add "permissions": {"allow": ["Bash(aihub:*)", "Bash(git:*)", "Bash(python:*)"], "deny": ["Bash(git push --force:*)"]} to settings.json (docs/agents.md)');
+  return out;
 }

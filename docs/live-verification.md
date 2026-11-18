@@ -296,8 +296,59 @@ Policy check after the earlier mishap: the original Ruff build policy of `test-p
 
 Cleanup: PRs !1100 and !1101 abandoned, both `feature/3410-...` branches deleted, story 3410 deleted, the worktree set removed. Proof: `20261118-2230-L-whole-set.png` and `20261118-2230-L-whole-set-transcript.txt` in the proof folder of the benchmark machine.
 
+## Data before/after and the environment release plan (2026-11-18)
+
+**`aihub pr data-diff`** live: two own Fabric dev workspaces on the trial capacity (`aihub-test-dev-3f2a-base` / `-feat`, a Lakehouse `lh_orders` each, a table `orders` loaded from a 4-row and a 6-row CSV), PR !1098 in ferron-test, `team.yaml` with
+`fabric.workspaces` (target branch -> base, `feature/*` -> feat) and `dataChecks` on `dbo.orders`. The output (SQL endpoint) was count 4 -> 6 (+2, +50%), nulls_customer_id 0 -> 1, sum_amount 375.75 -> 715.75 (+340), distinct_customer_id 3 -> 4;
+second source: the two input CSVs computed separately (identical numbers). `--write` put the table, the verdict and the "Measured (read-only)" line in the PR section "Data before/after" (checked with `az repos pr show`);
+`--baseline ACC-shared` was refused before any call. Not live: the Livy fallback (the capacity's Spark was full, HTTP 430 `TooManyRequestsForCapacity`; unit tested with an injected runner).
+Bugs found live and fixed: (1) a lakehouse name is ambiguous with its SQL endpoint, `fabric sql --item lh_orders` failed: `dataChecks.itemType` (default Lakehouse) is always passed as `--type` (PR #98); (2) a stale cached token made OneLake answer
+"not signed in" until the cache file was deleted: a 401 now drops the cache and retries once (PR #91). Table loads need Spark: on the trial capacity they waited for free Spark compute for about 25 minutes. Both workspaces and lakehouses were deleted afterwards (the workspaces filter shows nothing).
+
+**`aihub release plan --from DEV --to ACC`** live (git side): branches `live-3f2a/dev` and `live-3f2a/acc` in ferron-test, story 3402, PR !1091 adding `nb_live.Notebook/` completed into the dev branch, `fabric.environments` DEV/ACC in team.yaml. The plan listed
+1 commit, 1 PR, the item `Notebook nb_live` as changed with `PRs !1091` and `stories AB#3402`, the cherry-pick list and release notes; `--out` wrote a plan with the merge commit that `aihub release run` can execute. Bug found live and fixed (PR #89):
+a GET of the pull request does not list `workItemRefs`, the first run showed 0 stories; the stories now come from `/pullrequests/<id>/workitems`. Not live: the Fabric deployment pipeline compare (no deployment pipeline is visible to this
+account, `fabric deployment list` says so); new and deleted items are covered by tests with an injected stage reader, and without a pipeline the plan says "git only".
+
+Cleanup: PRs !1091 (merged into a test branch) and !1098 (abandoned), every `live-3f2a` branch, story 3402 and the workspaces; `az`, `git ls-remote` and `fabric workspaces --filter 3f2a` show nothing. Proof PNGs (rendered summaries):
+`20261118-2115-L-data-diff.png`, `20261118-2115-L-release-env.png`.
+
+## PR gold-standard helpers live (2026-11-18)
+
+In ferron-test on a PR into `ci-checks-demo` (a branch with a blocking Build policy; the change fails ruff on purpose so nothing can merge), `team.yaml` with `pullRequest.afterCreate: {storyState: Doing, autoComplete: true}`:
+`aihub pr create` printed "after create: story AB#3409 -> Doing; auto-complete set, it merges when: Build (ruff) is queued" (`az boards`: state Doing; `az repos pr show`: active, autoCompleteSetBy set).
+`aihub pr tests add --from-run 266` and `--from-robot 15` created the table of the Tests section with a row each (name, result `pass`, link, duration `12s` / `32s`) as the description shows (`az repos pr show`).
+`aihub pr comment --closed --title "Looptijd per stap" --link-section Tests` posted thread 1906 with status `closed` (REST) and the section got `Details: [Looptijd per stap](...?_a=overview&discussionId=1906)`.
+Not live: `--from-fabric-job` (the Fabric test workspaces had been deleted; unit tested against a faked Fabric API). Cleanup: PR abandoned (auto-complete gone), branch and story deleted; `az` and `ls-remote` empty.
+Proof PNG (rendered summary): `20261118-2230-L-pr-gold-helpers.png`.
+## dbt (2026-11-18)
+
+**`aihub dbt ...`** live against a synthetic project (`shop`, dbt-core 1.12.7 + dbt-duckdb 1.11.1 in a scratch venv, never a work repo): 5 models (2 staging views, 3 marts), 2 seeds, 1 source with freshness, 1 exposure (`meta.fabric_item`), 11 data tests (two fail on purpose: a null `amount`, a `cancelled` status) and a unit test; git branch `feature/amount-fix` with one changed model against `main`.
+Run, with the real output checked against dbt's own `run_results.json` and `dbt ls`: `detect`, `check`, `build` (exit 1, 1 fail, 8 skipped), `failures` (compiled SQL and the first failing rows from `dbt show`; run_results.json stays intact because samples go to `target/aihub-show`), `lineage`, `impact` (files mode: `stg_orders` changed, 3 downstream models, 7 tests, the exposure and its Fabric item `Revenue report`), `impact --state auto` (merge base parsed in a temporary worktree, dbt's `state:modified+` gave the same sets), `test changed --run` (ran `aihub dbt build --select stg_orders+`), `yaml check`, `yaml scaffold <model> --write` and `--unit-test --write` (the entry was added to the existing `schema.yml` and `dbt test --select test_type:unit` ran it: the skeleton fails until the expected rows are filled, as intended), `freshness`, `ls`, `show --inline`. A profile target of adapter `fabric` made `aihub dbt build --target fab` stop before dbt ran, with the pointer to `aihub fabric dbt run`; `freshness` still ran.
+**`impact --write`** live on a synthetic PR in ferron-test: branches `live-d4e1/base` (dbt project) and `live-d4e1/feature` (one changed model), PR !1102; `aihub dbt impact --project dbt-live --write` put the section "dbt impact" (changed model, 3 downstream models, tests, exposure with its Fabric item) in the description, the existing "Wijzigingen" section stayed intact (`az repos pr show`), a second run replaced the section instead of adding one; PR abandoned, both branches deleted (`git ls-remote` shows none).
+Bugs found live and fixed: `dbt --version` took `--project-dir` and failed (version never shown); `dbt show` of a sample overwrote `run_results.json` (samples now use their own target path); `dbt show --select <model>` also previewed the model's tests (`--indirect-selection empty`); the global `--dry-run` simulation swallowed the command's own dry-run; on Windows with `core.autocrlf=true` `--state auto` flagged files with other line endings (fixed: both sides are parsed from LF copies; rechecked live with autocrlf=true and a CRLF file). Proof PNG: `20261118-2209-D-dbt.png`.
+Not live: the Fabric adapters (`fabric`, `fabricspark`; only the guard and the profile checks are exercised, the workspace-guarded run stays `aihub fabric dbt run`); HTTP 430 handling (unit tested).
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
 
 Workspace `aihub-test-dev-20261118b` (second round, sql fix, spark stop) was deleted on 2026-11-18 with `fabric workspace delete --yes`; the Fabric API answers WorkspaceNotFound for its id.
+
+## `aihub watch --run` and `--fabric-job` live (2026-11-18)
+
+- **Toast with the Fix button.** `watch --run` on build 239 (failed, feature branch, ferron-test) with `--notify` raised a real Windows toast (Do Not Disturb was on, so it sat in the notification centre): `aihub: run 239 (AI-Context-Hub-Ruff-Check) failed on feature/1915-story-run-herhaling` with a **Fix** button. Proof PNG `20261118-2155-L-watch-toast-fix.png`. The button was not clicked (it opens the chat through `aihub://`, which is not registered for the dev build).
+- **Fabric job.** Own workspace `aihub-test-dev-watch1` on the trial capacity, DataPipeline `pl_wait` (Wait 20 s): `fabric run` printed the job id, `watch --fabric-job <ws>/pl_wait/<job>` followed it in the background and recorded `Fabric job ... completed`; the watch ended itself. The workspace was deleted afterwards (`WorkspaceNotFound`). Proof PNG `20261118-2157-L-watch-fabric-job.png`.
+- **Test Plans and Artifacts** (`aihub testplan`, `aihub artifacts`): reads live in ferron-test (runs and results of build 265, feeds); creating a plan answered 403 (no Test Plans license), so the writes are covered by tests only. Proof PNG `20261118-2212-L-testplan-artifacts.png`.
+
+## The opencode `aihub` agent allows by default (2026-11-18)
+
+opencode 1.19.5 with Luna (`openai/gpt-6-luna`, shared test opencode home through `XDG_DATA_HOME`, auth never copied), all other homes isolated, the agent files installed by this build (`aihub skills install --client opencode`). One `opencode run --agent aihub` with three shell commands and the instruction not to ask:
+
+| Command | Result |
+|---|---|
+| `python -m pytest --version` | ran without a prompt: `pytest 7.4.4` |
+| `dbt --version` | ran without a prompt (`dbt` is not installed on this machine: `command not found` from the shell, not a permission stop) |
+| `git push origin main` | refused by the agent's rule (`"git push * main": deny`); the bare origin still has only `init` |
+
+Not run: opencode 2.x (the `permissions` list has the same rules), Copilot/VS Code, Codex and Claude Code (their settings are documented in docs/agents.md and printed by `aihub skills install`, not exercised).

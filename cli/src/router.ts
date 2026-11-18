@@ -37,6 +37,9 @@ import { appendJournal, isJournaled } from "./lib/journal.js";
 import * as repos from "./commands/repos.js";
 import * as open from "./commands/open.js";
 import * as commit from "./commands/commit.js";
+import * as boards from "./commands/boards.js";
+import * as testplanCmd from "./commands/testplan.js";
+import * as artifactsCmd from "./commands/artifacts.js";
 import * as devops from "./commands/devops.js";
 import * as search from "./commands/search.js";
 import * as repo from "./commands/repo.js";
@@ -45,11 +48,15 @@ import * as library from "./commands/library.js";
 import * as testCmd from "./commands/test.js";
 import * as probe from "./commands/probe.js";
 import * as research from "./commands/research.js";
+import * as learn from "./commands/learn.js";
 import * as legacy from "./commands/legacy.js";
+import * as fixCmd from "./commands/fix.js";
+import * as teamCmd from "./commands/team.js";
 import * as standupCmd from "./commands/standup.js";
 import * as handoffCmd from "./commands/handoff.js";
 import * as prList from "./commands/pr-list.js";
 import * as prAdmin from "./commands/pr-admin.js";
+import * as dbt from "./commands/dbt.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -66,6 +73,7 @@ export const commands: Record<string, CommandFn> = {
   skills: skills.run,
   doctor: doctor.run,
   fabric: fabric.run,
+  dbt: dbt.run,
   robot: robot.run,
   "cherry-pick": cherryPick.run,
   branch: branch.run,
@@ -96,6 +104,9 @@ export const commands: Record<string, CommandFn> = {
   repos: repos.run,
   open: open.run,
   commit: commit.run,
+  boards: boards.run,
+  testplan: testplanCmd.run,
+  artifacts: artifactsCmd.run,
   devops: devops.run,
   search: search.run,
   repo: repo.run,
@@ -103,8 +114,11 @@ export const commands: Record<string, CommandFn> = {
   library: library.run,
   test: testCmd.run,
   legacy: legacy.run,
+  fix: fixCmd.run,
+  team: teamCmd.run,
   probe: probe.run,
   research: research.run,
+  learn: learn.run,
   standup: standupCmd.run,
   handoff: handoffCmd.run,
 };
@@ -120,6 +134,7 @@ export const HELP: Record<string, string> = {
   test: testCmd.TEST_USAGE,
   probe: probe.PROBE_USAGE,
   research: research.RESEARCH_USAGE,
+  learn: learn.LEARN_USAGE,
 };
 
 /**
@@ -160,7 +175,7 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
     return 2;
   }
   // global flags: --verbose logs the real git/REST calls; --dry-run prints the writes it would do and skips them
-  const ownDryRun = name === "fabric" || name === "legacy" || (name === "pr" && rest[0] === "create") || (name === "story" && storyFlow.STORY_FLOW_SUBS.includes(rest[0]));
+  const ownDryRun = name === "fabric" || name === "dbt" || name === "legacy" || (name === "pr" && rest[0] === "create") || (name === "story" && storyFlow.STORY_FLOW_SUBS.includes(rest[0]));
   const verbose = rest.includes("--verbose");
   const dryRun = rest.includes("--dry-run");
   const args = mergeDashValues(rest.filter((a) => a !== "--verbose" && (ownDryRun || a !== "--dry-run")));
@@ -185,7 +200,7 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
     if (wantsAllRepos(name, args)) await runAllRepos(name, args, run, registry);
     else await fn(args, run);
     keep(true);
-    if (dryRun && name !== "fabric") ctx.out(`dry-run: ${planned} planned write(s), nothing was changed`);
+    if (dryRun && name !== "fabric" && name !== "dbt") ctx.out(`dry-run: ${planned} planned write(s), nothing was changed`);
     return 0;
   } catch (e) {
     if (dryRun && planned > 0) {

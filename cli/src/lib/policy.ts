@@ -125,3 +125,17 @@ export async function prRequeue(ctx: Ctx, o: { pr: string; policy?: string; json
   for (const p of pick) await client.patch(`policy/evaluations/${p.evaluationId}`, {}, PREVIEW);
   return o.json ? JSON.stringify({ pr: id, requeued: pick.map((p) => p.name) }) : `PR !${id}: requeued ${pick.map((p) => p.name).join(", ")}; follow with aihub pipeline follow --pr ${id}`;
 }
+
+/** Does the target branch have an enabled, blocking branch policy (for this repository or every repository of the project)? */
+export async function hasBlockingPolicy(client: AdoClient, targetRef: string): Promise<boolean> {
+  const { id: repoId } = await repoInfo(client);
+  const cfgs = await client.list<{ isEnabled?: boolean; isBlocking?: boolean; settings?: { scope?: { repositoryId?: string | null; refName?: string; matchKind?: string }[] } }>("policy/configurations");
+  return cfgs.some((c) => {
+    if (c.isEnabled === false || c.isBlocking === false) return false;
+    return (c.settings?.scope ?? []).some((s) => {
+      if (s.repositoryId && s.repositoryId.toLowerCase() !== repoId.toLowerCase()) return false;
+      if (!s.refName) return true;
+      return s.matchKind?.toLowerCase() === "prefix" ? targetRef.startsWith(s.refName) : s.refName === targetRef;
+    });
+  });
+}

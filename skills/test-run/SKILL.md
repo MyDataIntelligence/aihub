@@ -16,7 +16,7 @@ aihub fabric run --item nb_load_orders
 aihub watch --fabric-job DEV-test-project/nb_load_orders/<job id> --notify
 ```
 
-Follow runs in the background ("ik volg het op de achtergrond"); `--wait` only on request.
+Follow runs in the background; `--wait` only on request.
 
 Several workspaces ("in beide DEV's"): repeat `--workspace` or use `--workspaces <group>`.
 
@@ -28,14 +28,15 @@ aihub robot run --on staging --suite orders --no-wait
 aihub watch --robot <build id> --notify
 ```
 
-3. Parameters: `--params-file params.json` (Fabric), `--include <tag>` (Robot).
-4. A failed run: read the failure line, fix the cause, run again. Never weaken a test.
-5. Report in the PR tests section only what ran, with the result. Not run: write "nog niet uitgevoerd".
+3. dbt: `aihub test changed --run`.
+4. Parameters: `--params-file params.json` (Fabric), `--include <tag>` (Robot).
+5. A failed run: read the failure line, fix the cause, run again. Never weaken a test.
+6. Report in the PR tests section only what ran, with the result. Not run: write "nog niet uitgevoerd".
 
 ## What the CLI fills
 Changed items versus the target, the workspace by branch rule, item and job ids, the pipeline and branch from the team file. Do not ask for ids.
 
 ## If it fails
-Merge conflict: nothing was pushed; merge the target into your branch and fix it. `aihub robot targets` lists the targets; `--no-merge` skips the merge. Not signed in: `az login` or `aihub doctor`. Item not found: check the plan. Never run ACC or PRD: the developer does that; the CLI refuses them. Details: [Fabric and Robot reference](references/fabric-robot.md).
+Merge conflict: nothing was pushed; merge the target into your branch and fix it. `aihub robot targets` lists the targets; `--no-merge` skips the merge. Not signed in: `az login`. Item not found: check the plan. Never run ACC or PRD: the developer does that; the CLI refuses them. Details: [Fabric and Robot reference](references/fabric-robot.md).
 
 Rules: direct task, 0 questions. A new Robot test is only needed for a new or changed flow.
