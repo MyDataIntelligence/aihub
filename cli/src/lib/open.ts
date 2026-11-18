@@ -61,6 +61,39 @@ export function lastEvent(env: NodeJS.ProcessEnv): OpenEvent {
   return JSON.parse(readFileSync(join(d, newest), "utf8")) as OpenEvent;
 }
 
+export interface EventRow {
+  id: string;
+  /** ISO time of the event */
+  at: string;
+  epoch: number;
+  message: string;
+  repo: string;
+  client?: Client;
+  session?: string;
+  /** aihub://open?event=<id>: what the notification's Open button runs */
+  url: string;
+}
+
+/** The recorded watch events (`watch --pr` and `watch --mine`), newest first. */
+export function listEvents(env: NodeJS.ProcessEnv, o: { limit?: number; sinceMs?: number; now?: number } = {}): EventRow[] {
+  const d = openHome(env);
+  if (!existsSync(d)) return [];
+  const cutoff = o.sinceMs !== undefined ? (o.now ?? Date.now()) - o.sinceMs : undefined;
+  const rows: EventRow[] = [];
+  for (const f of readdirSync(d).filter((x) => x.endsWith(".json"))) {
+    try {
+      const ev = JSON.parse(readFileSync(join(d, f), "utf8")) as OpenEvent;
+      if (!ev?.id || typeof ev.at !== "number") continue;
+      if (cutoff !== undefined && ev.at < cutoff) continue;
+      rows.push({ id: ev.id, at: new Date(ev.at).toISOString(), epoch: ev.at, message: ev.message, repo: ev.repo, client: ev.client, session: ev.session, url: eventUrl(ev.id) });
+    } catch {
+      /* a half written file */
+    }
+  }
+  rows.sort((a, b) => b.epoch - a.epoch);
+  return o.limit !== undefined ? rows.slice(0, o.limit) : rows;
+}
+
 export const eventUrl = (id: string) => `aihub://open?event=${encodeURIComponent(id)}`;
 
 export function eventFromUrl(url: string): string {
