@@ -51,9 +51,16 @@ export function parseSince(s: string, now = Date.now()): Date {
   return new Date(t);
 }
 
+/** Fabric job timestamps (startTimeUtc, endTimeUtc, start/end of activity runs) are UTC but come without a zone suffix: `Date.parse` would read them as local time (an hour off in CET). */
+export function parseUtc(s: string | undefined): number {
+  const v = String(s ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}T[\d:.]+$/.test(v)) return Date.parse(v + "Z");
+  return Date.parse(v.replace(/GMT$/, "Z"));
+}
+
 export function durationText(start?: string, end?: string): string {
   if (!start || !end) return "-";
-  const s = Math.round((Date.parse(end) - Date.parse(start)) / 1000);
+  const s = Math.round((parseUtc(end) - parseUtc(start)) / 1000);
   if (!Number.isFinite(s) || s < 0) return "-";
   return s >= 3600 ? `${Math.floor(s / 3600)}h${Math.floor((s % 3600) / 60)}m` : s >= 60 ? `${Math.floor(s / 60)}m${s % 60}s` : `${s}s`;
 }

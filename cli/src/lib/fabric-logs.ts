@@ -1,6 +1,6 @@
 import { AihubError } from "./errors.js";
 import { FabricHttpError, type FabricClient, type FabricItem, type JobInstance } from "./fabric.js";
-import { durationText, extractStack, oneLine, type LogSection } from "./fabric-ops.js";
+import { durationText, extractStack, oneLine, parseUtc, type LogSection } from "./fabric-ops.js";
 
 /** Item types that have a job scheduler worth scanning. */
 export const JOB_ITEM_TYPES = ["Notebook", "DataPipeline", "SparkJobDefinition", "Lakehouse", "Dataflow", "CopyJob"];
@@ -59,8 +59,8 @@ export async function collectJobLogs(client: FabricClient, wsId: string, item: F
     }
   } else if (item.type === "DataPipeline") {
     const day = 86_400_000;
-    const after = new Date((Date.parse(job.startTimeUtc ?? "") || Date.now()) - day).toISOString();
-    const before = new Date((Date.parse(job.endTimeUtc ?? "") || Date.now()) + day).toISOString();
+    const after = new Date((parseUtc(job.startTimeUtc) || Date.now()) - day).toISOString();
+    const before = new Date((parseUtc(job.endTimeUtc) || Date.now()) + day).toISOString();
     await attempt(
       "pipeline queryActivityRuns",
       "activity runs",
@@ -153,7 +153,7 @@ export async function workspaceRuns(
       continue;
     }
     for (const j of jobs) {
-      if (o.since && j.startTimeUtc && Date.parse(j.startTimeUtc) < o.since.getTime()) continue;
+      if (o.since && j.startTimeUtc && parseUtc(j.startTimeUtc) < o.since.getTime()) continue;
       if (statuses && !statuses.includes(String(j.status).toLowerCase())) continue;
       const msg = j.failureReason?.message ?? "";
       if (o.search && !`${it.displayName} ${j.failureReason?.errorCode ?? ""} ${msg}`.toLowerCase().includes(o.search.toLowerCase())) continue;
@@ -185,13 +185,13 @@ export async function workspaceRuns(
       continue;
     }
     for (const h of hist) {
-      if (o.since && h.start && Date.parse(h.start) < o.since.getTime()) continue;
+      if (o.since && h.start && parseUtc(h.start) < o.since.getTime()) continue;
       if (statuses && !statuses.includes(h.status.toLowerCase())) continue;
       if (o.search && !`${m.displayName} ${h.errorCode ?? ""} ${h.error}`.toLowerCase().includes(o.search.toLowerCase())) continue;
       rows.push({ itemId: m.id, item: m.displayName, type: m.type, jobId: h.id, status: h.status, start: h.start, end: h.end, duration: durationText(h.start, h.end), invoke: h.kind, errorCode: h.errorCode, error: oneLine(h.error, 120) });
     }
   }
-  rows.sort((a, b) => Date.parse(b.start ?? "") - Date.parse(a.start ?? "") || a.item.localeCompare(b.item));
+  rows.sort((a, b) => parseUtc(b.start) - parseUtc(a.start) || a.item.localeCompare(b.item));
   scanned += scan.length;
   return {
     rows: o.top ? rows.slice(0, o.top) : rows,

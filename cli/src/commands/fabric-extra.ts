@@ -82,7 +82,7 @@ export async function lakehouseLoad(s: Setup): Promise<void> {
   const t = await target(s, client, true);
   const lh = await client.resolveItem(t.id, need(s.v, "lakehouse", "name|id"), "Lakehouse");
   const mode = s.v.append ? "Append" : "Overwrite";
-  const body = { relativePath: `Files/${rel.replace(/^\/+/, "")}`, pathType: "File", mode, formatOptions: { format: "Csv", header: true, delimiter: "," } };
+  const body = { relativePath: `Files/${rel.replace(/^\/+/, "").replace(/^Files\//i, "")}`, pathType: "File", mode, formatOptions: { format: "Csv", header: true, delimiter: "," } };
   if (s.v["dry-run"]) return dryRun(s, [`load ${body.relativePath} into table '${table}' of ${lh.displayName} in ${where(t)} (${mode})`]);
   await client.lro("POST", `/workspaces/${t.id}/lakehouses/${lh.id}/tables/${encodeURIComponent(table)}/load`, body);
   emit(s, { loaded: table }, `loaded ${body.relativePath} into ${lh.displayName}.${table} (${mode})`);
