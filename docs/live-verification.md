@@ -243,6 +243,50 @@ Not a bug, but worth knowing: `pytest <file>` cannot import top-level packages w
 
 Cleanup: PRs !1077 (earlier check), !1086, !1087, !1088, !1089 abandoned; all feature, cherry-pick and release branches deleted; stories 3397 and 3400 deleted. Proof: `20261118-1953-L-story-e2e.png` and `20261118-1953-L-story-e2e-transcript.txt` in the proof folder of the benchmark machine.
 
+## Green PR and pipeline-fix with a synthetic CI (2026-11-18)
+
+Closes the "green PR" gap of the story e2e above. Same world (opencode 1.19.5, `aihub` agent, Luna, `@next` 1.0.3-next.80 to next.94). In `ferron-test/test-project` I created, on a branch of my own, a small pipeline and a build-validation policy, so that PRs to that branch get a real run.
+
+| Object | Id | Notes |
+|---|---|---|
+| branch `aihub-e2e-main` | | `main` plus `ci/aihub-e2e.yml` (and later `CHANGELOG.md`); `team.yaml` `defaultTarget: aihub-e2e-main`, so `story start` branches from it and `pr create` targets it |
+| pipeline `aihub-e2e-ci` | 12 | Microsoft-hosted `ubuntu-latest`: `python3 -m pytest -q tests`, then a changelog check (the PR needs a `CHANGELOG.md` line containing its `AB#<id>`) |
+| build policy on `aihub-e2e-main` | 6, 7, 9, 10 | each push to the branch needs the policy removed first (TF402455: pushes need a PR once a build policy exists); 10 was the last one |
+
+| Run | Result |
+|---|---|
+| `/story-run` 3401 (PR !1090) | pipeline run 271 succeeded; `aihub pipeline follow` printed "all 1 pipeline run(s) finished green" |
+| `/story-run` 3406 (PR !1095) | run 274 **failed** in the changelog step; the runner called `aihub pipeline logs --failed --run 274`, added `AB#3406 ...` to `CHANGELOG.md`, `aihub test changed --run`, `aihub commit --type fix ... --push` (hooks line, 0.6 s) and followed run 275 to green. 0 questions |
+
+Getting a red run first took more tries than expected, because Luna read the repository well: a contract test (every public function must be listed in a text file) and a type-annotation check were both satisfied up front (the runner globbed `**/*`, found the contract test, and writes type hints by default). A rule that depends on the story id and cannot be read off the code (the changelog line) produced the red run.
+
+More findings of these runs (all fixed through PRs to `staging`):
+
+| Finding | Fix |
+|---|---|
+| `aihub test changed` ran `pytest <file>`, which cannot import top-level packages | #79: default is `python -m pytest {tests}` |
+| `story-create` told the agent to write the story with a shell heredoc; on Windows the bash tool is PowerShell, the catch-all `*: ask` rule refused every fallback and the story was not created in 4 of 6 runs | #90 (`cat *` allowed) and #93 (the skill says: write `story.md` with the file tool) |
+| the runner once edited a different file than the story named (`repos/...` instead of `orders/__init__.py`) and then read outside the workspace (`external_directory`, rejected in `opencode run`) | not fixed: the story named the file; a clearer story or an `external_directory` rule is a choice for the team |
+
+Cleanup: PRs !1090, !1092, !1094, !1095 abandoned; branches `aihub-e2e-main` and `feature/3401|3403|3405|3406-...` deleted; pipeline 12 deleted (its runs 271 to 275 stay as history); policy 10 deleted; stories 3401, 3403, 3405 and 3406 deleted. **Mistake of mine:** a "delete every Build policy" loop also removed the existing build policy of `test-project` on `ci-checks-demo` (pipeline 5, Ruff). I recreated it (id 11, blocking, display name `ruff`, pipeline 5); settings other than those could not be read back, so compare with the original if it matters. Proof: `20261118-2041-L-story-ci-e2e.png` in the proof folder of the benchmark machine.
+
+## Data before/after and the environment release plan (2026-11-18)
+
+**`aihub pr data-diff`** live: two own Fabric dev workspaces on the trial capacity (`aihub-test-dev-3f2a-base` / `-feat`, a Lakehouse `lh_orders` each, a table `orders` loaded from a 4-row and a 6-row CSV), PR !1098 in ferron-test, `team.yaml` with
+`fabric.workspaces` (target branch -> base, `feature/*` -> feat) and `dataChecks` on `dbo.orders`. The output (SQL endpoint) was count 4 -> 6 (+2, +50%), nulls_customer_id 0 -> 1, sum_amount 375.75 -> 715.75 (+340), distinct_customer_id 3 -> 4;
+second source: the two input CSVs computed separately (identical numbers). `--write` put the table, the verdict and the "Measured (read-only)" line in the PR section "Data before/after" (checked with `az repos pr show`);
+`--baseline ACC-shared` was refused before any call. Not live: the Livy fallback (the capacity's Spark was full, HTTP 430 `TooManyRequestsForCapacity`; unit tested with an injected runner).
+Bugs found live and fixed: (1) a lakehouse name is ambiguous with its SQL endpoint, `fabric sql --item lh_orders` failed: `dataChecks.itemType` (default Lakehouse) is always passed as `--type` (PR #98); (2) a stale cached token made OneLake answer
+"not signed in" until the cache file was deleted: a 401 now drops the cache and retries once (PR #91). Table loads need Spark: on the trial capacity they waited for free Spark compute for about 25 minutes. Both workspaces and lakehouses were deleted afterwards (the workspaces filter shows nothing).
+
+**`aihub release plan --from DEV --to ACC`** live (git side): branches `live-3f2a/dev` and `live-3f2a/acc` in ferron-test, story 3402, PR !1091 adding `nb_live.Notebook/` completed into the dev branch, `fabric.environments` DEV/ACC in team.yaml. The plan listed
+1 commit, 1 PR, the item `Notebook nb_live` as changed with `PRs !1091` and `stories AB#3402`, the cherry-pick list and release notes; `--out` wrote a plan with the merge commit that `aihub release run` can execute. Bug found live and fixed (PR #89):
+a GET of the pull request does not list `workItemRefs`, the first run showed 0 stories; the stories now come from `/pullrequests/<id>/workitems`. Not live: the Fabric deployment pipeline compare (no deployment pipeline is visible to this
+account, `fabric deployment list` says so); new and deleted items are covered by tests with an injected stage reader, and without a pipeline the plan says "git only".
+
+Cleanup: PRs !1091 (merged into a test branch) and !1098 (abandoned), every `live-3f2a` branch, story 3402 and the workspaces; `az`, `git ls-remote` and `fabric workspaces --filter 3f2a` show nothing. Proof PNGs (rendered summaries):
+`20261118-2115-L-data-diff.png`, `20261118-2115-L-release-env.png`.
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
