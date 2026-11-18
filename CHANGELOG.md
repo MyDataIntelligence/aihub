@@ -13,6 +13,6 @@ One `## <version>` heading per release, one bullet per change. `aihub update` sh
 - `aihub doctor` checks sign-in, remote, team.yaml, PR template, guideline files and the installed skills.
 - `aihub update [--check]` updates the CLI and the skills; `aihub explain <command>` describes a command step by step.
 - `--dry-run` prints the writes (git and REST) a command would do; `--verbose` logs the real calls.
-- One-line installers (install.ps1, install.sh, Install-aihub.cmd), docs/self-hosting.md and zure-pipelines.yml for teams that run aihub from their own feed.
-- 	eam-pack/: the copy-ready team files (also the source of ihub init), attached to each GitHub release as ihub-team-pack-<version>.zip.
+- One-line installers (install.ps1, install.sh, Install-aihub.cmd), docs/self-hosting.md and azure-pipelines.yml for teams that run aihub from their own feed.
+- `team-pack/`: the copy-ready team files (also the source of `aihub init`), attached to each GitHub release as aihub-team-pack-<version>.zip.
 - guidelines: in team.yaml: repository files the agent reads first.
