@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { main } from "../src/router.js";
 import { formatCommit, inferScope } from "../src/lib/commit.js";
+import { hasWorkToCommit } from "../src/lib/gitx.js";
 import { ctxFor, fakeFetch, makeRepo, sh, write } from "./helpers.js";
 
 function setup(team: string) {
@@ -32,6 +33,20 @@ describe("formatCommit", () => {
 });
 
 describe("aihub commit", () => {
+  it("does not stage build output (__pycache__, .pyc) in a repository without .gitignore, and status ignores it too", async () => {
+    const { dir } = setup(TEAM);
+    write(dir, "bench/a.py", "x = 1\n");
+    write(dir, "bench/__pycache__/a.cpython-312.pyc", "bin\n");
+    const { ctx } = ctxFor(dir, fakeFetch([]).fn);
+    expect(await main(["commit", "--type", "feat", "--subject", "iets"], ctx)).toBe(0);
+    const files = sh(dir, ["show", "--name-only", "--format=", "HEAD"]);
+    expect(files).toContain("bench/a.py");
+    expect(files).not.toContain("pycache");
+    expect(hasWorkToCommit(dir)).toBe(false);
+    write(dir, "bench/new.py", "y = 2\n");
+    expect(hasWorkToCommit(dir)).toBe(true);
+  });
+
   it("stages everything, builds the message from team.yaml and the branch, and does not push without --push", async () => {
     const { dir, bare } = setup(TEAM);
     write(dir, "bench/a.py", "x = 1\n");

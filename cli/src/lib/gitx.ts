@@ -24,6 +24,19 @@ export function mustGit(cwd: string, args: string[]): string {
 
 export const isDirty = (dir: string): boolean => mustGit(dir, ["status", "--porcelain"]) !== "";
 
+/** Build output that is never work to commit, even in a repository without a .gitignore (pathspecs for `git add` and `git status`). */
+export const ARTIFACT_EXCLUDES = [
+  ":(exclude,glob)**/__pycache__/**",
+  ":(exclude,glob)**/*.pyc",
+  ":(exclude,glob)**/.pytest_cache/**",
+  ":(exclude,glob)**/node_modules/**",
+  ":(exclude,glob)**/.venv/**",
+  ":(exclude,glob)**/.DS_Store",
+];
+
+/** Is there anything to commit? Like isDirty, but ignores untracked build output (__pycache__, node_modules, ...). */
+export const hasWorkToCommit = (dir: string): boolean => mustGit(dir, ["status", "--porcelain", "--", ".", ...ARTIFACT_EXCLUDES]) !== "";
+
 /** Changes to tracked files only: untracked files (build output, scratch files) never stop `git switch`, which refuses by itself when one would be overwritten. */
 export const hasTrackedChanges = (dir: string): boolean => mustGit(dir, ["status", "--porcelain", "--untracked-files=no"]) !== "";
 

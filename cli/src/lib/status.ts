@@ -3,7 +3,7 @@ import { reviewersOf, type Reviewer } from "./prList.js";
 import { getThreads } from "./comments.js";
 import { repoClient, type Ctx } from "./context.js";
 import { currentBranch, workItemFromBranch } from "./git.js";
-import { isDirty, unpushedCount } from "./gitx.js";
+import { hasWorkToCommit, unpushedCount } from "./gitx.js";
 import { readNotes } from "./notes.js";
 import { latestPerDefinition, selectBuilds, type Build } from "./pipeline.js";
 import { loadTeam } from "./team.js";
@@ -118,7 +118,7 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
 
   const threads = active ? await guard("threads", () => getThreads(client, active.pullRequestId, undefined, false)) : undefined;
   const openThreads = threads?.length ?? 0;
-  const dirty = isDirty(root);
+  const dirty = hasWorkToCommit(root);
   const unpushed = unpushedCount(root);
   const notes = readNotes(root, branch).length;
   const prCompleted = !!done;
