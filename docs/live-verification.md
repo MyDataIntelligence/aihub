@@ -350,3 +350,17 @@ Not run: opencode 2.x (the `permissions` list has the same rules), Copilot/VS Co
 | expected refusal | `crossrepo impact --from 174` without `crossRepo.pathMaps` | message names the missing key (correct) |
 
 First pass counted 4 FAIL, all wrong arguments of the smoke script, not product bugs: `pr list --top`, `search code --query`, `probe devops` without `feature <name>`, and `help: (no command)` matching my own regex; they passed with the right arguments (the usage lines were clear in each case). No product failure was found, so no fix PR.
+## Pipelines: the remaining live rows (2026-11-18)
+
+Synthetic pipeline, environment, secure file and service connection in ferron-test/test-project, prefix `live-1771c1` (branch `live-1771c1/pipe`). Proof: PNG 20261118-2245-L-pipelines-live in the AIContextHub proof folder.
+
+| Row | Result |
+|---|---|
+| `pipeline schedule list` | YAML cron `0 3 * * 1-5 on live-1771c1/pipe (always)` shown |
+| `pipeline def update` (PUT) | name and `--status paused` changed, then restored; `def show` confirmed `[paused]` |
+| `pipeline approvals reject` | worked on a pending approval of an environment with an Approval check |
+| ACC refusal | **bug found**: the approvals API answer has no `resource`, so the ACC/PRD guard saw no name and rejected an approval of `live-1771c1-acc`. Fixed: the environment is read from the run's YAML, and the command refuses when it cannot tell. Live rerun: refused, then `--allow-env acc` rejected. Vitest: `test/pipeline-approval-env.test.ts` |
+| `securefiles list`, `connections list|show` | the synthetic file and generic connection shown; the connection answer holds no credential (`TOPSECRET` count 0) |
+
+Created and removed (all verified gone): pipeline #17, environment #4, secure file 48cd5a2e-22a0-4c52-93a2-4c5c9bfc6d63, connection 07ad2871-bdb5-47d2-8802-77e850b6efed, branch `live-1771c1/pipe`. Runs 283 and 284 stay (builds cannot be deleted; both ended on the rejected approval). Evidence of pipelines-build's earlier live rows: PR #125.
+
