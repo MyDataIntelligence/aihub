@@ -134,6 +134,20 @@ real `~/.agents` and the shared Codex home (read only) and followed legacy Hub r
 
 Ids created and removed: story 3228, PRs !981 and !984 (abandoned), branches of the prefix live-5e9d (feature, release, cherry-pick). An `az` query and `git ls-remote` show nothing left.
 
+## Codex discovers skills from the user-level folder (2026-11-18)
+
+Codex 0.167.0 reads skills from `$CODEX_HOME/skills` (default `~/.codex/skills`), from `<repo>/.agents/skills`, from `~/.agents/skills` (resolved through the real Windows profile, `HOME` does not move it)
+and from its system skills (names `codex-home-skills`, `.agents/skills`, `user-agent-skills`, `system-skills` in the binary). `aihub skills install --client codex` writes to `$CODEX_HOME/skills`, so it targets a folder Codex reads.
+
+Proof with a real `/pr`: `aihub@1.0.2` installed into the shared test Codex home (36 skill files, 16 prompts; bench-world had finished its Codex benchmark and handed the home over), a fresh synthetic clone with **no skills copied
+into the repository**, one `codex exec -m gpt-6-luna` with the `/pr` text. The agent read `.../shared/skills/pr-create/SKILL.md` and created PR !1063: target main, Summary / Changes (commit + diffstat) / Tests `Not run yet.` /
+Related `AB#3370`, work item linked (checked with `az`). Then `aihub skills uninstall --client codex`: 36 + 16 files removed, the `skills/` listing identical to the one taken before, `prompts/` gone as before, no manifest left; bench-world was told the home is clean.
+
+Finding: Codex's log said `failed to load skill ...\pr-watch\SKILL.md: invalid YAML ... line 2 column 158`. The description had unescaped double quotes inside a double-quoted string (introduced with `watch --mine`).
+opencode and Copilot tolerated it, Codex skipped the skill. Fixed in PR #52 (single quotes) and the skill lint now parses every front matter with a YAML parser; the old file fails the new check.
+
+Ids created and removed: story 3370, PR !1063 (abandoned), branches of the prefix live-7c1f. An `az` query and `git ls-remote` show nothing left. Proof: `20261118-1850-L-live-codex-userdir.png` (rendered summary).
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
