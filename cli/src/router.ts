@@ -39,6 +39,8 @@ import * as repo from "./commands/repo.js";
 import * as policy from "./commands/policy.js";
 import * as library from "./commands/library.js";
 import * as testCmd from "./commands/test.js";
+import * as probe from "./commands/probe.js";
+import * as research from "./commands/research.js";
 import * as legacy from "./commands/legacy.js";
 import * as standupCmd from "./commands/standup.js";
 import * as handoffCmd from "./commands/handoff.js";
@@ -94,6 +96,8 @@ export const commands: Record<string, CommandFn> = {
   library: library.run,
   test: testCmd.run,
   legacy: legacy.run,
+  probe: probe.run,
+  research: research.run,
   standup: standupCmd.run,
   handoff: handoffCmd.run,
 };
@@ -107,6 +111,8 @@ export const HELP: Record<string, string> = {
   story: "aihub story template   (prints the team story template: the headings to use)\naihub story create --title \"<title>\" --body-file story.md   (one ## <heading> section per template heading, all filled)",
   branch: "aihub branch update [--branch B] [--target T] [--rebase]",
   test: testCmd.TEST_USAGE,
+  probe: probe.PROBE_USAGE,
+  research: research.RESEARCH_USAGE,
 };
 
 /**
