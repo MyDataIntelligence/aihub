@@ -100,7 +100,7 @@ export function commandsFor(files: string[], template?: string): string[] {
   if (template) return [template.replace(/\{tests\}/g, files.map(q).join(" "))];
   const py = files.filter((f) => /\.py$/i.test(f));
   const js = files.filter((f) => !/\.py$/i.test(f));
-  return [...(py.length ? [`pytest ${py.map(q).join(" ")}`] : []), ...(js.length ? [`npx vitest run ${js.map(q).join(" ")}`] : [])];
+  return [...(py.length ? [`python -m pytest ${py.map(q).join(" ")}`] : []), ...(js.length ? [`npx vitest run ${js.map(q).join(" ")}`] : [])];
 }
 
 /** Committed since the merge base, plus uncommitted and untracked, minus deleted files. */

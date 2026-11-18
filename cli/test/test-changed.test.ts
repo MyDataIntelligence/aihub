@@ -29,7 +29,7 @@ describe("planTests heuristics", () => {
     const p = planTests(".", ["src/orders/discount.py", "src/orders/export.py", "src/billing/tax.py"], ALL, {}, read);
     expect(p.tests.map((t) => t.file)).toEqual(["tests/unit/billing/tax_test.py", "tests/unit/orders/test_discount.py", "tests/unit/test_export_flow.py"]);
     expect(p.tests.find((t) => t.file.endsWith("test_export_flow.py"))!.for).toEqual(["src/orders/export.py"]);
-    expect(p.commands).toEqual(["pytest tests/unit/billing/tax_test.py tests/unit/orders/test_discount.py tests/unit/test_export_flow.py"]);
+    expect(p.commands).toEqual(["python -m pytest tests/unit/billing/tax_test.py tests/unit/orders/test_discount.py tests/unit/test_export_flow.py"]);
     expect(p.unmapped).toEqual([]);
   });
 
@@ -59,7 +59,7 @@ describe("planTests heuristics", () => {
   });
 
   it("quotes paths with spaces", () => {
-    expect(commandsFor(["tests/my tests/test_a.py"])).toEqual(['pytest "tests/my tests/test_a.py"']);
+    expect(commandsFor(["tests/my tests/test_a.py"])).toEqual(['python -m pytest "tests/my tests/test_a.py"']);
     expect(commandsFor([])).toEqual([]);
   });
 });
@@ -95,7 +95,7 @@ describe("aihub test changed", () => {
     expect(r.out).toContain("changed vs main");
     expect(r.out).toContain("tests/unit/test_discount.py  (for src/orders/discount.py)");
     expect(r.out).not.toContain("test_other.py");
-    expect(r.out).toContain("command: pytest tests/unit/test_discount.py");
+    expect(r.out).toContain("command: python -m pytest tests/unit/test_discount.py");
     expect(r.out).toContain("no test found for: src/orders/brand_new.py");
   });
 
