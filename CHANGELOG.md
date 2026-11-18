@@ -2,6 +2,9 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.0.2
+- `/story-run` slash command; `aihub test changed [--run]` runs only the tests for changed files; skills never run the whole suite locally; `aihub commit` names the git hooks it runs and how long they took, `--no-verify` only on request. Release notes: docs/releases/1.0.2.md.
+
 ## 1.0.1
 - `pr create` fills an empty Changes section from the commits and an empty Tests section with an honest "not run yet"; the agent's text is never overwritten.
 - Skills are self-contained (no `_shared` links), so `npx skills add` gives the same skills as `aihub skills install`. Release notes: docs/releases/1.0.1.md.
