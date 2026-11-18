@@ -1,0 +1,8 @@
+{
+  "title": "SCD2 stap voor stap",
+  "scenes": [
+    { "title": "Startsituatie", "narration": "Klant 1 woont in Amsterdam; er is een actieve rij.", "nodes": ["dim"] },
+    { "title": "De bron verandert", "narration": "In de bron staat nu Utrecht.", "nodes": ["bron"] },
+    { "title": "Na de run", "narration": "De oude rij wordt gesloten, een nieuwe rij is actief.", "nodes": ["*"] }
+  ]
+}
