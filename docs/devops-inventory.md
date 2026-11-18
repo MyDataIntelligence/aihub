@@ -87,7 +87,7 @@ Column **Old Hub** names the legacy tool (`-` = the old Hub did not have it). Co
 | Runs: list, status, follow, logs, search logs | pipeline_list_runs, pipeline_status, pipeline_get_failure, pipeline_get_logs, pipeline_search_logs, pipeline_follow | `build/builds`, `timeline`, `logs` | `aihub pipeline runs|status|follow|logs` | exists |
 | Run a pipeline (branch, parameters) | pipeline_run | POST `pipelines/{id}/runs` | `aihub pipeline run` | exists |
 | Retry a failed stage | pipeline_retry_stage | PATCH `build/builds/{id}/stages/{stage}` | `aihub pipeline retry` | exists |
-| Cancel a run | pipeline_cancel | PATCH `build/builds/{id}` cancelling | `aihub pipeline cancel` | built (unit only: no way to keep a run queued on the test project; a completed run is read live) |
+| Cancel a run | pipeline_cancel | PATCH `build/builds/{id}` cancelling | `aihub pipeline cancel` | built, live (run 280 cancelled while waiting for an approval) |
 | Watch a run and notify | pipeline_watch, pipeline_unwatch | polling | `aihub watch` | exists |
 | Preview / validate YAML (expanded YAML, errors) | pipeline_preview_yaml | POST `pipelines/{id}/runs` previewRun | `aihub pipeline validate` | built |
 | Artifacts: list and download | pipeline_download_artifact | `build/builds/{id}/artifacts` | `aihub pipeline artifacts list|download` | built, live (list and download of a pipeline artifact; download was refused before the artifacts-host fix) |
