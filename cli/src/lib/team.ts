@@ -21,7 +21,7 @@ export interface TeamConfig {
   commits?: { format?: string; types?: string[]; scope?: string };
   tests?: { command?: string; map?: { source: string | string[]; tests: string | string[] }[] };
   cherryPick?: { groups?: Record<string, string[]> };
-  pipelines?: { repository?: string; name?: string; required?: boolean }[];
+  pipelines?: { repository?: string; name?: string; required?: boolean; purpose?: string; yaml?: string; validates?: string[]; requiredTemplates?: string[] }[];
   [k: string]: unknown;
 }
 

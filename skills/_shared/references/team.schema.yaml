@@ -46,6 +46,10 @@ pipelines:                         # pipelines to follow per repository (optiona
   - repository: <repository>      # repository name this pipeline belongs to
     name: <pipeline>               # pipeline name or id
     required: true                 # true when a red run blocks the PR
+    purpose: validates main        # what this pipeline is for, one line (optional)
+    yaml: ci/ci.yml               # the YAML file in the repository (optional)
+    validates: ["main", "release/*"]   # branches this pipeline validates (optional)
+    requiredTemplates: ["templates/test.yml"]   # templates the YAML must use; `aihub pipeline validate` reports a missing one (optional)
 
 fabric:                            # Fabric workspaces for `aihub fabric` (optional)
   workspaces:                      # list of workspaces the CLI may know about
