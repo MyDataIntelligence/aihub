@@ -32,6 +32,7 @@ export const COMMANDS: CommandSpec[] = [
   { name: "cherry-pick", skill: "branch-sync", description: "Cherry-pick a PR to other branches", hint: "PR id and target branches" },
   { name: "story", skill: "story-create", description: "Create a story", hint: "what the story is about" },
   { name: "story-run", skill: "story-run", description: "Run a story end to end to a green PR", hint: "story id or link" },
+  { name: "fix", skill: "pipeline-fix", description: "Fix a failed build or Fabric run on your own branch", hint: "run link or id (empty: newest failed run of this branch)" },
   { name: "refine", skill: "story-refine", description: "Refine a story", hint: "story id" },
   { name: "review", skill: "review-process", description: "Process review comments", hint: "optional PR id" },
   { name: "watch", skill: "pr-watch", description: "Follow a PR and its pipeline", hint: "optional PR id or link" },
