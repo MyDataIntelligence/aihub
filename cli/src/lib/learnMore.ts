@@ -223,9 +223,11 @@ export function itemFacts(ctx: Ctx, rel: string): ItemFacts {
   const lang = languageOf(norm);
   if (lang === "yaml" && /(^|\/)(azure-pipelines[^/]*|[^/]*pipeline[^/]*)\.ya?ml$/i.test(norm)) {
     const doc = safeYaml(text) as Record<string, unknown> | undefined;
-    const stages = ((doc?.stages as { stage?: string; jobs?: { job?: string; deployment?: string }[] }[]) ?? []).map((s) => ({ stage: s.stage, jobs: (s.jobs ?? []).map((j) => j.job ?? j.deployment) }));
-    const jobs = ((doc?.jobs as { job?: string }[]) ?? []).map((j) => j.job);
-    const steps = ((doc?.steps as Record<string, unknown>[]) ?? []).map((s) => String(s.script ?? s.task ?? s.bash ?? s.pwsh ?? Object.keys(s)[0]).split(NL)[0].slice(0, 60));
+    // a job entry is a `job`, a `deployment` or a `template:` include; a template has no name of its own, so it is shown as `template <path>`
+    const jobName = (j: { job?: string; deployment?: string; template?: string }): string => j.job ?? j.deployment ?? (j.template ? `template ${j.template}` : "(unnamed)");
+    const stages = ((doc?.stages as { stage?: string; jobs?: { job?: string; deployment?: string; template?: string }[] }[]) ?? []).map((s) => ({ stage: s.stage, jobs: (s.jobs ?? []).map(jobName) }));
+    const jobs = ((doc?.jobs as { job?: string; deployment?: string; template?: string }[]) ?? []).map(jobName);
+    const steps = ((doc?.steps as Record<string, unknown>[]) ?? []).map((s) => String(s.script ?? s.task ?? s.bash ?? s.pwsh ?? (s.template ? `template ${String(s.template)}` : Object.keys(s)[0])).split(NL)[0].slice(0, 60));
     const mer = ["flowchart LR", ...stages.flatMap((s, i) => [`  ${id("st" + i)}["${label(String(s.stage))}"]${i < stages.length - 1 ? ` --> ${id("st" + (i + 1))}` : ""}`])];
     return { kind: "item-facts", type: "pipeline", path: norm, language: "yaml", lines, details: { trigger: doc?.trigger, pool: doc?.pool, stages, jobs, steps: steps.slice(0, 15), variables: Object.keys((doc?.variables as object) ?? {}) }, usedBy: [], ...(stages.length ? { mermaid: mer.join(NL) } : {}), notes };
   }

@@ -294,6 +294,9 @@ describe("learn diagram, flow, glossary, week, onboarding, item", () => {
     expect(pipe.type).toBe("pipeline");
     expect(pipe.details.stages).toEqual([{ stage: "Build", jobs: ["Test"] }, { stage: "Deploy", jobs: ["Ship"] }]);
     expect(pipe.mermaid).toContain("Build");
+    write(dir, "ci-pipeline.yaml", "stages:\n  - stage: Validate\n    jobs:\n      - job: Check\n      - template: /cicd/verify.yaml@shared\n        parameters:\n          jobName: Verify\n");
+    const tpl = JSON.parse((await go(dir, ["learn", "item", "ci-pipeline.yaml", "--json"])).out);
+    expect(tpl.details.stages).toEqual([{ stage: "Validate", jobs: ["Check", "template /cicd/verify.yaml@shared"] }]);
     const fab = JSON.parse((await go(dir, ["learn", "item", "fab/nb_load.Notebook/notebook-content.py", "--json"])).out);
     expect(fab).toMatchObject({ type: "fabric-item", path: "fab/nb_load.Notebook" });
     const bad = await go(dir, ["learn", "item", "nope.py"]);
