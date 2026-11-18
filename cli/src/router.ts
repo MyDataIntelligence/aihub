@@ -50,6 +50,7 @@ import * as standupCmd from "./commands/standup.js";
 import * as handoffCmd from "./commands/handoff.js";
 import * as prList from "./commands/pr-list.js";
 import * as prAdmin from "./commands/pr-admin.js";
+import * as dbt from "./commands/dbt.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -66,6 +67,7 @@ export const commands: Record<string, CommandFn> = {
   skills: skills.run,
   doctor: doctor.run,
   fabric: fabric.run,
+  dbt: dbt.run,
   robot: robot.run,
   "cherry-pick": cherryPick.run,
   branch: branch.run,
@@ -161,7 +163,7 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
     return 2;
   }
   // global flags: --verbose logs the real git/REST calls; --dry-run prints the writes it would do and skips them
-  const ownDryRun = name === "fabric" || name === "legacy" || (name === "pr" && rest[0] === "create") || (name === "story" && storyFlow.STORY_FLOW_SUBS.includes(rest[0]));
+  const ownDryRun = name === "fabric" || name === "dbt" || name === "legacy" || (name === "pr" && rest[0] === "create") || (name === "story" && storyFlow.STORY_FLOW_SUBS.includes(rest[0]));
   const verbose = rest.includes("--verbose");
   const dryRun = rest.includes("--dry-run");
   const args = mergeDashValues(rest.filter((a) => a !== "--verbose" && (ownDryRun || a !== "--dry-run")));
@@ -178,7 +180,7 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
   const run: Ctx = dryRun && !ownDryRun ? { ...ctx, out: (l) => ctx.out(`  (simulated) ${l}`) } : ctx;
   try {
     await fn(args, run);
-    if (dryRun && name !== "fabric") ctx.out(`dry-run: ${planned} planned write(s), nothing was changed`);
+    if (dryRun && name !== "fabric" && name !== "dbt") ctx.out(`dry-run: ${planned} planned write(s), nothing was changed`);
     return 0;
   } catch (e) {
     if (dryRun && planned > 0) {
