@@ -36,12 +36,12 @@ export interface FileChange {
 
 const getFull = (c: AdoClient, id: number) => getPr(c, id) as Promise<PrFull>;
 
-async function latestIteration(c: AdoClient, id: number): Promise<Iteration | undefined> {
+export async function latestIteration(c: AdoClient, id: number): Promise<Iteration | undefined> {
   const its = await c.list<Iteration>(`${c.repoPath()}/pullrequests/${id}/iterations`);
   return its.sort((a, b) => b.id - a.id)[0];
 }
 
-async function changesOf(c: AdoClient, id: number, it: Iteration | undefined): Promise<FileChange[]> {
+export async function changesOf(c: AdoClient, id: number, it: Iteration | undefined): Promise<FileChange[]> {
   if (!it) return [];
   const r = await c.get<{ changeEntries?: { changeType?: string; item?: { path?: string; isFolder?: boolean } }[] }>(
     `${c.repoPath()}/pullrequests/${id}/iterations/${it.id}/changes`,

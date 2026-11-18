@@ -204,5 +204,6 @@ crossRepo:                               # settings for `aihub port` and `aihub 
 | `crossRepo.pathMaps` | Named lists of `from`/`to` directory prefixes. The longest `from` wins; files outside every map are reported, never dropped silently. `aihub port --path-map "src=>dst"` adds an ad-hoc map. |
 | `crossRepo.testTarget` | Repository and active branch that `aihub crossrepo test-resources` pushes to when `--to-repo`/`--target` are absent. |
 | `crossRepo.testResources` | Source repository, glob list and optional target directory prefix for the same command. |
+| `.agents/skills/_shared/references/known-fixes.md` | Errors the team fixed before (heading = error line, body = fix). Created by `aihub fix remember` through a pull request, read by `aihub fix known` and the pipeline-fix skill. `aihub team learn` appends rules to the first file under `guidelines:` (else `team-knowledge.md` next to it) the same way. |
 
-`aihub port` writes a new branch `port/<source>-from-<repo>` in the target repository (a conflict pushes nothing); `aihub crossrepo status|link-prs --story N` follow a story over several repositories. See the `cross-repo` skill.
+`aihub port` writes a new branch `port/<source>-from-<repo>` in the target repository (a conflict pushes nothing); `aihub crossrepo impact --from <pr|sha>` shows which files a change reaches in the other repositories (read-only); `aihub crossrepo status|link-prs --story N` follow a story over several repositories. See the `cross-repo` skill.

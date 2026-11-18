@@ -81,7 +81,7 @@ export function clientForRepo(ctx: Ctx, base: AdoRemote, repo: string): AdoClien
   return new AdoClient({ ...base, repo }, auth, ctx.fetch);
 }
 
-function repoNameAt(dir: string): string | undefined {
+export function repoNameAt(dir: string): string | undefined {
   try {
     return parseRemote(remoteUrl(dir)).repo.toLowerCase();
   } catch {
@@ -89,7 +89,7 @@ function repoNameAt(dir: string): string | undefined {
   }
 }
 
-const isGitDir = (d: string) => existsSync(join(d, ".git"));
+export const isGitDir = (d: string) => existsSync(join(d, ".git"));
 
 /** Local clone of `name`: current repo, entry path, a sibling directory, else a temporary clone of the same organisation. */
 export function resolveRepo(ctx: Ctx, team: TeamConfig, nameOrAlias: string): RepoHandle {

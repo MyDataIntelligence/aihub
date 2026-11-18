@@ -43,6 +43,8 @@ import * as testCmd from "./commands/test.js";
 import * as probe from "./commands/probe.js";
 import * as research from "./commands/research.js";
 import * as legacy from "./commands/legacy.js";
+import * as fixCmd from "./commands/fix.js";
+import * as teamCmd from "./commands/team.js";
 import * as standupCmd from "./commands/standup.js";
 import * as handoffCmd from "./commands/handoff.js";
 import * as prList from "./commands/pr-list.js";
@@ -98,6 +100,8 @@ export const commands: Record<string, CommandFn> = {
   library: library.run,
   test: testCmd.run,
   legacy: legacy.run,
+  fix: fixCmd.run,
+  team: teamCmd.run,
   probe: probe.run,
   research: research.run,
   standup: standupCmd.run,

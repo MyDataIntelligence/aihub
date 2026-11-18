@@ -1,10 +1,11 @@
 import { num, parse } from "../lib/args.js";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
+import { crossImpact } from "../lib/crossImpact.js";
 import { crossStatus, formatStatus, linkPrs, testResources } from "../lib/crossRepoOps.js";
 
 const USAGE =
-  "aihub crossrepo status --story N | link-prs --story N [--pr repo!42] | test-resources --from-repo A --to-repo B --target BRANCH --paths GLOB [--message-file F] [--run-pipeline NAME]";
+  "aihub crossrepo status --story N | impact --from <pr|sha> | link-prs --story N [--pr repo!42] | test-resources --from-repo A --to-repo B --target BRANCH --paths GLOB [--message-file F] [--run-pipeline NAME]";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -14,6 +15,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     if (!story) throw new AihubError("aihub crossrepo status needs --story N");
     const rows = await crossStatus(ctx, { story });
     ctx.out(v.json ? JSON.stringify({ story, repos: rows }) : formatStatus(story, rows));
+    return;
+  }
+  if (sub === "impact") {
+    const v = parse(rest, { from: { type: "string" }, json: { type: "boolean" } }).values;
+    ctx.out(await crossImpact(ctx, { from: v.from, json: v.json }));
     return;
   }
   if (sub === "link-prs") {
