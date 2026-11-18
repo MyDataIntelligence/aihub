@@ -2,6 +2,10 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.0.1
+- `pr create` fills an empty Changes section from the commits and an empty Tests section with an honest "not run yet"; the agent's text is never overwritten.
+- Skills are self-contained (no `_shared` links), so `npx skills add` gives the same skills as `aihub skills install`. Release notes: docs/releases/1.0.1.md.
+
 ## 1.0.0
 - First stable release: replaces the AI Context Hub with Agent Skills and one daemonless CLI (no MCP). The 0.1.0 command set plus `watch --mine`, `open --last`, `commit`, `repos`, `crossrepo`, `worktree`, `release`, `review`, `wiki`, `workitem`, `evidence`, `port`, `status` and the full `fabric` family (`logs`, `failures`, `auth sp`).
 - Benchmark nl: 42/42 correct with aihub against 28/42 for a plain agent, one aihub call per task, no questions. Release notes: docs/releases/1.0.0.md.
