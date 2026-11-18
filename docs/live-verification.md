@@ -314,3 +314,15 @@ Workspace `aihub-test-dev-20261118b` (second round, sql fix, spark stop) was del
 - **Toast with the Fix button.** `watch --run` on build 239 (failed, feature branch, ferron-test) with `--notify` raised a real Windows toast (Do Not Disturb was on, so it sat in the notification centre): `aihub: run 239 (AI-Context-Hub-Ruff-Check) failed on feature/1915-story-run-herhaling` with a **Fix** button. Proof PNG `20261118-2155-L-watch-toast-fix.png`. The button was not clicked (it opens the chat through `aihub://`, which is not registered for the dev build).
 - **Fabric job.** Own workspace `aihub-test-dev-watch1` on the trial capacity, DataPipeline `pl_wait` (Wait 20 s): `fabric run` printed the job id, `watch --fabric-job <ws>/pl_wait/<job>` followed it in the background and recorded `Fabric job ... completed`; the watch ended itself. The workspace was deleted afterwards (`WorkspaceNotFound`). Proof PNG `20261118-2157-L-watch-fabric-job.png`.
 - **Test Plans and Artifacts** (`aihub testplan`, `aihub artifacts`): reads live in ferron-test (runs and results of build 265, feeds); creating a plan answered 403 (no Test Plans license), so the writes are covered by tests only. Proof PNG `20261118-2212-L-testplan-artifacts.png`.
+
+## The opencode `aihub` agent allows by default (2026-11-18)
+
+opencode 1.19.5 with Luna (`openai/gpt-6-luna`, shared test opencode home through `XDG_DATA_HOME`, auth never copied), all other homes isolated, the agent files installed by this build (`aihub skills install --client opencode`). One `opencode run --agent aihub` with three shell commands and the instruction not to ask:
+
+| Command | Result |
+|---|---|
+| `python -m pytest --version` | ran without a prompt: `pytest 7.4.4` |
+| `dbt --version` | ran without a prompt (`dbt` is not installed on this machine: `command not found` from the shell, not a permission stop) |
+| `git push origin main` | refused by the agent's rule (`"git push * main": deny`); the bare origin still has only `init` |
+
+Not run: opencode 2.x (the `permissions` list has the same rules), Copilot/VS Code, Codex and Claude Code (their settings are documented in docs/agents.md and printed by `aihub skills install`, not exercised).
