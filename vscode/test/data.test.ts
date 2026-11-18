@@ -1,13 +1,13 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BarLoader, readEvents } from "../src/data";
+import { BarLoader } from "../src/data";
 import { stubRunner } from "./helpers";
 
 const scratch = () => mkdtempSync(join(tmpdir(), "aihub-ext-"));
 const calls = (file: string) => readFileSync(file, "utf8").trim().split("\n");
-const opts = (dir: string, fabric = true, ttl = 60_000) => ({ cwd: dir, fabric, fabricTtlMs: ttl, env: { AIHUB_HOME: dir } });
+const opts = (dir: string, fabric = true, ttl = 60_000) => ({ cwd: dir, fabric, fabricTtlMs: ttl });
 
 describe("BarLoader", () => {
   it("reads the whole bar through aihub --json calls only", async () => {
@@ -65,14 +65,10 @@ describe("BarLoader", () => {
   });
 });
 
-describe("readEvents", () => {
-  it("reads the stored watch events, newest first", () => {
-    const home = scratch();
-    mkdirSync(join(home, "events"));
-    writeFileSync(join(home, "events", "a.json"), JSON.stringify({ id: "a", message: "old", at: 1000 }));
-    writeFileSync(join(home, "events", "b.json"), JSON.stringify({ id: "b", message: "new", at: 2000 }));
-    writeFileSync(join(home, "events", "c.json"), "{ half");
-    expect(readEvents({ AIHUB_HOME: home }).map((e) => e.message)).toEqual(["new", "old"]);
-    expect(readEvents({ AIHUB_HOME: join(home, "nothing") })).toEqual([]);
+describe("events", () => {
+  it("come from aihub watch events, and are empty for a CLI without that command", async () => {
+    const dir = scratch();
+    expect((await new BarLoader(stubRunner(), opts(dir, false)).load()).events).toHaveLength(2);
+    expect((await new BarLoader(stubRunner({ FAKE_AIHUB_FAIL: "watch" }), opts(dir, false)).load()).events).toEqual([]);
   });
 });
