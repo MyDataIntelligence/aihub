@@ -32,9 +32,7 @@ A direct command needs no routing: "maak een PR" -> run `aihub pr create --summa
 | change team.yaml or a template | team-settings |
 | release, release train | release |
 
-Resumed session: run `aihub status`.
-
-Example: the user sends a pullrequest link, so follow pr-watch with that id.
+Resumed session, new chat or compaction: `aihub status --resume` (local, instant), then `aihub status`. Only an id or words: `aihub story recall --id N`, `aihub story search "<words>"`.
 
 ## What the CLI fills
 Templates, target branch, story links and repository come from `team.yaml` (`aihub doctor` checks it); never ask the user for them. Read the `guidelines:` files first.

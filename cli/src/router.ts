@@ -31,6 +31,9 @@ import * as explain from "./commands/explain.js";
 import { setTrace } from "./lib/trace.js";
 import * as prPolicy from "./commands/pr-policy.js";
 import * as storyContext from "./commands/story-context.js";
+import * as storyMemory from "./commands/story-memory.js";
+import { runAllRepos, wantsAllRepos } from "./lib/allRepos.js";
+import { appendJournal, isJournaled } from "./lib/journal.js";
 import * as repos from "./commands/repos.js";
 import * as open from "./commands/open.js";
 import * as commit from "./commands/commit.js";
@@ -72,9 +75,11 @@ export const commands: Record<string, CommandFn> = {
   story: (argv, ctx) =>
     storyContext.STORY_CONTEXT_SUBS.includes(argv[0])
       ? storyContext.run(argv, ctx)
-      : storyFlow.STORY_FLOW_SUBS.includes(argv[0])
-        ? storyFlow.run(argv, ctx)
-        : story.run(argv, ctx),
+      : storyMemory.STORY_MEMORY_SUBS.includes(argv[0])
+        ? storyMemory.run(argv, ctx)
+        : storyFlow.STORY_FLOW_SUBS.includes(argv[0])
+          ? storyFlow.run(argv, ctx)
+          : story.run(argv, ctx),
   worktree: worktree.run,
   review: review.run,
   wiki: wiki.run,
@@ -169,9 +174,17 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
       ctx.out(`dry-run: ${l}`);
     },
   });
-  const run: Ctx = dryRun && !ownDryRun ? { ...ctx, out: (l) => ctx.out(`  (simulated) ${l}`) } : ctx;
+  const outLines: string[] = [];
+  const base: Ctx = dryRun && !ownDryRun ? { ...ctx, out: (l) => ctx.out(`  (simulated) ${l}`) } : ctx;
+  const run: Ctx = { ...base, out: (l) => (outLines.push(l), base.out(l)) };
+  const journal = isJournaled(name, args);
+  const keep = (ok: boolean, err = "") => {
+    if (journal) appendJournal(ctx.cwd, name, args, ok, name === "pipeline" && args[0] === "follow" ? [...outLines].reverse() : outLines, err, (ctx.now ?? Date.now)());
+  };
   try {
-    await fn(args, run);
+    if (wantsAllRepos(name, args)) await runAllRepos(name, args, run, registry);
+    else await fn(args, run);
+    keep(true);
     if (dryRun && name !== "fabric") ctx.out(`dry-run: ${planned} planned write(s), nothing was changed`);
     return 0;
   } catch (e) {
@@ -179,6 +192,7 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
       ctx.out(`dry-run: stopped after the planned writes above, because the later steps need the real results (${(e as Error).message})`);
       return 0;
     }
+    keep(false, (e as Error).message);
     if (e instanceof AihubError) ctx.err(`aihub: ${e.message}`);
     else ctx.err(`aihub: unexpected error: ${(e as Error).message}`);
     return 1;
