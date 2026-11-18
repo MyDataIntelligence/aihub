@@ -34,7 +34,10 @@ import * as storyContext from "./commands/story-context.js";
 import * as repos from "./commands/repos.js";
 import * as open from "./commands/open.js";
 import * as commit from "./commands/commit.js";
+import * as search from "./commands/search.js";
+import * as repo from "./commands/repo.js";
 import * as policy from "./commands/policy.js";
+import * as library from "./commands/library.js";
 import * as testCmd from "./commands/test.js";
 import * as legacy from "./commands/legacy.js";
 import * as standupCmd from "./commands/standup.js";
@@ -84,7 +87,10 @@ export const commands: Record<string, CommandFn> = {
   repos: repos.run,
   open: open.run,
   commit: commit.run,
+  search: search.run,
+  repo: repo.run,
   policy: policy.run,
+  library: library.run,
   test: testCmd.run,
   legacy: legacy.run,
   standup: standupCmd.run,
