@@ -9,6 +9,9 @@ permissions:
     resource: "aihub *"
     effect: allow
   - action: shell
+    resource: "cat *"
+    effect: allow
+  - action: shell
     resource: "git *"
     effect: allow
   - action: shell

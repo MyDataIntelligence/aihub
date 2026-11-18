@@ -36,7 +36,7 @@ The source files live in `agents/<format>/` (`opencode`, `opencode2`, `copilot`,
 
 ## Permissions
 
-- **opencode**: the agent file carries the permissions. `aihub`, `aihub *`, `git *`, `az repos *`, `az boards *`, `az pipelines *` run without a prompt; `git push` with a force flag and `rm -rf*` ask; every other shell command asks (patterns are ordered, the last match wins). Reading, searching, editing and loading skills keep opencode's default. `opencode run` (no terminal to answer) rejects what would ask. Checked live with opencode 1.19.5: `aihub --version` and `git status` ran, `git push --force origin HEAD` and `echo x` were stopped.
+- **opencode**: the agent file carries the permissions. `aihub`, `aihub *`, `cat *` (the skills write story and PR text files with a heredoc), `git *`, `az repos *`, `az boards *`, `az pipelines *` run without a prompt; `git push` with a force flag and `rm -rf*` ask; every other shell command asks (patterns are ordered, the last match wins). Reading, searching, editing and loading skills keep opencode's default. `opencode run` (no terminal to answer) rejects what would ask. Checked live with opencode 1.19.5: `aihub --version` and `git status` ran, `git push --force origin HEAD` and `echo x` were stopped.
 - **VS Code and Copilot**: an agent file lists tools (`execute`, `read`, `edit`, `search`, `web`, `agent`) but cannot grant terminal approval. That is the VS Code setting `chat.tools.terminal.autoApprove`, in your user settings. A suggested pattern:
 
   ```json
