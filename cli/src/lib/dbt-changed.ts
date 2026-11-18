@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Ctx } from "./context.js";
+import { normalizedCopy } from "./dbt-eol.js";
 import { filesImpact, stateImpact, type Impact } from "./dbt-impact.js";
 import { loadManifest } from "./dbt-manifest.js";
 import { dbtRunner, resolveProject, selectedTarget, type Project, type Runner } from "./dbt-run.js";
@@ -12,8 +13,9 @@ import { changedFiles, resolveBase } from "./testChanged.js";
 
 /** The dbt side of a branch: which nodes it changes (from the files, or from dbt's state:modified against a base manifest). */
 
-function idsFrom(runner: Runner, select: string, stateDir: string): string[] {
-  const r = runner.run(["ls", "--select", select, "--state", stateDir, "--output", "json", "--output-keys", "unique_id"], 300_000);
+function idsFrom(runner: Runner, select: string, stateDir: string, projectDir: string, profilesDir?: string): string[] {
+  const prof = profilesDir ? ["--profiles-dir", profilesDir] : [];
+  const r = runner.raw(["ls", "--select", select, "--state", stateDir, "--output", "json", "--output-keys", "unique_id", "--project-dir", projectDir, ...prof], 300_000);
   if (r.status !== 0) throw new AihubError(`dbt ls --select ${select} --state ${stateDir} failed (exit ${r.status}): ${(r.stdout + r.stderr).split("\n").slice(-6).join(" ").slice(0, 300)}`);
   const ids: string[] = [];
   for (const line of r.stdout.split(/\r?\n/)) {
@@ -28,28 +30,43 @@ function idsFrom(runner: Runner, select: string, stateDir: string): string[] {
   return ids;
 }
 
-/** A manifest of the merge base: the base commit in a temporary worktree, parsed there (`dbt deps` first when it has packages). */
-export function baseManifest(ctx: Ctx, p: Project, runner: Runner, base: string): { stateDir: string; cleanup: () => void } {
+export interface StateSide {
+  /** folder with the base manifest */
+  stateDir: string;
+  /** the working project with normalised line endings: dbt compares this one against stateDir */
+  curDir: string;
+  cleanup: () => void;
+}
+
+/**
+ * The two sides of a state comparison, both with LF endings and no trailing whitespace (see dbt-eol.ts). With `stateDir` given
+ * (a production manifest from the pipeline) only the working project is copied; otherwise the merge base is checked out in a
+ * temporary worktree without autocrlf, copied and parsed (`dbt deps` first when it has packages).
+ */
+export function stateSides(p: Project, runner: Runner, base: string, stateDir?: string): StateSide {
   const tmp = mkdtempSync(join(tmpdir(), "aihub-dbtbase-"));
   const wt = join(tmp, "wt");
+  let worktree = false;
   const cleanup = () => {
-    gitRaw(p.root, ["worktree", "remove", "--force", wt]);
+    if (worktree) gitRaw(p.root, ["worktree", "remove", "--force", wt]);
     rmSync(tmp, { recursive: true, force: true });
   };
-  const add = gitRaw(p.root, ["worktree", "add", "--detach", wt, base]);
-  if (add.status !== 0) {
-    rmSync(tmp, { recursive: true, force: true });
-    throw new AihubError(`cannot check out the merge base ${base.slice(0, 7)}: ${add.stderr?.trim()}`);
-  }
   try {
+    const curDir = join(tmp, "cur");
+    normalizedCopy(p.dir, curDir);
+    if (stateDir) return { stateDir, curDir, cleanup };
+    const add = gitRaw(p.root, ["-c", "core.autocrlf=false", "worktree", "add", "--detach", wt, base]);
+    if (add.status !== 0) throw new AihubError(`cannot check out the merge base ${base.slice(0, 7)}: ${add.stderr?.trim()}`);
+    worktree = true;
     const rel = p.dir.slice(p.root.length).replace(/^[\\/]+/, "");
-    const dir = join(wt, rel);
-    const stateDir = join(tmp, "state");
+    const baseDir = join(tmp, "base");
+    normalizedCopy(join(wt, rel), baseDir);
+    const state = join(tmp, "state");
     const prof = existsSync(join(p.dir, "profiles.yml")) ? ["--profiles-dir", p.dir] : [];
-    if (existsSync(join(dir, "packages.yml"))) runner.raw(["deps", "--project-dir", dir, ...prof], 300_000);
-    const r = runner.raw(["parse", "--project-dir", dir, ...prof, "--target-path", stateDir], 300_000);
+    if (existsSync(join(baseDir, "packages.yml"))) runner.raw(["deps", "--project-dir", baseDir, ...prof], 300_000);
+    const r = runner.raw(["parse", "--project-dir", baseDir, ...prof, "--target-path", state], 300_000);
     if (r.status !== 0) throw new AihubError(`dbt parse of the merge base failed (exit ${r.status}): ${(r.stdout + r.stderr).split("\n").slice(-6).join(" ").slice(0, 300)}`);
-    return { stateDir, cleanup };
+    return { stateDir: state, curDir, cleanup };
   } catch (e) {
     cleanup();
     throw e;
@@ -68,14 +85,14 @@ export function projectImpact(ctx: Ctx, p: Project, o: ImpactOpts): Impact {
   const m = loadManifest(p, runner);
   const meta = { project: p.info.name, baseRef: target, base: base.slice(0, 7) };
   if (o.state) {
-    const auto = o.state === "auto" ? baseManifest(ctx, p, runner, base) : undefined;
+    const side = stateSides(p, runner, base, o.state === "auto" ? undefined : o.state);
     try {
-      const dir = auto?.stateDir ?? o.state;
-      const modified = idsFrom(runner, "state:modified", dir);
-      const plus = idsFrom(runner, "state:modified+", dir);
-      return stateImpact(m, modified, plus, { ...meta, stateDir: auto ? `the merge base ${meta.base}` : o.state });
+      const prof = existsSync(join(p.dir, "profiles.yml")) ? p.dir : undefined;
+      const modified = idsFrom(runner, "state:modified", side.stateDir, side.curDir, prof);
+      const plus = idsFrom(runner, "state:modified+", side.stateDir, side.curDir, prof);
+      return stateImpact(m, modified, plus, { ...meta, stateDir: o.state === "auto" ? `the merge base ${meta.base}` : o.state });
     } finally {
-      auto?.cleanup();
+      side.cleanup();
     }
   }
   const rel = p.info.path === "." ? "" : `${p.info.path}/`;
