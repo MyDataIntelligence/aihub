@@ -104,7 +104,7 @@ Column **Old Hub** names the legacy tool (`-` = the old Hub did not have it). Co
 | Pipeline evidence runs for the PR | pipeline_evidence_runs | `build/builds` | `aihub evidence add` + `pipeline runs` | exists |
 | Run timeline: stages, jobs, failing tasks with errors, durations, retry attempts | pipeline_get_failure (failing step only) | `build/builds/{id}/timeline` | `aihub pipeline timeline --run N [--failed|--tasks]` | built |
 | Failed tests of a run with message, stack head and a flaky marker over earlier runs | - | `test/runs`, `test/runs/{id}/results` | `aihub pipeline tests --run N [--history n]` | built |
-| Code coverage of a run | - | `test/codecoverage` | `aihub pipeline coverage --run N` | built (unit only: no run in the test project publishes coverage) |
+| Code coverage of a run | - | `test/codecoverage` | `aihub pipeline coverage --run N` | exists (live: a synthetic pipeline published a Cobertura file; the CLI answered 3 of 4 lines and 1 of 2 branches) |
 | Resolved variables: system, definition (secrets hidden), variable groups, queue-time parameters | - | `build/builds/{id}`, `build/definitions/{id}` | `aihub pipeline vars --run N` | built |
 | Compare two runs: commits between, parameters, stage result and duration | - | timelines, `commits` | `aihub pipeline compare --run A --with B` | built |
 | Expanded YAML with templates resolved | pipeline_preview_yaml | `pipelines/{id}/runs` previewRun | `aihub pipeline expand [--file f.yml]` | built |
