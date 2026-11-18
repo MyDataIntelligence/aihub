@@ -34,6 +34,7 @@ import * as storyContext from "./commands/story-context.js";
 import * as repos from "./commands/repos.js";
 import * as open from "./commands/open.js";
 import * as commit from "./commands/commit.js";
+import * as testCmd from "./commands/test.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -78,6 +79,7 @@ export const commands: Record<string, CommandFn> = {
   repos: repos.run,
   open: open.run,
   commit: commit.run,
+  test: testCmd.run,
 };
 
 export const VERSION = cliVersion();
@@ -88,6 +90,7 @@ export const HELP: Record<string, string> = {
   comments: "aihub comments get [--pr <url|N>]\naihub comments reply [--pr <url|N>] --replies-file replies.yaml\n    replies.yaml: a list of {threadId, text, status} with status fixed|wontFix|closed|active (thread: and resolve: true also work).",
   story: "aihub story template   (prints the team story template: the headings to use)\naihub story create --title \"<title>\" --body-file story.md   (one ## <heading> section per template heading, all filled)",
   branch: "aihub branch update [--branch B] [--target T] [--rebase]",
+  test: testCmd.TEST_USAGE,
 };
 
 /** Returns the process exit code. */

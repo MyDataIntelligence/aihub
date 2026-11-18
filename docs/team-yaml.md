@@ -65,6 +65,21 @@ pipelines:                                                      # pipelines to f
 
 Check the file with `aihub doctor`. Change it through a pull request (see [onboarding](onboarding.md)).
 
+## Tests of the changed files (optional)
+
+```yaml
+tests:
+  command: "pytest {tests}"        # {tests} becomes the quoted test files; default pytest for .py, npx vitest run for JS/TS
+  map:                             # rules for code the name/import heuristics do not match
+    - source: "etl/**"             # changed files matching these globs (a string or a list)
+      tests: "tests/etl/**"        # run the repository files matching these globs
+```
+
+`aihub test changed [--base <branch>] [--run]` lists the tests that belong to what the branch changed (committed since the merge base with the target,
+uncommitted and untracked files) and with `--run` runs only those. Without `tests:` it uses the defaults: for Python `test_<module>.py`, `<module>_test.py` and test
+files that import the module; for JS/TS `<name>.test.ts`, `<name>.spec.ts` and specs that import the file; a changed test file runs itself. Code without a test is
+listed, docs and config are ignored, and it never falls back to the whole suite: the pipeline runs that.
+
 ## Fabric and Robot (optional)
 
 ```yaml

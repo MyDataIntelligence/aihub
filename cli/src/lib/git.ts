@@ -92,11 +92,11 @@ export function showFile(cwd: string, branch: string, path: string): string | un
 }
 
 /** Push the branch when origin does not have it or is behind. Returns true if a push happened. */
-export function pushIfNeeded(cwd: string, branch: string): boolean {
+export function pushIfNeeded(cwd: string, branch: string, noVerify = false): boolean {
   const remoteSha = git(cwd, ["ls-remote", "--heads", "origin", branch], { allowFail: true }).split(/\s+/)[0];
   const local = git(cwd, ["rev-parse", "HEAD"]).trim();
   if (remoteSha === local) return false;
-  git(cwd, ["push", "--set-upstream", "origin", `HEAD:refs/heads/${branch}`]);
+  git(cwd, ["push", ...(noVerify ? ["--no-verify"] : []), "--set-upstream", "origin", `HEAD:refs/heads/${branch}`]);
   return true;
 }
 
