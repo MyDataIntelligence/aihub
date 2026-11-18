@@ -409,6 +409,15 @@ export function scan(deps: LegacyDeps): Scan {
     if (/^name:\s*hub\s*$/m.test(read(agentFile)) && HUB_AGENT_MARK.test(read(agentFile))) add({ group: "Skills, agents and rules", client: "copilot", what: "delete the hub agent", where: agentFile, apply: () => unlinkSync(agentFile) });
     else out.kept.push(`${agentFile}: a hub agent without the Hub's generated header, so it is yours`);
   }
+  const otherAgents: Array<[string, string]> = [
+    ["codex", join(codexHome, "agents", "hub.toml")],
+    ["claude", join(env.CLAUDE_CONFIG_DIR || join(home, ".claude"), "agents", "hub.md")],
+  ];
+  for (const [client, f] of otherAgents) {
+    if (!isFile(f)) continue;
+    if (HUB_AGENT_MARK.test(read(f))) add({ group: "Skills, agents and rules", client, what: "delete the hub agent", where: f, apply: () => unlinkSync(f) });
+    else out.kept.push(`${f}: a hub agent without the Hub's generated header, so it is yours`);
+  }
   instructionsFile("copilot", join(copilotHome, "instructions", "ai-context-hub.instructions.md"));
   for (const oc of opencodeHomes) {
     skillsOf("opencode", oc);
@@ -421,6 +430,8 @@ export function scan(deps: LegacyDeps): Scan {
         add({ group: "Skills, agents and rules", client: "opencode", what: `delete the ${name.replace(".md", "")} agent`, where: f, apply: () => unlinkSync(f) });
       } else out.kept.push(`${f}: an agent of that name without the Hub's generated header, so it is yours`);
     }
+    const oneAgent = join(oc, "agent", "hub.md");
+    if (isFile(oneAgent) && HUB_AGENT_MARK.test(read(oneAgent))) add({ group: "Skills, agents and rules", client: "opencode", what: "delete the hub agent (agent/ folder)", where: oneAgent, apply: () => unlinkSync(oneAgent) });
     const rules = join(oc, "AGENTS.md");
     if (isFile(rules)) {
       const rest = withoutBlock(read(rules));
