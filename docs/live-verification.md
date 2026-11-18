@@ -176,6 +176,42 @@ Bugs found and fixed (PR #62, released in next.59): (1) opencode's `aihub` agent
 Cleanup: PRs !1079-!1084 abandoned, all `live-f4a1` and `live-b7c2` branches and stories 3395, 3396, 3398, 3399 deleted, no `aihub watch` process left (the runner had started and stopped one itself); `az` and `git ls-remote` show nothing left.
 Proof PNGs (rendered summaries): `20261118-2030-L-agent-e2e-opencode.png`, `-copilot.png`, `-vscode.png` (the last states why it was not run).
 
+## Fabric live in an own workspace (2026-11-18)
+
+`aihub fabric` from `staging` (409f187 plus the fixes below), signed in with `az login`, against Microsoft Fabric. To stay synthetic the check created its own workspace
+`aihub-test-dev-20261118` on the trial capacity (`FTL4`, Switzerland North; the only capacity without acc/prd in its name that can run Spark) and wrote only there; other workspaces were
+not touched (not even listed beyond `fabric workspaces --filter`). Second sources: Fabric REST through `az rest` and OneLake DFS through `az rest --resource https://storage.azure.com/`; the SQL
+endpoint through ODBC 18 (pyodbc with an Entra token). Everything was deleted at the end and verified gone (`GET /workspaces/<id>` answers `WorkspaceNotFound`).
+
+| Case | Result | Second source |
+|---|---|---|
+| `workspace create` (dry-run, then real on the trial capacity), `show`, `roles`, `workspaces --filter` | ok (Admin: the signed-in user) | REST `GET workspaces/<id>` |
+| `item create` Lakehouse, 2 Notebooks (Fabric git format `notebook-content.py`), 2 DataPipelines (Wait; Notebook activity), Environment | ok; a `.ipynb` part is refused by the service with `PyToIPynbFailure` and the CLI prints that message | REST `GET items` |
+| `item show`, `item definition --out`, `item rename` (and back), `item update --definition-dir`, `--dry-run` of each | ok; the updated definition contains the edit | `item definition` after `update` |
+| `onelake mkdir`, `write`, `list`, `read` a CSV | ok after fix 1 | OneLake DFS GET of the file |
+| `lakehouse load` into a table, `lakehouse tables`, `livy run --kind pyspark` | ok after fix 2; the table has 3 rows (`livy ok 3`) | REST `GET lakehouses/<id>/tables`, Livy count |
+| `run` the OK notebook, `jobs`, `job show`, `logs --item --job` | Completed in 12 s; driver stdout line `aihub live verification: hello from the ok notebook` visible with `spark logs --log-type driver --file stdout --search` | REST `GET jobs/instances` |
+| `run` the failing notebook (`spark.read.table` of a missing table), `failures` | Failed; chain notebook -> Spark session names the failed cell (`cell 12 line 1: df = spark.read.table(...)`), `AnalysisException TABLE_OR_VIEW_NOT_FOUND`, likely cause `missing-table-or-path` (needs the driver log, available a few minutes after the run) | `az rest` `.../livySessions/<id>` state `Failed` |
+| capacity full (4 runs failed with `TooManyRequestsForCapacity`) | `failures` said `unknown` before fix 4, now `capacity` | job failure text in REST |
+| `run` a DataPipeline (Wait) + `logs` | Completed in 17 s, activity run `wait_five (Wait): Succeeded, 5s` | REST jobs |
+| `run` the pipeline with a notebook activity + `logs`; the same when the capacity was full | Completed; activity run `run_nb_ok (TridentNotebook): Succeeded`; failed case: chain pipeline -> activity -> Spark session, cause `capacity` | REST jobs |
+| `logs --workspace W --since 1h --status failed` | showed 0 runs before fix 3, 4 runs after | REST jobs (4 failed) |
+| `sql` read-only: guard (`delete from ...` refused: only SELECT/WITH), `--dry-run` | ok | |
+| `sql` SELECT on the lakehouse SQL endpoint | **not working on this machine**: the TDS handshake is closed by the endpoint after the TLS hello for tedious 18.6 on Node 22.17 (TLS 1.2 only, strict, other cipher lists tried); the same query through ODBC 18 returns the 3 rows. Now a one-line error instead of a stack trace (fix 5) | ODBC 18 + Entra token: `[(1,'alpha'),(2,'beta'),(3,'gamma')]` |
+| `git status` of an unconnected workspace | clear message `Workspace not connected to Git.` (Fabric's text, HTTP 400) | |
+| `auth status` | `signed-in user (az login)`, service principals: none; SP live skipped (none registered, no secret supplied) | |
+| `dax`, `kql` | skipped: they need a semantic model / KQL database with data, which a cheap synthetic workspace does not have | |
+| ACC/PRD guard on `workspace create`, `item create`, `item delete --yes`, `run`, `workspace delete` with `...-acc` / `...-prd` names | refused before any call (`--dry-run`, no such workspace exists) | |
+| `item delete --yes` of every item, `workspace delete --yes` (new, fix 6) | ok; the workspace is gone | REST: `WorkspaceNotFound` |
+
+Fixes (aihub #71 and the workspace-delete PR, each with a vitest): (1) `--lakehouse <name>` of the onelake commands was "ambiguous" because every lakehouse has a SQL endpoint with the same name; (2) `lakehouse load --path Files/x.csv`
+became `Files/Files/x.csv`; (3) Fabric job times are UTC without a zone suffix and were read as local time, so `logs --since 1h` hid runs from the last hour; (4) `failures` reported cause `unknown` when the bottom link was
+"no Spark session found"; (5) a dropped SQL connection crashed the CLI with a stack trace; (6) `fabric workspace delete --yes` did not exist (only the generic `api delete_workspace`).
+
+Findings that are not bugs of the CLI: a table load and every notebook run open a Spark session; on the trial capacity one idle session (about 20 minutes) blocks the next run with `TooManyRequestsForCapacity` (the CLI has no
+way to stop a Spark session, only to wait; `failures` now says so); driver logs of a Spark application appear some minutes after it ended (404 "no available log file" before, which the CLI reports per section).
+Proof PNG: `20261118-1951-F-fabric-live.png` in the proof folder of the benchmark machine.
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.

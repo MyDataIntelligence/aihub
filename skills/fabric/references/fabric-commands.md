@@ -8,7 +8,7 @@ Every command takes `--workspace <name|id>` (any workspace you can access; the d
 | Run history | `jobs --item I [--top N]`, `job show\|cancel --job ID`, `status`, `schedules --item I` |
 | Logs | `logs --workspace W [--since 24h] [--status failed] [--item I] [--search t] [--tail N]`; with `--item I --job ID`: scheduler failure, notebook/SJD Spark driver stderr/stdout with error excerpt, pipeline activity runs; semantic model refresh history. Each section names its source; an unavailable endpoint is reported, not fatal |
 | Lakehouse | `lakehouse tables\|files --lakehouse L [--path P]`, `shortcuts --lakehouse L`, `lakehouse load\|maintenance --table T` |
-| Write | `item create --type T --name N [--definition-dir D] [--description]`, `item update --item I --definition-dir D`, `item rename --name N`, `item delete --yes`, `run --item I [--params-file F] [--wait]`, `run --cancel ID`, `workspace create\|assign-capacity`, `environment publish\|libraries` |
+| Write | `item create --type T --name N [--definition-dir D] [--description]`, `item update --item I --definition-dir D`, `item rename --name N`, `item delete --yes`, `run --item I [--params-file F] [--wait]`, `run --cancel ID`, `workspace create|assign-capacity|delete --yes`\|assign-capacity`, `environment publish\|libraries` |
 | Git | `git status`, `git update`, `git commit --message-file F` |
 | Deploy | `deployment list`, `deployment stages --pipeline P`, `deployment deploy --pipeline P --from-stage S --to-stage T` |
 | OneLake | `onelake list\|read\|write\|mkdir\|delete\|move --lakehouse L --path P [--to P2] [--text T\|--file F] [--yes]` |
