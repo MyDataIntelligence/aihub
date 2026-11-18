@@ -44,6 +44,7 @@ interface RawPr {
 }
 
 const DAY = 24 * 3_600_000;
+const MAX_PRS = 10;
 const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 const short = (s: string | undefined, n = 60) => ((s ?? "").length > n ? `${(s ?? "").slice(0, n - 1)}…` : (s ?? ""));
 const ref = (p: RawPr): PrRef => ({ id: p.pullRequestId, title: p.title ?? "", repo: p.repository?.name });
@@ -61,6 +62,8 @@ export function sinceFrom(spec: string | undefined, now: number): number {
     start.setDate(start.getDate() - back);
     return start.getTime();
   }
+  const days = /^(\d+)d$/.exec(s);
+  if (days) return now - Number(days[1]) * DAY;
   return now - parseDuration(s, 0, { flag: "--since", unitRequired: true });
 }
 
@@ -146,13 +149,13 @@ const TXT = {
     commits: "Commits", repos: "repository", reposN: "repositories", prs: "PR's", created: "aangemaakt", merged: "gemerged", updated: "bijgewerkt",
     reviews: "Reviews", on: "op", comments: "opmerkingen", runs: "Runs", builds: "builds", ok: "geslaagd", bad: "mislukt", other: "overig",
     stories: "Stories", nothing: "Niets geregistreerd sinds", open: "Open PR's", stor: "Stories", branches: "Branches met werk dat nog niet gepusht is", watches: "Lopende watches", failing: "Falende runs",
-    none: "Niets open.", handoff: "Overdracht", to: "aan", draft: "concept", ready: "klaar", threads: "open threads", build: "build", unpushed: "niet gepusht", ahead: "commit(s) voor", mine: "alles van mij (PR's, vermeldingen, reviews)", every: "elke", noVotes: "geen stemmen",
+    none: "Niets open.", more: "en nog", handoff: "Overdracht", to: "aan", draft: "concept", ready: "klaar", threads: "open threads", build: "build", unpushed: "niet gepusht", ahead: "commit(s) voor", mine: "alles van mij (PR's, vermeldingen, reviews)", every: "elke", noVotes: "geen stemmen",
   },
   en: {
     commits: "Commits", repos: "repository", reposN: "repositories", prs: "PRs", created: "created", merged: "merged", updated: "updated",
     reviews: "Reviews", on: "on", comments: "comments", runs: "Runs", builds: "builds", ok: "succeeded", bad: "failed", other: "other",
     stories: "Stories", nothing: "Nothing recorded since", open: "Open PRs", stor: "Stories", branches: "Branches with work not pushed yet", watches: "Running watches", failing: "Failing runs",
-    none: "Nothing open.", handoff: "Handoff", to: "to", draft: "draft", ready: "ready", threads: "open threads", build: "build", unpushed: "not pushed", ahead: "commit(s) ahead", mine: "everything of mine (PRs, mentions, reviews)", every: "every", noVotes: "no votes",
+    none: "Nothing open.", more: "and more PRs", handoff: "Handoff", to: "to", draft: "draft", ready: "ready", threads: "open threads", build: "build", unpushed: "not pushed", ahead: "commit(s) ahead", mine: "everything of mine (PRs, mentions, reviews)", every: "every", noVotes: "no votes",
   },
 } as const;
 
@@ -162,8 +165,9 @@ const prList = (xs: PrRef[]) => xs.slice(0, 4).map((p) => `!${p.id} ${short(p.ti
 export function renderStandup(a: Activity, lang: Lang): string[] {
   const t = TXT[lang];
   const lines: string[] = [];
+  const many = (n: number) => (n >= 100 ? "100+" : String(n));
   const nCommits = a.commits.reduce((s, c) => s + c.count, 0);
-  if (nCommits) lines.push(`${t.commits}: ${nCommits} (${a.commits.length} ${a.commits.length === 1 ? t.repos : t.reposN}: ${a.commits.map((c) => `${c.repo} ${c.count}`).join(", ")})`);
+  if (nCommits) lines.push(`${t.commits}: ${many(nCommits)} (${a.commits.length} ${a.commits.length === 1 ? t.repos : t.reposN}: ${a.commits.map((c) => `${c.repo} ${many(c.count)}`).join(", ")})`);
   const parts = [
     a.prs.created.length ? `${a.prs.created.length} ${t.created} (${prList(a.prs.created)})` : "",
     a.prs.merged.length ? `${a.prs.merged.length} ${t.merged} (${prList(a.prs.merged)})` : "",
@@ -191,6 +195,8 @@ export interface Handoff {
   me: string;
   date: string;
   prs: { pr: PrRef; draft: boolean; votes: string[]; openThreads: number; build?: string }[];
+  /** Open PRs beyond the ones listed in detail. */
+  morePrs: number;
   stories: { id: number; title: string; state: string }[];
   branches: { branch: string; note: string }[];
   watches: { id: string; what: string }[];
@@ -201,7 +207,7 @@ export async function gatherHandoff(ctx: Ctx, client: AdoClient, me: Me, root: s
   const VOTE: Record<number, string> = { 10: "approved", 5: "approved with suggestions", [-5]: "waiting for author", [-10]: "rejected" };
   const mine = (await client.list<RawPr>("git/pullrequests", { "searchCriteria.creatorId": me.id, "searchCriteria.status": "active", $top: 50 })).filter((p) => !repos.length || repos.some((r) => same(r, p.repository?.name)));
   const prs: Handoff["prs"] = [];
-  for (const p of mine) {
+  for (const p of mine.slice(0, MAX_PRS)) {
     let openThreads = 0;
     try {
       const threads = await client.list<{ isDeleted?: boolean; status?: string; comments?: { commentType?: string; isDeleted?: boolean }[] }>(`git/repositories/${p.repository?.id}/pullRequests/${p.pullRequestId}/threads`);
@@ -247,13 +253,14 @@ export async function gatherHandoff(ctx: Ctx, client: AdoClient, me: Me, root: s
   const seen = new Set<string>();
   const failing: Handoff["failing"] = [];
   for (const b of failed.value ?? []) {
-    const branch = (b.sourceBranch ?? "").replace(/^refs\/heads\//, "");
+    const prMerge = /^refs\/pull\/(\d+)\//.exec(b.sourceBranch ?? "");
+    const branch = prMerge ? `PR !${prMerge[1]}` : (b.sourceBranch ?? "").replace(/^refs\/heads\//, "");
     if (!branch || seen.has(branch)) continue;
     seen.add(branch);
     failing.push({ run: b.id, branch, pipeline: b.definition?.name });
   }
   void ctx;
-  return { me: me.name, date: new Date(now).toISOString().slice(0, 10), prs, stories, branches, watches, failing };
+  return { me: me.name, date: new Date(now).toISOString().slice(0, 10), prs, morePrs: Math.max(0, mine.length - MAX_PRS), stories, branches, watches, failing };
 }
 
 /** The handoff as a short markdown note; empty parts are left out. */
@@ -261,11 +268,11 @@ export function renderHandoff(h: Handoff, lang: Lang, to?: string): string {
   const t = TXT[lang];
   const out: string[] = [`# ${t.handoff} ${h.me}${to ? ` ${t.to} ${to}` : ""} (${h.date})`, ""];
   const section = (title: string, lines: string[]) => lines.length && out.push(`## ${title}`, ...lines.map((l) => `- ${l}`), "");
-  section(t.open, h.prs.map((p) => `!${p.pr.id} ${p.pr.title}${p.pr.repo ? ` (${p.pr.repo})` : ""}: ${p.draft ? t.draft : t.ready}; ${p.votes.length ? p.votes.join(", ") : t.noVotes}; ${p.openThreads} ${t.threads}${p.build ? `; ${t.build} ${p.build}` : ""}`));
+  section(t.open, [...h.prs.map((p) => `!${p.pr.id} ${p.pr.title}${p.pr.repo ? ` (${p.pr.repo})` : ""}: ${p.draft ? t.draft : t.ready}; ${p.votes.length ? p.votes.join(", ") : t.noVotes}; ${p.openThreads} ${t.threads}${p.build ? `; ${t.build} ${p.build}` : ""}`), ...(h.morePrs ? [`${t.more}: ${h.morePrs}`] : [])]);
   section(t.stor, h.stories.map((s) => `AB#${s.id} ${s.title}: ${s.state}`));
   section(t.branches, h.branches.map((b) => `${b.branch}: ${b.note.startsWith("ahead") ? `${b.note.slice(6)} ${t.ahead}` : t.unpushed}`));
   section(t.watches, h.watches.map((w) => (w.what === "mine" ? t.mine : w.what)));
-  section(t.failing, h.failing.map((f) => `${t.build} ${f.run} ${f.pipeline ? `(${f.pipeline}) ` : ""}${t.on} ${f.branch}`));
+  section(t.failing, h.failing.slice(0, 5).map((f) => `${t.build} ${f.run} ${f.pipeline ? `(${f.pipeline}) ` : ""}${t.on} ${f.branch}`));
   if (out.length === 2) out.push(t.none);
   return out.join("\n").trimEnd() + "\n";
 }

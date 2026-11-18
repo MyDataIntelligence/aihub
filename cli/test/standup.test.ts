@@ -88,6 +88,7 @@ describe("aihub standup", () => {
     const wed = new Date(2026, 10, 18, 9, 0, 0).getTime();
     expect(new Date(sinceFrom(undefined, wed)).getDate()).toBe(17);
     expect(new Date(sinceFrom("today", wed)).getDate()).toBe(18);
+    expect(sinceFrom("3d", wed)).toBe(wed - 3 * 24 * 3_600_000);
     expect(sinceFrom("2h", wed)).toBe(wed - 2 * 3_600_000);
     expect(() => sinceFrom("5", wed)).toThrow();
   });
@@ -125,9 +126,10 @@ describe("aihub handoff", () => {
   });
 
   it("nl text and an empty hand-over", () => {
-    const h = { me: "Ik", date: "2026-11-18", prs: [], stories: [], branches: [], watches: [{ id: "mine", what: "mine" }], failing: [] };
+    const h = { me: "Ik", date: "2026-11-18", prs: [], morePrs: 0, stories: [], branches: [], watches: [{ id: "mine", what: "mine" }], failing: [] };
     expect(renderHandoff(h, "nl")).toContain("alles van mij (PR's, vermeldingen, reviews)");
     expect(renderHandoff({ ...h, watches: [] }, "nl")).toContain("Niets open.");
+    expect(renderHandoff({ ...h, morePrs: 4, prs: [{ pr: { id: 1, title: "T" }, draft: true, votes: [], openThreads: 0 }] }, "en")).toContain("and more PRs: 4");
     expect(renderHandoff({ ...h, watches: [] }, "en", "Bo")).toBe("# Handoff Ik to Bo (2026-11-18)\n\nNothing open.\n");
   });
 });
