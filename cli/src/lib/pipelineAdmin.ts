@@ -218,10 +218,29 @@ export async function approvalsList(c: AdoClient, ctx: Ctx, v: Flags): Promise<v
   emit(ctx, v, rows, rows.length ? table([["approval", "status", "environment", "pipeline", "run"], ...rows.map((a) => [a.id, a.status, a.environment ?? "", a.pipeline ?? "", String(a.run ?? "")])]) : "no approvals match");
 }
 
+/** The answer of an approval names no environment: read the environments the run's pipeline YAML deploys to. */
+async function approvalEnvironments(c: AdoClient, a: Approval): Promise<string[]> {
+  const runId = a.pipeline?.owner?.id;
+  if (!runId) return [];
+  try {
+    const b = await c.get<{ definition?: { id?: number }; sourceVersion?: string }>(`build/builds/${runId}`);
+    if (!b.definition?.id) return [];
+    const d = await c.get<Definition>(`build/definitions/${b.definition.id}`);
+    if (!d.process?.yamlFilename || !d.repository?.id) return [];
+    const text = await c.getText(`git/repositories/${d.repository.id}/items`, { path: d.process.yamlFilename, "versionDescriptor.version": b.sourceVersion ?? "", "versionDescriptor.versionType": "commit", $format: "text" });
+    const names = [...text.matchAll(/^\s*(?:-\s*)?environment:(?:\s*\n\s+name:)?\s*['"]?([\w.-]+)/gm)].map((m) => m[1]);
+    return [...new Set(names)];
+  } catch {
+    return [];
+  }
+}
+
 /** Approve or reject. Refused when the environment or the pipeline is ACC or PRD, unless --allow-env names that stage. */
 export async function approvalsDecide(c: AdoClient, ctx: Ctx, v: Flags, id: string, approve: boolean): Promise<void> {
   const a = await c.get<Approval>(`pipelines/approvals/${encode(id)}`, { ...PREVIEW, $expand: "steps" });
-  for (const n of [a.resource?.name, a.pipeline?.name, a.pipeline?.owner?.name]) if (n) guardStage(n, v, "approval for");
+  const envs = a.resource?.name ? [a.resource.name] : await approvalEnvironments(c, a);
+  for (const n of [...envs, a.pipeline?.name, a.pipeline?.owner?.name]) if (n) guardStage(n, v, "approval for");
+  if (!envs.length && !(typeof v["allow-env"] === "string" && v["allow-env"])) throw new AihubError(`cannot tell which environment approval ${id} belongs to (the answer names none and the pipeline YAML shows none); give --allow-env <stage> only when the developer asked for that stage`);
   if (a.status !== "pending") throw new AihubError(`approval ${id} is ${a.status}, not pending`);
   await c.patch("pipelines/approvals", [{ approvalId: id, status: approve ? "approved" : "rejected", comment: typeof v.comment === "string" ? v.comment : "" }], PREVIEW);
   emit(ctx, v, { approval: id, decision: approve ? "approved" : "rejected", environment: a.resource?.name }, `${trace.dryRun ? "dry-run: would " + (approve ? "approve" : "reject") : approve ? "approved" : "rejected"} approval ${id} (${a.resource?.name ?? a.pipeline?.name ?? ""})`);
