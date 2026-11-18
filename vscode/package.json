@@ -35,6 +35,13 @@
       ]
     },
     "views": {
+      "explorer": [
+        {
+          "id": "aihub.worktreeSets",
+          "name": "Worktree Sets",
+          "visibility": "collapsed"
+        }
+      ],
       "aihubBar": [
         {
           "type": "webview",
@@ -73,6 +80,113 @@
       {
         "command": "aihub.installHelp",
         "title": "AI Context Hub: How to install the aihub CLI"
+      },
+      {
+        "command": "aihub.git.resetToRef",
+        "title": "Reset to Branch or Commit...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.git.checkMergeConflicts",
+        "title": "Check for Merge Conflicts...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.git.cleanUpUnrelated",
+        "title": "Clean Up Unrelated Changes...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.git.squash",
+        "title": "Squash Branch Commits...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.git.switchBranch",
+        "title": "Switch Branch...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.create",
+        "title": "Create Worktrees...",
+        "category": "AI Context Hub",
+        "icon": "$(add)"
+      },
+      {
+        "command": "aihub.worktrees.openSet",
+        "title": "Open Set in New Window",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.openSetHere",
+        "title": "Open Set in This Window",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.openInNewWindow",
+        "title": "Open Worktree Set in New Window",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.addRepos",
+        "title": "Add Repositories to Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.syncSet",
+        "title": "Sync Set (fetch + fast-forward)",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.pushSet",
+        "title": "Push Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.createPullRequests",
+        "title": "Create Pull Requests...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.removeSet",
+        "title": "Remove Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.removeRepoFromSet",
+        "title": "Remove from Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.cleanup",
+        "title": "Clean Up Merged Worktrees...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.revealSet",
+        "title": "Reveal Set Folder",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.saveGroup",
+        "title": "Save Repo Group...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.deleteGroup",
+        "title": "Delete Repo Group...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.setActions",
+        "title": "Set Actions...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.worktrees.refresh",
+        "title": "Refresh Worktree Sets",
+        "category": "AI Context Hub",
+        "icon": "$(refresh)"
       }
     ],
     "configuration": {
@@ -110,13 +224,202 @@
           "minimum": 5,
           "description": "Time limit for one aihub call."
         },
+        "aihub.chatAgentName": {
+          "type": "string",
+          "default": "aihub",
+          "description": "The Copilot Chat agent selected when an action opens the chat (installed by aihub skills install). When it is not installed the default agent is used and the install command is offered once."
+        },
         "aihub.chatAgentMode": {
           "type": "boolean",
           "default": true,
           "description": "Open Copilot Chat in agent mode, so the slash commands (/pr, /review, ...) of the aihub pack work."
+        },
+        "aihub.worktrees.setsRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Folder that holds the worktree sets (one folder per branch). Empty: C:\\git\\worktrees on Windows, ~/git/worktrees elsewhere."
+        },
+        "aihub.worktrees.repoRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Folders scanned for repositories when creating a set. Empty: the parent folders of the workspace folders."
+        },
+        "aihub.worktrees.scanDepth": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 5,
+          "description": "How many folder levels below each repo root are scanned for repositories."
+        },
+        "aihub.worktrees.baseBranches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "staging",
+            "main"
+          ],
+          "description": "Base branches offered for a new branch in a set."
+        },
+        "aihub.worktrees.remote": {
+          "type": "string",
+          "default": "origin",
+          "description": "Remote used to fetch, sync and push sets."
         }
       }
-    }
+    },
+    "submenus": [
+      {
+        "id": "aihub.cm.Group",
+        "label": "AI Context Hub"
+      },
+      {
+        "id": "aihub.cm.Branch",
+        "label": "Branch"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "submenu": "aihub.cm.Group",
+          "when": "workspaceFolderCount > 0",
+          "group": "7_aihub@1"
+        }
+      ],
+      "aihub.cm.Group": [
+        {
+          "submenu": "aihub.cm.Branch",
+          "group": "1_branch@1"
+        }
+      ],
+      "aihub.cm.Branch": [
+        {
+          "command": "aihub.git.resetToRef",
+          "group": "1_branch@1"
+        },
+        {
+          "command": "aihub.git.checkMergeConflicts",
+          "group": "1_branch@2"
+        },
+        {
+          "command": "aihub.git.cleanUpUnrelated",
+          "group": "1_branch@3"
+        },
+        {
+          "command": "aihub.git.squash",
+          "group": "1_branch@4"
+        },
+        {
+          "command": "aihub.git.switchBranch",
+          "group": "1_branch@5"
+        }
+      ],
+      "scm/title": [
+        {
+          "submenu": "aihub.cm.Branch",
+          "when": "scmProvider == git",
+          "group": "9_aihub@1"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "submenu": "aihub.cm.Branch",
+          "when": "scmProvider == git",
+          "group": "9_aihub@1"
+        }
+      ],
+      "scm/resourceGroup/context": [
+        {
+          "submenu": "aihub.cm.Branch",
+          "when": "scmProvider == git",
+          "group": "9_aihub@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "aihub.worktrees.create",
+          "when": "view == aihub.worktreeSets",
+          "group": "navigation@1"
+        },
+        {
+          "command": "aihub.worktrees.refresh",
+          "when": "view == aihub.worktreeSets",
+          "group": "navigation@2"
+        },
+        {
+          "command": "aihub.worktrees.cleanup",
+          "when": "view == aihub.worktreeSets",
+          "group": "1_manage@1"
+        },
+        {
+          "command": "aihub.worktrees.saveGroup",
+          "when": "view == aihub.worktreeSets",
+          "group": "2_groups@1"
+        },
+        {
+          "command": "aihub.worktrees.deleteGroup",
+          "when": "view == aihub.worktreeSets",
+          "group": "2_groups@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "aihub.worktrees.openSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "1_open@1"
+        },
+        {
+          "command": "aihub.worktrees.openSetHere",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "1_open@2"
+        },
+        {
+          "command": "aihub.worktrees.addRepos",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "aihub.worktrees.syncSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "3_git@1"
+        },
+        {
+          "command": "aihub.worktrees.pushSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "3_git@2"
+        },
+        {
+          "command": "aihub.worktrees.createPullRequests",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "3_git@3"
+        },
+        {
+          "command": "aihub.worktrees.revealSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "4_files@1"
+        },
+        {
+          "command": "aihub.worktrees.removeSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSet",
+          "group": "9_remove@1"
+        },
+        {
+          "command": "aihub.worktrees.removeRepoFromSet",
+          "when": "view == aihub.worktreeSets && viewItem == aihubSetRepo",
+          "group": "9_remove@1"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "aihub.worktreeSets",
+        "contents": "No worktree sets yet.\n[Create worktrees](command:aihub.worktrees.create)\nOne branch in several repositories, in one folder and one workspace."
+      }
+    ]
   },
   "scripts": {
     "build": "node esbuild.mjs",
