@@ -4,6 +4,7 @@ Agent Skills plus one small CLI that let a coding agent (opencode, GitHub Copilo
 
 - **Skills** (`skills/`) tell the agent *when* and *how*. They follow the Agent Skills layout (`<skill>/SKILL.md` with optional `scripts/`, `references/`, `assets/`).
 - **The CLI** (`cli/`, npm `@ferronhooi/aihub`) does the precise work in one call: templates, the right target branch and merge base, story links, Azure DevOps REST calls. No daemon, no MCP.
+- **The VS Code extension** (`vscode/`, `FerronHooi.ai-context-hub`) shows story, branch, PR with votes, pipeline, open threads, Fabric runs and watch events in the status bar and a compact panel. It only reads `aihub ... --json`; actions (`/pr`, `/review`, ...) are put in your chat (Copilot Chat or opencode), never run by the extension. See [vscode/README.md](vscode/README.md).
 - **Team knowledge stays in the team repository**: `.agents/skills/_shared/references/team.yaml`, story/commit templates as skill assets, and the pull request template at `.azuredevops/pull_request_template.md`. `aihub init` proposes these files in a pull request and never overwrites existing ones.
 
 ## Install
