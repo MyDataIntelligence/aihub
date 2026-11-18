@@ -1,3 +1,4 @@
+import { afterPrOffer } from "../lib/learnProfile.js";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import { list, parseFlags, posInt } from "../lib/cliargs.js";
@@ -48,5 +49,9 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
         json,
       }),
     );
+    if (!json && !v["dry-run"]) {
+      const offer = afterPrOffer(ctx);
+      if (offer) ctx.out(offer);
+    }
   }
 }

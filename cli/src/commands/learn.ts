@@ -4,9 +4,13 @@ import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import { changeFacts, formatChange, formatRepo, repoFacts, type ChangeFacts } from "../lib/learn.js";
 import { validateExplanation } from "../lib/learnSchema.js";
+import { pushBoard, pushToIDiagram, storyFor } from "../lib/idiagram.js";
+import { diagramFor, glossary, itemFacts, onboarding, teamFlow, week } from "../lib/learnMore.js";
+import { profile, setAfterPr, setLevel } from "../lib/learnProfile.js";
 import { learnConcepts, learnForget, learnHome, learnList, learnMark, learnQuiz, learnSave, learnScore, learnShow } from "../lib/learnStore.js";
 
 const NL = String.fromCharCode(10);
+const o_kind = (k: string | undefined) => k;
 
 export const LEARN_USAGE = [
   "aihub learn change [--pr N|url] [--branch B] [--range base..head] [--json]   facts of a change: files, hunks, changed names, who uses them, tests, dbt lineage",
@@ -16,13 +20,23 @@ export const LEARN_USAGE = [
   "aihub learn list [--all] [--json] | show --id ID [--json] | forget --id ID    your saved lessons (this repository, or --all)",
   "aihub learn concepts [--all] [--mark NAME|--unmark NAME] [--json]            the concepts of your lessons and which you marked as learned",
   "aihub learn quiz [--id ID] [--score ID --correct N --of M] [--json]          the questions of a lesson (or of the newest ones); --score keeps a result",
+  "aihub learn diagram [--kind architecture|lineage|repo|flow] [--pr|--branch|--range] [--idiagram [--board spec.json [--story story.json]]] [--json]   a Mermaid picture built from facts (callers, dbt lineage, folders, the team flow); --idiagram also pushes it to iDiagram and returns the board and Play story links",
+  "aihub learn level [set junior|medior|senior] | after-pr [on|off]            your level (the skill's style) and whether pr create / story finish offer a lesson (off by default; team.yaml learn.afterPr sets the default)",
+  "aihub learn flow | glossary | week [--days N] | onboarding [--json]          how the team works, the repository's own terms, what you did this week, a welcome bundle",
+  "aihub learn item <file|pipeline.yml|dbt model.sql|Fabric item folder> [--json]    facts of one thing: definitions, imports, stages, lineage, who uses it",
   "    The CLI gives facts and keeps your lessons (git and files, under a second); the learn skill writes the lesson.",
 ].join(NL);
 
 /** aihub learn change|repo|validate|save|list|show|forget|concepts|quiz */
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
-  const [sub, ...rest] = argv;
-  const v = parse(rest, {
+  const [sub, ...rest0] = argv;
+  const rest = rest0;
+  const parsed = parse(rest, {
+    kind: { type: "string" },
+    board: { type: "string" },
+    story: { type: "string" },
+    days: { type: "string" },
+    idiagram: { type: "boolean" },
     pr: { type: "string" },
     branch: { type: "string" },
     range: { type: "string" },
@@ -36,8 +50,62 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     correct: { type: "string" },
     of: { type: "string" },
     json: { type: "boolean" },
-  }).values;
+  }, true);
+  const pos = parsed.positionals;
+  const v = parsed.values;
   const out = (data: unknown, text: string) => ctx.out(v.json ? JSON.stringify(data) : text);
+  if (sub === "diagram" && v.board) {
+    const read = (f: string) => {
+      try {
+        return JSON.parse(readFileSync(f, "utf8"));
+      } catch (e) {
+        throw new AihubError(`${f} is not valid JSON: ${(e as Error).message}`);
+      }
+    };
+    const board = read(v.board);
+    const r = await pushBoard(ctx, { board, story: v.story ? read(v.story) : undefined });
+    const title = String((board as { title?: string }).title ?? "board");
+    return out({ kind: "board", title, mermaid: r.mermaid, empty: false, basedOn: "the board spec you gave", idiagram: r }, [`${title}  (board)`, r.mermaid ? `${"```"}mermaid${NL}${r.mermaid}${NL}${"```"}` : "", r.status === "created" ? `iDiagram: ${r.url}${r.playUrl ? `${NL}Play story: ${r.playUrl}` : ""}${r.storyWarnings.length ? `${NL}story warnings: ${r.storyWarnings.join("; ")}` : ""}` : `iDiagram: ${r.status}: ${r.reason}`].filter(Boolean).join(NL));
+  }
+  if (sub === "diagram") {
+    const d = await diagramFor(ctx, { kind: o_kind(v.kind), range: { pr: v.pr, branch: v.branch, range: v.range } });
+    const extra = v.idiagram && !d.empty ? await pushToIDiagram(ctx, { id: `${d.kind}-${Date.now().toString(36)}`, mermaid: d.mermaid, story: storyFor(d.mermaid, d.title) }) : undefined;
+    return out({ ...d, ...(extra ? { idiagram: extra } : {}) }, [`${d.title}  (${d.kind}; ${d.basedOn})`, d.empty ? "nothing to draw from the facts: no callers, tests or edges found" : "", "```mermaid", d.mermaid, "```", extra ? (extra.status === "created" ? `iDiagram: ${extra.url}${extra.playUrl ? `${NL}Play story: ${extra.playUrl}` : ""}` : `iDiagram: ${extra.status}: ${extra.reason}`) : ""].filter((x) => x !== "").join(NL));
+  }
+  if (sub === "level") {
+    const set = pos[0] === "set" ? setLevel(ctx, pos[1] ?? "") : undefined;
+    const p = set ?? profile(ctx);
+    return out(p, `level: ${p.level} (${p.style})${NL}after a PR: ${p.afterPr ? "on" : "off"} (${p.afterPrSource})`);
+  }
+  if (sub === "after-pr") {
+    if (pos[0] !== "on" && pos[0] !== "off") {
+      const p = profile(ctx);
+      return out(p, `after a PR: ${p.afterPr ? "on" : "off"} (${p.afterPrSource}); aihub learn after-pr on|off changes it`);
+    }
+    const p = setAfterPr(ctx, pos[0] === "on");
+    return out(p, `after a PR: ${p.afterPr ? "on: pr create and story finish end with an offer for a lesson" : "off"}`);
+  }
+  if (sub === "flow") {
+    const f = teamFlow(ctx);
+    return out(f, [`how the team works (${f.source})`, ...f.steps.map((s, i) => `${i + 1}. ${s.name}: ${s.detail}`), "```mermaid", f.mermaid, "```"].join(NL));
+  }
+  if (sub === "glossary") {
+    const g = glossary(ctx);
+    return out(g, g.terms.length ? g.terms.map((t) => `${t.term}: ${t.meaning} (${t.where})`).join(NL) : "no terms found in the repository files");
+  }
+  if (sub === "week") {
+    const w = week(ctx, v.days ? Number(v.days) : 7);
+    return out(w, `${w.commits.length} commit(s) in the last ${w.since} by ${w.author || "everyone"}${NL}${w.commits.slice(0, 20).map((c) => `  ${c.sha} ${c.date} ${c.subject}`).join(NL)}${w.files.length ? `${NL}most touched: ${w.files.slice(0, 6).map((f) => `${f.path} (${f.changes})`).join(", ")}` : ""}`);
+  }
+  if (sub === "onboarding") {
+    const b = onboarding(ctx);
+    return out(b, `onboarding facts for ${b.repo.name}: ${b.repo.folders.length} folder(s), ${b.glossary.length} term(s), ${b.diagrams.length} picture(s), team flow from ${b.flow.source}; use --json`);
+  }
+  if (sub === "item") {
+    if (!pos[0]) throw new AihubError("aihub learn item needs a path: a file, a pipeline yaml, a dbt model or a Fabric item folder");
+    const it = itemFacts(ctx, pos[0]);
+    return out(it, `${it.type} ${it.path} (${it.language}, ${it.lines} lines)${NL}${JSON.stringify(it.details)}${it.usedBy.length ? `${NL}used by: ${it.usedBy.slice(0, 5).map((u) => `${u.file}:${u.line}`).join(", ")}` : ""}${it.mermaid ? `${NL}\`\`\`mermaid${NL}${it.mermaid}${NL}\`\`\`` : ""}`);
+  }
   if (sub === "change") {
     const f = await changeFacts(ctx, { pr: v.pr, branch: v.branch, range: v.range });
     return out(f, formatChange(f));

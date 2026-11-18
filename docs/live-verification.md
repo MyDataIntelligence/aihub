@@ -270,6 +270,32 @@ More findings of these runs (all fixed through PRs to `staging`):
 
 Cleanup: PRs !1090, !1092, !1094, !1095 abandoned; branches `aihub-e2e-main` and `feature/3401|3403|3405|3406-...` deleted; pipeline 12 deleted (its runs 271 to 275 stay as history); policy 10 deleted; stories 3401, 3403, 3405 and 3406 deleted. **Mistake of mine:** a "delete every Build policy" loop also removed the existing build policy of `test-project` on `ci-checks-demo` (pipeline 5, Ruff). I recreated it (id 11, blocking, display name `ruff`, pipeline 5); settings other than those could not be read back, so compare with the original if it matters. Proof: `20261118-2041-L-story-ci-e2e.png` in the proof folder of the benchmark machine.
 
+## Whole-set work, journal and resume (2026-11-18)
+
+Synthetic worktree set for story 3410 with two repositories of `ferron-test` (`test-project` from `main`, `test-developers` from `staging`), driven with the local build of the CLI; then opencode 1.19.5 with the `aihub` agent and Luna on top of it.
+
+| Command | Result | Second source |
+|---|---|---|
+| `aihub worktree create --story 3410 --repos test-project,test-developers` | one folder with a worktree per repository on `feature/3410-...` (the first try failed honestly: `test-developers` has no `main`; fixed with `defaultTarget: staging` for it in `team.yaml`) | `git worktree list` |
+| `aihub status` in the set | a `Set:` line that names `--all-repos` | n/a |
+| `aihub commit --all-repos --type feat --subject ... --push` | one commit and push per repository with changes, one table (changed / pushed / PR / pipeline / result); a repository without changes says `skipped: nothing to commit`; a second call with a change in one repository committed only that one | `git log` per repository |
+| `aihub pr create --all-repos --summary-text ...` | PR !1100 (`test-project`) and !1101 (`test-developers`), then `crossrepo link-prs` | PR description has a Related section naming the other PR; the story has 2 `Pull Request` relations |
+| `aihub pr update --all-repos --section Tests --append-text ...` | both PRs updated | `az repos pr show` |
+| `aihub pipeline follow --all-repos` | one result per repository; a timeout in one is reported and the other is still done | build state per PR |
+| `aihub status --all-repos` | one table, next step per repository | `az` |
+| journal | `<git common dir>/aihub/journal.md`: time, branch, command, result, next step; one line per repository for `--all-repos`; reads (status, search, ...) are not recorded | file |
+| `aihub status --resume` | `Last time: ... · Plan done: ...; left: ... · Next step: ...`, the newest private note and the set, no network call (a unit test asserts 0 fetches); Dutch labels for a Dutch team | journal |
+| `aihub story recall --id 3410` | story, PRs and pipelines per repository from ADO, the journal lines of both repositories, open ends | `az` |
+| `aihub story search "set demo"` | story by title words plus journal lines | WIQL |
+| agent, Luna: "Commit en push alles in alle repos van deze set" | `aihub commit ... --push --all-repos`, 3 tool calls, 0 questions | `git log` |
+| agent, Luna: "Nieuwe chat. Waar was ik gebleven?" | skill `resume`, `aihub status --resume`, correct summary | journal |
+
+Found while testing, all fixed in the same PR: the first journal format lost lines that did not name the story (the branch is recorded now and resume/recall select by it); `--all-repos` wrote one line for the first repository only (now one per repository); a plain `aihub commit` in a set silently ignored the other repositories (now prints `note: set story-N: <repo> also has uncommitted changes; aihub commit --all-repos ...`); `aihub worktree list` found no set from inside a set; Luna did not route "in alle repos" or "waar was ik" until the `commit`, `worktrees` and new `resume` skills named them.
+
+Policy check after the earlier mishap: the original Ruff build policy of `test-project` was id 3 (created 2026-10-08, deleted by me on 2026-11-18). Its revision 1 and the recreated id 11 have the same settings: build definition 5, display name `ruff`, blocking, enabled, `manualQueueOnly` false, `queueOnSourceUpdateOnly` false, `validDuration` 0, scope `refs/heads/ci-checks-demo`. Only the id and the creation date differ.
+
+Cleanup: PRs !1100 and !1101 abandoned, both `feature/3410-...` branches deleted, story 3410 deleted, the worktree set removed. Proof: `20261118-2230-L-whole-set.png` and `20261118-2230-L-whole-set-transcript.txt` in the proof folder of the benchmark machine.
+
 ## Data before/after and the environment release plan (2026-11-18)
 
 **`aihub pr data-diff`** live: two own Fabric dev workspaces on the trial capacity (`aihub-test-dev-3f2a-base` / `-feat`, a Lakehouse `lh_orders` each, a table `orders` loaded from a 4-row and a 6-row CSV), PR !1098 in ferron-test, `team.yaml` with
@@ -303,9 +329,16 @@ Run, with the real output checked against dbt's own `run_results.json` and `dbt 
 Bugs found live and fixed: `dbt --version` took `--project-dir` and failed (version never shown); `dbt show` of a sample overwrote `run_results.json` (samples now use their own target path); `dbt show --select <model>` also previewed the model's tests (`--indirect-selection empty`); the global `--dry-run` simulation swallowed the command's own dry-run; on Windows with `core.autocrlf=true` `--state auto` flagged files with other line endings (fixed: both sides are parsed from LF copies; rechecked live with autocrlf=true and a CRLF file). Proof PNG: `20261118-2209-D-dbt.png`.
 Not live: the Fabric adapters (`fabric`, `fabricspark`; only the guard and the profile checks are exercised, the workspace-guarded run stays `aihub fabric dbt run`); HTTP 430 handling (unit tested).
 
+## Pipelines live (2026-11-18)
+
+In ferron-test / test-project with a throw-away YAML pipeline `aihub-pipe-<stamp>` (file `ci/aihub-pipe-<stamp>.yml` on a branch of its own: publishes JUnit results with one failing test, Cobertura coverage and an artifact; a second stage deploys to environment `aihub-dev-<stamp>` that has an approval check), run 280 (`flavour=alpha`) and 281 (`flavour=beta`):
+`pipeline def create/show/list` (#16), `def update --dry-run`, `run --params-file`, `approvals list/approve`, `authorize --resource environment:...`, `env create/list/show/checks/deployments`, `timeline`, `tests`, `coverage`, `vars`, `compare --run 280 --with 281`, `artifacts` (list and `--download`), `validate` and `expand` (valid file and a broken one), `cancel --run 280`, `schedule list`, `trigger show`, `securefiles list`, `connections list`, `devops pools`. Second source: `az pipelines runs show/artifact list`, REST `test/runs` (3 tests, 2 passed), `test/codecoverage` (lines 2 of 3), `pipelines/checks/runs`: all equal the CLI output. `env create aihub-prd-<stamp>` is refused by the PRD guard.
+**Found live and fixed:** (1) `pipeline artifacts --download` refused the download address of a pipeline artifact (`artprodweu2.artifacts.visualstudio.com`, two sub-domain labels); the address check now accepts any depth under `dev.azure.com` / `visualstudio.com`. (2) `pipeline approvals list` showed an empty environment: the approvals API does not name the environment; it is now found through the run timeline (checkpoint) and `pipelines/checks/runs`, so the ACC/PRD guard sees the real environment name instead of only the pipeline name. (3) `env checks` printed `()` for an approver the API only returns by id; it prints the id.
+Not live: the ACC/PRD refusal of an approval (a PRD environment cannot be created by the CLI, so no PRD approval exists; unit tested), a real `def update` PUT and a schedule list with entries (would change existing objects or need a schedule), populated secure files and connections (none in ferron-test). Cleanup: pipeline #16, environment #3 (with its check) and the branch were deleted with the CLI / `git push --delete`; `az pipelines list`, `env list` and `ls-remote` are empty for the stamp. Proof PNG (rendered summary): `20261118-2226-L-pipelines.png`.
+
 ## Leftovers
 
-Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.
+Pipeline run 266 (and the retried attempt of run 239), and runs 280 and 281 of the deleted pipeline `aihub-pipe-11182217`, cannot be deleted in Azure DevOps; they are harmless history.
 
 Workspace `aihub-test-dev-20261118b` (second round, sql fix, spark stop) was deleted on 2026-11-18 with `fabric workspace delete --yes`; the Fabric API answers WorkspaceNotFound for its id.
 
@@ -326,3 +359,63 @@ opencode 1.19.5 with Luna (`openai/gpt-6-luna`, shared test opencode home throug
 | `git push origin main` | refused by the agent's rule (`"git push * main": deny`); the bare origin still has only `init` |
 
 Not run: opencode 2.x (the `permissions` list has the same rules), Copilot/VS Code, Codex and Claude Code (their settings are documented in docs/agents.md and printed by `aihub skills install`, not exercised).
+
+## Regression smoke of the npm build (2026-11-18)
+
+`@ferronhooi/aihub` from npm into a scratch prefix (`npm i -g --prefix <scratch> @ferronhooi/aihub@next`), isolated `HOME`/`XDG_*`/`COPILOT_HOME`/`CODEX_HOME`/`OPENCODE_CONFIG_DIR`, `aihub skills install --client all`, a local clone of the synthetic `test-project` with origin set to `ferron-test`, real `az login` for the REST calls only. 1.0.4 is not on npm yet (`latest` 1.0.3, `next` 1.0.3-next.117), so the tested build is **1.0.3-next.117**; the `doctor` line `legacy-hub` (PR #121) is therefore not in it. Read-only calls only; `--help` ran in an empty folder.
+
+| Family | Command | Result |
+|---|---|---|
+| help | `aihub <group> --help` for all 49 command groups, and `aihub --help` | OK (usage text, no stack trace) |
+| install | `skills install --client all` into the isolated homes (46 skills, 22 prompts, 3 agents per client) | OK |
+| doctor | in the clone | OK for node, git, remote, auth, skills, agents, permission; FIX only for `team.yaml` and `pr-template` (the clone has no team pack, expected) |
+| PR | `pr list --mine`, `pr show --pr 174`, `comments get --pr 174`, `review prepare --pr 174` | OK |
+| story / work | `status`, `story show --id 1670`, `work`, `standup --since 2d`, `handoff` | OK |
+| pipelines | `pipeline runs --branch ...`, `pipeline timeline --run 239` | OK |
+| policy / library / repo | `policy list`, `library list`, `repo branch list`, `repos list` | OK |
+| search | `search code --text`, `search wiki --text`, `search items --text` | OK |
+| wiki / boards / test plans / artifacts | `wiki pages`, `boards query run --mine`, `testplan runs --build 265`, `artifacts feeds` | OK |
+| watch / fix | `watch list`, `fix known --error ...` | OK ("no known fixes yet" in this project) |
+| dbt | `dbt detect` in a synthetic dbt project | OK (project shop, 5 models) |
+| learn / probe / research | `learn repo`, `probe devops feature wiki|testplans`, `research template` | OK |
+| fabric | `fabric workspaces --filter aihub-test-dev` | OK (no match: no test workspace is left) |
+| other | `robot needed`, `worktree list` | OK |
+| expected refusal | `crossrepo impact --from 174` without `crossRepo.pathMaps` | message names the missing key (correct) |
+
+First pass counted 4 FAIL, all wrong arguments of the smoke script, not product bugs: `pr list --top`, `search code --query`, `probe devops` without `feature <name>`, and `help: (no command)` matching my own regex; they passed with the right arguments (the usage lines were clear in each case). No product failure was found, so no fix PR.
+## Pipelines: the remaining live rows (2026-11-18)
+
+Synthetic pipeline, environment, secure file and service connection in ferron-test/test-project, prefix `live-1771c1` (branch `live-1771c1/pipe`). Proof: PNG 20261118-2245-L-pipelines-live in the AIContextHub proof folder.
+
+| Row | Result |
+|---|---|
+| `pipeline schedule list` | YAML cron `0 3 * * 1-5 on live-1771c1/pipe (always)` shown |
+| `pipeline def update` (PUT) | name and `--status paused` changed, then restored; `def show` confirmed `[paused]` |
+| `pipeline approvals reject` | worked on a pending approval of an environment with an Approval check |
+| ACC refusal | **bug found**: the approvals API answer has no `resource`, so the ACC/PRD guard saw no name and rejected an approval of `live-1771c1-acc`. Fixed: the environment is read from the run's YAML, and the command refuses when it cannot tell. Live rerun: refused, then `--allow-env acc` rejected. Vitest: `test/pipeline-approval-env.test.ts` |
+| `securefiles list`, `connections list|show` | the synthetic file and generic connection shown; the connection answer holds no credential (`TOPSECRET` count 0) |
+
+Created and removed (all verified gone): pipeline #17, environment #4, secure file 48cd5a2e-22a0-4c52-93a2-4c5c9bfc6d63, connection 07ad2871-bdb5-47d2-8802-77e850b6efed, branch `live-1771c1/pipe`. Runs 283 and 284 stay (builds cannot be deleted; both ended on the rejected approval). Evidence of pipelines-build's earlier live rows: PR #125.
+
+
+### Rerun on the released 1.0.4 (2026-11-18)
+
+Same isolated setup with `@ferronhooi/aihub@latest` = **1.0.4** (`npm view` dist-tags: latest 1.0.4, next 1.0.4-next.121). Result: the same table as above, all OK (76 of 81 lines at the first pass; the other 5 are the script's own wrong arguments and the expected `crossrepo impact` refusal, as before). Additions for 1.0.4:
+
+| Check | Result |
+|---|---|
+| `aihub skills install --client all` | OK; prints the old-Hub warning, the opencode note, and the Copilot/Codex auto-approve notes |
+| `aihub doctor` `legacy-hub` | `FIX legacy-hub: the old AI Context Hub is still installed (the old hub CLI) ... -> aihub legacy remove --dry-run` in the shell as it is: the user's real old `hub` CLI is on the PATH (`%LOCALAPPDATA%\AIContextHub\cli`), nothing was touched. With that folder taken out of the PATH: `OK legacy-hub: no old AI Context Hub found` |
+| opencode 1.19.5 + Luna, agent files from the npm 1.0.4 package, isolated homes | `python -m pytest --version` ran without a prompt (pytest 7.4.4); `git push origin main` was refused by the agent's rule and the bare origin stayed at `init` (the first attempt ended with an opencode server error, the retry ran) |
+
+## Pipeline coverage with data (2026-11-18)
+
+Synthetic pipeline `live-8cd052-cov` in ferron-test/test-project: one script step wrote a Cobertura file (3 of 4 lines, 1 of 2 branches covered) and `PublishCodeCoverageResults@1` published it (run 285, succeeded). `aihub pipeline coverage --run 285` answered Lines 3/4 75 % and Branches 1/2 50 %, as JSON too. Proof: PNG 20261118-2250-L-pipeline-coverage-live in the AIContextHub proof folder. Removed afterwards (verified): pipeline #18 and branch `live-8cd052/cov`; run 285 stays (builds cannot be deleted).
+## The Fix button clicked in the notification centre (2026-11-18)
+
+Real click on the **Fix** button of the toast raised by `aihub watch --run 239 --notify --client opencode` (failed feature build 239, ferron-test), Windows Notification Centre opened with Win+N, desktop lock held. The `aihub://` handler was re-registered by the product itself (a watch with `--notify` registers it when it points elsewhere); for the test only, the registered command was wrapped by a script that sets the isolated opencode home (shared test home, never the real one) and then runs the same `aihub open --url`; the product command was restored afterwards.
+
+- **Bug found (first click)**: the window opened opencode, but with `--continue` in the shared data home it resumed another project's newest session (a story 3410 worktree) and the `/fix` prompt was not there. Proof: `20261118-2259-L-fix-click-after-first-try.png` (before: `20261118-2259-L-fix-click-before.png`).
+- **Fix**: without a session id the opencode plan no longer uses `--continue`; it starts a new session in the repository with `--agent aihub --prompt "/fix <run-url>"` (vitest updated).
+- **After the fix, real click**: opencode opened in the repository, agent Aihub, `/fix https://dev.azure.com/ferron-test/.../_build/results?buildId=239` submitted, skill `pipeline-fix` loaded and a subagent started. Proof: `20261118-2304-L-fix-click-after-fix-opencode.png` (before: `20261118-2304-L-fix-click-before-retry.png`). The agent then answered that `aihub` is not on the PATH of the window the click opened (the test wrapper does not set PATH); that is a property of the test setup, not of the click path.
+- Test caveat: every `watch --notify` start re-registers the handler, so a wrapper must be set after the watch has started. Windows opened by this test were closed; the watch was stopped.

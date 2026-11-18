@@ -1,0 +1,9 @@
+{
+  "title": "SCD2: een adreswijziging",
+  "kind": "flow",
+  "nodes": [
+    { "id": "bron", "type": "table", "label": "stg_klant (bron)", "columns": ["klant_id", "adres"], "rows": [["1", "Utrecht"]] },
+    { "id": "dim", "type": "table", "label": "dim_klant (SCD2)", "columns": ["klant_id", "adres", "geldig_van", "geldig_tot", "actief"], "rows": [["1", "Amsterdam", "2024-01-01", "2026-11-18", "nee"], ["1", "Utrecht", "2026-11-18", "9999-12-31", "ja"]] }
+  ],
+  "relations": [{ "from": "bron", "to": "dim", "label": "scd2()" }]
+}

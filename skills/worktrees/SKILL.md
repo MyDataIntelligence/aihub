@@ -15,7 +15,7 @@ aihub worktree create --story 123 --repos repo-a,repo-b
 ```
 
 2. Work inside the printed folders; each is on the story branch. Use `--root <folder>` to choose where sets live.
-3. See all sets and their state: `aihub worktree list`.
+3. See all sets and their state: `aihub worktree list`. Inside a set, `aihub commit`, `pr create`, `pr update`, `pipeline follow` and `status` take `--all-repos`: every repository at once, one table, unchanged ones skipped.
 4. When done and pushed: `aihub worktree remove --story 123`.
 
 Example: "zet story 123 klaar in repo-a en repo-b" is `aihub worktree create --story 123 --repos repo-a,repo-b`.

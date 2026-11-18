@@ -27,21 +27,21 @@ A direct command needs no routing: "maak een PR" -> run `aihub pr create --summa
 | worktree set, several repos | worktrees |
 | "run story 123" | story-run |
 | review someone else's PR | pr-review |
-| "leg de PR uit", explain a PR | pr-explain |
+| "leg de PR uit", explain a PR | pr-explain, learn |
+| "kan dit?" | feasibility |
 | wiki, other repo, Terraform | wiki, devops-repos, terraform |
 | policies, groups, search, PR admin | devops-admin |
 | screenshot, voice notes | evidence, voice-notes |
 | change team.yaml or a template | team-settings |
 | release, release train | release |
+| "ga verder", "waar was ik", new chat, after compaction | resume |
 
-Resumed session: run `aihub status`.
-
-Example: a pullrequest link means pr-watch with that id.
+New chat: `aihub status --resume`. A pullrequest link means pr-watch.
 
 ## What the CLI fills
-Templates, target branch, story links and repository come from `team.yaml` (`aihub doctor` checks it); never ask the user for them. Read the `guidelines:` files first.
+Templates, target branch, story links and repository come from `team.yaml`; never ask the user for them. Read the `guidelines:` files first.
 
 ## If it fails
 Run `aihub doctor` and show its output. No `team.yaml`: the user runs `aihub init` in the team repo.
 
-Rules: a direct command ("maak een PR") runs at once, 0 questions. Local git uses your own tools. Content follows the team template language. Never invent work item ids or links.
+Rules: a direct command runs at once, 0 questions. Local git uses your own tools. Content follows the team template language. Never invent ids.

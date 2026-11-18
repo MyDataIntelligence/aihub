@@ -3,6 +3,16 @@ import * as vscode from "vscode";
 import { readJson, type Runner } from "./cli";
 import { lessonLabel, lessonPage, tourSteps, type Lesson, type LessonMeta } from "./learnModel";
 
+/** Only links of the iDiagram app open outside VS Code. */
+export const isIDiagramLink = (u: string) => {
+  try {
+    const x = new URL(u);
+    return (x.protocol === "https:" && x.hostname === "idiagram.vercel.app") || ((x.hostname === "localhost" || x.hostname === "127.0.0.1") && x.protocol === "http:");
+  } catch {
+    return false;
+  }
+};
+
 type Node = { kind: "lesson"; meta: LessonMeta } | { kind: "group"; id: "lessons" | "concepts"; label: string } | { kind: "concept"; row: ConceptRow };
 
 interface ConceptRow {
@@ -104,10 +114,11 @@ export class LearnController implements vscode.TreeDataProvider<Node>, vscode.Di
     panel.onDidDispose(() => this.panels.delete(id));
     const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
     panel.webview.html = lessonPage(lesson, nonce, panel.webview.cspSource, panel.webview.asWebviewUri(vscode.Uri.joinPath(res, "mermaid.min.js")).toString());
-    panel.webview.onDidReceiveMessage(async (m: { type: string; path?: string; line?: number; name?: string; correct?: number; of?: number }) => {
+    panel.webview.onDidReceiveMessage(async (m: { type: string; path?: string; line?: number; name?: string; correct?: number; of?: number; url?: string }) => {
       const cwd = this.getCwd();
       if (m.type === "open" && m.path) await this.openFile(m.path, m.line ?? 0);
       else if (m.type === "tour") void this.tour(lesson);
+      else if (m.type === "external" && m.url && isIDiagramLink(m.url)) void vscode.env.openExternal(vscode.Uri.parse(m.url));
       else if (m.type === "learned" && m.name && cwd) {
         await this.getRunner()(["learn", "concepts", "--mark", m.name], cwd).catch(() => undefined);
         this.refresh();

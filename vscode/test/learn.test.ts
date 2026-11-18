@@ -87,3 +87,16 @@ describe("package.json learn contributions", () => {
     expect(items).toEqual(expect.arrayContaining(["aihub.learn.tour", "aihub.learn.forget", "aihub.learn.markConcept"]));
   });
 });
+
+describe("Play story", () => {
+  it("shows Play story and Open in iDiagram links when the diagram has them, and only iDiagram links open outside", async () => {
+    const l = JSON.parse(JSON.stringify(LESSON));
+    l.explanation.diagrams = [{ title: "Flow", kind: "flow", mermaid: "flowchart LR\n A-->B", idiagramUrl: "https://idiagram.vercel.app/#board=x", playUrl: "https://idiagram.vercel.app/#board=x&play=1" }];
+    const body = lessonBody(l);
+    expect(body).toContain('data-ext="https://idiagram.vercel.app/#board=x&amp;play=1">Play story</a>');
+    expect(body).toContain("Open in iDiagram");
+    expect(lessonBody(LESSON)).not.toContain("Play story");
+    const src = readFileSync(join(here, "..", "src", "learnUi.ts"), "utf8");
+    expect(src).toContain("isIDiagramLink(m.url)");
+  });
+});

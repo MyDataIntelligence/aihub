@@ -27,6 +27,23 @@ The store is yours alone: nothing is written into a repository and nothing is sh
 
 In VS Code the **Learn** view (Explorer) lists your lessons and concepts. A lesson opens as one page: the one-sentence summary, then the pictures (Mermaid, drawn by the bundled mermaid, no network), what changed and why with links to the files, who is affected, design choices, risks, a quiz you can click through, and concepts you can mark as learned. **Guided tour** walks through the changed pieces: it opens each file at the line, highlights it and shows the reason with Previous, Next and Stop. Reading only; lessons are written by `/leer`.
 
+## Slices 3 and 4: pictures and orientation
+
+| Command | Gives |
+|---|---|
+| `aihub learn diagram [--kind architecture\|lineage\|repo\|flow] [--pr\|--branch\|--range] [--json]` | a Mermaid picture built from facts: who calls the changed names and which tests mention them, dbt lineage (of the change, or of the whole repository), the folders, the team flow. `basedOn` says what it was built from; `empty` is true when nothing was found and then nothing is drawn |
+| `--idiagram` | pushes a flowchart to iDiagram (your own app, default `https://idiagram.vercel.app`, `AIHUB_IDIAGRAM_URL` for another) with a story of scenes (the whole flow, then one scene per changed block) and returns the board link and the Play story link; a port of the legacy client. Only the Mermaid and the scenes are sent. A failure is a result and the Mermaid stays |
+| `aihub learn diagram --board board.json [--story story.json]` | the rich path of the legacy client: `POST /boards/build` with an iDiagram board spec (nodes with columns and sample rows, relations) and a story with narration and data; returns the links and the board as Mermaid. Examples in the skill's `references/` |
+| `aihub learn level [set junior\|medior\|senior]` | your level: the style the skill writes in (junior: every term and analogies; senior: brief) |
+| `aihub learn after-pr [on\|off]` | off by default; when on (or `learn: afterPr: true` in team.yaml) `pr create` and `story finish` end with one line: "Wil je een les van deze wijziging?" |
+| `aihub learn flow` | how the team works (story, branch, commits, PR, pipeline, review, merge) from `team.yaml`; generic when there is none |
+| `aihub learn glossary` | the repository's own terms: README bullets and headings, dbt models and sources, folders |
+| `aihub learn week [--days N]` | your commits and most touched files |
+| `aihub learn onboarding` | repository facts, flow, terms and pictures in one bundle |
+| `aihub learn item <path>` | one file (definitions, imports, users), a pipeline yaml (stages, jobs, steps), a dbt model (lineage) or a Fabric item folder from git integration |
+
+All of it comes from git and files; Azure DevOps and Fabric are not called. Paste a diagram's `mermaid` into `diagrams` of an explanation and it is drawn on the lesson page.
+
 ## Later slices
 
-`learn diagram` (Mermaid by default, iDiagram optional), `learn flow|glossary|week|onboarding`, and the learner profile. The store is per user only; there is no team-shared store.
+the learner profile . The store is per user only; there is no team-shared store.

@@ -2,6 +2,7 @@ import { parse } from "../lib/args.js";
 import { commitChanges } from "../lib/commit.js";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
+import { setHint } from "../lib/allRepos.js";
 
 export const COMMIT_USAGE =
   'aihub commit --type <type> --subject "<what changed>" [--scope s] [--story id] [--push] [--no-add] [--no-verify]\n' +
@@ -24,5 +25,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   }).values;
   const story = v.story === undefined ? undefined : Number(String(v.story).replace(/^AB#/i, ""));
   if (story !== undefined && (!Number.isInteger(story) || story <= 0)) throw new AihubError("--story must be a number");
-  ctx.out(await commitChanges(ctx, { type: v.type, scope: v.scope, subject: v.subject, story, push: v.push, noAdd: v["no-add"], noVerify: v["no-verify"], json: v.json }));
+  const text = await commitChanges(ctx, { type: v.type, scope: v.scope, subject: v.subject, story, push: v.push, noAdd: v["no-add"], noVerify: v["no-verify"], json: v.json });
+  ctx.out(text);
+  const hint = v.json ? "" : setHint(ctx.cwd, "commit");
+  if (hint) ctx.out(hint);
 }

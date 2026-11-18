@@ -87,29 +87,29 @@ Column **Old Hub** names the legacy tool (`-` = the old Hub did not have it). Co
 | Runs: list, status, follow, logs, search logs | pipeline_list_runs, pipeline_status, pipeline_get_failure, pipeline_get_logs, pipeline_search_logs, pipeline_follow | `build/builds`, `timeline`, `logs` | `aihub pipeline runs|status|follow|logs` | exists |
 | Run a pipeline (branch, parameters) | pipeline_run | POST `pipelines/{id}/runs` | `aihub pipeline run` | exists |
 | Retry a failed stage | pipeline_retry_stage | PATCH `build/builds/{id}/stages/{stage}` | `aihub pipeline retry` | exists |
-| Cancel a run | pipeline_cancel | PATCH `build/builds/{id}` cancelling | `aihub pipeline cancel` | built (unit only: no way to keep a run queued on the test project; a completed run is read live) |
+| Cancel a run | pipeline_cancel | PATCH `build/builds/{id}` cancelling | `aihub pipeline cancel` | built, live (run 280 cancelled while waiting for an approval) |
 | Watch a run and notify | pipeline_watch, pipeline_unwatch | polling | `aihub watch` | exists |
 | Preview / validate YAML (expanded YAML, errors) | pipeline_preview_yaml | POST `pipelines/{id}/runs` previewRun | `aihub pipeline validate` | built |
-| Artifacts: list and download | pipeline_download_artifact | `build/builds/{id}/artifacts` | `aihub pipeline artifacts list|download` | built (unit only: no run with artifacts in the test project; download is unit only) |
+| Artifacts: list and download | pipeline_download_artifact | `build/builds/{id}/artifacts` | `aihub pipeline artifacts list|download` | built, live (list and download of a pipeline artifact; download was refused before the artifacts-host fix) |
 | Test results of a run | test_publish_results (write) | `test/runs`, `test/results` | `aihub testplan runs|results` | built |
 | Environments: list, show, create | pipeline_list_environments | `pipelines/environments` | `aihub pipeline env list|show|create` | built |
 | Environment deployments (what ran where) | pipeline_environment_deployments | `pipelines/environments/{id}/environmentdeploymentrecords` | `aihub pipeline env deployments` | built |
-| Approvals and checks: list | pipeline_list_approvals, pipeline_list_checks | `pipelines/approvals`, `pipelines/checks/configurations` | `aihub pipeline approvals list`, `pipeline env checks` | built |
-| Approve or reject an approval (refused for ACC/PRD unless `--allow-env`) | pipeline_approve | PATCH `pipelines/approvals` | `aihub pipeline approvals approve|reject` | built (unit only: needs an environment with an approval check; unit only) |
+| Approvals and checks: list | pipeline_list_approvals, pipeline_list_checks | `pipelines/approvals`, `pipelines/checks/configurations` | `aihub pipeline approvals list`, `pipeline env checks` | built, live (environment found through the run timeline) |
+| Approve or reject an approval (refused for ACC/PRD unless `--allow-env`) | pipeline_approve | PATCH `pipelines/approvals` | `aihub pipeline approvals approve|reject` | exists (live in ferron-test: approve and reject on an environment with an approval check; the ACC refusal is live and unit) |
 | Variable groups = Library (see below) | pipeline_list_variable_groups, pipeline_get_variable_group, pipeline_update_variable_group | `distributedtask/variablegroups` | `aihub library ...` | built |
-| Secure files: list (metadata only, never content) | pipeline_list_secure_files | `distributedtask/securefiles` | `aihub pipeline securefiles list` | built |
-| Service connections: list and show (metadata only, no credentials) | pipeline_list_service_connections | `serviceendpoint/endpoints` | `aihub pipeline connections list|show` | built |
+| Secure files: list (metadata only, never content) | pipeline_list_secure_files | `distributedtask/securefiles` | `aihub pipeline securefiles list` | exists (live with a synthetic secure file) |
+| Service connections: list and show (metadata only, no credentials) | pipeline_list_service_connections | `serviceendpoint/endpoints` | `aihub pipeline connections list|show` | exists (live with a synthetic generic connection; no credential in the answer) |
 | Agent pools and agents: read | - | `distributedtask/pools`, `pools/{id}/agents` | `aihub devops pools` | built |
 | Pipeline fix plan / prepare repair / apply | pipeline_fix_plan, pipeline_fix_apply, pipeline_prepare_repair | - | skill `pipeline-fix` (the agent edits and commits) | out: agent behaviour, not a REST tool |
 | Pipeline evidence runs for the PR | pipeline_evidence_runs | `build/builds` | `aihub evidence add` + `pipeline runs` | exists |
 | Run timeline: stages, jobs, failing tasks with errors, durations, retry attempts | pipeline_get_failure (failing step only) | `build/builds/{id}/timeline` | `aihub pipeline timeline --run N [--failed|--tasks]` | built |
 | Failed tests of a run with message, stack head and a flaky marker over earlier runs | - | `test/runs`, `test/runs/{id}/results` | `aihub pipeline tests --run N [--history n]` | built |
-| Code coverage of a run | - | `test/codecoverage` | `aihub pipeline coverage --run N` | built (unit only: no run in the test project publishes coverage) |
+| Code coverage of a run | - | `test/codecoverage` | `aihub pipeline coverage --run N` | exists (live: a synthetic pipeline published a Cobertura file; the CLI answered 3 of 4 lines and 1 of 2 branches) |
 | Resolved variables: system, definition (secrets hidden), variable groups, queue-time parameters | - | `build/builds/{id}`, `build/definitions/{id}` | `aihub pipeline vars --run N` | built |
 | Compare two runs: commits between, parameters, stage result and duration | - | timelines, `commits` | `aihub pipeline compare --run A --with B` | built |
 | Expanded YAML with templates resolved | pipeline_preview_yaml | `pipelines/{id}/runs` previewRun | `aihub pipeline expand [--file f.yml]` | built |
 | Triggers (CI, PR), resources and parameters of a YAML pipeline | - | the YAML in the repository | `aihub pipeline trigger show --pipeline P` | built |
-| Schedules (YAML cron and classic) | - | the YAML, `build/definitions` | `aihub pipeline schedule list` | built (unit only: no scheduled pipeline in the test project) |
+| Schedules (YAML cron and classic) | - | the YAML, `build/definitions` | `aihub pipeline schedule list` | exists (live in ferron-test on a synthetic YAML pipeline with a cron schedule) |
 | Authorize a pipeline for an environment, variable group, service connection, secure file | - | `pipelines/pipelinePermissions/{type}/{id}` | `aihub pipeline authorize --pipeline P --resource environment:dev` | built |
 | Team conventions for pipelines (names, branches they validate, required templates) | - | team.yaml `pipelines:` | `aihub pipeline validate` (reports a missing required template) | built |
 | Pipeline knowledge for the agent | - | skill `pipeline-author` + `references/azure-pipelines.md`, `pipeline-fix` reads timeline and tests first | skills | built |

@@ -14,7 +14,7 @@ Run this ONE command, nothing before it:
 aihub commit --type <feat|fix|docs|test|chore|refactor> --subject "<what changed, in the team language>" [--push]
 ```
 
-Add `--push` only when the user asked to push. One commit takes every changed and new file. Do not run `git status`, `git log` or read the commit template first. Do not ask questions.
+Add `--push` only when the user asked to push. One commit takes every changed and new file. In a worktree set (the CLI prints a `note: set story-N` line) or when the user says 'in alle repos': add `--all-repos`, one call commits every repository with changes. Do not run `git status`, `git log` or read the commit template first. Do not ask questions.
 
 Example: "commit mijn wijzigingen en push ze" -> `aihub commit --type feat --subject "toon het totaal van een order" --push`
 

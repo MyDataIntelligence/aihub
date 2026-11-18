@@ -102,6 +102,20 @@ describe("aihub pipeline validate, cancel, artifacts", () => {
   });
 });
 
+describe("aihub pipeline artifacts (published with `publish:`)", () => {
+  it("downloads a pipeline artifact served from the artifacts host", async () => {
+    const { dir } = makeRepo();
+    const dl = "https://artprodweu2.artifacts.visualstudio.com/Aguid/proj/_apis/artifact/token/content?format=zip";
+    const r = routes([
+      { match: /artprodweu2\.artifacts\.visualstudio\.com/, respond: () => ({ text: "PIPEZIP" }) },
+      { match: /_apis\/build\/builds\/23\/artifacts\?/, respond: () => ({ body: { value: [{ id: 2, name: "report", resource: { type: "PipelineArtifact", downloadUrl: dl } }] } }) },
+    ]);
+    const out = join(dir, "dl2");
+    expect(await main(["pipeline", "artifacts", "--run", "23", "--download", "report", "--out", out], ctxFor(dir, fakeFetch(r).fn).ctx)).toBe(0);
+    expect(readFileSync(join(out, "report.zip"), "utf8")).toBe("PIPEZIP");
+  });
+});
+
 describe("aihub pipeline env, approvals, securefiles, connections", () => {
   const envs = [{ id: 3, name: "dev", description: "dev stage" }, { id: 4, name: "prd" }];
   const approval = (id: string, env: string) => ({ id, status: "pending", createdOn: "2026-11-18T10:00:00Z", pipeline: { name: "deploy", owner: { id: 31, name: "deploy" } }, resource: { type: "environment", name: env }, steps: [{ assignedApprover: { displayName: "Ann" } }] });
@@ -155,6 +169,29 @@ describe("aihub pipeline env, approvals, securefiles, connections", () => {
     expect(patched).toEqual([]);
     expect((await run(["pipeline", "approvals", "reject", "--approval", "a2", "--allow-env", "prd"])).code).toBe(0);
     expect(patched[0][0]).toMatchObject({ approvalId: "a2", status: "rejected" });
+  });
+
+  it("finds the environment of an approval through the run timeline when the approval carries no resource", async () => {
+    const { dir } = makeRepo();
+    const patched: any[] = [];
+    const bare = (id: string) => ({ id, status: "pending", pipeline: { id: "16", name: "deploy", owner: { id: 31, name: "20261118.1" } }, steps: [{ assignedApprover: { displayName: "Ann" } }] });
+    const rr: Route[] = [
+      { match: /build\/builds\/31\/timeline\?/, respond: () => ({ body: { records: [{ id: "st", type: "Stage", name: "deploy" }, { id: "cp", type: "Checkpoint", name: "Checkpoint", parentId: "st" }, { id: "b1", type: "Checkpoint.Approval", name: "Checkpoint.Approval", parentId: "cp" }] } }) },
+      { match: /pipelines\/checks\/runs\/cp\?/, respond: () => ({ body: { checkRuns: [{ checkConfigurationRef: { resource: { type: "environment", name: "prd-eu" } } }] } }) },
+      { match: /pipelines\/approvals\/b1\?/, respond: () => ({ body: bare("b1") }) },
+      { match: /pipelines\/approvals\?/, respond: () => ({ body: { value: [bare("b1")] } }) },
+      { method: "PATCH", match: /pipelines\/approvals\?/, respond: (c) => (patched.push(c.body), { body: {} }) },
+    ];
+    const run = async (a: string[]) => {
+      const c = ctxFor(dir, fakeFetch(rr).fn);
+      const code = await main(a, c.ctx);
+      return { code, out: c.lines.join(NL), err: c.errs.join(NL) };
+    };
+    expect((await run(["pipeline", "approvals", "list"])).out).toMatch(/b1\s+pending\s+prd-eu\s+deploy\s+31/);
+    const refused = await run(["pipeline", "approvals", "approve", "--approval", "b1"]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("is PRD");
+    expect(patched).toEqual([]);
   });
 
   it("shows secure files and service connections as metadata only, never credentials", async () => {

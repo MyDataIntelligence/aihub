@@ -1,6 +1,8 @@
+import { afterPrOffer } from "../lib/learnProfile.js";
 import { parseArgs } from "node:util";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
+import { setHint } from "../lib/allRepos.js";
 import { createPr, updatePr } from "../lib/pr.js";
 import { run as runChanges } from "./pr-changes.js";
 
@@ -47,8 +49,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
       "no-notes": { type: "boolean" },
       json: { type: "boolean" },
     }).values;
-    ctx.out(
-      await createPr(ctx, {
+    const created = await createPr(ctx, {
         summaryText: v["summary-text"] as string | undefined,
         title: v.title as string | undefined,
         bodyFile: v["body-file"] as string | undefined,
@@ -58,8 +59,12 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
         dryRun: v["dry-run"] as boolean | undefined,
         noNotes: v["no-notes"] as boolean | undefined,
         json: v.json as boolean | undefined,
-      }),
-    );
+      });
+    ctx.out(created);
+    const hint = v.json || v["dry-run"] ? "" : setHint(ctx.cwd, "pr create");
+    if (hint) ctx.out(hint);
+    const offer = v.json || v["dry-run"] ? "" : afterPrOffer(ctx);
+    if (offer) ctx.out(offer);
     return;
   }
   if (sub === "update") {

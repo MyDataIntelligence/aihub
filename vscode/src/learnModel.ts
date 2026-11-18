@@ -30,7 +30,7 @@ export interface Explanation {
   before: string;
   after: string;
   diagram: { before: string; after: string };
-  diagrams?: { title: string; kind: string; mermaid: string }[];
+  diagrams?: { title: string; kind: string; mermaid: string; idiagramUrl?: string; playUrl?: string }[];
   designChoices?: { choice: string; alternatives: { option: string; whyNot: string }[] }[];
   tellAColleague?: string[];
   risks?: string[];
@@ -59,7 +59,10 @@ export function lessonBody(l: Lesson): string {
   const out: string[] = [];
   out.push(`<h1>${esc(e.oneSentence)}</h1><p class="muted">${esc(l.meta.repo)}${l.meta.source.pr ? ` · PR !${l.meta.source.pr}` : ""}${l.meta.source.branch ? ` · ${esc(l.meta.source.branch)}` : ""} · ${esc(l.meta.savedAt.slice(0, 10))}</p>`);
   out.push(`<div class="pair"><section><h2>Before</h2><p>${esc(e.before)}</p>${diagram("How it worked", e.diagram.before)}</section><section><h2>After</h2><p>${esc(e.after)}</p>${diagram("How it works now", e.diagram.after)}</section></div>`);
-  for (const d of e.diagrams ?? []) out.push(`<section>${diagram(`${d.title} (${d.kind})`, d.mermaid)}</section>`);
+  for (const d of e.diagrams ?? []) {
+    const links = [d.playUrl ? `<a href="#" data-ext="${esc(d.playUrl)}">Play story</a>` : "", d.idiagramUrl ? `<a href="#" data-ext="${esc(d.idiagramUrl)}">Open in iDiagram</a>` : ""].filter(Boolean).join(" · ");
+    out.push(`<section>${diagram(`${d.title} (${d.kind})`, d.mermaid)}${links ? `<p class="links">${links}</p>` : ""}</section>`);
+  }
   if (e.hunkReasons?.length) {
     out.push(`<section><h2>What changed, and why</h2><ol class="steps">${e.hunkReasons
       .map((h, i) => `<li><a href="#" data-open="${esc(repoPath(h.path))}" data-line="${h.line}" title="Open the file">${esc(repoPath(h.path))}${h.line ? `:${h.line}` : ""}</a> ${esc(h.reason)}${h.how ? `<div class="detail">${esc(h.how)}</div>` : ""}${(h.findings ?? []).map((f) => `<div class="finding ${esc(f.severity)}">${esc(f.severity)}: ${esc(f.text)}</div>`).join("")}</li>`)
@@ -108,6 +111,7 @@ document.addEventListener('click', (e) => {
   const t = e.target.closest('button,a'); if (!t) return;
   if (t.dataset.open) { e.preventDefault(); vs.postMessage({ type: 'open', path: t.dataset.open, line: Number(t.dataset.line) || 0 }); }
   if (t.dataset.tour) vs.postMessage({ type: 'tour' });
+  if (t.dataset.ext) { e.preventDefault(); vs.postMessage({ type: 'external', url: t.dataset.ext }); }
   if (t.dataset.learned) { vs.postMessage({ type: 'learned', name: t.dataset.learned }); t.textContent = 'Marked'; t.disabled = true; }
   if (t.classList.contains('opt')) {
     const q = t.closest('.q'); if (q.dataset.done) return; q.dataset.done = '1';
