@@ -56,6 +56,11 @@ export class AdoClient {
     return new AdoClient(this.remote, this.auth, this.fetchFn, service);
   }
 
+  /** The same client for another repository of the project (--repo). */
+  forRepo(repo: string): AdoClient {
+    return new AdoClient({ ...this.remote, repo }, this.auth, this.fetchFn, this.service);
+  }
+
   /** The same client for another project of the organisation (--project). */
   forProject(project: string): AdoClient {
     return new AdoClient({ ...this.remote, project }, this.auth, this.fetchFn, this.service);
