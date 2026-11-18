@@ -16,13 +16,15 @@ describe("BarLoader", () => {
     writeFileSync(log, "");
     const m = await new BarLoader(stubRunner({ FAKE_AIHUB_CALLS: log }), opts(dir)).load();
     expect(m.story?.id).toBe(1234);
-    expect(m.pr).toMatchObject({ id: 45, votes: { summary: "needs approval" } });
+    expect(m.pr).toMatchObject({ id: 45, votes: { summary: "1 approved, 1 waiting" } });
+    expect(m.pr?.reviewers.map((r) => r.name)).toEqual(["Bob", "Ann"]);
+    expect(m.events.map((e) => e.message)).toEqual(["New comment on PR !45", "Build (ci) failed on your PR !45"]);
     expect(m.openThreads).toBe(2);
     expect(m.fabric?.failed).toHaveLength(1);
     expect(m.watching).toBe(true);
     const c = calls(log);
-    expect(c).toHaveLength(5);
-    expect(c).toEqual(expect.arrayContaining(["status", "pr checks --pr 45", "fabric failures", "fabric logs --since 24h --top 8", "watch list"]));
+    expect(c).toHaveLength(6);
+    expect(c).toEqual(expect.arrayContaining(["status", "pr checks --pr 45", "fabric failures", "fabric logs --since 24h --top 8", "watch list", "watch events --limit 5"]));
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -58,7 +60,8 @@ describe("BarLoader", () => {
   it("still shows the bar when pr checks fails", async () => {
     const dir = scratch();
     const m = await new BarLoader(stubRunner({ FAKE_AIHUB_FAIL: "pr" }), opts(dir, false, 1)).load();
-    expect(m.pr?.votes.summary).toBe("no votes");
+    expect(m.pr?.id).toBe(45);
+    expect(m.pr?.blockers).toEqual([]);
   });
 });
 

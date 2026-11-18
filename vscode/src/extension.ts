@@ -4,6 +4,7 @@ import { checkCli, CliError, INSTALL_COMMAND, makeRunner, type Runner } from "./
 import { chatOpenArgs, copilotAgentInstalled } from "./agents";
 import { BarLoader } from "./data";
 import { renderBody, renderError, renderPage } from "./html";
+import { popupFor } from "./popups";
 import { statusItems, type BarError, type BarModel, type StatusItem, type Tone } from "./model";
 import { Refresher, type Result } from "./refresher";
 import { registerGitCommands } from "./gitUi";
@@ -165,17 +166,29 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private async onMessage(m: { type: string; id?: string }) {
     switch (m.type) {
-      case "refresh":
-        return void this.refresh();
-      case "openPr":
-        return void vscode.commands.executeCommand("aihub.openPr");
-      case "openLog":
-        return this.log.show(true);
-      case "installHelp":
-        return void vscode.commands.executeCommand("aihub.installHelp");
       case "chat":
         return void this.sendToChat(m.id ?? "");
+      case "chip":
+      case "menu":
+        return this.showPopup(m.type === "menu" ? "menu" : (m.id ?? ""));
     }
+  }
+
+  /** Chips open a native pick list: details and secondary actions stay out of the bar. */
+  private async showPopup(chip: string) {
+    if (chip === "refresh") return void this.refresh();
+    if (chip === "installHelp") return void vscode.commands.executeCommand("aihub.installHelp");
+    const model = this.model();
+    if (!model) {
+      const err = this.errorOf();
+      return void vscode.window.showInformationMessage(err?.message ?? "No status yet.");
+    }
+    const popup = popupFor(chip, model);
+    const items = popup.items.map((i) => (i.separator ? { label: "", kind: vscode.QuickPickItemKind.Separator } : { label: i.label, description: i.description, detail: i.detail, run: i.run }));
+    const pick = (await vscode.window.showQuickPick(items as (vscode.QuickPickItem & { run?: (typeof popup.items)[number]["run"] })[], { title: popup.title, placeHolder: "Pick an action, or Esc" })) as { run?: (typeof popup.items)[number]["run"] } | undefined;
+    if (!pick?.run) return;
+    if (pick.run.kind === "chat") await this.sendToChat(pick.run.id);
+    else if (pick.run.kind === "command") await vscode.commands.executeCommand(pick.run.id);
   }
 
   model(): BarModel | undefined {

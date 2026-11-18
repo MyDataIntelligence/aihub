@@ -35,11 +35,17 @@ describe("model", () => {
     const items = statusItems(m);
     expect(items.map((i) => i.id)).toEqual(["story", "pr", "pipeline", "threads", "fabric", "events"]);
     expect(items[0].text).toContain("#1234 Add the order export");
-    expect(items[1].text).toContain("!45 active");
-    expect(items[1].text).toContain("needs approval");
+    expect(items[1].text).toContain("!45");
+    expect(items[1].text).toContain("1✓ 1⏳");
     expect(items[2]).toMatchObject({ tone: "bad", text: expect.stringContaining("red") });
     expect(items[3].text).toContain("2");
     expect(items[4].text).toContain("1 failed, 1 running");
+  });
+
+  it("falls back to the reviewers policy when the CLI lists no reviewers", () => {
+    const { reviewers: _r, ...pr } = fx("status").pr;
+    const m = buildModel({ status: { ...fx("status"), pr }, checks: fx("pr-checks") });
+    expect(m.pr?.votes.summary).toBe("needs approval");
   });
 
   it("keeps a quiet repository down to one item", () => {
