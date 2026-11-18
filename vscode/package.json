@@ -287,6 +287,35 @@
         "command": "aihub.editor.suggestFix",
         "title": "Suggest fix for the selection...",
         "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.thread.resolve",
+        "title": "Resolve",
+        "category": "AI Context Hub",
+        "icon": "$(check)"
+      },
+      {
+        "command": "aihub.thread.wontFix",
+        "title": "Won't fix",
+        "category": "AI Context Hub",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "aihub.thread.reactivate",
+        "title": "Reactivate",
+        "category": "AI Context Hub",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "aihub.thread.fixInChat",
+        "title": "Fix in chat",
+        "category": "AI Context Hub",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "aihub.thread.reply",
+        "title": "Reply",
+        "category": "AI Context Hub"
       }
     ],
     "configuration": {
@@ -672,6 +701,57 @@
           "submenu": "aihub.cm.Editor",
           "when": "editorHasSelection && resourceScheme == file",
           "group": "9_aihub@1"
+        }
+      ],
+      "comments/commentThread/title": [
+        {
+          "command": "aihub.thread.resolve",
+          "group": "inline@1",
+          "when": "commentController == aihub && commentThread == aihubOpen"
+        },
+        {
+          "command": "aihub.thread.wontFix",
+          "group": "inline@2",
+          "when": "commentController == aihub && commentThread == aihubOpen"
+        },
+        {
+          "command": "aihub.thread.fixInChat",
+          "group": "inline@3",
+          "when": "commentController == aihub && commentThread == aihubOpen"
+        },
+        {
+          "command": "aihub.thread.reactivate",
+          "group": "inline@1",
+          "when": "commentController == aihub && commentThread == aihubResolved"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "aihub.thread.reply",
+          "group": "inline",
+          "when": "commentController == aihub"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "aihub.thread.resolve",
+          "when": "false"
+        },
+        {
+          "command": "aihub.thread.wontFix",
+          "when": "false"
+        },
+        {
+          "command": "aihub.thread.reactivate",
+          "when": "false"
+        },
+        {
+          "command": "aihub.thread.fixInChat",
+          "when": "false"
+        },
+        {
+          "command": "aihub.thread.reply",
+          "when": "false"
         }
       ]
     },

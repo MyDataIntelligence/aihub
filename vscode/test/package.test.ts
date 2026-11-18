@@ -47,6 +47,14 @@ describe("chat actions in the menus", () => {
   });
 });
 
+describe("thread buttons", () => {
+  it("has resolve, won't fix, reactivate, fix in chat and reply on the comment thread menus", () => {
+    const t = (c.menus["comments/commentThread/title"] as { command: string }[]).map((x) => x.command);
+    expect(t).toEqual(["aihub.thread.resolve", "aihub.thread.wontFix", "aihub.thread.fixInChat", "aihub.thread.reactivate"]);
+    expect(c.menus["comments/commentThread/context"][0].command).toBe("aihub.thread.reply");
+  });
+});
+
 describe("chat agent", () => {
   it("selects the aihub agent when it is installed, else the default agent mode", () => {
     expect(chatOpenArgs("/pr", { agentName: "aihub", agentInstalled: true, agentMode: true })).toEqual({ query: "/pr", isPartialQuery: true, mode: "aihub" });
