@@ -66,6 +66,21 @@ export function commitsSince(cwd: string, base: string): CommitInfo[] {
     });
 }
 
+/** "5 files changed, +71 -0" for the changes since `base`; undefined when there are none. */
+export function diffSummary(cwd: string, base: string): string | undefined {
+  if (!base) return undefined;
+  const out = git(cwd, ["diff", "--numstat", base, "HEAD"], { allowFail: true }).split("\n").filter(Boolean);
+  if (!out.length) return undefined;
+  let add = 0;
+  let del = 0;
+  for (const l of out) {
+    const [a, d] = l.split("\t");
+    add += Number(a) || 0;
+    del += Number(d) || 0;
+  }
+  return `${out.length} file${out.length === 1 ? "" : "s"} changed, +${add} -${del}`;
+}
+
 /** File content at origin/<branch> (falls back to local branch), or undefined. */
 export function showFile(cwd: string, branch: string, path: string): string | undefined {
   for (const ref of [`origin/${branch}`, branch]) {

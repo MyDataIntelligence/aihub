@@ -110,6 +110,14 @@ export function codeKindOf(heading: string): CodeKind | undefined {
   return undefined;
 }
 
+/** Sections the CLI can fill from git when the agent left them empty. */
+export function fallbackKindOf(heading: string): "changes" | "tests" | undefined {
+  const h = heading.trim();
+  if (/^(changes|changed|wijzigingen|what changed|wat is er gewijzigd)(?:\s|$)/i.test(h)) return "changes";
+  if (/^(tests?|testen|testing|validatie|validation|verification)(?:\s|$)/i.test(h)) return "tests";
+  return undefined;
+}
+
 export interface CodeValues {
   story?: string;
   commits?: string;
@@ -123,6 +131,8 @@ export interface ComposeInput {
   code: CodeValues;
   emptyText?: string;
   optionalSections?: string[];
+  /** Used only where the agent wrote nothing: a Changes section from the commits, an honest not-run line for Tests. */
+  fallback?: { changes?: string; tests?: string };
 }
 
 export interface Composed {
@@ -164,6 +174,9 @@ export function compose(input: ComposeInput): Composed {
     } else if (fromBody) {
       text = fromBody;
       by = "body";
+    } else if (!kind && fallbackKindOf(s.heading) && input.fallback?.[fallbackKindOf(s.heading)!]) {
+      text = input.fallback[fallbackKindOf(s.heading)!];
+      by = "code";
     } else if (freeText && !freeUsed && !kind) {
       text = freeText;
       freeUsed = true;

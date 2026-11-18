@@ -37,7 +37,7 @@ Resumed session: run `aihub status`.
 Example: the user sends a pullrequest link, so follow pr-watch with that id.
 
 ## What the CLI fills
-Templates, target branch, story links and repository come from `team.yaml` ([schema](../_shared/references/team.schema.yaml)); never ask the user for them. Read the `guidelines:` files first.
+Templates, target branch, story links and repository come from `team.yaml` (`aihub doctor` checks it); never ask the user for them. Read the `guidelines:` files first.
 
 ## If it fails
 Run `aihub doctor` and show its output. If `team.yaml` is missing, tell the user to run `aihub init` in the team repo.

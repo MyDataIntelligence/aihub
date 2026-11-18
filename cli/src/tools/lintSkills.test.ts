@@ -22,6 +22,31 @@ function pack(skill: string, text: string): string {
 const good = (extra = "") => `---\nname: demo\ndescription: "Use when testing"\n---\n${body(extra)}`;
 const lint = (dir: string) => lintSkills(dir).filter((e) => !e.includes("commands") && !e.includes("skill \"") && !e.includes(".md: missing"));
 
+describe("skills discovery (npx skills add) sees every skill of the pack", () => {
+  it("every folder without a leading underscore holds a SKILL.md with name and description, and links stay inside the skill or go to a sibling skill", () => {
+    const dirs = fs.readdirSync(repoSkills, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith("_")).map((e) => e.name);
+    const found: string[] = [];
+    for (const d of dirs) {
+      const f = path.join(repoSkills, d, "SKILL.md");
+      expect(fs.existsSync(f), `${d}/SKILL.md`).toBe(true);
+      const fm = parseFrontMatter(fs.readFileSync(f, "utf8"));
+      expect(fm?.data.name, `${d} name`).toBe(d);
+      expect(fm?.data.description, `${d} description`).toBeTruthy();
+      expect(fs.readFileSync(f, "utf8")).not.toMatch(/\]\(\.\.\/_/);
+      found.push(fm!.data.name);
+    }
+    expect(found.length).toBe(dirs.length);
+    expect(new Set(found).size).toBe(found.length);
+    // the 26/27 skills the tool lists are all of them: nothing is hidden by a missing or odd front matter
+    expect(found.length).toBeGreaterThanOrEqual(26);
+  });
+
+  it("flags a link into _shared", () => {
+    const t = good("[x](../_shared/assets/a.md)");
+    expect(lintSkills(pack("demo", t)).join("\n")).toMatch(/underscore folder/);
+  });
+});
+
 describe("lintSkills", () => {
   it("accepts a valid skill", () => {
     expect(lint(pack("demo", good()))).toEqual([]);

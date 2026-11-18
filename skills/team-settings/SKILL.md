@@ -8,7 +8,7 @@ description: "Use when team settings or templates must change: 'pas team.yaml aa
 The user wants other defaults: branch pattern, protected branches, story states, release groups, pipelines, or one of the templates (story, commit, pull request).
 
 ## Steps
-1. Read the current file: `.agents/skills/_shared/references/team.yaml` and the schema `team.schema.yaml` next to it. Templates are the files named there.
+1. Read the current file: `.agents/skills/_shared/references/team.yaml` of the team repository. Templates are the files named there.
 2. Create a topic branch such as `chore/team-settings` from the default branch.
 3. Edit the file, keeping every unrelated line. Check it with `aihub doctor`.
 4. Open a pull request with the usual flow:
