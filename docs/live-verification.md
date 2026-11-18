@@ -326,3 +326,27 @@ opencode 1.19.5 with Luna (`openai/gpt-6-luna`, shared test opencode home throug
 | `git push origin main` | refused by the agent's rule (`"git push * main": deny`); the bare origin still has only `init` |
 
 Not run: opencode 2.x (the `permissions` list has the same rules), Copilot/VS Code, Codex and Claude Code (their settings are documented in docs/agents.md and printed by `aihub skills install`, not exercised).
+
+## Regression smoke of the npm build (2026-11-18)
+
+`@ferronhooi/aihub` from npm into a scratch prefix (`npm i -g --prefix <scratch> @ferronhooi/aihub@next`), isolated `HOME`/`XDG_*`/`COPILOT_HOME`/`CODEX_HOME`/`OPENCODE_CONFIG_DIR`, `aihub skills install --client all`, a local clone of the synthetic `test-project` with origin set to `ferron-test`, real `az login` for the REST calls only. 1.0.4 is not on npm yet (`latest` 1.0.3, `next` 1.0.3-next.117), so the tested build is **1.0.3-next.117**; the `doctor` line `legacy-hub` (PR #121) is therefore not in it. Read-only calls only; `--help` ran in an empty folder.
+
+| Family | Command | Result |
+|---|---|---|
+| help | `aihub <group> --help` for all 49 command groups, and `aihub --help` | OK (usage text, no stack trace) |
+| install | `skills install --client all` into the isolated homes (46 skills, 22 prompts, 3 agents per client) | OK |
+| doctor | in the clone | OK for node, git, remote, auth, skills, agents, permission; FIX only for `team.yaml` and `pr-template` (the clone has no team pack, expected) |
+| PR | `pr list --mine`, `pr show --pr 174`, `comments get --pr 174`, `review prepare --pr 174` | OK |
+| story / work | `status`, `story show --id 1670`, `work`, `standup --since 2d`, `handoff` | OK |
+| pipelines | `pipeline runs --branch ...`, `pipeline timeline --run 239` | OK |
+| policy / library / repo | `policy list`, `library list`, `repo branch list`, `repos list` | OK |
+| search | `search code --text`, `search wiki --text`, `search items --text` | OK |
+| wiki / boards / test plans / artifacts | `wiki pages`, `boards query run --mine`, `testplan runs --build 265`, `artifacts feeds` | OK |
+| watch / fix | `watch list`, `fix known --error ...` | OK ("no known fixes yet" in this project) |
+| dbt | `dbt detect` in a synthetic dbt project | OK (project shop, 5 models) |
+| learn / probe / research | `learn repo`, `probe devops feature wiki|testplans`, `research template` | OK |
+| fabric | `fabric workspaces --filter aihub-test-dev` | OK (no match: no test workspace is left) |
+| other | `robot needed`, `worktree list` | OK |
+| expected refusal | `crossrepo impact --from 174` without `crossRepo.pathMaps` | message names the missing key (correct) |
+
+First pass counted 4 FAIL, all wrong arguments of the smoke script, not product bugs: `pr list --top`, `search code --query`, `probe devops` without `feature <name>`, and `help: (no command)` matching my own regex; they passed with the right arguments (the usage lines were clear in each case). No product failure was found, so no fix PR.
