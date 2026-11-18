@@ -1,0 +1,44 @@
+import { describe, expect, it } from "vitest";
+import { checkCli, CliError, makeRunner, readJson, versionAtLeast } from "../src/cli";
+import { stubRunner } from "./helpers";
+
+describe("versionAtLeast", () => {
+  it("compares major, minor and patch", () => {
+    expect(versionAtLeast("1.0.2", "1.0.2")).toBe(true);
+    expect(versionAtLeast("1.0.10", "1.0.2")).toBe(true);
+    expect(versionAtLeast("1.0.1", "1.0.2")).toBe(false);
+    expect(versionAtLeast("2.0.0", "1.9.9")).toBe(true);
+    expect(versionAtLeast("1.1.0-next.5", "1.0.2")).toBe(true);
+  });
+});
+
+describe("runner", () => {
+  it("parses JSON from a command", async () => {
+    const s = await readJson<{ branch: string }>(stubRunner(), ["status"], process.cwd());
+    expect(s.branch).toBe("feat/1234-add-export");
+  });
+
+  it("says missing, with the install command, when the command does not exist", async () => {
+    const run = makeRunner({ command: "aihub-does-not-exist-xyz", timeoutMs: 5000 }, "linux");
+    await expect(run(["--version"], process.cwd())).rejects.toMatchObject({ kind: "missing", message: expect.stringContaining("npm i -g @ferronhooi/aihub") });
+  });
+
+  it("times out", async () => {
+    const run = stubRunner({ FAKE_AIHUB_SLEEP: "3000" }, 300);
+    await expect(run(["status"], process.cwd())).rejects.toMatchObject({ kind: "timeout" });
+  });
+
+  it("reports a failing command with its last stderr line", async () => {
+    const run = stubRunner({ FAKE_AIHUB_FAIL: "status" });
+    await expect(run(["status"], process.cwd())).rejects.toMatchObject({ kind: "failed", message: expect.stringContaining("no single workspace") });
+  });
+
+  it("rejects an old CLI with the update command", async () => {
+    await expect(checkCli(stubRunner({ FAKE_AIHUB_VERSION: "0.9.0" }), process.cwd())).rejects.toMatchObject({ kind: "old", message: expect.stringContaining("npm i -g") });
+    await expect(checkCli(stubRunner(), process.cwd())).resolves.toBe("1.0.2");
+  });
+
+  it("fails with a CliError for an unknown command", async () => {
+    await expect(readJson(stubRunner(), ["nope"], process.cwd())).rejects.toBeInstanceOf(CliError);
+  });
+});

@@ -1,0 +1,136 @@
+{
+  "name": "ai-context-hub",
+  "displayName": "AI Context Hub",
+  "description": "A thin status bar and panel over the aihub CLI: story, branch, pull request, pipeline, review threads, Fabric runs and watch events. Actions open in your chat (Copilot Chat or opencode).",
+  "version": "3.0.0-dev.0",
+  "publisher": "FerronHooi",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MyDataIntelligence/aihub",
+    "directory": "vscode"
+  },
+  "icon": "resources/icon.png",
+  "engines": {
+    "vscode": "^1.95.0",
+    "node": ">=18"
+  },
+  "categories": [
+    "Other",
+    "SCM Providers"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "aihubBar",
+          "title": "AI Context Hub",
+          "icon": "resources/hub.svg"
+        }
+      ]
+    },
+    "views": {
+      "aihubBar": [
+        {
+          "type": "webview",
+          "id": "aihub.bar",
+          "name": "AI Context Hub",
+          "icon": "resources/hub.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "aihub.refresh",
+        "title": "AI Context Hub: Refresh status",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "aihub.showBar",
+        "title": "AI Context Hub: Show the bar"
+      },
+      {
+        "command": "aihub.actions",
+        "title": "AI Context Hub: Actions (send to chat)..."
+      },
+      {
+        "command": "aihub.sendToChat",
+        "title": "AI Context Hub: Send a command to chat"
+      },
+      {
+        "command": "aihub.openPr",
+        "title": "AI Context Hub: Open the pull request in the browser"
+      },
+      {
+        "command": "aihub.openLog",
+        "title": "AI Context Hub: Open the log"
+      },
+      {
+        "command": "aihub.installHelp",
+        "title": "AI Context Hub: How to install the aihub CLI"
+      }
+    ],
+    "configuration": {
+      "title": "AI Context Hub",
+      "properties": {
+        "aihub.chatTarget": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "copilot",
+            "opencode"
+          ],
+          "default": "auto",
+          "description": "Where actions go. auto: an open opencode terminal if there is one, otherwise Copilot Chat. The text is put in the chat input; you press Enter yourself."
+        },
+        "aihub.refreshIntervalSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 15,
+          "description": "How often the status is refreshed while the window has focus. The window also refreshes when it gets focus and when the git branch changes. No polling while the window is not focused."
+        },
+        "aihub.fabric.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Fabric section (runs and failures of the branch's feature workspace via aihub fabric). Hidden automatically when the branch has no workspace."
+        },
+        "aihub.cliPath": {
+          "type": "string",
+          "default": "aihub",
+          "description": "The aihub command. Change this only when aihub is not on the PATH."
+        },
+        "aihub.timeoutSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "description": "Time limit for one aihub call."
+        },
+        "aihub.chatAgentMode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open Copilot Chat in agent mode, so the slash commands (/pr, /review, ...) of the aihub pack work."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run",
+    "package": "npm run build && node -e \"require('fs').mkdirSync('../build',{recursive:true})\" && vsce package --no-dependencies --out ../build/"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.6",
+    "@types/vscode": "^1.95.0",
+    "@vscode/codicons": "^0.0.46-24",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}
