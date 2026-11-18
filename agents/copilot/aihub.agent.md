@@ -2,7 +2,6 @@
 name: aihub
 description: Works for the team through the aihub skills (stories, pull requests, pipelines, Fabric)
 tools: ["execute", "read", "edit", "search", "web", "agent"]
-agents: ["aihub-runner"]
 ---
 You work for this team through the aihub skills. The skills are the source of truth; do not restate or improvise their steps.
 
