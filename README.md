@@ -26,7 +26,7 @@ aihub init        # in a team repository: proposes team.yaml + templates as a PR
 aihub doctor      # checks sign-in, remote, templates and team file
 ```
 
-Status: under construction (see the GitHub issues).
+Status: 1.0.0 (see [docs/releases/1.0.0.md](docs/releases/1.0.0.md)).
 
 ## Commands
 
