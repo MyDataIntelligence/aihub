@@ -3,6 +3,7 @@
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
 ## 1.0.3
+- `aihub legacy remove [--yes] [--keep-data] [--keep-settings] [--repos <dir>]`: lists, then removes, everything the old AI Context Hub put on the machine (extension below 3.0.0, `hub` CLI package and PATH entry, its skills, agent, rules block and hooks, data, per-repo `.aihub`, exclude lines and git hook blocks); only what is provably Hub-owned, your own files and hooks stay. See docs/legacy-removal.md.
 - `aihub comments reply --reply "<threadId>:<status>:<text>"` (repeatable, no file needed; an agent whose shell may not write files can still answer threads) and a value that starts with `- ` (a markdown bullet, for example `--append-text "- item"`) is accepted after its option.
 - `aihub pr list [--mine|--reviewer|--branch] [--status] [--repo] [--json]`, `aihub pr show --pr N [--json]`, reviewers with votes in `aihub status --json` (`pr.reviewers`) and `aihub watch events [--limit] [--since] [--json]` for tools such as the VS Code extension. Shapes: docs/cli-json.md.
 - Optional `aihub` and `aihub-runner` agents for opencode (format follows the installed 1.x or 2.x), GitHub Copilot, Codex and Claude Code (`--client claude`, opt-in), installed by `aihub skills install` (`--no-agents` skips, `--into-repo` writes them into the repository, an edited file is never overwritten); `aihub doctor` reports them. Release notes: docs/releases/1.0.3.md.
