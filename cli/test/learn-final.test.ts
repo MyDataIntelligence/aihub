@@ -1,6 +1,8 @@
 import { deflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { apiOf, appOf, boardOf, parseAnswer, pushToIDiagram, storyFor, trusted } from "../src/lib/idiagram.js";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { apiOf, appOf, boardOf, boardProblem, parseAnswer, pushBoard, pushToIDiagram, storyFor, storyProblem, trusted } from "../src/lib/idiagram.js";
 import { afterPrOffer } from "../src/lib/learnProfile.js";
 import { main } from "../src/router.js";
 import { ctxFor, fakeFetch, makeRepo, sh, tmp, write, type Route } from "./helpers.js";
@@ -123,5 +125,47 @@ describe("level and afterPr", () => {
     expect(afterPrOffer(on.ctx)).toBe("Wil je een les van deze wijziging? Zeg /leer (of: aihub learn change --json).");
     await run(dir, h, ["learn", "after-pr", "off"]);
     expect(afterPrOffer(on.ctx)).toBe("");
+  });
+});
+
+const MERM = "flowchart LR" + String.fromCharCode(10) + "  a --> b";
+const BOARD = JSON.parse(readFileSync(join(__dirname, "../../skills/learn/references/board-example.json"), "utf8"));
+const STORY = JSON.parse(readFileSync(join(__dirname, "../../skills/learn/references/story-example.json"), "utf8"));
+
+describe("the rich board path (/boards/build)", () => {
+  it("checks the board shape and size like the legacy prepareBoard, and the story scenes", () => {
+    expect(boardProblem(BOARD)).toBeUndefined();
+    expect(boardProblem({ nodes: [] })).toContain("1 to 200 nodes");
+    expect(boardProblem({ nodes: Array.from({ length: 201 }, (_, i) => ({ id: String(i) })) })).toContain("1 to 200 nodes");
+    expect(boardProblem("x")).toContain("iDiagram board spec");
+    expect(storyProblem(STORY)).toBeUndefined();
+    expect(storyProblem({ scenes: [] })).toContain("1 to 12 scenes");
+    expect(storyProblem({ scenes: [{ title: "x" }] })).toContain("scene 1 needs a title and nodes");
+  });
+
+  it("posts spec, outputs link+mermaid and the story to /boards/build and returns the links and the Mermaid fallback", async () => {
+    const f = fakeFetch([{ method: "POST", match: /\/api\/v1\/boards\/build\?output=summary/, respond: () => ({ body: { ...ANSWER, mermaid: MERM } }) }]);
+    const { ctx } = ctxFor(tmp(), f.fn);
+    const r = await pushBoard(ctx, { board: BOARD, story: STORY });
+    expect(r).toMatchObject({ status: "created", scenes: 3, mermaid: MERM, url: URL_OK });
+    expect(f.calls[0].body).toEqual({ spec: BOARD, outputs: ["link", "mermaid"], story: STORY });
+    expect((await pushBoard(ctx, { board: { nodes: [] } })).reason).toContain("iDiagram board spec");
+    expect(f.calls).toHaveLength(1);
+  });
+
+  it("learn diagram --board reads the files and prints the picture and the links", async () => {
+    const dir = makeRepo().dir;
+    const d = tmp();
+    writeFileSync(join(d, "b.json"), JSON.stringify(BOARD));
+    writeFileSync(join(d, "s.json"), JSON.stringify(STORY));
+    const f = fakeFetch([{ method: "POST", match: /boards\/build/, respond: () => ({ body: { ...ANSWER, mermaid: MERM } }) }]);
+    const t = ctxFor(dir, f.fn);
+    expect(await main(["learn", "diagram", "--board", join(d, "b.json"), "--story", join(d, "s.json")], t.ctx)).toBe(0);
+    const out = t.lines.join(String.fromCharCode(10));
+    expect(out).toContain("SCD2: een adreswijziging");
+    expect(out).toContain("flowchart LR");
+    expect(out).toContain("Play story: ");
+    const bad = ctxFor(dir, f.fn);
+    expect(await main(["learn", "diagram", "--board", join(d, "nope.json")], bad.ctx)).toBe(1);
   });
 });

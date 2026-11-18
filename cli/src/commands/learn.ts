@@ -4,7 +4,7 @@ import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import { changeFacts, formatChange, formatRepo, repoFacts, type ChangeFacts } from "../lib/learn.js";
 import { validateExplanation } from "../lib/learnSchema.js";
-import { pushToIDiagram, storyFor } from "../lib/idiagram.js";
+import { pushBoard, pushToIDiagram, storyFor } from "../lib/idiagram.js";
 import { diagramFor, glossary, itemFacts, onboarding, teamFlow, week } from "../lib/learnMore.js";
 import { profile, setAfterPr, setLevel } from "../lib/learnProfile.js";
 import { learnConcepts, learnForget, learnHome, learnList, learnMark, learnQuiz, learnSave, learnScore, learnShow } from "../lib/learnStore.js";
@@ -20,7 +20,7 @@ export const LEARN_USAGE = [
   "aihub learn list [--all] [--json] | show --id ID [--json] | forget --id ID    your saved lessons (this repository, or --all)",
   "aihub learn concepts [--all] [--mark NAME|--unmark NAME] [--json]            the concepts of your lessons and which you marked as learned",
   "aihub learn quiz [--id ID] [--score ID --correct N --of M] [--json]          the questions of a lesson (or of the newest ones); --score keeps a result",
-  "aihub learn diagram [--kind architecture|lineage|repo|flow] [--pr|--branch|--range] [--idiagram] [--json]   a Mermaid picture built from facts (callers, dbt lineage, folders, the team flow); --idiagram also pushes it to iDiagram and returns the board and Play story links",
+  "aihub learn diagram [--kind architecture|lineage|repo|flow] [--pr|--branch|--range] [--idiagram [--board spec.json [--story story.json]]] [--json]   a Mermaid picture built from facts (callers, dbt lineage, folders, the team flow); --idiagram also pushes it to iDiagram and returns the board and Play story links",
   "aihub learn level [set junior|medior|senior] | after-pr [on|off]            your level (the skill's style) and whether pr create / story finish offer a lesson (off by default; team.yaml learn.afterPr sets the default)",
   "aihub learn flow | glossary | week [--days N] | onboarding [--json]          how the team works, the repository's own terms, what you did this week, a welcome bundle",
   "aihub learn item <file|pipeline.yml|dbt model.sql|Fabric item folder> [--json]    facts of one thing: definitions, imports, stages, lineage, who uses it",
@@ -33,6 +33,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const rest = rest0;
   const parsed = parse(rest, {
     kind: { type: "string" },
+    board: { type: "string" },
+    story: { type: "string" },
     days: { type: "string" },
     idiagram: { type: "boolean" },
     pr: { type: "string" },
@@ -52,6 +54,19 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const pos = parsed.positionals;
   const v = parsed.values;
   const out = (data: unknown, text: string) => ctx.out(v.json ? JSON.stringify(data) : text);
+  if (sub === "diagram" && v.board) {
+    const read = (f: string) => {
+      try {
+        return JSON.parse(readFileSync(f, "utf8"));
+      } catch (e) {
+        throw new AihubError(`${f} is not valid JSON: ${(e as Error).message}`);
+      }
+    };
+    const board = read(v.board);
+    const r = await pushBoard(ctx, { board, story: v.story ? read(v.story) : undefined });
+    const title = String((board as { title?: string }).title ?? "board");
+    return out({ kind: "board", title, mermaid: r.mermaid, empty: false, basedOn: "the board spec you gave", idiagram: r }, [`${title}  (board)`, r.mermaid ? `${"```"}mermaid${NL}${r.mermaid}${NL}${"```"}` : "", r.status === "created" ? `iDiagram: ${r.url}${r.playUrl ? `${NL}Play story: ${r.playUrl}` : ""}${r.storyWarnings.length ? `${NL}story warnings: ${r.storyWarnings.join("; ")}` : ""}` : `iDiagram: ${r.status}: ${r.reason}`].filter(Boolean).join(NL));
+  }
   if (sub === "diagram") {
     const d = await diagramFor(ctx, { kind: o_kind(v.kind), range: { pr: v.pr, branch: v.branch, range: v.range } });
     const extra = v.idiagram && !d.empty ? await pushToIDiagram(ctx, { id: `${d.kind}-${Date.now().toString(36)}`, mermaid: d.mermaid, story: storyFor(d.mermaid, d.title) }) : undefined;
