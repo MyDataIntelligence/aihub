@@ -270,6 +270,32 @@ More findings of these runs (all fixed through PRs to `staging`):
 
 Cleanup: PRs !1090, !1092, !1094, !1095 abandoned; branches `aihub-e2e-main` and `feature/3401|3403|3405|3406-...` deleted; pipeline 12 deleted (its runs 271 to 275 stay as history); policy 10 deleted; stories 3401, 3403, 3405 and 3406 deleted. **Mistake of mine:** a "delete every Build policy" loop also removed the existing build policy of `test-project` on `ci-checks-demo` (pipeline 5, Ruff). I recreated it (id 11, blocking, display name `ruff`, pipeline 5); settings other than those could not be read back, so compare with the original if it matters. Proof: `20261118-2041-L-story-ci-e2e.png` in the proof folder of the benchmark machine.
 
+## Whole-set work, journal and resume (2026-11-18)
+
+Synthetic worktree set for story 3410 with two repositories of `ferron-test` (`test-project` from `main`, `test-developers` from `staging`), driven with the local build of the CLI; then opencode 1.19.5 with the `aihub` agent and Luna on top of it.
+
+| Command | Result | Second source |
+|---|---|---|
+| `aihub worktree create --story 3410 --repos test-project,test-developers` | one folder with a worktree per repository on `feature/3410-...` (the first try failed honestly: `test-developers` has no `main`; fixed with `defaultTarget: staging` for it in `team.yaml`) | `git worktree list` |
+| `aihub status` in the set | a `Set:` line that names `--all-repos` | n/a |
+| `aihub commit --all-repos --type feat --subject ... --push` | one commit and push per repository with changes, one table (changed / pushed / PR / pipeline / result); a repository without changes says `skipped: nothing to commit`; a second call with a change in one repository committed only that one | `git log` per repository |
+| `aihub pr create --all-repos --summary-text ...` | PR !1100 (`test-project`) and !1101 (`test-developers`), then `crossrepo link-prs` | PR description has a Related section naming the other PR; the story has 2 `Pull Request` relations |
+| `aihub pr update --all-repos --section Tests --append-text ...` | both PRs updated | `az repos pr show` |
+| `aihub pipeline follow --all-repos` | one result per repository; a timeout in one is reported and the other is still done | build state per PR |
+| `aihub status --all-repos` | one table, next step per repository | `az` |
+| journal | `<git common dir>/aihub/journal.md`: time, branch, command, result, next step; one line per repository for `--all-repos`; reads (status, search, ...) are not recorded | file |
+| `aihub status --resume` | `Last time: ... · Plan done: ...; left: ... · Next step: ...`, the newest private note and the set, no network call (a unit test asserts 0 fetches); Dutch labels for a Dutch team | journal |
+| `aihub story recall --id 3410` | story, PRs and pipelines per repository from ADO, the journal lines of both repositories, open ends | `az` |
+| `aihub story search "set demo"` | story by title words plus journal lines | WIQL |
+| agent, Luna: "Commit en push alles in alle repos van deze set" | `aihub commit ... --push --all-repos`, 3 tool calls, 0 questions | `git log` |
+| agent, Luna: "Nieuwe chat. Waar was ik gebleven?" | skill `resume`, `aihub status --resume`, correct summary | journal |
+
+Found while testing, all fixed in the same PR: the first journal format lost lines that did not name the story (the branch is recorded now and resume/recall select by it); `--all-repos` wrote one line for the first repository only (now one per repository); a plain `aihub commit` in a set silently ignored the other repositories (now prints `note: set story-N: <repo> also has uncommitted changes; aihub commit --all-repos ...`); `aihub worktree list` found no set from inside a set; Luna did not route "in alle repos" or "waar was ik" until the `commit`, `worktrees` and new `resume` skills named them.
+
+Policy check after the earlier mishap: the original Ruff build policy of `test-project` was id 3 (created 2026-10-08, deleted by me on 2026-11-18). Its revision 1 and the recreated id 11 have the same settings: build definition 5, display name `ruff`, blocking, enabled, `manualQueueOnly` false, `queueOnSourceUpdateOnly` false, `validDuration` 0, scope `refs/heads/ci-checks-demo`. Only the id and the creation date differ.
+
+Cleanup: PRs !1100 and !1101 abandoned, both `feature/3410-...` branches deleted, story 3410 deleted, the worktree set removed. Proof: `20261118-2230-L-whole-set.png` and `20261118-2230-L-whole-set-transcript.txt` in the proof folder of the benchmark machine.
+
 ## Leftovers
 
 Pipeline run 266 (and the retried attempt of run 239) cannot be deleted in Azure DevOps; they are harmless history.

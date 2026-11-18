@@ -147,7 +147,7 @@ describe("journal and resume", () => {
     expect(calls).toHaveLength(0);
     const out = lines.join("\n");
     expect(out).toMatch(/Last time: aihub commit .* \(30 min ago\)/);
-    expect(out).toContain("Plan done/left: committed / ");
+    expect(out).toContain("Plan done: committed; left: ");
     expect(out).toContain("Next step: there are uncommitted changes");
     expect(out).toContain("Note: waiting for the API owner");
     expect(out).toContain("Set: story-5");
@@ -158,7 +158,7 @@ describe("journal and resume", () => {
     write(s.a, ".agents/skills/_shared/references/team.yaml", TEAM.replace("language: en", "language: nl"));
     const r = await run(s.a, ["status", "--resume"]);
     expect(r.out).toContain("Vorige keer: nog niets vastgelegd");
-    expect(r.out).toContain("Plan gedaan/rest:");
+    expect(r.out).toContain("Plan gedaan: -; rest:");
     expect(r.out).toContain("Volgende stap:");
   });
 

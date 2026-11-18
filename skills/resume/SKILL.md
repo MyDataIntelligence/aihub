@@ -8,7 +8,7 @@ description: "Use when the user asks where they left off or continues earlier wo
 The conversation starts without context, was compacted, or the user wants to pick up a story: where was I, what is done, what is next.
 
 ## Steps
-1. In the repository or worktree: `aihub status --resume`. It is local and instant (no network) and prints `Last time: ... · Plan done/left: ... · Next step: ...`, the latest private note and the worktree set.
+1. In the repository or worktree: `aihub status --resume`. It is local and instant (no network) and prints `Last time: ... · Plan done: ...; left: ... · Next step: ...`, the latest private note and the worktree set.
 2. Live state when it matters: `aihub status` (story, PR, pipeline, open threads); in a worktree set `aihub status --all-repos`.
 3. Only the story id is known: `aihub story recall --id 123` (story, PRs per repository, pipeline, the latest journal lines of this machine, open ends).
 4. Only words are known: `aihub story search "<words>"`, then recall the one that fits.

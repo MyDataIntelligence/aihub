@@ -119,7 +119,7 @@ export async function runAllRepos(name: string, args: string[], ctx: Ctx, regist
     const row = rowOf(d.name, d.dir, status, name === "status" ? (status?.next ?? "") : result.slice(0, 110), failed);
     rows.push(row);
     // every repository keeps its own journal line (the router does not journal --all-repos itself)
-    appendJournal(d.dir, name, rest, !failed, [row.result || (status?.next ?? "")], failed ? result : "", (ctx.now ?? Date.now)());
+    if (name !== "status") appendJournal(d.dir, name, rest, !failed, [row.result || (status?.next ?? "")], failed ? result : "", (ctx.now ?? Date.now)());
   }
   const short = (x: string) => (/^skipped|^failed/.test(x) ? x : x.replace(/ on \S+ and pushed/, " and pushed").split(": ")[0]).slice(0, 60);
   ctx.out(`${name}${sub ? ` ${sub}` : ""} --all-repos${set ? ` (set story-${set.story})` : ""}: ${rows.map((r) => `${r.repo} ${short(r.result) || "done"}`).join("; ")}`);

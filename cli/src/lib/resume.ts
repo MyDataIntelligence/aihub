@@ -81,7 +81,7 @@ export function resume(ctx: Ctx): Resume {
   const lastText = last ? `${last.command} -> ${last.status === "ok" ? "" : "MISLUKT: "}${last.result} (${ago(last.at, nowMs, nl)})` : L.none;
   const set = findSet(root);
   const lines = [
-    `${L.last}: ${lastText} · ${L.plan}: ${done.length ? done.join(", ") : "-"} / ${rest.length ? rest.join(", ") : "-"} · ${L.next}: ${next}`,
+    `${L.last}: ${lastText} · Plan ${L.done}: ${done.length ? done.join(", ") : "-"}; ${L.rest}: ${rest.length ? rest.join(", ") : "-"} · ${L.next}: ${next}`,
     `${branch}${story ? ` (story ${story})` : ""}${dirty ? ", uncommitted" : ""}${unpushed ? `, ${unpushed} unpushed` : ""}`,
   ];
   if (note) lines.push(`${L.note}: ${note.slice(0, 200)}`);
