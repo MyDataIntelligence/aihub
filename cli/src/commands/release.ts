@@ -16,6 +16,9 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     commits: { type: "string" },
     tags: { type: "string" },
     out: { type: "string" },
+    from: { type: "string" },
+    to: { type: "string" },
+    "notes-out": { type: "string" },
     "plan-file": { type: "string" },
     json: { type: "boolean" },
   });
@@ -31,11 +34,14 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
         commits: list(v.commits),
         tags: list(v.tags),
         out: v.out as string | undefined,
+        from: v.from as string | undefined,
+        to: v.to as string | undefined,
+        notesOut: v["notes-out"] as string | undefined,
         json: !!v.json,
       }),
     );
   } else if (sub === "run") {
     if (!v["plan-file"]) throw new AihubError("aihub release run needs --plan-file <file.yaml>");
     ctx.out(await releaseRun(ctx, { planFile: v["plan-file"] as string, json: !!v.json }));
-  } else throw new AihubError("usage: aihub release plan --stories a,b|--prs a,b --target <branch> | release run --plan-file <file>");
+  } else throw new AihubError("usage: aihub release plan --stories a,b|--prs a,b --target <branch> | release plan --from DEV --to ACC [--target <branch>] [--out plan.yaml] [--notes-out notes.md] | release run --plan-file <file>");
 }

@@ -8,6 +8,7 @@ import { AihubError } from "./errors.js";
 import { showFile } from "./git.js";
 import { isAncestor, mustGit, refSha, tryGit } from "./gitx.js";
 import { fetchOrigin } from "./repos.js";
+import { releaseEnvPlan } from "./releaseEnv.js";
 import { baseFor } from "./story-flow.js";
 import { compose, DEFAULT_EMPTY, resolveTemplate } from "./templates.js";
 import { loadTeam, readUtf8 } from "./team.js";
@@ -45,10 +46,15 @@ export interface PlanOpts {
   also?: string[];
   name?: string;
   out?: string;
+  /** --from/--to: compare two environments (git and Fabric deployment pipeline stages) instead of naming stories or PRs */
+  from?: string;
+  to?: string;
+  notesOut?: string;
   json?: boolean;
 }
 
 export async function releasePlan(ctx: Ctx, o: PlanOpts): Promise<string> {
+  if (o.from || o.to) return releaseEnvPlan(ctx, o);
   if (!o.stories?.length && !o.prs?.length && !o.commits?.length && !o.tags?.length) throw new AihubError("pass --prs a,b, --stories a,b, --commits sha,sha or --tags v1,v2");
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);

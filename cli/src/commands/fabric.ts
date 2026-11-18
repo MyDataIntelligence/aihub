@@ -26,7 +26,8 @@ import {
   chooseWorkspace,
 } from "../lib/fabric.js";
 import { collectJobLogs, collectRefreshLogs, workspaceRuns } from "../lib/fabric-logs.js";
-import { connectionWriteCmd, dbtCmd, failuresCmd, livyCmd, notebookTestCmd, sparkCmd, sqlCmd, udfCmd } from "./fabric-deep.js";
+import { classifyError } from "../lib/fabric-diag.js";
+import { CAPACITY_HINT, connectionWriteCmd, dbtCmd, failuresCmd, livyCmd, notebookTestCmd, sparkCmd, sqlCmd, udfCmd } from "./fabric-deep.js";
 import { apiCmd, onelakeCmd, queryCmd } from "./fabric-api.js";
 import { authCmd, capacitiesCmd, connectionsCmd, deploymentCmd, environmentCmd, lakehouseLoad, lakehouseMaintenance, schedulesCmd, shortcutsCmd, workspaceCmd } from "./fabric-extra.js";
 import { didYouMean } from "../lib/fabric.js";
@@ -70,6 +71,8 @@ const OPTIONS = {
   "allow-env": { type: "string" },
   "check-workspace": { type: "boolean" },
   "dry-run": { type: "boolean" },
+  session: { type: "string" },
+  "all-mine": { type: "boolean" },
   yes: { type: "boolean" },
   json: { type: "boolean" },
   wait: { type: "boolean" },
@@ -453,7 +456,10 @@ async function runStatus(s: Setup, sub: "run" | "status"): Promise<void> {
     dryRun(s, [`start ${item.type} ${item.displayName} in ${ws.name} (${ws.environment})${exec ? ` with parameters ${JSON.stringify(exec)}` : ""}`]);
     return;
   }
-  const jobId = await client.startJob(wsId, item, exec);
+  const jobId = await client.startJob(wsId, item, exec).catch((e) => {
+    if (classifyError(String((e as Error).message)).kind === "capacity") throw new AihubError(`${(e as Error).message}; ${CAPACITY_HINT(ws.name)}`);
+    throw e;
+  });
   ctx.out(`started ${item.type} ${item.displayName} in ${ws.name} (${ws.environment}): job ${jobId}`);
   if (!v.wait) {
     ctx.out(`follow with: aihub fabric status --item ${item.displayName} --job ${jobId}`);
@@ -461,6 +467,7 @@ async function runStatus(s: Setup, sub: "run" | "status"): Promise<void> {
   }
   const j = await waitForJob(client, wsId, item.id, jobId, { pollMs: Number(ctx.env.AIHUB_POLL_MS ?? 5000) });
   ctx.out(formatJob(j, item.displayName));
+  if (j.status === "Failed" && classifyError(String(j.failureReason?.message ?? "")).kind === "capacity") ctx.out(CAPACITY_HINT(ws.name));
   if (j.status === "Failed") ctx.out(`dig deeper: aihub fabric logs --workspace ${ws.name} --item ${item.displayName} --job ${jobId}`);
   if (j.status !== "Completed") throw new AihubError(`${item.displayName} ended as ${j.status}`);
 }

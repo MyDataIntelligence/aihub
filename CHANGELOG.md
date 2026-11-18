@@ -4,6 +4,7 @@ One `## <version>` heading per release, one bullet per change. `aihub update` sh
 
 ## 1.0.4
 - `aihub watch --mine` also watches your own builds: a failed build on your own feature branch (never main, staging, release) raises a toast with a Fix button; it opens the chat with the `aihub` agent and `/fix <run url>`. New `/fix` command and skill `pipeline-fix` (works without a story): `aihub pipeline logs --failed [--run <id|url>]` prints branch, protected flag and red rounds first and says STOP on a protected branch or after 3 red rounds; flaky or infrastructure causes are reported, not fixed. Fabric runs: `aihub fabric failures`. Release notes: docs/releases/1.0.4.md.
+- `aihub release plan --from DEV --to ACC [--out plan.yaml] [--notes-out notes.md]`: what moves from one environment to the next, read only: items new/changed/deleted (Fabric deployment pipeline stages and git), per item the PRs and stories, the cherry-pick list, generated release notes in the team language; `fabric.environments` and `fabric.deploymentPipeline` in team.yaml.
 - `aihub pr data-diff [--pr N] [--write]`: read-only before/after numbers (count, nulls, sums, distinct, custom SELECT per table, `dataChecks:` in team.yaml) from the baseline and the feature workspace as a table with deltas and a verdict; `--write` puts it in the PR section "Data before/after". Never ACC/PRD. Release notes: docs/releases/1.0.4.md.
 
 ## 1.0.3

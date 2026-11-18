@@ -9,6 +9,7 @@ import type { TeamConfig } from "./team.js";
 
 export const FABRIC_API = "https://api.fabric.microsoft.com/v1";
 export const FABRIC_RESOURCE = "https://api.fabric.microsoft.com";
+export const ONELAKE_RESOURCE = "https://storage.azure.com";
 
 export type Env = "dev" | "feature" | "test" | "acc" | "prd";
 export const ENVS: Env[] = ["dev", "feature", "test", "acc", "prd"];
@@ -217,7 +218,7 @@ export function makeFabricAuth(deps: FabricAuthDeps): () => Promise<string> {
   const now = deps.now ?? Date.now;
   const resource = deps.resource ?? FABRIC_RESOURCE;
   const tokenVar = deps.tokenVar ?? "AIHUB_FABRIC_TOKEN";
-  const cacheFile = deps.cacheFile ?? join(tmpdir(), resource === FABRIC_RESOURCE ? "aihub-fabric-token.json" : "aihub-onelake-token.json");
+  const cacheFile = deps.cacheFile ?? join(tmpdir(), resource === FABRIC_RESOURCE ? "aihub-fabric-token.json" : resource === ONELAKE_RESOURCE ? "aihub-onelake-token.json" : `aihub-token-${resource.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}.json`);
   let cached: string | undefined;
   return async () => {
     if (cached) return cached;
