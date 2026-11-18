@@ -3,7 +3,7 @@ import { ensureBranch, findStoryBranchName, findStoryBranchNames } from "./branc
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { currentBranch, originDefaultBranch } from "./git.js";
-import { isAncestor, isDirty, listWorktrees, mustGit, refSha, samePath, tryGit, unpushedCount } from "./gitx.js";
+import { hasTrackedChanges, isAncestor, isDirty, listWorktrees, mustGit, refSha, samePath, tryGit, unpushedCount } from "./gitx.js";
 import { clientForDir, fetchOrigin, resolveRepoDirs, type RepoDir } from "./repos.js";
 import { defaultTargetFor, loadTeam, type TeamConfig } from "./team.js";
 import {
@@ -61,7 +61,7 @@ export async function startStory(ctx: Ctx, o: StartOpts): Promise<string> {
     const linked = await addArtifactLink(mainClient, wi, branchArtifact(info, branch), "Branch");
     let checkedOut = false;
     if ((o.checkout ?? (single && !o.noCheckout)) && currentBranch(r.dir) !== branch) {
-      if (isDirty(r.dir)) lines.push(`${r.name}: kept branch '${currentBranch(r.dir)}' checked out (uncommitted changes)`);
+      if (hasTrackedChanges(r.dir)) lines.push(`${r.name}: kept branch '${currentBranch(r.dir)}' checked out (uncommitted changes)`);
       else {
         mustGit(r.dir, ["switch", branch]);
         checkedOut = true;
