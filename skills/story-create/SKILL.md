@@ -9,16 +9,10 @@ The user describes new work and wants it in Azure DevOps.
 
 ## Steps
 1. Print the team story template: `aihub story template`. Its `##` headings are the sections to write, in the team's language.
-2. Write the story file and run the create command in ONE shell call. Use exactly those headings, in that order. Fill EVERY section from what the user said: the user-story sentence in the template's own form, at least two verifiable acceptance criteria as bullets, and the team's "nothing to add" word where nothing applies.
+2. Write `story.md` with your file-write tool, not a shell heredoc (heredocs differ per shell and are refused by some). Use exactly the template headings, in that order. Fill EVERY section from what the user said: the user-story sentence in the template's own form, at least two verifiable acceptance criteria as bullets, and the team's "nothing to add" word where nothing applies.
+3. Create it:
 
 ```sh
-cat > story.md <<'EOS'
-## <first heading of the template>
-<text>
-
-## <second heading of the template>
-<text>
-EOS
 aihub story create --title "<short title>" --body-file story.md
 ```
 
