@@ -8,6 +8,7 @@ import { popupFor } from "./popups";
 import { statusItems, type BarError, type BarModel, type StatusItem, type Tone } from "./model";
 import { Refresher, type Result } from "./refresher";
 import { registerGitCommands } from "./gitUi";
+import { ThreadsController } from "./threadsUi";
 import { registerWorktreeCommands } from "./worktreeUi";
 
 const cfg = () => vscode.workspace.getConfiguration("aihub");
@@ -32,6 +33,8 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   private timer: NodeJS.Timeout | undefined;
   private gitDebounce: NodeJS.Timeout | undefined;
   private subs: vscode.Disposable[] = [];
+  /** Called after every successful read (the review threads follow the PR). */
+  onModel: ((m: BarModel) => void) | undefined;
 
   constructor(private ctx: vscode.ExtensionContext) {
     this.refresher = new Refresher(
@@ -118,6 +121,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     else this.log.appendLine(`${new Date().toISOString()} ${r.error.kind}: ${r.error.message}`);
     this.renderStatusBar();
     this.renderView();
+    if (r.ok) this.onModel?.(r.model);
   }
 
   private renderStatusBar() {
@@ -189,6 +193,14 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!pick?.run) return;
     if (pick.run.kind === "chat") await this.sendToChat(pick.run.id);
     else if (pick.run.kind === "command") await vscode.commands.executeCommand(pick.run.id);
+  }
+
+  runnerNow(): Runner {
+    return this.runner;
+  }
+
+  cwdNow(): string | undefined {
+    return this.cwd;
   }
 
   model(): BarModel | undefined {
@@ -321,6 +333,9 @@ export function activate(ctx: vscode.ExtensionContext) {
     await bar.sendText(text);
   };
   ctx.subscriptions.push(vscode.commands.registerCommand("aihub.editor.ask", selection("Question about the code")), vscode.commands.registerCommand("aihub.editor.suggestFix", selection("Suggest a fix for the code")));
+  const threads = new ThreadsController(() => bar.runnerNow(), () => bar.cwdNow(), (t) => bar.sendText(t), (l) => bar.logLine(l), () => void bar.refresh());
+  threads.register(ctx);
+  bar.onModel = (m) => void threads.sync(m.pr && m.pr.status === "active" ? m.pr.id : undefined, m.openThreads);
   registerGitCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
   registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
   bar.start();
