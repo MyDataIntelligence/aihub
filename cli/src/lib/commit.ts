@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import type { Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { currentBranch, git, pushIfNeeded, repoRoot, workItemFromBranch } from "./git.js";
+import { ARTIFACT_EXCLUDES } from "./gitx.js";
 import { isProtected, loadTeam } from "./team.js";
 
 export interface CommitOpts {
@@ -68,7 +69,7 @@ export async function commitChanges(ctx: Ctx, o: CommitOpts): Promise<string> {
   if (o.type && types.length && !types.includes(o.type)) throw new AihubError(`--type must be one of: ${types.join(", ")}`);
   if (/\{type\}/.test(format) && !o.type) throw new AihubError(`--type is required (${types.length ? types.join(", ") : "for example feat, fix"})`);
 
-  if (!o.noAdd) git(root, ["add", "-A"]);
+  if (!o.noAdd) git(root, ["add", "-A", "--", ".", ...ARTIFACT_EXCLUDES]);
   const staged = git(root, ["diff", "--cached", "--name-only"]).split("\n").filter(Boolean);
   if (staged.length === 0) throw new AihubError("nothing to commit: no staged or changed files");
 
