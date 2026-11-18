@@ -1,6 +1,6 @@
 ---
 name: commit
-description: "Use when the user wants changes committed: 'commit', 'commit mijn wijzigingen', 'commit en push', 'commit and push', '/commit'."
+description: "Use when the user wants changes committed: 'commit', 'commit mijn wijzigingen', 'commit en push', 'commit and push', '/commit'. The whole task is one command: aihub commit --type <feat|fix|docs|test|chore|refactor> --subject \"<what changed>\" [--push]."
 ---
 # Commit changes
 
