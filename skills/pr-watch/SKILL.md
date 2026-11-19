@@ -23,15 +23,15 @@ If the user says "laat het me weten", "hou het in de gaten" or "let me know when
 aihub watch --pr 42 --until done --notify
 ```
 
-`--until comment` or `vote` waits for a new review comment or vote. Add `--client opencode|codex|claude|copilot` (and `--session <id>`) so the Open button or `aihub open --last` resumes this session. `aihub watch list` and `stop` manage it; the log is `.git/aihub/events.log`.
+`--until comment` or `vote` waits for a new comment or vote. Add `--client opencode|codex|claude|copilot` (and `--session <id>`) so the Open button resumes this session. `aihub watch list` and `stop` manage it.
 
-For "tell me whenever something needs me" without naming a PR, start the one poller over everything of mine (replies and mentions on my PRs and work items, review requests, votes, failed policies, completed or abandoned PRs):
+For "tell me whenever something needs me" without a PR, start the one poller over everything of mine:
 
 ```sh
 aihub watch --mine --notify
 ```
 
-The first look only records what exists; every later event is one toast, once. Stop: `aihub watch stop --id mine`. `--at-logon` (Windows) starts it at sign-in; `aihub watch --remove-at-logon` undoes it.
+At most ONE toast per poll round (and per 2 minutes), with Open and "Stil 1 uur". Default `needed`: only mentions, review requests, replies to the user and their red builds; plain comments wait in `aihub watch events`. Levels: `aihub watch config --notify all|needed|off`; "stil voor een uur": `aihub watch quiet --for 1h` (`--until 18:00`, `--off`). Stop: `aihub watch stop --id mine`. `--at-logon` (Windows) starts it at sign-in, without a window; `aihub watch --remove-at-logon` undoes it.
 
 While waiting, do not poll by hand. Report the final state in one short line per check.
 

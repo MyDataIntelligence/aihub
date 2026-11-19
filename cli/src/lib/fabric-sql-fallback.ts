@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn } from "./proc.js";
 import { AihubError } from "./errors.js";
 import { redact } from "./fabric-redact.js";
 

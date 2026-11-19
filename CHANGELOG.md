@@ -2,6 +2,11 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.0.8
+- `aihub worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--json]`: several repositories on the SAME branch at once. An existing branch (local or origin) is used, a missing one is created from `--from` or the repository's team.yaml `defaultTarget` (local only, not pushed); mode worktree leaves the normal checkout alone, mode switch refuses a repository with uncommitted changes and continues with the others; one `.code-workspace` with all folders opens in one VS Code window; one table row per repository. `aihub worktree groups list|save|remove` (personal, `~/.config/aihub/groups.json`; team.yaml `repositories[].groups` also works), `aihub worktree branches --group X` (where a branch exists, e.g. 2/3), `aihub worktree remove --branch <b>`.
+- Quiet background on Windows: every child process (git, az, node, the toast PowerShell, `aihub open`) is started through one wrapper with `windowsHide: true`, the toast and the logon entry run PowerShell hidden and non-interactive behind `conhost --headless`, and the `aihub://` handler has no console. No window pops up or takes focus while following a pipeline.
+- Fewer toasts: one toast per poll round ("aihub · 3 nieuwe dingen: !42 2 comments · review gevraagd op !51") with Open and "Stil 1 uur", never more than one per 2 minutes. `aihub watch config --notify all|needed|off` (default `needed`: mentions, review requests, replies to my comments, my red builds; the rest only in `aihub watch events`) and `aihub watch quiet --for 1h|--until 18:00|--off`. Release notes: docs/releases/1.0.8.md.
+
 ## 1.0.7
 - `legacy remove`: dangling links removed as links, a running old Hub core holding the jar is stopped first, a half-removed package is still detected.
 - `fabric kql|dax|graphql --item` match only their own item type; `workspace create --capacity` takes a name. Release notes: docs/releases/1.0.7.md.

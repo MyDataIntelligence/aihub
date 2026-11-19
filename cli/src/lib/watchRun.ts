@@ -1,6 +1,7 @@
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { makeClient } from "../commands/fabric.js";
+import { deliver } from "./notifyPolicy.js";
 import { eventUrl, storeEvent } from "./open.js";
 import { summarize, type Build } from "./robot.js";
 import { loadTeam } from "./team.js";
@@ -65,7 +66,10 @@ export async function runTargetWatch(ctx: Ctx, spec: WatchSpec, deps: RunWatchDe
     logEvent(root, now(), `run/${targetLabel(target).replace(/\s+/g, "-")}`, o.message);
     const id = `${spec.id}-done`;
     storeEvent(ctx.env, { id, repo: spec.repo ?? root, client: spec.client, session: spec.session, message: o.message, prompt: o.fix ?? `${o.message} — ga verder`, agent: o.fix ? "aihub" : undefined, at: now() });
-    if (spec.notify && !(await notifier("aihub", o.message, { label: o.fix ? "Fix" : "Open", url: eventUrl(id) }))) ctx.out(`${o.message}\n  open it with: aihub open --event ${id}`);
+    if (spec.notify) {
+      const r = await deliver(ctx.env, now(), notifier, [{ message: o.message, needed: true, label: o.fix ? "Fix" : "Open", url: eventUrl(id) }], { bundle: false });
+      if (r.failed.length) ctx.out(`${o.message}\n  open it with: aihub open --event ${id}`);
+    }
     return { reason: o.failed ? "failed" : "done", outcome: o.message };
   };
   for (;;) {

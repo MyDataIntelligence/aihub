@@ -2,7 +2,7 @@
   "name": "ai-context-hub",
   "displayName": "AI Context Hub",
   "description": "A thin status bar and panel over the aihub CLI: story, branch, pull request, pipeline, review threads, Fabric runs and watch events. Actions open in your chat (Copilot Chat or opencode).",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "publisher": "FerronHooi",
   "license": "MIT",
   "private": true,
@@ -65,6 +65,19 @@
       {
         "command": "aihub.showBar",
         "title": "AI Context Hub: Show the bar"
+      },
+      {
+        "command": "aihub.reposet.open",
+        "title": "Repos op branch openen...",
+        "category": "AI Context Hub",
+        "icon": "$(repo-forked)",
+        "shortTitle": "Repos op branch openen"
+      },
+      {
+        "command": "aihub.reposet.openGroup",
+        "title": "Open on branch...",
+        "category": "AI Context Hub",
+        "icon": "$(repo-forked)"
       },
       {
         "command": "aihub.actions",
@@ -547,6 +560,11 @@
           "command": "aihub.chat.commit",
           "when": "scmProvider == git",
           "group": "9_aihub@3"
+        },
+        {
+          "command": "aihub.reposet.open",
+          "when": "scmProvider == git",
+          "group": "navigation@0"
         }
       ],
       "scm/resourceState/context": [
@@ -564,6 +582,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "aihub.reposet.open",
+          "when": "view == aihub.worktreeSets",
+          "group": "navigation@0"
+        },
         {
           "command": "aihub.worktrees.create",
           "when": "view == aihub.worktreeSets",
@@ -596,6 +619,16 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "aihub.reposet.openGroup",
+          "when": "view == aihub.worktreeSets && viewItem == aihubGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "aihub.reposet.openGroup",
+          "when": "view == aihub.worktreeSets && viewItem == aihubGroup",
+          "group": "1_open@1"
+        },
         {
           "command": "aihub.worktrees.openSet",
           "when": "view == aihub.worktreeSets && viewItem == aihubSet",
@@ -804,6 +837,12 @@
           "command": "aihub.thread.reply",
           "when": "false"
         }
+      ],
+      "editor/title": [
+        {
+          "command": "aihub.reposet.open",
+          "group": "navigation@0"
+        }
       ]
     },
     "viewsWelcome": [
@@ -814,6 +853,13 @@
       {
         "view": "aihub.learn",
         "contents": "No lessons yet.\nAsk your chat for /leer on a pull request or branch: it explains the change with pictures and saves it here, in your personal store."
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "aihub.reposet.open",
+        "key": "ctrl+alt+b",
+        "mac": "cmd+alt+b"
       }
     ]
   },

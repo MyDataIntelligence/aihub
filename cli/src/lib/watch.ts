@@ -1,4 +1,5 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "./proc.js";
+import { deliver } from "./notifyPolicy.js";
 import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { findActivePr, getPr, type AdoClient, type PullRequest } from "./ado.js";
@@ -95,7 +96,9 @@ export function notifyCommand(platform: NodeJS.Platform, title: string, message:
     const xe = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const xml =
       `<toast launch="${xe(action.url)}" activationType="protocol"><visual><binding template="ToastGeneric"><text>${xe(title)}</text><text>${xe(message)}</text></binding></visual>` +
-      `<actions><action content="${xe(action.label)}" arguments="${xe(action.url)}" activationType="protocol"/></actions></toast>`;
+      `<actions><action content="${xe(action.label)}" arguments="${xe(action.url)}" activationType="protocol"/>` +
+      (action.secondary ? `<action content="${xe(action.secondary.label)}" arguments="${xe(action.secondary.url)}" activationType="protocol"/>` : "") +
+      "</actions></toast>";
     const script =
       "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null;" +
       "[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > $null;" +
@@ -126,6 +129,8 @@ export function notifyCommand(platform: NodeJS.Platform, title: string, message:
 export interface NotifyAction {
   label: string;
   url: string;
+  /** A second button (the toast's "Stil 1 uur"). */
+  secondary?: { label: string; url: string };
 }
 
 export type Notifier = (title: string, message: string, action?: NotifyAction) => boolean | Promise<boolean>;
@@ -236,7 +241,10 @@ export async function runWatch(ctx: Ctx, spec: WatchSpec, deps: RunDeps = {}): P
     // every event can be reopened: aihub open --event <id> (also from the notification button)
     const id = `${spec.id}-${++seq}`;
     storeEvent(ctx.env, { id, repo: spec.repo ?? root, client: spec.client, session: spec.session, message: e.message, prompt: `${e.message} — ga verder`, at: now() });
-    if (spec.notify && !(await notifier("aihub", e.message, { label: "Open", url: eventUrl(id) }))) ctx.out(`${e.message}\n  open it with: aihub open --event ${id}`);
+    if (spec.notify) {
+      const r = await deliver(ctx.env, now(), notifier, [{ message: e.message, needed: true, url: eventUrl(id) }], { bundle: false });
+      if (r.failed.length) ctx.out(`${e.message}\n  open it with: aihub open --event ${id}`);
+    }
   };
   const label = spec.pr ? `pr/${spec.pr}` : `branch/${spec.branch ?? "current"}`;
   for (;;) {
