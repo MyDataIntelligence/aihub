@@ -2,6 +2,11 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.0.6
+- `/leer` saves a lesson for questions without a PR; `learn validate|save` no longer crash on facts without `files`.
+- `learn change --branch` compares with the real target (active PR target, then team.yaml defaultTarget).
+- `learn item` shows template jobs/steps of a pipeline yaml. Release notes: docs/releases/1.0.6.md.
+
 ## 1.0.5
 - `aihub pipeline approvals approve|reject` now refuses ACC and PRD approvals even though the Azure DevOps answer names no environment: the environment is read from the run's pipeline YAML, and the command refuses when it cannot tell (give `--allow-env <stage>` only when the developer asked for that stage).
 - Pipelines proven live in ferron-test: `pipeline artifacts --download` now downloads pipeline artifacts (published with `publish:`) from the artifacts host, `pipeline approvals list|approve|reject` finds the environment of an approval (through the run timeline) so the ACC/PRD guard sees its real name, and `pipeline env checks` prints an approver known only by id.
