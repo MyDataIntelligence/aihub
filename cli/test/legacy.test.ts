@@ -424,3 +424,24 @@ describe("legacy helpers", () => {
     expect(cleanExclude("/.aihub/\n# AI Context Hub: GitHub Copilot handoff folders (local only)\n/.aihub/\nmine.txt\n").text).toBe("/.aihub/\nmine.txt\n");
   });
 });
+
+import { mkdtempSync as mkdtempL, mkdirSync as mkdirL, symlinkSync as symlinkL, existsSync as existsL, rmSync as rmL } from "node:fs";
+import { tmpdir as tmpdirL } from "node:os";
+import { join as joinL } from "node:path";
+import { scan as scanL } from "../src/lib/legacy.js";
+describe("legacy data entries that are links", () => {
+  it("a dangling junction in the AIContextHub data folder does not crash the scan and is listed as a link", () => {
+    const root = mkdtempL(joinL(tmpdirL(), "lg-"));
+    const local = joinL(root, "AppData", "Local");
+    const hub = joinL(local, "AIContextHub");
+    mkdirL(hub, { recursive: true });
+    symlinkL(joinL(root, "missing-target"), joinL(hub, "dangling"), "junction");
+    const env = { HOME: root, USERPROFILE: root, LOCALAPPDATA: local, APPDATA: joinL(root, "AppData", "Roaming"), PATH: "" };
+    const fakeSpawn = () => ({ code: 1, stdout: "", stderr: "" }) as any;
+    const result: any = scanL({ env, cwd: root, repos: [], spawn: fakeSpawn });
+    const items = JSON.stringify(result);
+    expect(items).toContain("delete link dangling");
+    rmL(root, { recursive: true, force: true });
+    expect(existsL(joinL(root, "missing-target"))).toBe(false);
+  });
+});
