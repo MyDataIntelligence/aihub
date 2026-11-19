@@ -20,6 +20,7 @@ export interface StatusJson {
   done?: string[];
   next?: string;
   warnings?: string[];
+  set?: { story: number; branch: string; group?: string; total?: number; repos: string[] } | null;
 }
 
 export interface PolicyJson {
@@ -98,6 +99,8 @@ export interface BarModel {
   fabric: FabricModel | null;
   events: BarEvent[];
   watching: boolean;
+  /** the worktree set this window is (aihub worktree create/open), else null */
+  set: { story: number; branch: string; group?: string; total?: number; repos: string[] } | null;
   updatedAt: number;
 }
 
@@ -197,6 +200,7 @@ export function buildModel(input: {
     fabric: input.fabric ?? null,
     events: input.events ?? [],
     watching: !!input.watching,
+    set: s.set && Array.isArray(s.set.repos) ? { story: s.set.story ?? 0, branch: text(s.set.branch), group: s.set.group, total: s.set.total, repos: s.set.repos } : null,
     updatedAt: input.now ?? Date.now(),
   };
 }
