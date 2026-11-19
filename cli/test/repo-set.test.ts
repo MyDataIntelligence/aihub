@@ -108,8 +108,7 @@ describe("aihub worktree open", () => {
 
   it("without --json a repository that needs attention gives a table and exit code 1", async () => {
     const { parent } = world();
-    write(join(parent, "repo-b"), "README.md", "changed
-");
+    write(join(parent, "repo-b"), "README.md", "changed" + String.fromCharCode(10));
     const r = await run(join(parent, "repo-a"), ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/shared", "--mode", "switch", "--window", "none"]);
     expect(r.code).toBe(1);
     expect(r.out).toMatch(/FAIL repo-b\s+skipped\s+uncommitted changes/);
@@ -143,6 +142,8 @@ describe("aihub worktree open", () => {
     const r = await run(repos[0].dir, ["worktree", "remove", "--branch", "feature/shared"]);
     expect(r.out).toMatch(/set 'feature\/shared' removed/);
     expect(existsSync(join(o.folder, "repo-a"))).toBe(false);
+    expect(existsSync(o.workspace)).toBe(false);
+    expect(existsSync(o.folder)).toBe(false);
     expect(sh(repos[0].dir, ["branch", "--list", "feature/shared"])).toContain("feature/shared");
   });
 });

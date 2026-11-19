@@ -17,6 +17,8 @@ export interface SetMeta {
   story: number;
   /** repo group name when `aihub worktree open` made the set (story is 0 then) */
   group?: string;
+  /** the .code-workspace file `aihub worktree open` wrote; removed with the set */
+  workspace?: string;
   branch: string;
   repos: { name: string; source: string; path: string }[];
 }
@@ -116,7 +118,7 @@ function status(path: string): string {
 }
 
 export function listSets(ctx: Ctx, o: { root?: string; json?: boolean }): string {
-  const { root } = repoClient(ctx);
+  const root = repoRoot(ctx.cwd);
   const here = o.root ? undefined : findSet(ctx.cwd);
   const sets = readSets(resolve(o.root ?? (here ? dirname(here.folder) : defaultSetsRoot(root))));
   if (o.json) return JSON.stringify(sets.map((s) => ({ folder: s.folder, ...s.meta, status: s.meta.repos.map((r) => ({ name: r.name, status: status(r.path) })) })));
@@ -158,6 +160,7 @@ export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?:
     lines.push(`set kept: ${left.length} worktree(s) need attention`);
   } else {
     rmSync(metaPath);
+    if (meta.workspace) rmSync(meta.workspace, { force: true });
     try {
       rmdirSync(folder);
     } catch {

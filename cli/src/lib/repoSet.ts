@@ -158,7 +158,7 @@ export function openSet(ctx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = launc
     workspace = join(folder, `${slug(o.group ?? `set-${branch}`)}.code-workspace`);
     writeFileSync(workspace, workspaceJson(folder, repos), "utf8");
     if (mode === "worktree") {
-      const meta: SetMeta = { story: 0, branch, group: o.group, repos: okRepos.map((r) => ({ name: r.repo, source: dirs.find((d) => d.name === r.repo)!.dir, path: r.path! })) };
+      const meta: SetMeta = { story: 0, branch, group: o.group, workspace, repos: okRepos.map((r) => ({ name: r.repo, source: dirs.find((d) => d.name === r.repo)!.dir, path: r.path! })) };
       writeFileSync(join(folder, ".aihub-set.json"), JSON.stringify(meta, null, 2), "utf8");
     }
   }
