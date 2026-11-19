@@ -48,6 +48,16 @@ describe("aihub learn change", () => {
     expect(f.symbols.map((s: { name: string }) => s.name)).toContain("scale");
   });
 
+  it("compares the branch with the team's defaultTarget when there is no PR", async () => {
+    const dir = world();
+    write(dir, ".agents/skills/_shared/references/team.yaml", "repositories:\n  - name: test-repo\n    defaultTarget: staging\n");
+    sh(dir, ["switch", "-c", "staging", "main"]);
+    sh(dir, ["push", "origin", "staging"]);
+    sh(dir, ["switch", "feature/42-guard"]);
+    const f = JSON.parse((await go(dir, ["learn", "change", "--json"])).out);
+    expect(f.source.range).toContain("origin/staging");
+  });
+
   it("finds who uses the changed function, the tests that mention it, and the dbt lineage", async () => {
     const f = JSON.parse((await go(world(), ["learn", "change", "--json"])).out);
     expect(f.impact.callers.map((c: { file: string }) => c.file)).toContain("app/report.py");
