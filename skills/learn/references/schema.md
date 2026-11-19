@@ -1,6 +1,6 @@
 # explanation.json (kind "change-explanation")
 
-Required: `kind` "change-explanation", `oneSentence`, `before`, `after` (plain sentences), `diagram` { `before`, `after` } (Mermaid text), `designChoices` [{ `choice`, `alternatives` [{ `option`, `whyNot` }] }], `tellAColleague` (at least 2 sentences), `hunkReasons` [{ `path`, `line` (0 if none), `reason` }].
+Required: `kind` "change-explanation", `oneSentence`, `before`, `after` (plain sentences), `diagram` { `before`, `after` } (Mermaid text), `designChoices` [{ `choice`, `alternatives` [{ `option`, `whyNot` }] }], `tellAColleague` (a list of at least 2 sentences), `hunkReasons` [{ `path`, `line` (0 if none), `reason` }].
 
 Optional: `diagrams` [{ `title`, `kind` before-after|flow|architecture|lineage|sequence, `mermaid` }], `risks` [text], `quiz` [{ `question`, `options` (2-5), `answerIndex`, `explanation` }], `concepts` [{ `name`, `eli5`, `exampleFromThisChange` }]. A hunk reason may also carry `before`, `how`, `withoutIt`, `pattern`, `whenToUse`, `watchOut`, `analogy`, `askYourself` { `question`, `answer` }, `findings` [{ `severity` blocker|major|minor|info, `text`, `suggestion` }], `purpose`, `relatesTo`, `effect`, `narration`.
 

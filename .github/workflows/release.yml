@@ -1,9 +1,9 @@
 name: release
-# npm trusted publishing (OIDC): no npm token in this repository.
+# npm trusted publishing (OIDC): no npm token in this repository. Only vX.Y.Z tags publish to npm; vscode-v* tags (the VS Code extension) do not.
 on:
   push:
     branches: [staging]
-    tags: ['v*']
+    tags: ['v[0-9]*']
 permissions:
   contents: write
   id-token: write
@@ -27,12 +27,12 @@ jobs:
           npm version --no-git-tag-version "${base}-next.${GITHUB_RUN_NUMBER}"
           npm publish --access public --tag next --provenance
       - name: Publish latest (version tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !startsWith(github.ref, 'refs/tags/vscode-')
         run: |
           npm version --no-git-tag-version "${GITHUB_REF_NAME#v}" --allow-same-version
           npm publish --access public --provenance
       - name: Attach the team pack to the GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !startsWith(github.ref, 'refs/tags/vscode-')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

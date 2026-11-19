@@ -100,7 +100,7 @@ export function validateExplanation(json: unknown, facts?: ChangeFacts): Validat
       h.findings.forEach((f: unknown, k: number) => {
         if (!isObj(f) || !SEVERITIES.includes(String(f.severity)) || !isStr(f.text)) e(`hunkReasons[${i}].findings[${k}] needs severity (${SEVERITIES.join("/")}) and text`);
       });
-    if (facts && !facts.files.some((f) => f.path === h.path || `/${f.path}` === h.path)) warnings.push(`hunkReasons[${i}].path ${String(h.path)} is not a changed file in the facts`);
+    if (facts && Array.isArray(facts.files) && !facts.files.some((f) => f.path === h.path || `/${f.path}` === h.path)) warnings.push(`hunkReasons[${i}].path ${String(h.path)} is not a changed file in the facts`);
   });
   if (j.tryIt !== undefined) warnings.push("tryIt is ignored: Learn does not run code");
   return { ok: errors.length === 0, errors, warnings };

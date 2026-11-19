@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
-import { getPr, shortBranch } from "./ado.js";
+import { findActivePr, getPr, shortBranch } from "./ado.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
+import { defaultTargetFor, loadTeam } from "./team.js";
 import { git, hasRef, originDefaultBranch, repoRoot, workItemFromBranch } from "./git.js";
 
 /**
@@ -109,7 +110,23 @@ export async function resolveRange(ctx: Ctx, o: RangeInput): Promise<ChangeFacts
   }
   const branch = o.branch ?? git(root, ["rev-parse", "--abbrev-ref", "HEAD"]).trim();
   const head = tipRef(root, branch) || "HEAD";
-  const target = originDefaultBranch(root) || (hasRef(root, "origin/main") ? "main" : hasRef(root, "origin/staging") ? "staging" : "main");
+  // the branch's real target: the target of its active PR, else the team's defaultTarget, else the repository default
+  let target = "";
+  let repoName = "";
+  try {
+    const { client } = repoClient(ctx);
+    repoName = client.remote.repo;
+    const pr = await findActivePr(client, branch);
+    if (pr?.targetRefName && tipRef(root, shortBranch(pr.targetRefName))) target = shortBranch(pr.targetRefName);
+  } catch {
+    // no Azure DevOps remote or no network: the team file and the git facts below decide
+  }
+  if (!target) {
+    const team = loadTeam(root);
+    const t = (repoName ? defaultTargetFor(team, repoName) : undefined) ?? team.repositories?.[0]?.defaultTarget;
+    if (t && t !== branch && tipRef(root, t)) target = t;
+  }
+  target ||= originDefaultBranch(root) || (hasRef(root, "origin/main") ? "main" : hasRef(root, "origin/staging") ? "staging" : "main");
   const baseRef = tipRef(root, target);
   if (!baseRef) throw new AihubError(`no target branch '${target}' found; pass --range <base>..<head>`);
   return { branch, base: git(root, ["merge-base", baseRef, head]).trim(), head, range: `${baseRef}...${head}` };

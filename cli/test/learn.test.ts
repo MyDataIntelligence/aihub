@@ -48,6 +48,16 @@ describe("aihub learn change", () => {
     expect(f.symbols.map((s: { name: string }) => s.name)).toContain("scale");
   });
 
+  it("compares the branch with the team's defaultTarget when there is no PR", async () => {
+    const dir = world();
+    write(dir, ".agents/skills/_shared/references/team.yaml", "repositories:\n  - name: test-repo\n    defaultTarget: staging\n");
+    sh(dir, ["switch", "-c", "staging", "main"]);
+    sh(dir, ["push", "origin", "staging"]);
+    sh(dir, ["switch", "feature/42-guard"]);
+    const f = JSON.parse((await go(dir, ["learn", "change", "--json"])).out);
+    expect(f.source.range).toContain("origin/staging");
+  });
+
   it("finds who uses the changed function, the tests that mention it, and the dbt lineage", async () => {
     const f = JSON.parse((await go(world(), ["learn", "change", "--json"])).out);
     expect(f.impact.callers.map((c: { file: string }) => c.file)).toContain("app/report.py");
@@ -161,6 +171,17 @@ function goHome(dir: string, home: string, args: string[]) {
 }
 
 describe("the personal learn store", () => {
+  it("validates and saves a lesson written from repo facts (no changed files in them)", async () => {
+    const dir = world();
+    const home = tmp("aihub-learn-");
+    const ex = join(tmp(), "e.json");
+    const facts = join(tmp(), "f.json");
+    writeFileSync(ex, JSON.stringify(GOOD));
+    writeFileSync(facts, (await go(dir, ["learn", "repo", "--json"])).out);
+    expect((await goHome(dir, home, ["learn", "validate", "--file", ex, "--facts", facts])).code).toBe(0);
+    expect((await goHome(dir, home, ["learn", "save", "--file", ex, "--facts", facts])).code).toBe(0);
+  });
+
   it("saves a validated lesson under the user home, never in the repository, and lists and shows it", async () => {
     const dir = world();
     const home = tmp("aihub-learn-");
@@ -294,6 +315,9 @@ describe("learn diagram, flow, glossary, week, onboarding, item", () => {
     expect(pipe.type).toBe("pipeline");
     expect(pipe.details.stages).toEqual([{ stage: "Build", jobs: ["Test"] }, { stage: "Deploy", jobs: ["Ship"] }]);
     expect(pipe.mermaid).toContain("Build");
+    write(dir, "ci-pipeline.yaml", "stages:\n  - stage: Validate\n    jobs:\n      - job: Check\n      - template: /cicd/verify.yaml@shared\n        parameters:\n          jobName: Verify\n");
+    const tpl = JSON.parse((await go(dir, ["learn", "item", "ci-pipeline.yaml", "--json"])).out);
+    expect(tpl.details.stages).toEqual([{ stage: "Validate", jobs: ["Check", "template /cicd/verify.yaml@shared"] }]);
     const fab = JSON.parse((await go(dir, ["learn", "item", "fab/nb_load.Notebook/notebook-content.py", "--json"])).out);
     expect(fab).toMatchObject({ type: "fabric-item", path: "fab/nb_load.Notebook" });
     const bad = await go(dir, ["learn", "item", "nope.py"]);
