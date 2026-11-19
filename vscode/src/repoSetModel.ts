@@ -164,3 +164,12 @@ export function setChip(s: SetModel | null | undefined): { label: string; title:
   const name = s.group ?? (s.story ? `story ${s.story}` : "set");
   return { label: `Set: ${name} · ${s.repos.length}/${total} op ${s.branch}`, title: `Repositories of this set: ${s.repos.join(", ")}\nBranch ${s.branch}\nClick for the actions of the set` };
 }
+
+/** The status bar item next to the built-in branch item: the set's branch and repo count, else the entry itself. */
+export function reposetStatus(s: SetModel | null | undefined): { text: string; tooltip: string } {
+  const NL = String.fromCharCode(10);
+  if (!s) return { text: "$(repo-forked) Repos op branch openen", tooltip: ["Open several repositories on the same branch in one window.", "", "Click to choose a group or repositories, a branch and how."].join(NL) };
+  const total = s.total ?? s.repos.length;
+  const rows = s.repos.map((r) => `- ${r}: ${s.branch}`);
+  return { text: `$(repo-forked) ${s.branch} · ${total} repos`, tooltip: [`**${s.group ?? "Set"}** on ${s.branch} (${s.repos.length}/${total} repositories)`, "", ...rows, "", "Click to open repositories on another branch."].join(NL) };
+}

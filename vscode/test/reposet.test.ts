@@ -90,3 +90,21 @@ describe("package.json", () => {
     expect(menu.some((x: { when: string }) => x.when.includes("aihubGroup"))).toBe(true);
   });
 });
+
+describe("the status bar item and the other entries", () => {
+  it("shows the entry, or the set's branch and repo count with a per-repo tooltip", async () => {
+    const { reposetStatus } = await import("../src/repoSetModel");
+    expect(reposetStatus(null).text).toBe("$(repo-forked) Repos op branch openen");
+    const s = reposetStatus({ story: 0, group: "pipeline", branch: "feature/x", total: 3, repos: ["a", "b", "c"] });
+    expect(s.text).toBe("$(repo-forked) feature/x · 3 repos");
+    expect(s.tooltip).toContain("- b: feature/x");
+  });
+
+  it("is in the Source Control title, the editor title and has a keybinding", () => {
+    const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8"));
+    const m = pkg.contributes.menus;
+    expect(m["scm/title"].some((x: { command?: string }) => x.command === "aihub.reposet.open")).toBe(true);
+    expect(m["editor/title"].some((x: { command?: string; group: string }) => x.command === "aihub.reposet.open" && x.group.startsWith("navigation"))).toBe(true);
+    expect(pkg.contributes.keybindings.some((k: { command: string; key: string }) => k.command === "aihub.reposet.open" && k.key === "ctrl+alt+b")).toBe(true);
+  });
+});

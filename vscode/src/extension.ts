@@ -1,4 +1,5 @@
 import { RepoSetController } from "./repoSetUi";
+import { reposetStatus } from "./repoSetModel";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
 import { checkCli, CliError, INSTALL_COMMAND, makeRunner, type Runner } from "./cli";
@@ -25,6 +26,8 @@ function repoFolder(): string | undefined {
 class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   private log = vscode.window.createOutputChannel("AI Context Hub");
   private items = new Map<string, vscode.StatusBarItem>();
+  /** The main entry for several repositories on one branch: next to the built-in branch item (priority 11000). */
+  private reposetItem?: vscode.StatusBarItem;
   private view: vscode.WebviewView | undefined;
   private last: Result | undefined;
   private refresher: Refresher;
@@ -106,6 +109,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   start() {
+    this.renderReposetItem();
     // Silent by default: no popup, no panel opening. The status bar is the entry; the first read is delayed so startup stays fast.
     setTimeout(() => void this.refresher.request("start"), 2000);
   }
@@ -126,7 +130,18 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     if (r.ok) this.onModel?.(r.model);
   }
 
+  private renderReposetItem() {
+    const it = (this.reposetItem ??= vscode.window.createStatusBarItem("aihub.reposet", vscode.StatusBarAlignment.Left, 10999));
+    it.name = "AI Context Hub: Repos op branch openen";
+    const v = reposetStatus(this.last?.ok ? this.last.model.set : null);
+    it.text = v.text;
+    it.tooltip = new vscode.MarkdownString(v.tooltip);
+    it.command = "aihub.reposet.open";
+    it.show();
+  }
+
   private renderStatusBar() {
+    this.renderReposetItem();
     const r = this.last;
     if (!r) return;
     const wanted: StatusItem[] = r.ok
@@ -293,6 +308,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     clearTimeout(this.gitDebounce);
     this.gitWatcher?.dispose();
     this.items.forEach((i) => i.dispose());
+    this.reposetItem?.dispose();
     this.log.dispose();
     this.subs.forEach((s) => s.dispose());
   }
