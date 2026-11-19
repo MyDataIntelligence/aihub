@@ -1,4 +1,5 @@
 import { actionsFor } from "./actions";
+import { setChip } from "./repoSetModel";
 import { checksIcon, checksTone, fabricLabel, fabricTone, short, type BarError, type BarModel, type Tone } from "./model";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -80,9 +81,14 @@ export function renderBody(m: BarModel, _now: number = Date.now()): string {
   const actions = actionsFor(m);
   const main = actions[0];
   const out: string[] = [];
+  // the first chip: several repositories on one branch at once (a local action, not a chat action)
+  out.push(chip({ tone: "run", icon: "repo-forked", label: "Repos op branch openen", title: "Open several repositories on the same branch in one window (worktrees or switch)", id: "reposet" }) + `<span class="bar-zone" tabindex="0" role="button" data-act="chip" data-id="reposet" title="Open repositories on a branch"><i class="codicon codicon-chevron-down"></i></span>`);
+  out.push(sep);
   out.push(`<span class="bar-chip style-hand" tabindex="0" role="button" data-act="chat" data-id="${esc(main.id)}" title="${esc(`${main.label}: puts ${main.text.length > 40 ? "a prompt" : main.text} in your chat with the aihub agent`)}"><i class="codicon codicon-${main.icon}"></i><span class="lbl">${esc(main.short)}</span></span><span class="bar-zone" tabindex="0" role="button" data-act="menu" title="All actions"><i class="codicon codicon-chevron-down"></i></span>`);
   out.push(sep);
   out.push(chip({ tone: "muted", icon: "git-branch", label: m.story ? `#${m.story.id} ${short(m.story.title, 22)}` : short(m.branch, 28), title: `${m.story ? `Story #${m.story.id} (${m.story.state}): ${m.story.title}\n` : ""}Branch ${m.branch}${m.next ? `\nNext: ${m.next}` : ""}`, id: "story" }));
+  const sc = setChip(m.set);
+  if (sc) out.push(chip({ tone: "ok", icon: "repo-forked", label: sc.label, title: sc.title, id: "set" }));
   if (m.dirty) out.push(chip({ tone: "warn", icon: "edit", title: "Uncommitted changes", id: "story", square: true }));
   if (m.unpushed) out.push(chip({ tone: "warn", icon: "cloud-upload", label: String(m.unpushed), title: `${m.unpushed} commit(s) not pushed`, id: "story" }));
   if (m.pr) {

@@ -26,6 +26,16 @@ const VOTE: Record<number, string> = { 10: "approved", 5: "approved with suggest
 
 export function popupFor(chip: string, m: BarModel, now: number = Date.now()): Popup {
   switch (chip) {
+    case "reposet":
+      return { title: "Repos op branch openen", items: [cmd("aihub.reposet.open", "Open repositories on a branch...", "pick a group or repositories, then a branch")] };
+    case "set": {
+      const s = m.set;
+      if (!s) return { title: "Worktree set", items: [info("This window is not a worktree set")] };
+      const items: PopupItem[] = [info(`${s.group ?? (s.story ? `Story ${s.story}` : "Set")} on ${s.branch}`, `${s.repos.length}/${s.total ?? s.repos.length} repositories`)];
+      for (const r of s.repos) items.push(info(r));
+      items.push(cmd("aihub.reposet.open", "Open repositories on another branch..."));
+      return { title: "Worktree set", items };
+    }
     case "story": {
       const items: PopupItem[] = [info(m.story ? `#${m.story.id} ${m.story.title}` : "No story on this branch", m.story?.state), info(`Branch ${m.branch}`, m.dirty ? "uncommitted changes" : undefined, m.unpushed ? `${m.unpushed} commit(s) not pushed` : undefined)];
       if (m.next) items.push(info(`Next: ${m.next}`));

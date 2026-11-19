@@ -1,6 +1,7 @@
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import type { GroupJson } from "./repoSetModel";
 import { findRepos, validateBranchName, type Repo } from "./worktrees/core";
 import { deleteGroup, listGroups, saveGroup } from "./worktrees/extras";
 import { createGit } from "./worktrees/git";
@@ -25,24 +26,41 @@ function repoRoots(): string[] {
   return [...new Set((vscode.workspace.workspaceFolders ?? []).map((f) => path.dirname(f.uri.fsPath)))];
 }
 
-type Node = { kind: "set"; set: WorktreeSet } | { kind: "repo"; set: WorktreeSet; repo: SetRepo };
+type Node = { kind: "set"; set: WorktreeSet } | { kind: "repo"; set: WorktreeSet; repo: SetRepo } | { kind: "group"; group: GroupJson; set?: undefined };
 
 export class WorktreeSetsProvider implements vscode.TreeDataProvider<Node> {
   private emitter = new vscode.EventEmitter<Node | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
-  constructor(private git: ReturnType<typeof createGit>) {}
+  constructor(
+    private git: ReturnType<typeof createGit>,
+    private groups: () => Promise<GroupJson[]> = async () => [],
+  ) {}
 
   refresh() {
     this.emitter.fire(undefined);
   }
 
   async getChildren(n?: Node): Promise<Node[]> {
-    if (!n) return (await listSetsIn([setsRoot()])).map((set) => ({ kind: "set", set }));
+    if (!n) {
+      const sets: Node[] = (await listSetsIn([setsRoot()])).map((set) => ({ kind: "set", set }));
+      const groups: Node[] = (await this.groups().catch(() => [] as GroupJson[])).map((group) => ({ kind: "group", group }));
+      return [...sets, ...groups];
+    }
     if (n.kind === "set") return n.set.repos.map((repo) => ({ kind: "repo", set: n.set, repo }));
     return [];
   }
 
   async getTreeItem(n: Node): Promise<vscode.TreeItem> {
+    if (n.kind === "group") {
+      const it = new vscode.TreeItem(n.group.name, vscode.TreeItemCollapsibleState.None);
+      it.description = `repo group, ${n.group.repos.length} repo${n.group.repos.length === 1 ? "" : "s"}`;
+      it.contextValue = "aihubGroup";
+      it.iconPath = new vscode.ThemeIcon("library");
+      it.tooltip = `${n.group.repos.map((r) => r.name).join(", ")}
+Open on branch... opens all of them on one branch`;
+      it.command = { command: "aihub.reposet.openGroup", title: "Open on branch...", arguments: [n] };
+      return it;
+    }
     if (n.kind === "set") {
       const it = new vscode.TreeItem(n.set.branch, vscode.TreeItemCollapsibleState.Expanded);
       it.description = `${n.set.repos.length} repo${n.set.repos.length === 1 ? "" : "s"}`;
@@ -63,9 +81,9 @@ export class WorktreeSetsProvider implements vscode.TreeDataProvider<Node> {
 
 const summary = (steps: RepoStep[]) => steps.map((s) => `${s.name}: ${s.status === "ok" ? "" : s.status + ": "}${s.message}${s.nextStep ? ` (${s.nextStep})` : ""}`).join("\n");
 
-export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (line: string) => void, toChat: (actionId: string) => Promise<void>): void {
+export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (line: string) => void, toChat: (actionId: string) => Promise<void>, groups: () => Promise<GroupJson[]> = async () => []): () => void {
   const git = createGit("git", log);
-  const provider = new WorktreeSetsProvider(git);
+  const provider = new WorktreeSetsProvider(git, groups);
   ctx.subscriptions.push(vscode.window.registerTreeDataProvider("aihub.worktreeSets", provider));
   const reg = (id: string, fn: (...a: any[]) => Promise<void>) =>
     ctx.subscriptions.push(
@@ -258,4 +276,5 @@ export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (lin
   });
 
   void os;
+  return () => provider.refresh();
 }

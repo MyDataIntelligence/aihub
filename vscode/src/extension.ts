@@ -1,3 +1,4 @@
+import { RepoSetController } from "./repoSetUi";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
 import { checkCli, CliError, INSTALL_COMMAND, makeRunner, type Runner } from "./cli";
@@ -182,6 +183,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   /** Chips open a native pick list: details and secondary actions stay out of the bar. */
   private async showPopup(chip: string) {
     if (chip === "refresh") return void this.refresh();
+    if (chip === "reposet") return void vscode.commands.executeCommand("aihub.reposet.open");
     if (chip === "installHelp") return void vscode.commands.executeCommand("aihub.installHelp");
     const model = this.model();
     if (!model) {
@@ -340,7 +342,9 @@ export function activate(ctx: vscode.ExtensionContext) {
   learn.register(ctx);
   bar.onModel = (m) => void threads.sync(m.pr && m.pr.status === "active" ? m.pr.id : undefined, m.openThreads);
   registerGitCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
-  registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
+  const reposet = new RepoSetController(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l), refresh: () => (refreshSets(), void bar.refresh()) });
+  reposet.register();
+  const refreshSets = registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id), () => reposet.groups());
   bar.start();
 }
 
