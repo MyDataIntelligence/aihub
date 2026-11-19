@@ -171,6 +171,17 @@ function goHome(dir: string, home: string, args: string[]) {
 }
 
 describe("the personal learn store", () => {
+  it("validates and saves a lesson written from repo facts (no changed files in them)", async () => {
+    const dir = world();
+    const home = tmp("aihub-learn-");
+    const ex = join(tmp(), "e.json");
+    const facts = join(tmp(), "f.json");
+    writeFileSync(ex, JSON.stringify(GOOD));
+    writeFileSync(facts, (await go(dir, ["learn", "repo", "--json"])).out);
+    expect((await goHome(dir, home, ["learn", "validate", "--file", ex, "--facts", facts])).code).toBe(0);
+    expect((await goHome(dir, home, ["learn", "save", "--file", ex, "--facts", facts])).code).toBe(0);
+  });
+
   it("saves a validated lesson under the user home, never in the repository, and lists and shows it", async () => {
     const dir = world();
     const home = tmp("aihub-learn-");
