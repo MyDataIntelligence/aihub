@@ -11,6 +11,7 @@ Status words: **existing** (already in this CLI), **to build** (built with this 
 - Fabric adapters (`fabric`, `fabricspark`) write to a workspace: those writes (`build`, `run`, `seed`, `snapshot`, `run-operation`) stay behind the workspace guard of `aihub fabric dbt run` (no ACC or PRD, the profile target must live in the chosen workspace). `aihub dbt` runs reads and compile steps on any adapter and writes on non-Fabric adapters (DuckDB, a local Postgres); for a Fabric target it points to `aihub fabric dbt run`.
 - Every command answers compact text and, with `--json`, a stable object.
 - Examples and tests use synthetic projects only.
+- Live on Fabric (2026-11-19, `docs/live-verification.md`): `fabric dbt scaffold` + `fabric dbt run --command build` on a warehouse with dbt-core 1.12.7 and dbt-fabric 1.12.0 (az CLI auth), then `aihub dbt test|show|compile` and `fabric sql` on the result. The Livy lakehouse route (`fabricspark`) was not run live.
 
 ## A. Legacy Hub
 

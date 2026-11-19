@@ -9,14 +9,28 @@ import { dryRun, emit, itemArg, makeClient, need, target, where, type Setup } fr
 
 // ---- workspaces, capacities, connections ----------------------------------------------
 
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A capacity by id, exact name, or a name prefix that matches exactly one capacity ("Trial" for the long trial name). */
+export async function resolveCapacity(client: FabricClient, cap: string): Promise<{ id: string; displayName: string }> {
+  const caps = await client.list<{ id: string; displayName: string }>("/capacities");
+  const low = cap.toLowerCase();
+  const hit = caps.find((c) => c.id.toLowerCase() === low || c.displayName.toLowerCase() === low);
+  if (hit) return hit;
+  const byPrefix = caps.filter((c) => c.displayName.toLowerCase().startsWith(low));
+  if (byPrefix.length === 1) return byPrefix[0];
+  throw new AihubError(byPrefix.length > 1 ? `capacity '${cap}' matches ${byPrefix.length} capacities; use the id or the full name: aihub fabric capacities` : `capacity '${cap}' not found; list them with: aihub fabric capacities`);
+}
+
 export async function workspaceCmd(s: Setup, sub: string | undefined): Promise<void> {
   const client = makeClient(s.ctx, s.v);
   if (sub === "create") {
     const name = need(s.v, "name", "display name");
     const env = inferEnv(name);
     if (env !== "dev") guardEnv({ name, environment: env }, s.v["allow-env"] as string | undefined);
-    const body = { displayName: name, ...(s.v.description ? { description: s.v.description } : {}), ...(s.v.capacity ? { capacityId: s.v.capacity } : {}) };
-    if (s.v["dry-run"]) return dryRun(s, [`create workspace '${name}'${s.v.capacity ? ` on capacity ${s.v.capacity}` : ""}`]);
+    const capacity = s.v.capacity ? (GUID.test(s.v.capacity as string) ? { id: s.v.capacity as string, displayName: s.v.capacity as string } : await resolveCapacity(client, s.v.capacity as string)) : undefined;
+    const body = { displayName: name, ...(s.v.description ? { description: s.v.description } : {}), ...(capacity ? { capacityId: capacity.id } : {}) };
+    if (s.v["dry-run"]) return dryRun(s, [`create workspace '${name}'${capacity ? ` on capacity ${capacity.displayName}` : ""}`]);
     const r = await client.request("POST", "/workspaces", body);
     return emit(s, r.data, `created workspace ${name} (id ${r.data.id ?? "?"})`);
   }
@@ -31,9 +45,7 @@ export async function workspaceCmd(s: Setup, sub: string | undefined): Promise<v
   }
   if (sub === "assign-capacity") {
     const cap = need(s.v, "capacity", "capacity id|name");
-    const caps = await client.list<{ id: string; displayName: string }>("/capacities");
-    const hit = caps.find((c) => c.id.toLowerCase() === cap.toLowerCase() || c.displayName.toLowerCase() === cap.toLowerCase());
-    if (!hit) throw new AihubError(`capacity '${cap}' not found; list them with: aihub fabric capacities`);
+    const hit = await resolveCapacity(client, cap);
     if (s.v["dry-run"]) return dryRun(s, [`assign ${where(t)} to capacity ${hit.displayName}`]);
     await client.request("POST", `/workspaces/${t.id}/assignToCapacity`, { capacityId: hit.id });
     return emit(s, { capacity: hit.id }, `assigned ${t.ws.name} to capacity ${hit.displayName}`);

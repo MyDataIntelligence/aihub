@@ -202,7 +202,7 @@ endpoint through ODBC 18 (pyodbc with an Entra token). Everything was deleted at
 | `spark stop` against the real monitoring API (third run) | **was broken, fixed**: the dry-run said "cancel the notebook job", the real run called `.../items/undefined/jobs/instances/<id>/cancel` (HTTP 400) because the API names the item in `item.itemId` and writes `itemType` in lower case, and a Lakehouse Livy session reports its own id as job id. Now `--all-mine --yes` closed the Livy session (`spark sessions` 15 s later: `Succeeded`) and `--all-mine` only takes sessions whose `submitter` is the signed-in identity | REST `livySessions` |
 | `git status` of an unconnected workspace | clear message `Workspace not connected to Git.` (Fabric's text, HTTP 400) | |
 | `auth status` | `signed-in user (az login)`, service principals: none; SP live skipped (none registered, no secret supplied) | |
-| `dax`, `kql` | skipped: they need a semantic model / KQL database with data, which a cheap synthetic workspace does not have | |
+| `dax`, `kql` | skipped here; done live on 2026-11-19 (section below) | |
 | ACC/PRD guard on `workspace create`, `item create`, `item delete --yes`, `run`, `workspace delete` with `...-acc` / `...-prd` names | refused before any call (`--dry-run`, no such workspace exists) | |
 | `item delete --yes` of every item, `workspace delete --yes` (new, fix 6) | ok; the workspace is gone | REST: `WorkspaceNotFound` |
 
@@ -213,6 +213,29 @@ became `Files/Files/x.csv`; (3) Fabric job times are UTC without a zone suffix a
 Findings that are not bugs of the CLI: a table load and every notebook run open a Spark session; on the trial capacity one idle session (about 20 minutes) blocks the next run with `TooManyRequestsForCapacity` (the CLI has no
 way to stop a Spark session, only to wait; `failures` now says so); driver logs of a Spark application appear some minutes after it ended (404 "no available log file" before, which the CLI reports per section).
 Proof PNG: `20261118-1951-F-fabric-live.png` in the proof folder of the benchmark machine.
+
+## Fabric last gaps: KQL, DAX and dbt on Fabric (2026-11-19)
+
+`aihub fabric` from `staging` (5048956 plus the two fixes below), `az login` user, own workspace `aihub-test-dev-20261119-last` on the trial capacity (`FTL4`); nothing else was listed or read. Isolated `HOME`/`XDG_*`, a venv on a short path for dbt (`dbt-core 1.12.7`, `dbt-fabric 1.12.0`, ODBC Driver 18). The workspace was deleted with `workspace delete --yes` and `GET workspaces/<id>` answers `WorkspaceNotFound`; `spark stop --all-mine --yes` closed the one session the table load had opened.
+
+| Case | Result | Second source |
+|---|---|---|
+| `item create --type Eventhouse` (Fabric adds a KQL database with the same name), `Lakehouse`, `Warehouse` | ok | `fabric items` |
+| `.create table` + `.ingest inline` (3 rows) | done with a token-only POST to the Kusto `mgmt` endpoint, because `aihub fabric kql` refuses control commands on purpose | |
+| `kql --item eh_last --query "Events \| summarize n=count(), avgT=avg(temp) by device"` | **ok after fix 1**: `sensor-a 2 21`, `sensor-b 1 22` | the same query posted to `<queryServiceUri>/v1/rest/query`: identical rows |
+| `onelake write` a CSV, `lakehouse load --table sales`, `lakehouse tables` | ok (4 rows, Delta) | table listing |
+| `item create --type SemanticModel --definition-dir` (Direct Lake TMDL on the lakehouse table: `definition.pbism`, `database`, `model`, `expressions`, `tables/sales.tmdl` with a measure) | ok, no refresh needed | `item show` |
+| `dax --item sm_last --query "EVALUATE SUMMARIZECOLUMNS(sales[region], "total", [Total Amount]) ORDER BY ..."` | **ok after fix 1**: east 40, north 40, south 20 | Power BI `executeQueries`: identical rows. `DEFINE ... EVALUATE` runs, a query not starting with EVALUATE/DEFINE is refused before any call |
+| `fabric dbt scaffold --route warehouse`, two models (view + table) with 4 data tests, `fabric dbt run --command build` | ok: PASS=6, the profile target proved to live in the workspace first | |
+| `dbt test`, `dbt show`, `dbt compile`; `dbt build` | `test` 4 pass, `show` previews the 3 mart rows, `compile` prints `[wh_last].[dbo].[stg_example]`; `dbt build` is refused with a pointer to `aihub fabric dbt run` (writes on a Fabric adapter) | |
+| `fabric sql --item wh_last --query "select ... from dbo.mart_example"` | east 40/1, north 40/2, south 20/1 | `dbt show` (ODBC) returns the same 3 rows |
+| `fabric dbt detect` | dbt-core and the fabric adapter version, target and warehouse route, secrets none | |
+| `workspace create --capacity <name>`, `assign-capacity --capacity Trial` | **failed first**: the name went to Fabric as a capacity id (HTTP 400 "invalid input"); a prefix did not match | fix 2 |
+
+Fixes (aihub, each with a vitest): (1) `kql`, `dax` and `graphql` took `--item <name>` over all item types, and an Eventhouse always has a KQL database with the same name, so `kql --item eh_last` said "ambiguous"; each query now looks only at its own item type (`--type` still overrides); (2) `workspace create --capacity` resolves a name or a unique name prefix, like `assign-capacity` (which accepted only the full name).
+
+Findings that are not CLI bugs: the Kusto and Power BI audiences were not in the az token cache (`Can't find token from MSAL cache`); a one-off `az login --use-device-code --scope https://kusto.kusto.windows.net/.default` added the Kusto token, while the Power BI REST also accepts the Fabric-audience token. A Direct Lake model on a SQL endpoint answered DAX right after creation; the SQL host of a warehouse and of a lakehouse in one workspace is the same.
+Proof PNG: `20261119-0326-F-fabric-last.png` in the proof folder.
 
 ## One story end to end through the `aihub` agent (2026-11-18)
 

@@ -332,6 +332,11 @@ describe("workspace, capacity, schedules, shortcuts, connections", () => {
     expect(d.errs[0]).toContain("is PRD");
     const e = await go([get(/\/capacities$/, { value: [{ id: "cap1", displayName: "F2-dev" }] }), post(new RegExp(`/workspaces/${WS}/assignToCapacity$`))], ["workspace", "assign-capacity", "--workspace", "DEV-test-project", "--capacity", "F2-dev"]);
     expect(e.calls.at(-1)!.body).toEqual({ capacityId: "cap1" });
+    const caps = get(/\/capacities$/, { value: [{ id: "cap1", displayName: "Trial-2026-abc" }, { id: "cap2", displayName: "PPU-reserved" }] });
+    const f = await go([caps, post(/\/workspaces$/, { id: "new-ws" })], ["workspace", "create", "--name", "DEV-sandbox", "--capacity", "Trial"]);
+    expect(f.calls.at(-1)!.body).toEqual({ displayName: "DEV-sandbox", capacityId: "cap1" });
+    const g = await go([get(/\/capacities$/, { value: [{ id: "cap1", displayName: "Trial-a" }, { id: "cap2", displayName: "Trial-b" }] })], ["workspace", "create", "--name", "DEV-sandbox", "--capacity", "Trial"]);
+    expect(g.errs[0]).toContain("matches 2 capacities");
   });
 
   it("capacities, connections and gateways", async () => {
