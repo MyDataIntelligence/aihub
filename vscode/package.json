@@ -537,11 +537,6 @@
       ],
       "scm/title": [
         {
-          "command": "aihub.reposet.open",
-          "when": "scmProvider == git",
-          "group": "navigation@0"
-        },
-        {
           "submenu": "aihub.cm.Branch",
           "when": "scmProvider == git",
           "group": "9_aihub@1"
@@ -565,6 +560,11 @@
           "command": "aihub.chat.commit",
           "when": "scmProvider == git",
           "group": "9_aihub@3"
+        },
+        {
+          "command": "aihub.reposet.open",
+          "when": "scmProvider == git",
+          "group": "navigation@0"
         }
       ],
       "scm/resourceState/context": [
