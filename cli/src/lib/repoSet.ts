@@ -9,6 +9,7 @@ import { hasTrackedChanges, listWorktrees, mustGit, refSha, samePath, tryGit } f
 import { findGroup, groupDirs, resolveRepos } from "./repoGroups.js";
 import { fetchOrigin, type RepoDir } from "./repos.js";
 import { defaultTargetFor, loadTeam, type TeamConfig } from "./team.js";
+import { findSet } from "./setInfo.js";
 import { defaultSetsRoot, slugOfBranch, type SetMeta } from "./worktree.js";
 
 /**
@@ -128,6 +129,15 @@ export const launchCode: CodeLauncher = (file, window, env) => {
   }
 };
 
+/** Where sets live: next to the main checkout, also when this runs inside a worktree or a set (never a set inside a set). */
+export function defaultSetsRootFor(cwd: string, root: string | undefined, firstRepo: string): string {
+  const here = findSet(cwd);
+  if (here) return dirname(here.folder);
+  if (!root) return join(dirname(firstRepo), "worktrees");
+  const main = tryGit(root, ["worktree", "list", "--porcelain"]).out.split("\n").find((l) => l.startsWith("worktree "))?.slice(9) ?? root;
+  return defaultSetsRoot(main);
+}
+
 export function openSet(ctx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = launchCode): OpenSetResult {
   const branch = o.branch?.trim();
   if (!branch) throw new AihubError("--branch <name> is required");
@@ -147,7 +157,7 @@ export function openSet(ctx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = launc
     root = undefined;
   }
   const team = root ? loadTeam(root) : {};
-  const setsRoot = resolve(o.root ?? (root ? defaultSetsRoot(root) : join(dirname(dirs[0].dir), "worktrees")));
+  const setsRoot = resolve(o.root ?? defaultSetsRootFor(ctx.cwd, root, dirs[0].dir));
   const folder = join(setsRoot, slug(branch));
   const repos = dirs.map((d) => openRepo(d, { branch, from: o.from, mode, folder, team }));
   for (const m of missing) repos.push({ repo: m, ok: false, state: "failed", branch, note: "folder not found on this PC" });

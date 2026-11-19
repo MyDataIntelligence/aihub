@@ -136,6 +136,15 @@ describe("aihub worktree open", () => {
     expect(shared.missing).toEqual(["repo-c"]);
   });
 
+  it("opened from inside a set it puts the next set beside it, not inside it", async () => {
+    const { parent, repos } = world();
+    const first = JSON.parse((await run(repos[0].dir, ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/shared", "--window", "none", "--json"])).out);
+    const inside = join(first.folder, "repo-a");
+    const second = JSON.parse((await run(inside, ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/other", "--window", "none", "--json"])).out);
+    const fwd = (p: string) => p.split("\\").join("/");
+    expect(fwd(second.folder)).toBe(fwd(join(parent, "worktrees", "feature-other")));
+  });
+
   it("removes a group set by branch and keeps the branch", async () => {
     const { repos } = world();
     const o = JSON.parse((await run(repos[0].dir, ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/shared", "--window", "none", "--json"])).out);
