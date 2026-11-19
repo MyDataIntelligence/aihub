@@ -70,7 +70,8 @@
         "command": "aihub.reposet.open",
         "title": "Repos op branch openen...",
         "category": "AI Context Hub",
-        "icon": "$(repo-forked)"
+        "icon": "$(repo-forked)",
+        "shortTitle": "Repos op branch openen"
       },
       {
         "command": "aihub.reposet.openGroup",
@@ -559,6 +560,11 @@
           "command": "aihub.chat.commit",
           "when": "scmProvider == git",
           "group": "9_aihub@3"
+        },
+        {
+          "command": "aihub.reposet.open",
+          "when": "scmProvider == git",
+          "group": "navigation@0"
         }
       ],
       "scm/resourceState/context": [
@@ -831,6 +837,12 @@
           "command": "aihub.thread.reply",
           "when": "false"
         }
+      ],
+      "editor/title": [
+        {
+          "command": "aihub.reposet.open",
+          "group": "navigation@0"
+        }
       ]
     },
     "viewsWelcome": [
@@ -841,6 +853,13 @@
       {
         "view": "aihub.learn",
         "contents": "No lessons yet.\nAsk your chat for /leer on a pull request or branch: it explains the change with pictures and saves it here, in your personal store."
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "aihub.reposet.open",
+        "key": "ctrl+alt+b",
+        "mac": "cmd+alt+b"
       }
     ]
   },
