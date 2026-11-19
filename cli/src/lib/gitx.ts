@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.js";
 import { AihubError } from "./errors.js";
 import { gitGate } from "./trace.js";
 

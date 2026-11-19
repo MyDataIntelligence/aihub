@@ -1,9 +1,10 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "./proc.js";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
+import { quietUntilOf, setQuiet } from "./notifyPolicy.js";
 
 export const CLIENTS = ["opencode", "codex", "claude", "copilot"] as const;
 export type Client = (typeof CLIENTS)[number];
@@ -183,6 +184,13 @@ export interface OpenOpts {
 }
 
 export function openEvent(ctx: Ctx, o: OpenOpts, launcher: Launcher = launch, platform: NodeJS.Platform = process.platform, wt: boolean = hasWindowsTerminal()): string {
+  if (o.url && /^aihub:\/\/quiet/i.test(o.url)) {
+    // the toast's "Stil 1 uur" button: no terminal, just silence
+    const q = new URL(o.url).searchParams.get("for") ?? "1h";
+    const until = quietUntilOf({ for: q }, ctx.now?.() ?? Date.now());
+    setQuiet(ctx.env, until);
+    return `quiet until ${new Date(until).toISOString().slice(0, 16).replace("T", " ")}`;
+  }
   const ev = o.url ? readEvent(ctx.env, eventFromUrl(o.url)) : o.event ? readEvent(ctx.env, o.event) : o.last ? lastEvent(ctx.env) : undefined;
   if (!ev) throw new AihubError("usage: aihub open --event <id> | --last | --url aihub://open?event=<id> [--print]");
   const plan = planOpen(ev, platform, wt);
@@ -198,7 +206,7 @@ export function protocolCommands(node: string, cli: string): string[][] {
   return [
     ["add", k, "/ve", "/d", "URL:aihub", "/f"],
     ["add", k, "/v", "URL Protocol", "/d", "", "/f"],
-    ["add", `${k}\\shell\\open\\command`, "/ve", "/d", `"${node}" "${cli}" open --url "%1"`, "/f"],
+    ["add", `${k}\\shell\\open\\command`, "/ve", "/d", `conhost.exe --headless "${node}" "${cli}" open --url "%1"`, "/f"],
   ];
 }
 
@@ -206,6 +214,6 @@ export function protocolCommands(node: string, cli: string): string[][] {
 export function ensureProtocol(platform: NodeJS.Platform = process.platform, node = process.execPath, cli = process.argv[1]): boolean {
   if (platform !== "win32") return false;
   const cur = spawnSync("reg", ["query", "HKCU\\Software\\Classes\\aihub\\shell\\open\\command", "/ve"], { encoding: "utf8" });
-  if (cur.status === 0 && cur.stdout.includes(cli)) return true;
+  if (cur.status === 0 && cur.stdout.includes(cli) && cur.stdout.includes("--headless")) return true;
   return protocolCommands(node, cli).every((a) => spawnSync("reg", a, { stdio: "ignore" }).status === 0);
 }

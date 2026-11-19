@@ -1,6 +1,7 @@
 import { parse } from "../lib/args.js";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
+import { quietUntilOf, readWatchConfig, setNotifyMode, setQuiet } from "../lib/notifyPolicy.js";
 import { ensureProtocol, listEvents } from "../lib/open.js";
 import { parseDuration } from "../lib/pipeline.js";
 import { MINE_ID, registerAtLogon, removeAtLogon, runDetachedMine, startMine } from "../lib/watchMine.js";
@@ -9,6 +10,7 @@ import { listWatches, runDetached, startWatch, stopWatches } from "../lib/watch.
 /** aihub watch --run <id|link> | --robot <build> | --fabric-job <ws/item/job> [--notify]: follow one long run in the background; aihub watch --mine [--notify] [--interval 2m] [--at-logon] | --remove-at-logon | --pr N|--branch B [--until done|comment|vote] [--notify] [--client C] [--session S] | list | stop [--id X] */
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const sub = argv[0] && !argv[0].startsWith("-") ? argv[0] : undefined;
+  if (sub === "config" || sub === "quiet") return watchSettings(sub, argv.slice(1), ctx);
   const v = parse(sub ? argv.slice(1) : argv, {
     pr: { type: "string" },
     branch: { type: "string" },
@@ -67,4 +69,19 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
       () => ensureProtocol(),
     ),
   );
+}
+
+/** aihub watch config [--notify all|needed|off] | aihub watch quiet --for 1h | --until 18:00 | --off */
+function watchSettings(sub: "config" | "quiet", rest: string[], ctx: Ctx): void {
+  const v = parse(rest, { notify: { type: "string" }, for: { type: "string" }, until: { type: "string" }, off: { type: "boolean" }, json: { type: "boolean" } }).values;
+  if (sub === "config") {
+    const c = v.notify === undefined ? readWatchConfig(ctx.env) : setNotifyMode(ctx.env, v.notify);
+    return void ctx.out(v.json ? JSON.stringify(c) : `watch.notify = ${c.notify} (all: every event; needed: only what needs you, the rest is in 'aihub watch events'; off: no toasts)`);
+  }
+  const now = ctx.now?.() ?? Date.now();
+  if (v.off) return void ctx.out(setQuiet(ctx.env, undefined) && "quiet time ended");
+  if (!v.for && !v.until) throw new AihubError("usage: aihub watch quiet --for 1h | --until 18:00 | --off");
+  const until = quietUntilOf({ for: v.for, until: v.until }, now);
+  setQuiet(ctx.env, until);
+  ctx.out(`no toasts until ${new Date(until).toISOString().slice(0, 16).replace("T", " ")} (events are still recorded: aihub watch events)`);
 }

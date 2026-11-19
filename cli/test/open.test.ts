@@ -94,7 +94,7 @@ describe("client detection and protocol", () => {
     const cmds = protocolCommands("C:\\node.exe", "C:\\aihub\\cli.js");
     expect(cmds.every((c) => c[1].startsWith("HKCU\\Software\\Classes\\aihub"))).toBe(true);
     expect(cmds[1]).toContain("URL Protocol");
-    expect(cmds[2][4]).toBe('"C:\\node.exe" "C:\\aihub\\cli.js" open --url "%1"');
+    expect(cmds[2][4]).toBe('conhost.exe --headless "C:\\node.exe" "C:\\aihub\\cli.js" open --url "%1"');
   });
 
   it("the toast gets an Open button that activates the protocol link", () => {

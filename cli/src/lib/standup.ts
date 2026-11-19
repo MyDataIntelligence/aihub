@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.js";
 import type { AdoClient } from "./ado.js";
 import { getWorkItemTitle } from "./ado.js";
 import { repoClient, type Ctx } from "./context.js";
