@@ -347,11 +347,18 @@ export function scan(deps: LegacyDeps): Scan {
     }
 
   // ---- 2. CLI package (the files of the zip) and 3. the data next to it
-  const cliPackage = isFile(join(cliHome, "VERSION")) && (isFile(join(cliHome, "hub.ps1")) || isFile(join(cliHome, "hub")));
+  // Also a half-removed package (an earlier run stopped on a locked jar) still counts: the jar alone is enough.
+  const cliJar = join(cliHome, "lib", "hub-standalone.jar");
+  const cliPackage = (isFile(join(cliHome, "VERSION")) && (isFile(join(cliHome, "hub.ps1")) || isFile(join(cliHome, "hub")))) || isFile(cliJar);
   if (cliPackage) {
-    const version = read(join(cliHome, "VERSION")).trim();
-    add({ group: "CLI package", client: "hub", what: `delete the hub CLI package ${version} (hub, hub.cmd, hub.ps1, lib\\hub-standalone.jar, runtime, skills, templates)`, where: cliHome, apply: () => {
-      for (const name of CLI_PACKAGE_NAMES) rmSync(join(cliHome, name), { recursive: true, force: true });
+    const version = isFile(join(cliHome, "VERSION")) ? read(join(cliHome, "VERSION")).trim() : "(partly removed)";
+    add({ group: "CLI package", client: "hub", what: `delete the hub CLI package ${version} (hub, hub.cmd, hub.ps1, lib\\hub-standalone.jar, runtime, skills, templates); a running old Hub core of this package is stopped first`, where: cliHome, apply: () => {
+      // Only java processes running exactly this package's jar (the old Hub core); nothing else.
+      if (process.platform === "win32") {
+        const ps = `Get-CimInstance Win32_Process -Filter "Name='java.exe'" | Where-Object { $_.CommandLine -like '*${cliJar.replace(/'/g, "''")}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`;
+        exec("powershell", ["-NoProfile", "-Command", ps]);
+      } else exec("pkill", ["-f", cliJar]);
+      for (const name of CLI_PACKAGE_NAMES) rmSync(join(cliHome, name), { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
     } });
   }
   const dataEntries: string[] = [];
@@ -371,6 +378,11 @@ export function scan(deps: LegacyDeps): Scan {
   if (isFile(hubSettings)) dataEntries.push(hubSettings);
   const hooksFolders = [join(localAppData ?? "", "AIContextHub", "standalone", "hooks"), join(dotAihub, "standalone", "hooks")].filter((p) => isDir(p));
   for (const e of dataEntries) {
+    // A link (symlink or junction, possibly dangling) is removed as a link: never followed, never stat'ed through.
+    let link = false;
+    try { link = lstatSync(e).isSymbolicLink(); } catch { continue; }
+    if (link) { add({ group: "Files and data", client: "hub", data: true, what: `delete link ${basename(e)} (the link only, not what it points to)`, where: e, apply: () => { try { unlinkSync(e); } catch { rmdirSync(e); } } }); continue; }
+    if (!existsSync(e)) continue;
     add({ group: "Files and data", client: "hub", data: true, what: `delete ${isDir(e) ? "folder" : "file"} ${basename(e)} (${isDir(e) ? list(e).length + " entries" : statSync(e).size + " bytes"})`, where: e, apply: () => rmSync(e, { recursive: true, force: true }) });
   }
 
