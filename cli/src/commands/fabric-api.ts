@@ -184,12 +184,15 @@ const queryText = (s: Setup): string => {
   return q;
 };
 
+const QUERY_ITEM_TYPE = { dax: "SemanticModel", kql: "KQLDatabase", graphql: "GraphQLApi" } as const;
+
 export async function queryCmd(s: Setup, kind: "dax" | "kql" | "graphql"): Promise<void> {
   const q = queryText(s);
   (kind === "dax" ? daxGuard : kind === "kql" ? kqlGuard : graphqlGuard)(q);
   const client: FabricClient = makeClient(s.ctx, s.v);
   const t = await target(s, client, false);
-  const it = await itemArg(s, client, t.id);
+  // an Eventhouse and its KQL database share one name, so each query kind looks only at its own item type
+  const it = await client.resolveItem(t.id, need(s.v, "item", "name|id"), (s.v.type as string | undefined) ?? QUERY_ITEM_TYPE[kind]);
   const max = Math.min(Number(s.v.top ?? 100), 5000);
   if (kind === "dax") {
     const r = await client.request("POST", `https://api.powerbi.com/v1.0/myorg/groups/${t.id}/datasets/${it.id}/executeQueries`, { queries: [{ query: q }], serializerSettings: { includeNulls: true } }, { powerbi: true });

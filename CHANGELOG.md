@@ -2,6 +2,10 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.0.7
+- `legacy remove`: dangling links removed as links, a running old Hub core holding the jar is stopped first, a half-removed package is still detected.
+- `fabric kql|dax|graphql --item` match only their own item type; `workspace create --capacity` takes a name. Release notes: docs/releases/1.0.7.md.
+
 ## 1.0.6
 - `/leer` saves a lesson for questions without a PR; `learn validate|save` no longer crash on facts without `files`.
 - `learn change --branch` compares with the real target (active PR target, then team.yaml defaultTarget).

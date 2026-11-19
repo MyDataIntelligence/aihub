@@ -202,7 +202,7 @@ endpoint through ODBC 18 (pyodbc with an Entra token). Everything was deleted at
 | `spark stop` against the real monitoring API (third run) | **was broken, fixed**: the dry-run said "cancel the notebook job", the real run called `.../items/undefined/jobs/instances/<id>/cancel` (HTTP 400) because the API names the item in `item.itemId` and writes `itemType` in lower case, and a Lakehouse Livy session reports its own id as job id. Now `--all-mine --yes` closed the Livy session (`spark sessions` 15 s later: `Succeeded`) and `--all-mine` only takes sessions whose `submitter` is the signed-in identity | REST `livySessions` |
 | `git status` of an unconnected workspace | clear message `Workspace not connected to Git.` (Fabric's text, HTTP 400) | |
 | `auth status` | `signed-in user (az login)`, service principals: none; SP live skipped (none registered, no secret supplied) | |
-| `dax`, `kql` | skipped: they need a semantic model / KQL database with data, which a cheap synthetic workspace does not have | |
+| `dax`, `kql` | skipped here; done live on 2026-11-19 (section below) | |
 | ACC/PRD guard on `workspace create`, `item create`, `item delete --yes`, `run`, `workspace delete` with `...-acc` / `...-prd` names | refused before any call (`--dry-run`, no such workspace exists) | |
 | `item delete --yes` of every item, `workspace delete --yes` (new, fix 6) | ok; the workspace is gone | REST: `WorkspaceNotFound` |
 
@@ -213,6 +213,29 @@ became `Files/Files/x.csv`; (3) Fabric job times are UTC without a zone suffix a
 Findings that are not bugs of the CLI: a table load and every notebook run open a Spark session; on the trial capacity one idle session (about 20 minutes) blocks the next run with `TooManyRequestsForCapacity` (the CLI has no
 way to stop a Spark session, only to wait; `failures` now says so); driver logs of a Spark application appear some minutes after it ended (404 "no available log file" before, which the CLI reports per section).
 Proof PNG: `20261118-1951-F-fabric-live.png` in the proof folder of the benchmark machine.
+
+## Fabric last gaps: KQL, DAX and dbt on Fabric (2026-11-19)
+
+`aihub fabric` from `staging` (5048956 plus the two fixes below), `az login` user, own workspace `aihub-test-dev-20261119-last` on the trial capacity (`FTL4`); nothing else was listed or read. Isolated `HOME`/`XDG_*`, a venv on a short path for dbt (`dbt-core 1.12.7`, `dbt-fabric 1.12.0`, ODBC Driver 18). The workspace was deleted with `workspace delete --yes` and `GET workspaces/<id>` answers `WorkspaceNotFound`; `spark stop --all-mine --yes` closed the one session the table load had opened.
+
+| Case | Result | Second source |
+|---|---|---|
+| `item create --type Eventhouse` (Fabric adds a KQL database with the same name), `Lakehouse`, `Warehouse` | ok | `fabric items` |
+| `.create table` + `.ingest inline` (3 rows) | done with a token-only POST to the Kusto `mgmt` endpoint, because `aihub fabric kql` refuses control commands on purpose | |
+| `kql --item eh_last --query "Events \| summarize n=count(), avgT=avg(temp) by device"` | **ok after fix 1**: `sensor-a 2 21`, `sensor-b 1 22` | the same query posted to `<queryServiceUri>/v1/rest/query`: identical rows |
+| `onelake write` a CSV, `lakehouse load --table sales`, `lakehouse tables` | ok (4 rows, Delta) | table listing |
+| `item create --type SemanticModel --definition-dir` (Direct Lake TMDL on the lakehouse table: `definition.pbism`, `database`, `model`, `expressions`, `tables/sales.tmdl` with a measure) | ok, no refresh needed | `item show` |
+| `dax --item sm_last --query "EVALUATE SUMMARIZECOLUMNS(sales[region], "total", [Total Amount]) ORDER BY ..."` | **ok after fix 1**: east 40, north 40, south 20 | Power BI `executeQueries`: identical rows. `DEFINE ... EVALUATE` runs, a query not starting with EVALUATE/DEFINE is refused before any call |
+| `fabric dbt scaffold --route warehouse`, two models (view + table) with 4 data tests, `fabric dbt run --command build` | ok: PASS=6, the profile target proved to live in the workspace first | |
+| `dbt test`, `dbt show`, `dbt compile`; `dbt build` | `test` 4 pass, `show` previews the 3 mart rows, `compile` prints `[wh_last].[dbo].[stg_example]`; `dbt build` is refused with a pointer to `aihub fabric dbt run` (writes on a Fabric adapter) | |
+| `fabric sql --item wh_last --query "select ... from dbo.mart_example"` | east 40/1, north 40/2, south 20/1 | `dbt show` (ODBC) returns the same 3 rows |
+| `fabric dbt detect` | dbt-core and the fabric adapter version, target and warehouse route, secrets none | |
+| `workspace create --capacity <name>`, `assign-capacity --capacity Trial` | **failed first**: the name went to Fabric as a capacity id (HTTP 400 "invalid input"); a prefix did not match | fix 2 |
+
+Fixes (aihub, each with a vitest): (1) `kql`, `dax` and `graphql` took `--item <name>` over all item types, and an Eventhouse always has a KQL database with the same name, so `kql --item eh_last` said "ambiguous"; each query now looks only at its own item type (`--type` still overrides); (2) `workspace create --capacity` resolves a name or a unique name prefix, like `assign-capacity` (which accepted only the full name).
+
+Findings that are not CLI bugs: the Kusto and Power BI audiences were not in the az token cache (`Can't find token from MSAL cache`); a one-off `az login --use-device-code --scope https://kusto.kusto.windows.net/.default` added the Kusto token, while the Power BI REST also accepts the Fabric-audience token. A Direct Lake model on a SQL endpoint answered DAX right after creation; the SQL host of a warehouse and of a lakehouse in one workspace is the same.
+Proof PNG: `20261119-0326-F-fabric-last.png` in the proof folder.
 
 ## One story end to end through the `aihub` agent (2026-11-18)
 
@@ -446,3 +469,9 @@ Isolated homes (`HOME`, `APPDATA`, `LOCALAPPDATA`, `XDG_*`, `CODEX_HOME`, `COPIL
 
 **2. VS Code 3.0.0 bar with data.** `ai-context-hub-3.0.0.vsix` from the `vscode-v3.0.0` release (sha256 verified), isolated profile, VS Code 1.147. Story 3413, branch `feature/3413-final-proof-bar`, PR !1104 (own vote: approved with suggestions), one open thread added with `az devops invoke`. The bar showed the branch, `#3413 Final proof bar`, `!1104 1` with the vote tick, `no pipeline` (this repository has no pipeline for the branch) and `1` thread; the Learn view listed the saved lesson and its concept. Second source `aihub status --json`: story 3413, PR 1104 active, reviewer vote 5, `openThreads: 1`, `pipeline: []`. Not shown with data: a pipeline state (none exists for this synthetic branch; pipeline states are covered in the pipelines sections above). Cleanup (verified): PR !1104 abandoned, branch deleted on origin, story 3413 deleted, my windows closed.
 Proof PNGs: `20261119-0056-L-final-learn-cli.png` (rendered summary), `20261119-0056-L-final-bar-300.png`.
+
+## Closing proofs on 1.0.6 (2026-11-19)
+
+- **`/leer` end to end on 1.0.6.** `@ferronhooi/aihub@1.0.6` from npm into a scratch prefix, `aihub skills install --client opencode` into the isolated home, opencode 1.19.5 with Luna (shared test home through `XDG_DATA_HOME` only). `/leer Leg uit hoe dit team werkt` loaded `start-here` and `learn`, ran `learn onboarding`, wrote `explanation.json`, ran `learn validate --facts` and then `learn save` itself, and answered "Ik heb de uitleg opgeslagen". `aihub learn list` showed the new lesson. Earlier attempts on 1.0.5 found two real bugs, both fixed and released in 1.0.6: the skill stopped at a chat answer (#141) and `validate/save --facts` crashed on repo facts (#143); `learn change --branch` now compares with the real target (#142).
+- **Bar with pipeline.** Synthetic pipeline `aihub-final-proof` (`ci/aihub-final.yml`, pytest after a 75 s wait), story, feature branch, PR !1105 (own vote: approved with suggestions, one open thread), build 286 queued on the PR branch. The 3.0.0 bar showed branch, story, `!1105 1` with the vote tick, **running**, then **green**, and the thread count 1; `aihub status --json` agreed (`pipeline: inProgress` then `succeeded`, `checks: running` then `green`, `openThreads: 1`, reviewer vote 5) and `az pipelines runs show` gave `completed/succeeded`. The bar needed its refresh interval to switch from running to green (about 1 minute after the build ended). Removed (verified): pipeline #19, the branch, the PR (abandoned), story 3414; run 286 stays (builds cannot be deleted). PNGs: `20261119-0225-L-final-bar-pipeline-running.png`, `20261119-0227-L-final-bar-pipeline-green.png`.
+- **Clean install of 1.0.6.** Fresh isolated environment, `Install-Extensions.ps1` without `-IncludeDev`: run 1 `aihub installed 1.0.6`, `pycharm-git-vscode 0.9.0`, `dbt-lens 0.1.1`, `fabric-workbench-vscode 0.1.1`, `ai-context-hub installed 3.0.0` (sha256 verified from `vscode-v3.0.0`), `fabric-navigator manual`; run 2 all five `unchanged`; exit 0. `aihub doctor` in a synthetic clone: all OK except `team.yaml` and `pr-template` (no team pack) and `legacy-hub` (the real old hub CLI is on this PC's PATH; nothing was touched). PNG: `20261119-0245-L-final-install-1.0.6.png`.

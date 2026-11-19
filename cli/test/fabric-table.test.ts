@@ -167,6 +167,14 @@ describe("dax, kql, graphql", () => {
     expect(evil.calls.every((c) => c.method === "GET")).toBe(true);
   });
 
+  it("KQL finds the database when an Eventhouse carries the same name (Fabric creates both)", async () => {
+    const both = get(new RegExp(`/workspaces/${WS}/items$`), { value: [{ id: "eh-1", displayName: "eh_x", type: "Eventhouse" }, { id: "kq-1", displayName: "eh_x", type: "KQLDatabase" }] });
+    const db = get(/kqlDatabases\/kq-1$/, { properties: { queryServiceUri: "https://x.z1.kusto.fabric.microsoft.com", databaseName: "eh_x" } });
+    const a = await go([both, db, send("POST", /kusto\.fabric\.microsoft\.com\/v1\/rest\/query$/, { Tables: [{ Columns: [{ ColumnName: "n" }], Rows: [[1]] }] })], ["kql", "--workspace", "DEV-test-project", "--item", "eh_x", "--query", "T | take 1"]);
+    expect(a.errs).toHaveLength(0);
+    expect(a.out).toContain("KQL ran: 1 row(s)");
+  });
+
   it("GraphQL queries, errors and refused mutations", async () => {
     const ok = await go([items, send("POST", /graphqlapis\/gq-1\/graphql$/, { data: { orders: [{ id: 1 }] } })], ["graphql", "--workspace", "DEV-test-project", "--item", "gql_api", "--query", "{ orders { id } }"]);
     expect(ok.out).toContain("GraphQL ran");
