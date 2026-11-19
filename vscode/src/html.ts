@@ -27,6 +27,11 @@ const chip = (o: ChipOpts) =>
 
 const sep = `<span class="bar-separator"></span>`;
 
+/** The first chip: a local action, so it is there even when the status cannot be read (no Azure DevOps remote, not a repository). */
+const reposetChip = () =>
+  chip({ tone: "run", icon: "repo-forked", label: "Repos op branch openen", title: "Open several repositories on the same branch in one window (worktrees or switch)", id: "reposet" }) +
+  `<span class="bar-zone" tabindex="0" role="button" data-act="chip" data-id="reposet" title="Open repositories on a branch"><i class="codicon codicon-chevron-down"></i></span>`;
+
 const CSS = `
 :root { --bar-text:#dfe1e5; --bar-muted:#9da0a8; --bar-line:#4e5157; --bar-hover:rgba(255,255,255,.063); --bar-accent:#3574f0;
   --gold-fg:#f2c55c; --gold-bg:#3a321f; --gold-line:#5c4d27; --run-fg:#548af7; --run-bg:#25324d; --run-line:#35538f;
@@ -73,7 +78,7 @@ const tail = `<span class="grow"></span>${chip({ tone: "muted", icon: "refresh",
 
 export function renderError(err: BarError): string {
   const fix = err.kind === "missing" || err.kind === "old";
-  return `<div class="bar-row"><span class="bar-chip style-gold" title="${esc(err.message)}"><i class="codicon codicon-warning"></i><span class="lbl">${esc(short(err.message, 90))}</span></span>${fix ? chip({ tone: "run", icon: "copy", label: "Install command", title: "Copy: npm i -g @ferronhooi/aihub", id: "installHelp" }) : ""}${tail}</div>`;
+  return `<div class="bar-row">${reposetChip()}${sep}<span class="bar-chip style-gold" title="${esc(err.message)}"><i class="codicon codicon-warning"></i><span class="lbl">${esc(short(err.message, 90))}</span></span>${fix ? chip({ tone: "run", icon: "copy", label: "Install command", title: "Copy: npm i -g @ferronhooi/aihub", id: "installHelp" }) : ""}${tail}</div>`;
 }
 
 /** The whole strip. */
@@ -82,7 +87,7 @@ export function renderBody(m: BarModel, _now: number = Date.now()): string {
   const main = actions[0];
   const out: string[] = [];
   // the first chip: several repositories on one branch at once (a local action, not a chat action)
-  out.push(chip({ tone: "run", icon: "repo-forked", label: "Repos op branch openen", title: "Open several repositories on the same branch in one window (worktrees or switch)", id: "reposet" }) + `<span class="bar-zone" tabindex="0" role="button" data-act="chip" data-id="reposet" title="Open repositories on a branch"><i class="codicon codicon-chevron-down"></i></span>`);
+  out.push(reposetChip());
   out.push(sep);
   out.push(`<span class="bar-chip style-hand" tabindex="0" role="button" data-act="chat" data-id="${esc(main.id)}" title="${esc(`${main.label}: puts ${main.text.length > 40 ? "a prompt" : main.text} in your chat with the aihub agent`)}"><i class="codicon codicon-${main.icon}"></i><span class="lbl">${esc(main.short)}</span></span><span class="bar-zone" tabindex="0" role="button" data-act="menu" title="All actions"><i class="codicon codicon-chevron-down"></i></span>`);
   out.push(sep);

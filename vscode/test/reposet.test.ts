@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { renderBody } from "../src/html";
+import { renderBody, renderError } from "../src/html";
 import { buildModel } from "../src/model";
 import { popupFor } from "../src/popups";
 import { branchItems, branchesArgs, groupItems, howItems, openArgs, prItems, setChip, summarizeOpen, type OpenResultJson } from "../src/repoSetModel";
@@ -17,6 +17,12 @@ describe("the first chip of the bar", () => {
     expect(chip).toBeLessThan(h.indexOf('data-act="chat"'));
     expect(h).toContain("Repos op branch openen");
     expect(h).toContain("codicon-repo-forked");
+  });
+
+  it("is also there when the status cannot be read (a local action, no Azure DevOps remote needed)", () => {
+    const h = renderError({ kind: "failed", message: "remote is not an Azure DevOps remote" });
+    expect(h).toContain('data-id="reposet"');
+    expect(h.indexOf('data-id="reposet"')).toBeLessThan(h.indexOf("not an Azure DevOps"));
   });
 
   it("shows 'Set: <group> · 3/3 op <branch>' only in a window that is a set", () => {
