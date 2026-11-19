@@ -9,7 +9,7 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 - Read-only guards: DAX must start with EVALUATE/DEFINE, KQL control commands (`.`) and GraphQL mutations are refused, the KQL host must be `*.kusto.fabric.microsoft.com`.
 - Identity: `--sp`, `AIHUB_FABRIC_SP`, `AZURE_CLIENT_*`, team.yaml `servicePrincipal`, user default SP, `AIHUB_FABRIC_TOKEN`, az user. Every `--json` result carries the identity.
 - `fabric api list [--filter]` lists the generic rows; a row whose body the legacy tool assembled from several fields takes `--body-file <json>`; placeholders other than workspace and item are `--arg name=value`.
-- Not live-verified: all rows are tested against synthetic REST fixtures only.
+- Live verification: rows marked `ported, live` ran against a real Fabric workspace (2026-11-18 and 2026-11-19, see `docs/live-verification.md`); all other rows are tested against synthetic REST fixtures only.
 
 ## Command surface (grouped)
 `workspaces`, `workspace show|roles|create|assign-capacity`, `spark sessions|app|logs|stop`, `livy run`, `failures`, `sql`, `connection create|update|delete`, `udf invoke`, `notebook-test prepare|run|verify`, `dbt detect|results|scaffold|run|upload|save-job|get-job`, `capacities`, `connections`, `gateways`, `items`, `item show|definition|create|update|rename|delete`, `jobs`, `job show|cancel|logs`, `status`, `run [--cancel]`, `logs`, `schedules`, `lakehouse tables|files|load|maintenance`, `shortcuts`, `onelake list|read|write|mkdir|delete|move`, `dax`, `kql`, `graphql`, `environment publish|libraries`, `git status|update|commit`, `deployment list|stages|deploy`, `auth status|sp ...`, `plan`, `api <tool>`.
@@ -33,14 +33,14 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 | approve_production_reads | write | custom handler | - | dropped: obsolete; reads need no approval (read-only guards stay) |
 | list_workspaces | read | custom handler | `aihub fabric workspaces` | ported |
 | get_workspace | read | GET workspaces/{ws} | `aihub fabric workspace show` (also `api get_workspace`) | ported |
-| create_workspace | write | POST workspaces | `aihub fabric workspace create` (also `api create_workspace`) | ported |
+| create_workspace | write | POST workspaces | `aihub fabric workspace create` (also `api create_workspace`) | ported, live |
 | update_workspace | write | PATCH workspaces/{ws} | `aihub fabric api update_workspace` | ported (generic) |
 | delete_workspace | write | DELETE workspaces/{ws} | `aihub fabric workspace delete --yes` (also `api delete_workspace`) | ported |
 | create_feature_workspace | write | custom handler | `aihub fabric workspace create --name <DEV-...>` | ported |
 | provision_workspace_identity | write | POST workspaces/{ws}/provisionIdentity | `aihub fabric api provision_workspace_identity` | ported (generic) |
 | list_capacities | read | GET capacities | `aihub fabric capacities` (also `api list_capacities`) | ported |
 | get_capacity | read | custom handler | `aihub fabric capacities --filter` | ported |
-| assign_capacity | write | POST workspaces/{ws}/assignToCapacity | `aihub fabric workspace assign-capacity` (also `api assign_capacity`) | ported |
+| assign_capacity | write | POST workspaces/{ws}/assignToCapacity | `aihub fabric workspace assign-capacity` (also `api assign_capacity`) | ported, live |
 | unassign_capacity | write | POST workspaces/{ws}/unassignFromCapacity | `aihub fabric api unassign_capacity` | ported (generic) |
 | list_domains | read | GET admin/domains | `aihub fabric api list_domains` | ported (generic) |
 | get_domain | read | custom handler | `aihub fabric api get_domain` (also `api get_domain`) | ported |
@@ -54,15 +54,15 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 | delete_private_endpoint | write | DELETE workspaces/{ws}/managedPrivateEndpoints/{endpointId} | `aihub fabric api delete_private_endpoint` | ported (generic) |
 | list_gateways | read | GET gateways | `aihub fabric gateways` (also `api list_gateways`) | ported |
 | get_gateway | read | GET gateways/{gatewayId} | `aihub fabric api get_gateway` | ported (generic) |
-| list_items | read | GET workspaces/{ws}/items | `aihub fabric items [--type]` (also `api list_items`) | ported |
-| get_item | read | GET workspaces/{ws}/items/{item} | `aihub fabric item show` (also `api get_item`) | ported |
+| list_items | read | GET workspaces/{ws}/items | `aihub fabric items [--type]` (also `api list_items`) | ported, live |
+| get_item | read | GET workspaces/{ws}/items/{item} | `aihub fabric item show` (also `api get_item`) | ported, live |
 | resolve_item | read | custom handler | `aihub fabric item show (name or id, did-you-mean)` | ported |
-| create_item | write | POST workspaces/{ws}/items | `aihub fabric item create` (also `api create_item`) | ported |
-| update_item | write | PATCH workspaces/{ws}/items/{item} | `aihub fabric item rename` (also `api update_item`) | ported |
-| delete_item | write | DELETE workspaces/{ws}/items/{item} | `aihub fabric item delete --yes` (also `api delete_item`) | ported |
+| create_item | write | POST workspaces/{ws}/items | `aihub fabric item create` (also `api create_item`) | ported, live |
+| update_item | write | PATCH workspaces/{ws}/items/{item} | `aihub fabric item rename` (also `api update_item`) | ported, live |
+| delete_item | write | DELETE workspaces/{ws}/items/{item} | `aihub fabric item delete --yes` (also `api delete_item`) | ported, live |
 | move_item | write | POST workspaces/{ws}/items/{item}/move | `aihub fabric api move_item` | ported (generic) |
-| get_definition | read | POST workspaces/{ws}/items/{item}/getDefinition | `aihub fabric item definition [--out]` (also `api get_definition`) | ported |
-| update_item_definition | write | POST workspaces/{ws}/items/{item}/updateDefinition | `aihub fabric item update` (also `api update_item_definition`) | ported |
+| get_definition | read | POST workspaces/{ws}/items/{item}/getDefinition | `aihub fabric item definition [--out]` (also `api get_definition`) | ported, live |
+| update_item_definition | write | POST workspaces/{ws}/items/{item}/updateDefinition | `aihub fabric item update` (also `api update_item_definition`) | ported, live |
 | get_item_connections | read | GET workspaces/{ws}/items/{item}/connections | `aihub fabric api get_item_connections` | ported (generic) |
 | list_folders | read | GET workspaces/{ws}/folders | `aihub fabric api list_folders` | ported (generic) |
 | create_folder | write | POST workspaces/{ws}/folders | `aihub fabric api create_folder` | ported (generic) |
@@ -87,38 +87,38 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 | deploy_stage | write | custom handler | `aihub fabric deployment deploy` | ported |
 | plan_job | read | custom handler | `aihub fabric run --dry-run` | ported |
 | run_job | write | custom handler | `aihub fabric run` | ported |
-| run_pipeline | write | custom handler | `aihub fabric run` | ported |
-| run_notebook | write | custom handler | `aihub fabric run [--params-file]` | ported |
+| run_pipeline | write | custom handler | `aihub fabric run` | ported, live |
+| run_notebook | write | custom handler | `aihub fabric run [--params-file]` | ported, live |
 | run_table_maintenance | write | custom handler | `aihub fabric lakehouse maintenance` | ported |
 | cancel_job | write | POST workspaces/{ws}/items/{item}/jobs/instances/{runId}/cancel | `aihub fabric job cancel / run --cancel` (also `api cancel_job`) | ported |
 | invoke_udf | write | custom handler | `aihub fabric udf invoke` | ported |
-| livy_run | write | custom handler | `aihub fabric livy run` | ported |
+| livy_run | write | custom handler | `aihub fabric livy run` | ported, live |
 | list_schedules | read | GET workspaces/{ws}/items/{item}/jobs/{jobType}/schedules | `aihub fabric schedules` (also `api list_schedules`) | ported |
 | create_schedule | write | POST workspaces/{ws}/items/{item}/jobs/{jobType}/schedules | `aihub fabric api create_schedule` | ported (generic) with --body-file |
 | update_schedule | write | PATCH workspaces/{ws}/items/{item}/jobs/{jobType}/schedules/{scheduleId} | `aihub fabric api update_schedule` | ported (generic) with --body-file |
 | delete_schedule | write | DELETE workspaces/{ws}/items/{item}/jobs/{jobType}/schedules/{scheduleId} | `aihub fabric api delete_schedule` | ported (generic) |
 | list_runs | read | custom handler | `aihub fabric jobs` | ported |
 | get_run | read | custom handler | `aihub fabric status / job show` | ported |
-| get_logs | read | custom handler | `aihub fabric logs --item I --job ID; spark logs (driver, executor, Livy; --tail --search --errors --cell)` | ported |
-| get_failure | read | custom handler | `aihub fabric failures` | ported |
+| get_logs | read | custom handler | `aihub fabric logs --item I --job ID; spark logs (driver, executor, Livy; --tail --search --errors --cell)` | ported, live |
+| get_failure | read | custom handler | `aihub fabric failures` | ported, live |
 | link_pipeline_run | read | custom handler | `aihub fabric failures (follows pipeline -> child pipeline -> notebook -> Spark)` | ported |
 | prepare_repair | read | custom handler | - | dropped: IDE-only repair chat; the agent reads `failures` and edits the files itself |
 | get_activity_runs | read | custom handler | `aihub fabric logs --item PIPE --job ID` | ported |
 | get_operation | read | custom handler | `aihub fabric api get_operation` (also `api get_operation`) | ported |
 | get_operation_result | read | custom handler | `aihub fabric api get_operation_result` (also `api get_operation_result`) | ported |
-| list_spark_sessions | read | custom handler | `aihub fabric spark sessions` (also `api list_spark_sessions`) | ported |
+| list_spark_sessions | read | custom handler | `aihub fabric spark sessions` (also `api list_spark_sessions`) | ported, live |
 | get_spark_monitoring | read | custom handler | `aihub fabric spark app --view application|jobs|stages|tasks|executors|sql|environment|advice|resourceUsage` | ported |
 | prepare_notebook_test | write | custom handler | `aihub fabric notebook-test prepare` | ported |
 | run_notebook_test | write | custom handler | `aihub fabric notebook-test run` | ported |
 | verify_notebook_test | read | custom handler | `aihub fabric notebook-test verify` | ported |
-| onelake_list | read | custom handler | `aihub fabric onelake list / lakehouse files` | ported |
-| onelake_read | read | custom handler | `aihub fabric onelake read` | ported |
-| onelake_write | write | custom handler | `aihub fabric onelake write` | ported |
-| onelake_mkdir | write | custom handler | `aihub fabric onelake mkdir` | ported |
+| onelake_list | read | custom handler | `aihub fabric onelake list / lakehouse files` | ported, live |
+| onelake_read | read | custom handler | `aihub fabric onelake read` | ported, live |
+| onelake_write | write | custom handler | `aihub fabric onelake write` | ported, live |
+| onelake_mkdir | write | custom handler | `aihub fabric onelake mkdir` | ported, live |
 | onelake_delete | write | custom handler | `aihub fabric onelake delete --yes` | ported |
 | onelake_move | write | custom handler | `aihub fabric onelake move --to` | ported |
-| list_lakehouse_tables | read | GET workspaces/{ws}/lakehouses/{item}/tables?maxResults=100 | `aihub fabric lakehouse tables` (also `api list_lakehouse_tables`) | ported |
-| load_table | write | POST workspaces/{ws}/lakehouses/{item}/tables/{tableName}/load | `aihub fabric lakehouse load` (also `api load_table`) | ported |
+| list_lakehouse_tables | read | GET workspaces/{ws}/lakehouses/{item}/tables?maxResults=100 | `aihub fabric lakehouse tables` (also `api list_lakehouse_tables`) | ported, live |
+| load_table | write | POST workspaces/{ws}/lakehouses/{item}/tables/{tableName}/load | `aihub fabric lakehouse load` (also `api load_table`) | ported, live |
 | refresh_sql_endpoint | write | POST workspaces/{ws}/sqlEndpoints/{sqlEndpointId}/refreshMetadata | `aihub fabric api refresh_sql_endpoint` | ported (generic) with --body-file |
 | get_storage_properties | read | custom handler | `aihub fabric api get_lakehouse / get_warehouse / get_mirrored_database` | ported |
 | list_shortcuts | read | GET workspaces/{ws}/items/{item}/shortcuts | `aihub fabric shortcuts` (also `api list_shortcuts`) | ported |
@@ -130,9 +130,9 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 | list_data_shares | read | GET workspaces/{ws}/items/{item}/externalDataShares | `aihub fabric api list_data_shares` | ported (generic) |
 | create_data_share | write | POST workspaces/{ws}/items/{item}/externalDataShares | `aihub fabric api create_data_share` | ported (generic) with --body-file |
 | revoke_data_share | write | POST workspaces/{ws}/items/{item}/externalDataShares/{shareId}/revoke | `aihub fabric api revoke_data_share` | ported (generic) |
-| sql_query | read | custom handler | `aihub fabric sql` | ported |
-| query_kql | read | custom handler | `aihub fabric kql` | ported |
-| execute_dax | read | custom handler | `aihub fabric dax` | ported |
+| sql_query | read | custom handler | `aihub fabric sql` | ported, live |
+| query_kql | read | custom handler | `aihub fabric kql` | ported, live |
+| execute_dax | read | custom handler | `aihub fabric dax` | ported, live |
 | query_graphql | read | custom handler | `aihub fabric graphql` | ported |
 | get_refresh_history | read | custom handler | `aihub fabric logs --item MODEL` | ported |
 | refresh_semantic_model | write | POST powerbi:groups/{ws}/datasets/{item}/refreshes | `aihub fabric api refresh_semantic_model` | ported (generic) with --body-file |
@@ -161,11 +161,11 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 | list_connection_role_assignments | read | GET connections/{connectionId}/roleAssignments | `aihub fabric api list_connection_role_assignments` | ported (generic) |
 | add_connection_role_assignment | write | POST connections/{connectionId}/roleAssignments | `aihub fabric api add_connection_role_assignment` | ported (generic) with --body-file |
 | delete_connection_role_assignment | write | DELETE connections/{connectionId}/roleAssignments/{roleAssignmentId} | `aihub fabric api delete_connection_role_assignment` | ported (generic) |
-| dbt_detect | write | Kotlin tool (local dbt CLI and Fabric REST) | `aihub fabric dbt detect` | ported |
-| dbt_get_run_results | write | Kotlin tool (local dbt CLI and Fabric REST) | `aihub fabric dbt results` | ported |
+| dbt_detect | write | Kotlin tool (local dbt CLI and Fabric REST) | `aihub fabric dbt detect` | ported, live |
+| dbt_get_run_results | write | Kotlin tool (local dbt CLI and Fabric REST) | `aihub fabric dbt results` | ported, live |
 | dbt_get_job | write | Kotlin tool (local dbt CLI and Fabric REST) | `aihub fabric dbt get-job` | ported |
-| dbt_scaffold | write | Kotlin tool (local dbt CLI and Fabric REST) | `aihub fabric dbt scaffold` | ported |
-| dbt_run | write | Kotlin tool (local dbt CLI and Fabric REST) | `aihub fabric dbt run` | ported |
+| dbt_scaffold | write | Kotlin tool (local dbt CLI and Fabric REST) | `aihub fabric dbt scaffold` | ported, live |
+| dbt_run | write | Kotlin tool (local dbt CLI and Fabric REST) | `aihub fabric dbt run` | ported, live |
 | dbt_upload_project | write | Kotlin tool (local dbt CLI and Fabric REST) | `aihub fabric dbt upload` | ported |
 | dbt_save_job | write | Kotlin tool (local dbt CLI and Fabric REST) | `aihub fabric dbt save-job` | ported |
 | dbt_guide | read | Kotlin knowledge base | - | dropped: static knowledge base; it belongs in a skill, not in the CLI |
