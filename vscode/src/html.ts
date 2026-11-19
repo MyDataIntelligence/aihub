@@ -20,10 +20,12 @@ interface ChipOpts {
   badge?: number;
   /** An icon-only square chip. */
   square?: boolean;
+  /** A chip whose label may be longer (the set chip names the group and the branch). */
+  wide?: boolean;
 }
 
 const chip = (o: ChipOpts) =>
-  `<span class="bar-chip style-${style[o.tone]}${o.square ? " square" : ""}" tabindex="0" role="button" data-act="chip" data-id="${o.id}" title="${esc(o.title)}"><i class="codicon codicon-${o.icon}"></i>${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}${o.badge ? `<span class="bar-badge">${o.badge}</span>` : ""}</span>`;
+  `<span class="bar-chip style-${style[o.tone]}${o.square ? " square" : ""}${o.wide ? " wide" : ""}" tabindex="0" role="button" data-act="chip" data-id="${o.id}" title="${esc(o.title)}"><i class="codicon codicon-${o.icon}"></i>${o.label ? `<span class="lbl">${esc(o.label)}</span>` : ""}${o.badge ? `<span class="bar-badge">${o.badge}</span>` : ""}</span>`;
 
 const sep = `<span class="bar-separator"></span>`;
 
@@ -48,6 +50,7 @@ html, body { margin:0; padding:0; background:var(--vscode-panel-background); }
 .bar-chip:focus-visible { outline:2px solid var(--vscode-focusBorder,var(--bar-accent)); outline-offset:1px; }
 .bar-chip.square { width:26px; padding:0; justify-content:center; }
 .bar-chip .lbl { overflow:hidden; text-overflow:ellipsis; max-width:190px; }
+.bar-chip.wide .lbl { max-width:340px; }
 .bar-chip .codicon { font-size:14px; }
 .style-neutral { border-color:var(--bar-line); }
 .style-gold { color:var(--gold-fg); background-color:var(--gold-bg); border-color:var(--gold-line); }
@@ -93,7 +96,7 @@ export function renderBody(m: BarModel, _now: number = Date.now()): string {
   out.push(sep);
   out.push(chip({ tone: "muted", icon: "git-branch", label: m.story ? `#${m.story.id} ${short(m.story.title, 22)}` : short(m.branch, 28), title: `${m.story ? `Story #${m.story.id} (${m.story.state}): ${m.story.title}\n` : ""}Branch ${m.branch}${m.next ? `\nNext: ${m.next}` : ""}`, id: "story" }));
   const sc = setChip(m.set);
-  if (sc) out.push(chip({ tone: "ok", icon: "repo-forked", label: sc.label, title: sc.title, id: "set" }));
+  if (sc) out.push(chip({ tone: "ok", icon: "repo-forked", label: sc.label, title: sc.title, id: "set", wide: true }));
   if (m.dirty) out.push(chip({ tone: "warn", icon: "edit", title: "Uncommitted changes", id: "story", square: true }));
   if (m.unpushed) out.push(chip({ tone: "warn", icon: "cloud-upload", label: String(m.unpushed), title: `${m.unpushed} commit(s) not pushed`, id: "story" }));
   if (m.pr) {

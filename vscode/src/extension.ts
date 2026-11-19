@@ -346,6 +346,8 @@ export function activate(ctx: vscode.ExtensionContext) {
   reposet.register();
   const refreshSets = registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id), () => reposet.groups());
   bar.start();
+  // the groups come from the CLI: ask again once the first status read is behind us
+  setTimeout(() => refreshSets(), 4000);
 }
 
 export function deactivate() {}
