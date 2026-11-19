@@ -9,3 +9,13 @@
 - `--idiagram` on `learn diagram` pushes a flowchart to iDiagram (the user's own app, no key) with a story of scenes and returns `url` and `playUrl`: put them in the diagram as `idiagramUrl` and `playUrl`; the lesson page then shows "Play story". Only Mermaid and the scenes are sent. A `failed` status is fine: the Mermaid stays.
 - `aihub learn level [set junior|medior|senior]` and `aihub learn after-pr [on|off]`: the level sets the lesson's style; after-pr (off by default, `learn.afterPr` in team.yaml sets the team default) makes `pr create` and `story finish` end with one line offering `/leer`.
 - Rich boards: `aihub learn diagram --board board.json [--story story.json] --json` builds an iDiagram board (tables with sample rows, containers, icons) with a story whose scenes can carry narration and data, and returns `url`, `playUrl` and the board as `mermaid`. Examples: `board-example.json` (an SCD2 address change) and `story-example.json`. Use it when numbers or rows teach more than boxes.
+
+## Example
+`/leer` on a branch that adds a guard to `scale`:
+```sh
+aihub learn change --json > facts.json
+aihub learn validate --file explanation.json --facts facts.json
+aihub learn save --file explanation.json --facts facts.json
+```
+Picture: `flowchart LR` with the new `factor negatief?` decision highlighted; affected: `report.py` calls `scale`.
+

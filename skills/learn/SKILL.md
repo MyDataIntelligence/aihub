@@ -14,19 +14,10 @@ The user wants to understand what a PR, branch or the whole repository does and 
 3. Run `aihub learn level --json` and write `explanation.json` in the team language in that level's `style`, as `references/schema.md` says. Pictures first: Mermaid `diagram.before` and `diagram.after`, then `diagrams` for flow, architecture or dbt lineage taken from the facts.
 4. `aihub learn validate --file explanation.json --facts facts.json`; fix every line it names, then validate again.
 5. `aihub learn save --file explanation.json --facts facts.json` keeps it in the user's personal store; tell them to open it in VS Code (AI Context Hub: Learn). In the chat give one sentence and the before/after pictures as Mermaid blocks.
-6. A question without a PR or branch ("how does this team work", "what changed this week", "explain this repository") is still a lesson: use `flow`, `week`, `onboarding` or `glossary`, and when `week` shows no commits say so and teach from the flow and the repository instead of stopping at a chat answer. Write `explanation.json` and save it as in steps 3 to 5; never answer in the chat only.
+6. No PR or branch ("how does this team work", "what changed this week")? Still a lesson: use `flow`, `week` or `onboarding`, write `explanation.json`, save it; never chat only.
 
 ## What the CLI fills
 Files, hunks, changed names, who uses them, tests and dbt lineage, from git in about a second. It is a text search, not a call graph.
 
 ## If it fails
 No target branch: pass `--range origin/main..HEAD`. PR not found locally: `git fetch origin`, then retry.
-
-## Example
-`/leer` on a branch that adds a guard to `scale`:
-```sh
-aihub learn change --json > facts.json
-aihub learn validate --file explanation.json --facts facts.json
-aihub learn save --file explanation.json --facts facts.json
-```
-Picture: `flowchart LR` with the new `factor negatief?` decision highlighted; affected: `report.py` calls `scale`.
