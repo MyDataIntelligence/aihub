@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, wr
 import { dirname, join, resolve } from "node:path";
 import { ensureBranch, findStoryBranchName } from "./branches.js";
 import { repoClient, type Ctx } from "./context.js";
+import { repoRoot } from "./git.js";
 import { AihubError } from "./errors.js";
 import { isDirty, listWorktrees, mustGit, refSha, samePath, tryGit, unpushedCount } from "./gitx.js";
 import { clientForDir, fetchOrigin, resolveRepoDirs } from "./repos.js";
@@ -14,6 +15,10 @@ const META = ".aihub-set.json";
 
 export interface SetMeta {
   story: number;
+  /** repo group name when `aihub worktree open` made the set (story is 0 then) */
+  group?: string;
+  /** the .code-workspace file `aihub worktree open` wrote; removed with the set */
+  workspace?: string;
   branch: string;
   repos: { name: string; source: string; path: string }[];
 }
@@ -21,6 +26,8 @@ export interface SetMeta {
 export function defaultSetsRoot(repoRoot: string): string {
   return join(dirname(repoRoot), "worktrees");
 }
+
+export const slugOfBranch = (branch: string) => branch.replace(/[\\/:*?"<>|\s]+/g, "-").replace(/^-+|-+$/g, "") || "branch";
 
 export const setFolder = (root: string, story: number) => join(root, `story-${story}`);
 
@@ -111,7 +118,7 @@ function status(path: string): string {
 }
 
 export function listSets(ctx: Ctx, o: { root?: string; json?: boolean }): string {
-  const { root } = repoClient(ctx);
+  const root = repoRoot(ctx.cwd);
   const here = o.root ? undefined : findSet(ctx.cwd);
   const sets = readSets(resolve(o.root ?? (here ? dirname(here.folder) : defaultSetsRoot(root))));
   if (o.json) return JSON.stringify(sets.map((s) => ({ folder: s.folder, ...s.meta, status: s.meta.repos.map((r) => ({ name: r.name, status: status(r.path) })) })));
@@ -121,12 +128,12 @@ export function listSets(ctx: Ctx, o: { root?: string; json?: boolean }): string
     .join("\n");
 }
 
-export function removeSet(ctx: Ctx, o: { story: number; root?: string; json?: boolean }): string {
-  const { root } = repoClient(ctx);
+export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?: string; json?: boolean }): string {
+  const root = repoRoot(ctx.cwd);
   const setsRoot = resolve(o.root ?? defaultSetsRoot(root));
-  const folder = setFolder(setsRoot, o.story);
+  const folder = o.story ? setFolder(setsRoot, o.story) : join(setsRoot, slugOfBranch(o.branch ?? ""));
   const metaPath = join(folder, META);
-  if (!existsSync(metaPath)) throw new AihubError(`no worktree set for story ${o.story} under ${setsRoot}`);
+  if (!existsSync(metaPath)) throw new AihubError(`no worktree set for ${o.story ? `story ${o.story}` : `branch '${o.branch}'`} under ${setsRoot}`);
   const meta = JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta;
   const lines: string[] = [];
   const left: SetMeta["repos"] = [];
@@ -153,14 +160,15 @@ export function removeSet(ctx: Ctx, o: { story: number; root?: string; json?: bo
     lines.push(`set kept: ${left.length} worktree(s) need attention`);
   } else {
     rmSync(metaPath);
+    if (meta.workspace) rmSync(meta.workspace, { force: true });
     try {
       rmdirSync(folder);
     } catch {
       lines.push(`folder ${folder} not removed: it holds other files`);
     }
-    lines.push(`set for story ${o.story} removed`);
+    lines.push(`set ${o.story ? `for story ${o.story}` : `'${meta.branch}'`} removed`);
   }
-  return o.json ? JSON.stringify({ story: o.story, lines, kept: left.map((r) => r.name) }) : lines.join("\n");
+  return o.json ? JSON.stringify({ story: o.story ?? 0, branch: meta.branch, lines, kept: left.map((r) => r.name) }) : lines.join("\n");
 }
 
 export { refSha };

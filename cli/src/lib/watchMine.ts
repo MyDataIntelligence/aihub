@@ -1,10 +1,11 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.js";
 import { join } from "node:path";
 import type { AdoClient } from "./ado.js";
 import { aihubDir, ensureDir } from "./aihubDir.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
+import { deliver, type ToastItem } from "./notifyPolicy.js";
 import { detectClient, eventUrl, storeEvent } from "./open.js";
 import { parseDuration } from "./pipeline.js";
 import { loadTeam } from "./team.js";
@@ -31,7 +32,13 @@ export interface MineEvent {
   label?: string;
   /** Agent the chat starts with. */
   agent?: string;
+  /** Needs a reaction from me. Default by kind: mention, workitem-mention, review and my red build do; a plain comment does not. */
+  needed?: boolean;
 }
+
+const NEEDED_KINDS: MineKind[] = ["mention", "workitem-mention", "review", "build"];
+export const isNeeded = (e: MineEvent): boolean => e.needed ?? NEEDED_KINDS.includes(e.kind);
+const WHAT: Partial<Record<MineKind, string>> = { thread: "comment", mention: "vermelding", review: "review gevraagd", vote: "stem", policy: "policy", pr: "PR gesloten", build: "build rood", "workitem-mention": "vermelding" };
 
 export interface MineState {
   version: 1;
@@ -209,7 +216,7 @@ async function threadEvents(client: AdoClient, me: Me, f: Found): Promise<MineEv
     const iTookPart = comments.some((c) => same(c.author?.id, me.id));
     if (!open || !(f.mine || iTookPart)) continue;
     const verb = iTookPart && comments.length > 1 ? "replied to your comment" : "commented";
-    out.push({ id: `thread:${base}:${last.id}`, kind: "thread", message: `${last.author?.displayName ?? "Someone"} ${verb} on PR ${prLabel(pr)}: ${clip(last.content)}` });
+    out.push({ id: `thread:${base}:${last.id}`, kind: "thread", needed: verb === "replied to your comment", message: `${last.author?.displayName ?? "Someone"} ${verb} on PR ${prLabel(pr)}: ${clip(last.content)}` });
   }
   return out;
 }
@@ -343,12 +350,20 @@ export async function runMine(ctx: Ctx, spec: WatchSpec, deps: MineDeps = {}): P
       state.prs = prs;
       writeState(root, state);
       failures = 0;
+      const toasts: (ToastItem & { eventId: string })[] = [];
       for (const e of fresh) {
         reported.push(e);
         logEvent(root, now(), `mine/${e.kind}`, e.message);
         const id = `${spec.id}-${now().toString(36)}-${++seq}`;
         storeEvent(ctx.env, { id, repo: spec.repo ?? root, client: spec.client, session: spec.session, message: e.message, prompt: e.prompt ?? `${e.message} — ga verder`, agent: e.agent, at: now() });
-        if (spec.notify && !(await notifier("aihub", e.message, { label: e.label ?? "Open", url: eventUrl(id) }))) ctx.out(`${e.message}\n  open it with: aihub open --event ${id}`);
+        const pr = /!(\d+)/.exec(e.message)?.[1];
+        toasts.push({ eventId: id, message: e.message, pr: pr ? Number(pr) : undefined, what: WHAT[e.kind], needed: isNeeded(e), label: e.label, url: eventUrl(id) });
+      }
+      // one toast per round, whatever the setting lets through (the rest stays in `aihub watch events`)
+      if (spec.notify && toasts.length) {
+        const r = await deliver(ctx.env, now(), notifier, toasts, { bundle: true });
+        for (const f of r.failed as (ToastItem & { eventId: string })[]) ctx.out(`${f.message}
+  open it with: aihub open --event ${f.eventId}`);
       }
     } catch (e) {
       if (++failures >= 5) {
@@ -428,7 +443,7 @@ export type RegRunner = (args: string[]) => { status: number | null };
 const psq = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 export function logonCommand(root: string, node: string, cli: string, interval: string): string {
-  return `powershell.exe -NoProfile -WindowStyle Hidden -Command "Set-Location -LiteralPath ${psq(root)}; & ${psq(node)} ${psq(cli)} watch --mine --notify --interval ${interval}"`;
+  return `conhost.exe --headless powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "Set-Location -LiteralPath ${psq(root)}; & ${psq(node)} ${psq(cli)} watch --mine --notify --interval ${interval}"`;
 }
 
 const defaultReg: RegRunner = (args) => spawnSync("reg", args, { stdio: "ignore" });

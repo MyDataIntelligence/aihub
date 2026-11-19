@@ -222,6 +222,7 @@ crossRepo:                               # settings for `aihub port` and `aihub 
 | Key | Meaning |
 |---|---|
 | `repositories[].path` | Local clone of that repository (absolute, or relative to the current repository). Without it the CLI looks for a sibling directory with that origin and otherwise clones temporarily. |
+| `repositories[].groups` | Optional list of group names this repository belongs to. `aihub worktree open --group <name> --branch <b>` opens every repository of the group on that branch (personal groups from `aihub worktree groups save` work without this). |
 | `crossRepo.pathMaps` | Named lists of `from`/`to` directory prefixes. The longest `from` wins; files outside every map are reported, never dropped silently. `aihub port --path-map "src=>dst"` adds an ad-hoc map. |
 | `crossRepo.testTarget` | Repository and active branch that `aihub crossrepo test-resources` pushes to when `--to-repo`/`--target` are absent. |
 | `crossRepo.testResources` | Source repository, glob list and optional target directory prefix for the same command. |

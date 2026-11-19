@@ -18,6 +18,7 @@ import {
   type MineState,
 } from "../src/lib/watchMine.js";
 import { AdoClient, parseRemote } from "../src/lib/ado.js";
+import { setNotifyMode } from "../src/lib/notifyPolicy.js";
 import { ctxFor, fakeFetch, makeRepo, type Route } from "./helpers.js";
 
 const ME = { id: "me-guid", name: "Ferron Test" };
@@ -222,6 +223,7 @@ describe("runMine", () => {
     const { ctx, lines } = ctxFor(dir, f.fn);
     const toasts: { title: string; message: string; url?: string }[] = [];
     const notifier = (title: string, message: string, a?: { url: string }) => (toasts.push({ title, message, url: a?.url }), true);
+    setNotifyMode(ctx.env, "all"); // these tests are about the poller; the notify levels have their own tests (notify-policy.test.ts)
     return { dir, ctx, lines, toasts, notifier };
   }
 
@@ -306,7 +308,7 @@ describe("start, list, stop, logon", () => {
     expect(registerAtLogon(ctx, "2m", "win32", "C:\\node\\node.exe", "C:\\aihub\\cli.js", reg)).toContain("will start at logon");
     expect(calls[0].slice(0, 6)).toEqual(["add", LOGON_KEY, "/v", LOGON_NAME, "/t", "REG_SZ"]);
     expect(calls[0][7]).toContain("& 'C:\\node\\node.exe' 'C:\\aihub\\cli.js' watch --mine");
-    expect(logonCommand("R", "N", "C", "2m")).toBe(`powershell.exe -NoProfile -WindowStyle Hidden -Command "Set-Location -LiteralPath 'R'; & 'N' 'C' watch --mine --notify --interval 2m"`);
+    expect(logonCommand("R", "N", "C", "2m")).toBe(`conhost.exe --headless powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "Set-Location -LiteralPath 'R'; & 'N' 'C' watch --mine --notify --interval 2m"`);
     expect(calls[0][7]).toContain("watch --mine --notify --interval 2m");
     expect(removeAtLogon("win32", reg)).toBe(`removed the Run entry ${LOGON_NAME}`);
     expect(calls[1]).toEqual(["delete", LOGON_KEY, "/v", LOGON_NAME, "/f"]);

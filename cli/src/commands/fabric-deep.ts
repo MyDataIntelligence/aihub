@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../lib/proc.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AihubError } from "../lib/errors.js";
