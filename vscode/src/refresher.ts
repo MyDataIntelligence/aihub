@@ -1,5 +1,6 @@
 import { CliError } from "./cli";
 import type { BarError, BarModel } from "./model";
+import { count, span } from "./perf/probe";
 
 export type Reason = "start" | "focus" | "git" | "timer" | "manual";
 
@@ -29,14 +30,15 @@ export class Refresher {
   /** Resolves when the read this call caused (or joined) is done. */
   async request(reason: Reason): Promise<void> {
     if (reason !== "manual" && reason !== "start") {
-      if (!this.focused) return;
-      if (this.now() - this.lastAt < this.opts.minGapMs() / 2) return;
+      if (!this.focused) return void count(`refresh.skip.${reason}.unfocused`);
+      if (this.now() - this.lastAt < this.opts.minGapMs() / 2) return void count(`refresh.skip.${reason}.fresh`);
     }
     if (this.inFlight) {
       this.pending = true;
+      count(`refresh.skip.${reason}.joined`);
       return this.inFlight;
     }
-    this.inFlight = this.run().finally(() => {
+    this.inFlight = this.run(reason).finally(() => {
       this.inFlight = undefined;
       if (this.pending) {
         this.pending = false;
@@ -46,13 +48,16 @@ export class Refresher {
     return this.inFlight;
   }
 
-  private async run(): Promise<void> {
+  private async run(reason: Reason): Promise<void> {
+    const end = span("refresh", "status", { reason });
     try {
       const model = await this.load();
       this.last = model;
+      end(true);
       this.publish({ ok: true, model });
     } catch (e) {
       const kind = e instanceof CliError ? e.kind : "failed";
+      end(false, { error: kind });
       this.publish({ ok: false, error: { kind, message: (e as Error).message }, last: this.last });
     } finally {
       this.lastAt = this.now();
