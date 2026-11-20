@@ -14,6 +14,7 @@ import { requiredPaths, validateTeam } from "./schema.js";
 import { defaultTargetFor, loadTeam, readUtf8, TEAM_FILE } from "./team.js";
 import { resolveTemplate } from "./templates.js";
 import { legacyFootprint, LEGACY_FIX } from "./legacy.js";
+import { aihubDir } from "./aihubDir.js";
 
 export interface Check {
   name: string;
@@ -179,7 +180,22 @@ export function runChecks(ctx: Ctx): Check[] {
   } catch {
     /* an unreadable folder must not fail the doctor */
   }
+  if (root) {
+    const perf = vscodePerf(root);
+    if (perf) checks.push(perf);
+  }
   return checks;
+}
+
+/** The VS Code extension's performance log: where it is and its summary of the last 24 h (written by the extension). */
+function vscodePerf(root: string): Check | undefined {
+  try {
+    const j = JSON.parse(readFileSync(aihubDir(root, "vscode-perf.json"), "utf8")) as { logDir?: string; updated?: string; summary?: string };
+    if (!j.logDir) return undefined;
+    return ok("vscode-perf", `log in ${j.logDir}; ${j.summary ?? "no summary yet"}${j.updated ? ` (as of ${j.updated})` : ""}`);
+  } catch {
+    return undefined;
+  }
 }
 
 /** The aihub version in the marker of the installed aihub agent file. */

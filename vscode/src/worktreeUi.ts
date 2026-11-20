@@ -5,6 +5,7 @@ import type { GroupJson } from "./repoSetModel";
 import { findRepos, validateBranchName, type Repo } from "./worktrees/core";
 import { deleteGroup, listGroups, saveGroup } from "./worktrees/extras";
 import { createGit } from "./worktrees/git";
+import { timed } from "./perf/probe";
 import { cleanUpCandidate, createSet, lossSummary, mergedWorktrees, pushSet, removeSet, setStatuses, syncSet, type RepoStep } from "./worktrees/service";
 import { defaultSetsRoot, listSetsIn, readSet, removeRepoFromSet, setWorkspaceFile, type SetRepo, type WorktreeSet } from "./worktrees/sets";
 
@@ -41,11 +42,12 @@ export class WorktreeSetsProvider implements vscode.TreeDataProvider<Node> {
   }
 
   async getChildren(n?: Node): Promise<Node[]> {
-    if (!n) {
-      const sets: Node[] = (await listSetsIn([setsRoot()])).map((set) => ({ kind: "set", set }));
-      const groups: Node[] = (await this.groups().catch(() => [] as GroupJson[])).map((group) => ({ kind: "group", group }));
-      return [...sets, ...groups];
-    }
+    if (!n)
+      return timed("tree", "worktreeSets.list", async () => {
+        const sets: Node[] = (await listSetsIn([setsRoot()])).map((set) => ({ kind: "set", set }));
+        const groups: Node[] = (await this.groups().catch(() => [] as GroupJson[])).map((group) => ({ kind: "group", group }));
+        return [...sets, ...groups];
+      });
     if (n.kind === "set") return n.set.repos.map((repo) => ({ kind: "repo", set: n.set, repo }));
     return [];
   }
@@ -73,7 +75,8 @@ Open on branch... opens all of them on one branch`;
     it.contextValue = "aihubSetRepo";
     it.iconPath = new vscode.ThemeIcon("repo");
     it.tooltip = n.repo.path;
-    const s = (await setStatuses(this.git, remote(), n.set)).find((x) => x.name === n.repo.name);
+    // one status read per repository row (git status per repo of the set)
+    const s = (await timed("tree", "worktreeSets.repoStatus", () => setStatuses(this.git, remote(), n.set), { repos: n.set.repos.length })).find((x) => x.name === n.repo.name);
     if (s) it.description = !s.exists ? "missing" : [s.dirty ? `${s.dirty} changed` : "", s.ahead ? `${s.ahead} to push` : s.unpushed ? `${s.unpushed} to push` : "", s.behind ? `${s.behind} behind` : ""].filter(Boolean).join(", ") || "clean";
     return it;
   }

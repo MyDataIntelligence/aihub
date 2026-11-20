@@ -5,7 +5,25 @@ import { join } from "node:path";
 import { AihubError } from "./errors.js";
 import { gitGate } from "./trace.js";
 
+/**
+ * Read-only commands that `aihub bar` repeats in each of its parts (root, branch, remote, common dir): with the memo on,
+ * each runs once per process. Only for commands that change nothing (bar); a command that switches branches keeps it off.
+ */
+let readMemo: Map<string, string> | undefined;
+const MEMO = /^(rev-parse|config)$/;
+export function memoGitReads(on: boolean): void {
+  readMemo = on ? new Map() : undefined;
+}
+
 export function git(cwd: string, args: string[], opts: { allowFail?: boolean } = {}): string {
+  const key = readMemo && MEMO.test(args[0] ?? "") && (args[0] !== "config" || args[1] === "--get") ? `${cwd}\0${opts.allowFail ? 1 : 0}\0${args.join("\0")}` : undefined;
+  if (key && readMemo!.has(key)) return readMemo!.get(key)!;
+  const out = gitUncached(cwd, args, opts);
+  if (key) readMemo!.set(key, out);
+  return out;
+}
+
+function gitUncached(cwd: string, args: string[], opts: { allowFail?: boolean }): string {
   if (gitGate(cwd, args)) return "";
   const r = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   if (r.error) throw new AihubError(`git is not available: ${r.error.message}`);

@@ -67,4 +67,15 @@ describe("aihub doctor", () => {
     expect(by(stale, "skills:opencode").fix).toContain("aihub skills update");
     void join; void sh;
   });
+
+  it("shows where the VS Code performance log is and its 24 h summary, when the extension wrote one", async () => {
+    const { dir } = makeRepo();
+    const h = tmp("aihub-home-");
+    const env = { HOME: h, USERPROFILE: h, AIHUB_ADO_PAT: "x" };
+    expect((await doctor(dir, env)).report.checks.find((c) => c.name === "vscode-perf")).toBeUndefined();
+    write(dir, ".git/aihub/vscode-perf.json", JSON.stringify({ logDir: "/profile/globalStorage/ferronhooi.ai-context-hub/perf", updated: "2026-11-20T10:00:00.000Z", summary: "last 24 h: activation 180 ms; 13 processes (max 12/min, 4 parallel); 2 notifications" }));
+    const perf = by((await doctor(dir, env)).report, "vscode-perf");
+    expect(perf.status).toBe("OK");
+    expect(perf.detail).toBe("log in /profile/globalStorage/ferronhooi.ai-context-hub/perf; last 24 h: activation 180 ms; 13 processes (max 12/min, 4 parallel); 2 notifications (as of 2026-11-20T10:00:00.000Z)");
+  });
 });

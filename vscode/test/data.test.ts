@@ -72,3 +72,56 @@ describe("events", () => {
     expect((await new BarLoader(stubRunner({ FAKE_AIHUB_FAIL: "watch" }), opts(dir, false)).load()).events).toEqual([]);
   });
 });
+
+describe("one aihub bar read per refresh", () => {
+  const combined = (dir: string, extra: Record<string, unknown> = {}) => ({ ...opts(dir), combined: "auto" as const, ...extra });
+
+  it("reads the whole bar with one process and asks for Fabric again only after its TTL", async () => {
+    const dir = scratch();
+    const log = join(dir, "calls.txt");
+    writeFileSync(log, "");
+    let t = 1_000_000;
+    const loader = new BarLoader(stubRunner({ FAKE_AIHUB_CALLS: log, FAKE_AIHUB_BAR: "1" }), combined(dir, { now: () => t }));
+    const m = await loader.load();
+    expect(m.story?.id).toBe(1234);
+    expect(m.pr).toMatchObject({ id: 45 });
+    expect(m.fabric?.failed).toHaveLength(1);
+    expect(m.watching).toBe(true);
+    expect(m.events).toHaveLength(2);
+    expect((await loader.load()).fabric?.failed).toHaveLength(1); // from the cache
+    t += 61_000;
+    await loader.load();
+    expect(calls(log)).toEqual(["bar --fabric", "bar", "bar --fabric"]);
+  });
+
+  it("falls back to the separate reads once for a CLI without bar", async () => {
+    const dir = scratch();
+    const log = join(dir, "calls.txt");
+    writeFileSync(log, "");
+    const loader = new BarLoader(stubRunner({ FAKE_AIHUB_CALLS: log }), combined(dir));
+    expect((await loader.load()).pr?.id).toBe(45);
+    await loader.load();
+    expect(calls(log).filter((c) => c.startsWith("bar"))).toEqual(["bar --fabric"]);
+    expect(calls(log).filter((c) => c === "status")).toHaveLength(2);
+  });
+
+  it("asks Fabric once per branch when the branch has no workspace, until a refresh or branch change invalidates", async () => {
+    for (const mode of ["combined", "separate"] as const) {
+      const dir = scratch();
+      const log = join(dir, "calls.txt");
+      writeFileSync(log, "");
+      let t = 1_000_000;
+      const env = { FAKE_AIHUB_CALLS: log, FAKE_AIHUB_FAIL: "fabric", ...(mode === "combined" ? { FAKE_AIHUB_BAR: "1" } : {}) };
+      const loader = new BarLoader(stubRunner(env), mode === "combined" ? combined(dir, { now: () => t }) : { ...opts(dir), now: () => t });
+      for (let i = 0; i < 4; i++) {
+        expect((await loader.load()).fabric).toBeNull();
+        t += 10 * 60_000; // far past the 60 s TTL
+      }
+      const fabricAsks = () => calls(log).filter((c) => c === "bar --fabric" || c === "fabric failures").length;
+      expect(fabricAsks(), mode).toBe(1);
+      loader.invalidate();
+      await loader.load();
+      expect(fabricAsks(), mode).toBe(2);
+    }
+  });
+});

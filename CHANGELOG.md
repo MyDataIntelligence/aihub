@@ -2,6 +2,11 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.0.9
+- Faster `aihub status` without a sign-in: az is skipped when it has no signed-in account, a failed az or git credential attempt is remembered for a few minutes (until the az login changes), a refused PAT stops after the first read. The answer says `signedIn: false` with one warning instead of a warning per read (7-12 s became ~0.6 s).
+- `aihub bar --json [--fabric]`: everything the VS Code status bar shows (status, checks of the active PR, Fabric failures and logs, watching, events) in one process; git reads are shared within it.
+- With `AIHUB_PERF_LOG=<folder>` (set by the VS Code extension) every network call (host, path without query, status, duration), child process and the start-up time of a run go to `aihub-cli-perf-<day>.jsonl`; `aihub doctor` shows where the extension's performance log is. Release notes: docs/releases/1.0.9.md.
+
 ## 1.0.8
 - `aihub worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--json]`: several repositories on the SAME branch at once. An existing branch (local or origin) is used, a missing one is created from `--from` or the repository's team.yaml `defaultTarget` (local only, not pushed); mode worktree leaves the normal checkout alone, mode switch refuses a repository with uncommitted changes and continues with the others; one `.code-workspace` with all folders opens in one VS Code window; one table row per repository. `aihub worktree groups list|save|remove` (personal, `~/.config/aihub/groups.json`; team.yaml `repositories[].groups` also works), `aihub worktree branches --group X` (where a branch exists, e.g. 2/3), `aihub worktree remove --branch <b>`.
 - Quiet background on Windows: every child process (git, az, node, the toast PowerShell, `aihub open`) is started through one wrapper with `windowsHide: true`, the toast and the logon entry run PowerShell hidden and non-interactive behind `conhost --headless`, and the `aihub://` handler has no console. No window pops up or takes focus while following a pipeline.

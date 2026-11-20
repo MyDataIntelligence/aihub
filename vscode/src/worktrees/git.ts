@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { trackedExecFile } from "../perf/probe";
 
 export interface GitResult {
   code: number;
@@ -14,7 +14,7 @@ export function createGit(gitPath = "git", log?: (line: string) => void): Git {
     new Promise<GitResult>((resolve) => {
       log?.(`git ${args.join(" ")} (${cwd})`);
       try {
-        execFile(
+        trackedExecFile(
           gitPath,
           args,
           {
