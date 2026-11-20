@@ -1,4 +1,5 @@
 import * as cp from "node:child_process";
+import { perfOn, recordChild } from "./perf.js";
 
 /**
  * The only way aihub starts a child process. Every call gets `windowsHide: true`, so no console window ever appears or
@@ -19,5 +20,18 @@ const rawSpawn = cp.spawn as unknown as (...x: unknown[]) => unknown;
 type SpawnSyncFn = typeof cp.spawnSync;
 type SpawnFn = typeof cp.spawn;
 
-export const spawnSync: SpawnSyncFn = ((...a: unknown[]) => rawSync(...withHidden(a))) as SpawnSyncFn;
-export const spawn: SpawnFn = ((...a: unknown[]) => rawSpawn(...withHidden(a))) as SpawnFn;
+export const spawnSync: SpawnSyncFn = ((...a: unknown[]) => {
+  if (!perfOn()) return rawSync(...withHidden(a));
+  const t0 = performance.now();
+  const r = rawSync(...withHidden(a)) as { status?: number | null };
+  recordChild(a[0], a[1], performance.now() - t0, r?.status);
+  return r;
+}) as SpawnSyncFn;
+export const spawn: SpawnFn = ((...a: unknown[]) => {
+  const child = rawSpawn(...withHidden(a)) as cp.ChildProcess;
+  if (perfOn()) {
+    const t0 = performance.now();
+    child.once("close", (code) => recordChild(a[0], a[1], performance.now() - t0, code));
+  }
+  return child;
+}) as SpawnFn;

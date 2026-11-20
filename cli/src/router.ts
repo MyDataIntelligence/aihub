@@ -8,7 +8,6 @@ import * as pr from "./commands/pr.js";
 import * as skills from "./commands/skills.js";
 import * as fabric from "./commands/fabric.js";
 import * as robot from "./commands/robot.js";
-import * as cherryPick from "./commands/cherry-pick.js";
 import * as branch from "./commands/branch.js";
 import * as story from "./commands/story.js";
 import * as pipeline from "./commands/pipeline.js";
@@ -25,6 +24,7 @@ import * as port from "./commands/port.js";
 import * as crossrepo from "./commands/crossrepo.js";
 import * as note from "./commands/note.js";
 import * as status from "./commands/status.js";
+import * as bar from "./commands/bar.js";
 import * as watch from "./commands/watch.js";
 import * as update from "./commands/update.js";
 import * as explain from "./commands/explain.js";
@@ -38,8 +38,6 @@ import * as repos from "./commands/repos.js";
 import * as open from "./commands/open.js";
 import * as commit from "./commands/commit.js";
 import * as boards from "./commands/boards.js";
-import * as testplanCmd from "./commands/testplan.js";
-import * as artifactsCmd from "./commands/artifacts.js";
 import * as devops from "./commands/devops.js";
 import * as search from "./commands/search.js";
 import * as repo from "./commands/repo.js";
@@ -50,15 +48,17 @@ import * as probe from "./commands/probe.js";
 import * as research from "./commands/research.js";
 import * as learn from "./commands/learn.js";
 import * as legacy from "./commands/legacy.js";
-import * as fixCmd from "./commands/fix.js";
-import * as teamCmd from "./commands/team.js";
-import * as standupCmd from "./commands/standup.js";
-import * as handoffCmd from "./commands/handoff.js";
 import * as prList from "./commands/pr-list.js";
 import * as prAdmin from "./commands/pr-admin.js";
 import * as dbt from "./commands/dbt.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
+
+/** A command whose module is loaded when it runs: a call loads only what it needs (start-up ~0.15 s faster). */
+const lazy =
+  (load: () => Promise<{ run: CommandFn }>): CommandFn =>
+  async (argv, ctx) =>
+    (await load()).run(argv, ctx);
 
 /**
  * Command registry. To add a command: create src/commands/<name>.ts exporting
@@ -75,7 +75,7 @@ export const commands: Record<string, CommandFn> = {
   fabric: fabric.run,
   dbt: dbt.run,
   robot: robot.run,
-  "cherry-pick": cherryPick.run,
+  "cherry-pick": lazy(() => import("./commands/cherry-pick.js")),
   branch: branch.run,
   pipeline: pipeline.run,
   batch: batch.run,
@@ -98,6 +98,7 @@ export const commands: Record<string, CommandFn> = {
   crossrepo: crossrepo.run,
   note: note.run,
   status: status.run,
+  bar: bar.run,
   watch: watch.run,
   update: update.run,
   explain: explain.run,
@@ -105,8 +106,8 @@ export const commands: Record<string, CommandFn> = {
   open: open.run,
   commit: commit.run,
   boards: boards.run,
-  testplan: testplanCmd.run,
-  artifacts: artifactsCmd.run,
+  testplan: lazy(() => import("./commands/testplan.js")),
+  artifacts: lazy(() => import("./commands/artifacts.js")),
   devops: devops.run,
   search: search.run,
   repo: repo.run,
@@ -114,19 +115,20 @@ export const commands: Record<string, CommandFn> = {
   library: library.run,
   test: testCmd.run,
   legacy: legacy.run,
-  fix: fixCmd.run,
-  team: teamCmd.run,
+  fix: lazy(() => import("./commands/fix.js")),
+  team: lazy(() => import("./commands/team.js")),
   probe: probe.run,
   research: research.run,
   learn: learn.run,
-  standup: standupCmd.run,
-  handoff: handoffCmd.run,
+  standup: lazy(() => import("./commands/standup.js")),
+  handoff: lazy(() => import("./commands/handoff.js")),
 };
 
 export const VERSION = cliVersion();
 
 /** One-line usage per command, printed for `aihub <command> --help` (an agent that asks for help must not get an option error). */
 export const HELP: Record<string, string> = {
+  bar: "aihub bar --json [--fabric] [--events N]\n    Everything the VS Code status bar shows in one process: status, checks of the active PR, Fabric failures and logs (--fabric), watching, the newest events.",
   "cherry-pick": 'aihub cherry-pick --from <pr N|url|commit sha|story id> --to <branch> [--to <branch>...|--to-group <name>] [--summary-text "<1-2 sentences>"] [--no-pr|--direct]\n    Cherry-picks in a temp worktree, pushes a cherry-pick/... branch per target and opens a PR per target (template, story link) unless --no-pr.',
   comments: "aihub comments get [--pr <url|N>]\naihub comments reply [--pr <url|N>] --reply \"<threadId>:<status>:<text>\" [--reply ...]   (no file needed)\naihub comments reply [--pr <url|N>] --replies-file replies.yaml\n    replies.yaml: a list of {threadId, text, status} with status fixed|wontFix|closed|active (thread: and resolve: true also work).",
   story: "aihub story template   (prints the team story template: the headings to use)\naihub story create --title \"<title>\" --body-file story.md   (one ## <heading> section per template heading, all filled)",

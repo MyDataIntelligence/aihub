@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultExec, type Exec } from "./auth.js";
+import { azToken, defaultExec, type Exec } from "./auth.js";
 import { AihubError } from "./errors.js";
 import { redact } from "./fabric-redact.js";
 import { anyGlob } from "./glob.js";
@@ -235,11 +235,7 @@ export function makeFabricAuth(deps: FabricAuthDeps): AuthFn {
       /* ignore a broken cache */
     }
     try {
-      const j = JSON.parse(exec("az", ["account", "get-access-token", "--resource", resource, "--output", "json"])) as {
-        accessToken: string;
-        expires_on?: number | string;
-        expiresOn?: string;
-      };
+      const j = azToken(exec, !deps.exec, deps.env, resource, now);
       const expiresAt = j.expires_on ? Number(j.expires_on) * 1000 : Date.parse(j.expiresOn ?? "") || now() + 30 * 60_000;
       try {
         writeFileSync(cacheFile, JSON.stringify({ token: j.accessToken, expiresAt }), { mode: 0o600 });

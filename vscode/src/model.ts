@@ -20,6 +20,8 @@ export interface StatusJson {
   done?: string[];
   next?: string;
   warnings?: string[];
+  /** false when there is no Azure DevOps credential (nothing remote was read). Older CLIs leave it out. */
+  signedIn?: boolean;
   set?: { story: number; branch: string; group?: string; total?: number; repos: string[] } | null;
 }
 
@@ -96,6 +98,8 @@ export interface BarModel {
   unpushed: number;
   next: string;
   warnings: string[];
+  /** false: no Azure DevOps credential, so story, PR and pipeline are unknown */
+  signedIn: boolean;
   fabric: FabricModel | null;
   events: BarEvent[];
   watching: boolean;
@@ -197,6 +201,7 @@ export function buildModel(input: {
     unpushed: typeof s.unpushed === "number" ? s.unpushed : 0,
     next: text(s.next),
     warnings: asArray<string>(s.warnings),
+    signedIn: s.signedIn !== false,
     fabric: input.fabric ?? null,
     events: input.events ?? [],
     watching: !!input.watching,
@@ -240,7 +245,7 @@ export function ago(at: number, now: number): string {
 }
 
 export interface StatusItem {
-  id: "story" | "pr" | "pipeline" | "threads" | "fabric" | "events";
+  id: "story" | "signin" | "pr" | "pipeline" | "threads" | "fabric" | "events";
   text: string;
   tooltip: string;
   tone: Tone;
@@ -259,6 +264,9 @@ export function statusItems(m: BarModel): StatusItem[] {
     tone: "muted",
     command: "aihub.showBar",
   });
+  if (!m.signedIn) {
+    items.push({ id: "signin", text: "$(account) not signed in", tooltip: "Not signed in to Azure DevOps: run az login, or set AIHUB_ADO_PAT. Story, pull request and pipeline appear after that.", tone: "warn", command: "aihub.showBar" });
+  }
   if (m.pr) {
     items.push({
       id: "pr",

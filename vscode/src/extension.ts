@@ -90,9 +90,11 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   /** (Re)builds the runner, the loader, the timer and the git watcher from the settings. */
   private configure() {
     this.cwd = repoFolder();
-    this.runner = makeRunner({ command: String(cfg().get("cliPath", "aihub")) || "aihub", timeoutMs: Math.max(5, Number(cfg().get("timeoutSeconds", 30))) * 1000 });
+    // background reads never wait for a sign-in window: without a credential they fail at once and the bar says so
+    const quiet = { GCM_INTERACTIVE: "never", GIT_TERMINAL_PROMPT: "0" };
+    this.runner = makeRunner({ command: String(cfg().get("cliPath", "aihub")) || "aihub", timeoutMs: Math.max(5, Number(cfg().get("timeoutSeconds", 30))) * 1000, env: quiet });
     this.cliChecked = false;
-    this.loader = new BarLoader(this.runner, { cwd: this.cwd ?? "", fabric: !!cfg().get("fabric.enabled", true), fabricTtlMs: Math.max(180_000, this.intervalMs() * 3) });
+    this.loader = new BarLoader(this.runner, { cwd: this.cwd ?? "", fabric: !!cfg().get("fabric.enabled", true), fabricTtlMs: Math.max(180_000, this.intervalMs() * 3), combined: "auto" });
     clearTrackedInterval(this.timer);
     this.timer = trackedInterval("bar.refresh", () => void this.refresher.request("timer"), this.intervalMs());
     this.watchGit();

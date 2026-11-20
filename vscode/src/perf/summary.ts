@@ -25,10 +25,16 @@ export interface Summary {
   notifications: { total: number; byLevel: Record<string, number>; top: { text: string; n: number }[] };
   counters: Record<string, number>;
   dropped: number;
+  /** Network calls made by the aihub processes (AIHUB_PERF_LOG), grouped by method, host and path with ids as {id}. */
+  network: { total: number; failed: number; ms: number; byCall: { key: string; n: number; avgMs: number; maxMs: number; failed: number; statuses: string }[] };
+  /** Inside the aihub processes: start-up time per command and their own child processes (git, az). */
+  cli: { runs: number; startupAvgMs: number; byCmd: { cmd: string; n: number; avgMs: number; maxMs: number }[]; children: { key: string; n: number; ms: number; avgMs: number }[] };
 }
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const str = (v: unknown) => (typeof v === "string" ? v : "");
+/** `/_apis/git/repositories/3f2a.../pullRequests/45` -> `/_apis/git/repositories/{id}/pullRequests/{id}`. */
+const idsOut = (path: string) => path.replace(/\/(?:\d+|[0-9a-f]{8}-[0-9a-f-]{27,}|[0-9a-f]{32,})(?=\/|$)/gi, "/{id}");
 const median = (xs: number[]) => {
   if (!xs.length) return 0;
   const s = [...xs].sort((a, b) => a - b);
@@ -59,6 +65,14 @@ export function summarize(events: PerfEvent[], from: number, to: number): Summar
   let refreshFailed = 0;
   let refreshMs = 0;
   let dropped = 0;
+  const net = new Map<string, { n: number; ms: number; maxMs: number; failed: number; statuses: Map<string, number> }>();
+  let netTotal = 0;
+  let netFailed = 0;
+  let netMs = 0;
+  const cliRuns = new Map<string, { n: number; ms: number; maxMs: number }>();
+  let cliN = 0;
+  let cliStartup = 0;
+  const cliChildren = new Map<string, { n: number; ms: number }>();
 
   for (const e of events) {
     switch (e.type) {
@@ -94,6 +108,40 @@ export function summarize(events: PerfEvent[], from: number, to: number): Summar
         if (!e.ok) c.failed++;
         cmds.set(str(e.name), c);
         actions.push({ t: e.t, type: "command", name: str(e.name), ms: num(e.ms), ok: !!e.ok });
+        break;
+      }
+      case "net": {
+        netTotal++;
+        netMs += num(e.ms);
+        const key = `${str(e.method) || "GET"} ${str(e.host)}${idsOut(str(e.path))}`;
+        const b = net.get(key) ?? { n: 0, ms: 0, maxMs: 0, failed: 0, statuses: new Map<string, number>() };
+        b.n++;
+        b.ms += num(e.ms);
+        b.maxMs = Math.max(b.maxMs, num(e.ms));
+        if (!e.ok) (b.failed++, netFailed++);
+        const st = String(e.status ?? "?");
+        b.statuses.set(st, (b.statuses.get(st) ?? 0) + 1);
+        net.set(key, b);
+        actions.push({ t: e.t, type: "network", name: `${key} (${str(e.cli)})`, ms: num(e.ms), ok: !!e.ok });
+        break;
+      }
+      case "cli.run": {
+        cliN++;
+        cliStartup += num(e.startupMs);
+        const c = cliRuns.get(str(e.cli)) ?? { n: 0, ms: 0, maxMs: 0 };
+        const total = num(e.ms) + num(e.startupMs);
+        c.n++;
+        c.ms += total;
+        c.maxMs = Math.max(c.maxMs, total);
+        cliRuns.set(str(e.cli), c);
+        break;
+      }
+      case "cli.proc": {
+        const key = [str(e.cmd), str(e.sub)].filter(Boolean).join(" ");
+        const c = cliChildren.get(key) ?? { n: 0, ms: 0 };
+        c.n++;
+        c.ms += num(e.ms);
+        cliChildren.set(key, c);
         break;
       }
       case "tree":
@@ -199,6 +247,20 @@ export function summarize(events: PerfEvent[], from: number, to: number): Summar
     },
     counters,
     dropped,
+    network: {
+      total: netTotal,
+      failed: netFailed,
+      ms: r1(netMs),
+      byCall: [...net.entries()]
+        .map(([key, b]) => ({ key, n: b.n, avgMs: r1(b.ms / b.n), maxMs: b.maxMs, failed: b.failed, statuses: [...b.statuses.entries()].map(([s, n]) => `${s}x${n}`).join(" ") }))
+        .sort((a, b) => b.avgMs * b.n - a.avgMs * a.n),
+    },
+    cli: {
+      runs: cliN,
+      startupAvgMs: cliN ? r1(cliStartup / cliN) : 0,
+      byCmd: [...cliRuns.entries()].map(([cmd, c]) => ({ cmd, n: c.n, avgMs: r1(c.ms / c.n), maxMs: c.maxMs })).sort((a, b) => b.avgMs * b.n - a.avgMs * a.n),
+      children: [...cliChildren.entries()].map(([key, c]) => ({ key, n: c.n, ms: r1(c.ms), avgMs: r1(c.ms / c.n) })).sort((a, b) => b.ms - a.ms),
+    },
   };
 }
 
@@ -227,7 +289,27 @@ export function renderReport(s: Summary, logDir: string): string {
   const p = s.procs;
   out.push(`${p.total} processes (${p.failed} failed), ${p.perMinuteAvg} per minute on average, at most ${p.perMinuteMax} in one minute${p.busiestMinute ? ` (${time(p.busiestMinute)})` : ""}, at most ${p.maxParallel} at the same time. Without windowsHide: ${p.noHide}.`, "");
   if (p.byCmd.length) out.push("| Command | Count | Total | Average | Slowest | Failed |", "|---|---:|---:|---:|---:|---:|", ...p.byCmd.slice(0, 20).map((c) => `| ${cell(c.key)} | ${c.n} | ${ms(c.ms)} | ${ms(c.avgMs)} | ${ms(c.maxMs)} | ${c.failed} |`), "");
-  out.push("Network: the extension calls no API itself. Every Azure DevOps, Fabric and GitHub call is made by an `aihub` child process, so the `aihub ...` rows above are the API cost (one row per CLI read).", "");
+  out.push("## Inside the aihub processes", "");
+  const c = s.cli;
+  if (!c.runs) out.push("No timings from the aihub processes (an aihub CLI older than the performance log, or none ran).", "");
+  else {
+    out.push(`${c.runs} aihub runs; starting node and loading aihub took ${ms(c.startupAvgMs)} on average per run.`, "");
+    out.push("| aihub command | Runs | Average | Slowest |", "|---|---:|---:|---:|", ...c.byCmd.map((x) => `| ${cell(x.cmd)} | ${x.n} | ${ms(x.avgMs)} | ${ms(x.maxMs)} |`), "");
+    if (c.children.length) out.push("Their own child processes:", "", "| Process | Count | Total | Average |", "|---|---:|---:|---:|", ...c.children.slice(0, 15).map((x) => `| ${cell(x.key)} | ${x.n} | ${ms(x.ms)} | ${ms(x.avgMs)} |`), "");
+  }
+
+  out.push("## Network calls", "");
+  const n0 = s.network;
+  if (!n0.total) out.push("None recorded. The extension calls no API itself; the aihub processes do, and they log each call when they run with the performance log on.", "");
+  else
+    out.push(
+      `${n0.total} calls (${n0.failed} failed), ${ms(n0.ms)} in total, all made by the aihub processes. Ids in paths are shown as {id}.`,
+      "",
+      "| Call | Count | Average | Slowest | Status |",
+      "|---|---:|---:|---:|---|",
+      ...n0.byCall.slice(0, 20).map((x) => `| ${cell(x.key)} | ${x.n} | ${ms(x.avgMs)} | ${ms(x.maxMs)} | ${x.statuses} |`),
+      "",
+    );
 
   out.push("## Refreshes", "");
   const rf = s.refresh;

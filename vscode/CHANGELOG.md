@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Built-in performance log, on by default and local only (`aihub.performanceLog.enabled`, `aihub.performanceLog.level`): activation per phase, commands, status reads, every child process through one spawn wrapper, timers and watchers, notifications, and a host sample (event-loop delay, CPU, memory) every 30-60 s. Commands "AI Context Hub: Show Performance Report" and "AI Context Hub: Export Performance Log"; `aihub doctor` shows where the log is. Secrets, e-mail addresses and file contents are never written.
+- Lighter refresh: one `aihub bar --json` process per refresh instead of four or five (falls back for an older CLI); Fabric "no workspace" or "not signed in" is asked once per branch; without an Azure DevOps sign-in the bar says "not signed in" at once; background reads never wait for a sign-in window (`GCM_INTERACTIVE=never`). The aihub processes add their network calls, child processes and start-up time to the performance log (`AIHUB_PERF_LOG`), and the report shows them.
 
 ## 3.1.0
 

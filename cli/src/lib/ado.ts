@@ -73,6 +73,11 @@ export class AdoClient {
     return new AdoClient({ ...this.remote, project }, this.auth, this.fetchFn, this.service, this.team);
   }
 
+  /** Resolves when a credential is available (PAT, az or git credential); throws the sign-in message otherwise. Makes no request. */
+  async signIn(): Promise<void> {
+    await this.auth();
+  }
+
   repoPath(): string {
     return `git/repositories/${encodeURIComponent(this.remote.repo)}`;
   }
