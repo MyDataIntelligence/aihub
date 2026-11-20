@@ -1,4 +1,5 @@
 import { findActivePr, type AdoClient, type PullRequest } from "./ado.js";
+import { NOT_SIGNED_IN } from "./auth.js";
 import { reviewersOf, type Reviewer } from "./prList.js";
 import { getThreads } from "./comments.js";
 import { repoClient, type Ctx } from "./context.js";
@@ -15,6 +16,8 @@ export type Checks = "none" | "running" | "green" | "red";
 export interface Status {
   repo: string;
   branch: string;
+  /** false: no credential, so story, PR, pipeline and threads were not read (one warning says how to sign in). */
+  signedIn: boolean;
   story: { id: number; title: string; state: string } | null;
   pr: { id: number; title: string; status: string; draft: boolean; url: string; reviewers: Reviewer[] } | null;
   pipeline: { name: string; state: string }[];
@@ -103,23 +106,36 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
     }
   };
 
+  // without a credential every remote read would fail the same way: say so once and only read the local state
+  let signedIn = await client.signIn().then(
+    () => true,
+    (e: Error) => (warnings.push(`sign-in: ${e.message}`), false),
+  );
+  // a credential that Azure DevOps refuses (expired PAT) also stops the remaining reads after the first answer
+  const remote = async <T>(what: string, fn: () => Promise<T>): Promise<T | undefined> => {
+    if (!signedIn) return undefined;
+    const r = await guard(what, fn);
+    if (r === undefined && warnings[warnings.length - 1]?.includes(NOT_SIGNED_IN)) signedIn = false;
+    return r;
+  };
+
   const storyId = workItemFromBranch(branch);
-  const wi = storyId ? await guard("story", () => getWorkItem(client, storyId)) : undefined;
+  const wi = storyId ? await remote("story", () => getWorkItem(client, storyId)) : undefined;
   const story = storyId ? { id: storyId, title: wi?.title ?? "(unknown)", state: wi?.state ?? "?" } : null;
 
-  const active = await guard("pull request", () => findActivePr(client, branch));
-  const done = !active ? await guard("pull request", () => completedPr(client, branch)) : undefined;
+  const active = await remote("pull request", () => findActivePr(client, branch));
+  const done = !active ? await remote("pull request", () => completedPr(client, branch)) : undefined;
   const pr = active ?? done;
 
   const sel = active
-    ? await guard("pipeline", () => selectBuilds(client, root, { pr: String(active.pullRequestId) }))
+    ? await remote("pipeline", () => selectBuilds(client, root, { pr: String(active.pullRequestId) }))
     : story
-      ? await guard("pipeline", () => selectBuilds(client, root, { branch }))
+      ? await remote("pipeline", () => selectBuilds(client, root, { branch }))
       : undefined;
   const latest = latestPerDefinition(sel?.builds ?? []);
   const checks = checksOf(latest);
 
-  const threads = active ? await guard("threads", () => getThreads(client, active.pullRequestId, undefined, false)) : undefined;
+  const threads = active ? await remote("threads", () => getThreads(client, active.pullRequestId, undefined, false)) : undefined;
   const openThreads = threads?.length ?? 0;
   const dirty = hasWorkToCommit(root);
   const unpushed = unpushedCount(root);
@@ -141,6 +157,7 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
   return {
     repo: client.remote.repo,
     branch,
+    signedIn,
     story,
     pr: pr ? { id: pr.pullRequestId, title: pr.title, status: pr.status, draft: !!pr.isDraft, url: client.prUrl(pr.pullRequestId), reviewers: reviewersOf(pr as { reviewers?: { displayName?: string; vote?: number; isRequired?: boolean }[] }) } : null,
     pipeline: latest.map((b) => ({ name: b.definition?.name ?? "pipeline", state: stateOf(b) })),
@@ -150,7 +167,7 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
     unpushed,
     notes,
     done: step.done,
-    next: step.next,
+    next: signedIn ? step.next : "sign in to Azure DevOps (az login, or set AIHUB_ADO_PAT), then run aihub status again",
     warnings,
     set: ((x) => (x ? { story: x.story, branch: x.branch, group: x.group, total: x.total, repos: x.repos.map((r) => r.name) } : undefined))(findSet(root)),
   };

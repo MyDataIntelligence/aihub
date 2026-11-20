@@ -1,4 +1,9 @@
-import { trackedExecFile } from "./perf/probe";
+import { perfLog, trackedExecFile } from "./perf/probe";
+
+const perfEnv = (): Record<string, string> => {
+  const dir = perfLog()?.dir;
+  return dir ? { AIHUB_PERF_LOG: dir } : {};
+};
 
 /** The oldest CLI that has every `--json` read the extension uses. */
 export const MIN_CLI_VERSION = "1.0.2";
@@ -41,7 +46,8 @@ export function makeRunner(cfg: CliConfig, platform: NodeJS.Platform = process.p
       trackedExecFile(
         shell ? quote(cfg.command) : cfg.command,
         shell ? all.map(quote) : all,
-        { cwd, timeout: cfg.timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, shell, env: { ...process.env, ...cfg.env, NO_COLOR: "1" } },
+        // AIHUB_PERF_LOG: the CLI appends its network calls and child processes to the performance log (src/perf)
+        { cwd, timeout: cfg.timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, shell, env: { ...process.env, ...perfEnv(), ...cfg.env, NO_COLOR: "1" } },
         (err, stdout, stderr) => {
           if (!err) return resolve(stdout);
           const e = err as NodeJS.ErrnoException & { killed?: boolean; code?: number | string };

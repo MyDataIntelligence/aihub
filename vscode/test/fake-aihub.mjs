@@ -16,6 +16,15 @@ if (args[0] === "--version") {
   console.log(process.env.FAKE_AIHUB_VERSION || "1.0.2");
   process.exit(0);
 }
+// `bar` (FAKE_AIHUB_BAR=1, else an older CLI without it): the other fixtures in one answer; FAKE_AIHUB_FAIL=fabric fails its Fabric part
+if (args[0] === "bar" && process.env.FAKE_AIHUB_BAR) {
+  const fx = (n) => JSON.parse(readFileSync(join(dir, `${n}.json`), "utf8"));
+  const status = fx("status");
+  const fabric = !args.includes("--fabric") ? null : process.env.FAKE_AIHUB_FAIL === "fabric" ? { error: "no single workspace named 'feat x' for branch feat/x; pass --workspace", kind: "no-workspace" } : { failures: fx("fabric-failures"), logs: fx("fabric-logs") };
+  const checks = status.pr && status.pr.status === "active" ? fx("pr-checks") : null;
+  process.stdout.write(JSON.stringify({ status, checks, fabric, watching: fx("watch-list").some((w) => w.mine), events: fx("watch-events") }));
+  process.exit(0);
+}
 if (process.env.FAKE_AIHUB_FAIL === args[0]) {
   console.error("aihub: no single workspace named 'feat x' for branch feat/x; pass --workspace");
   process.exit(1);

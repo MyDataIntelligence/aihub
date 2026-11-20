@@ -34,6 +34,9 @@ export const fileDay = (t: number) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 export const fileFor = (dir: string, t: number) => join(dir, `${FILE_PREFIX}${fileDay(t)}.jsonl`);
+/** The day of a log file: the extension's `aihub-perf-<day>.jsonl` and the CLI's `aihub-cli-perf-<day>.jsonl` (written by the aihub processes). */
+const DAY_FILE = /^aihub-(?:cli-)?perf-(\d{4}-\d{2}-\d{2})\.jsonl$/;
+const dayOf = (name: string) => DAY_FILE.exec(name)?.[1];
 
 export class PerfLog {
   readonly dir: string;
@@ -131,7 +134,7 @@ export class PerfLog {
     const names = await fs.readdir(this.dir).catch(() => [] as string[]);
     await Promise.all(
       names
-        .filter((n) => n.startsWith(FILE_PREFIX) && n.endsWith(".jsonl") && n.slice(FILE_PREFIX.length, -6) < oldest)
+        .filter((n) => (dayOf(n) ?? "9") < oldest)
         .map((n) => fs.unlink(join(this.dir, n)).catch(() => undefined)),
     );
   }
@@ -148,8 +151,8 @@ export async function logFiles(dir: string, now = Date.now(), days = 7): Promise
   const oldest = fileDay(now - (days - 1) * 86_400_000);
   const names = await fs.readdir(dir).catch(() => [] as string[]);
   return names
-    .filter((n) => n.startsWith(FILE_PREFIX) && n.endsWith(".jsonl") && n.slice(FILE_PREFIX.length, -6) >= oldest)
-    .sort()
+    .filter((n) => (dayOf(n) ?? "") >= oldest)
+    .sort((a, b) => dayOf(a)!.localeCompare(dayOf(b)!) || a.localeCompare(b))
     .map((n) => join(dir, n));
 }
 

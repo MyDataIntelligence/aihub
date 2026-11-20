@@ -309,3 +309,29 @@ describe("overhead of the logger", () => {
     expect(flushUs).toBeLessThan(100);
   });
 });
+
+describe("the aihub processes in the report", () => {
+  it("reads the CLI's day files and groups its network calls, start-up and child processes", async () => {
+    const dir = tmp();
+    const t = Date.now();
+    const day = fileDay(t);
+    writeFileSync(join(dir, `aihub-perf-${day}.jsonl`), JSON.stringify({ t, type: "proc", cmd: "aihub", sub: "bar", ms: 900, ok: true, code: 0, windowsHide: true, parallel: 1 }) + "\n");
+    const cli = [
+      { t, type: "net", cli: "bar", method: "GET", host: "dev.azure.com", path: "/ferron-test/test-project/_apis/git/repositories/test-project/pullRequests/45/threads", status: 200, ok: true, ms: 300 },
+      { t, type: "net", cli: "bar", method: "GET", host: "dev.azure.com", path: "/ferron-test/test-project/_apis/git/repositories/test-project/pullRequests/46/threads", status: 200, ok: true, ms: 500 },
+      { t, type: "net", cli: "bar", method: "GET", host: "api.fabric.microsoft.com", path: "/v1/workspaces", status: 401, ok: false, ms: 120 },
+      { t, type: "cli.proc", cli: "bar", cmd: "git", sub: "rev-parse", ms: 40, ok: true, code: 0 },
+      { t, type: "cli.run", cli: "bar", ms: 600, startupMs: 250, code: 0 },
+    ];
+    writeFileSync(join(dir, `aihub-cli-perf-${day}.jsonl`), cli.map((x) => JSON.stringify(x)).join("\n") + "\n");
+    const s = summarize(await readEvents(dir, t - 1000, t + 1000), t - 1000, t + 1000);
+    expect(s.procs.total).toBe(1); // the CLI's git is not counted as an extension process
+    expect(s.network).toMatchObject({ total: 3, failed: 1 });
+    expect(s.network.byCall[0]).toMatchObject({ key: "GET dev.azure.com/ferron-test/test-project/_apis/git/repositories/test-project/pullRequests/{id}/threads", n: 2, avgMs: 400, maxMs: 500 });
+    expect(s.cli).toMatchObject({ runs: 1, startupAvgMs: 250, byCmd: [{ cmd: "bar", n: 1, avgMs: 850 }], children: [{ key: "git rev-parse", n: 1 }] });
+    const md = renderReport(s, dir);
+    expect(md).toContain("## Network calls");
+    expect(md).toContain("## Inside the aihub processes");
+    expect(md).toContain("401x1");
+  });
+});

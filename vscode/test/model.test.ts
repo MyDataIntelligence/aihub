@@ -59,3 +59,11 @@ describe("model", () => {
     expect(statusItems(m)[0].text).toContain("no branch");
   });
 });
+
+describe("not signed in", () => {
+  it("shows one status bar item that says how to sign in", () => {
+    const items = statusItems(buildModel({ status: { branch: "feature/7-x", signedIn: false, story: { id: 7, title: "(unknown)", state: "?" } } }));
+    expect(items.find((i) => i.id === "signin")).toMatchObject({ text: "$(account) not signed in", tone: "warn" });
+    expect(statusItems(buildModel({ status: { branch: "x" } })).some((i) => i.id === "signin")).toBe(false);
+  });
+});
