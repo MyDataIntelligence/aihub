@@ -136,6 +136,20 @@ describe("aihub worktree open", () => {
     expect(shared.missing).toEqual(["repo-c"]);
   });
 
+  it("tells the current branch of each repository, so the picker can pre-select it", async () => {
+    const { parent, repos } = world();
+    sh(join(parent, "repo-b"), ["switch", "feature/shared"]);
+    const r = await run(repos[0].dir, ["worktree", "branches", "--repos", "repo-a,repo-b,repo-c", "--json"]);
+    expect(JSON.parse(r.out).current).toEqual({ "repo-a": "main", "repo-b": "feature/shared", "repo-c": "main" });
+  });
+
+  it("the workspace file opens the terminal in the set's root", async () => {
+    const { repos } = world();
+    const j = JSON.parse((await run(repos[0].dir, ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/shared", "--window", "none", "--json"])).out);
+    const fwd = (p: string) => p.split("\\").join("/");
+    expect(fwd(JSON.parse(readFileSync(j.workspace, "utf8")).settings["terminal.integrated.cwd"])).toBe(fwd(j.folder));
+  });
+
   it("opened from inside a set it puts the next set beside it, not inside it", async () => {
     const { parent, repos } = world();
     const first = JSON.parse((await run(repos[0].dir, ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/shared", "--window", "none", "--json"])).out);

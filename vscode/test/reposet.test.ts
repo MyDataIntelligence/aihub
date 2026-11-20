@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { renderBody, renderError } from "../src/html";
 import { buildModel } from "../src/model";
 import { popupFor } from "../src/popups";
-import { branchItems, branchesArgs, groupItems, howItems, openArgs, prItems, setChip, summarizeOpen, type OpenResultJson } from "../src/repoSetModel";
+import { branchItems, branchesArgs, groupItems, openArgs, openTarget, openWays, preferredBranch, prItems, setChip, stepTitle, summarizeOpen, type OpenResultJson } from "../src/repoSetModel";
 import { fx, here } from "./helpers";
 
 describe("the first chip of the bar", () => {
@@ -58,15 +58,52 @@ describe("the quick-pick flow", () => {
     expect(prItems([{ id: 42, title: "Search", repo: "a", source: "feature/42-search", target: "staging" }])[0].detail).toBe("feature/42-search -> staging");
   });
 
-  it("step 3 recommends worktrees", () => {
-    expect(howItems()[0].label).toContain("recommended");
-    expect(howItems().map((h) => h.value)).toEqual(["worktree", "switch"]);
+  it("step 2 puts the current branch of the project on top, focused, so it is one Enter", () => {
+    const rows = [
+      { name: "main", in: ["a", "b", "c"], missing: [] },
+      { name: "develop", in: ["a", "b", "c"], missing: [] },
+      { name: "feature/7", in: ["a", "b"], missing: ["c"] },
+    ];
+    // the window's own repository wins; else the branch most repositories are on
+    expect(preferredBranch(rows, { a: "feature/7", b: "develop", c: "develop" }, "a")).toBe("feature/7");
+    expect(preferredBranch(rows, { a: "feature/7", b: "develop", c: "develop" }, "elsewhere")).toBe("develop");
+    expect(preferredBranch(rows, {}, "a")).toBeUndefined();
+    // a detached HEAD (empty) is no branch to offer
+    expect(preferredBranch(rows, { a: "" }, "a")).toBeUndefined();
+    const items = branchItems(rows, 3, "develop");
+    expect(items[0]).toMatchObject({ value: { kind: "existing", branch: "develop" }, description: "current branch · exists in 3/3" });
+    expect(items.filter((i) => i.value?.kind === "existing" && i.value.branch === "develop")).toHaveLength(1);
+    expect(items.slice(1, 4).map((i) => i.value?.kind)).toEqual(["new-story", "pr", "typed"]);
   });
 
-  it("builds exactly the CLI command lines", () => {
-    expect(openArgs({ group: "pipeline", branch: "feature/x", mode: "worktree", window: "new" })).toEqual(["worktree", "open", "--group", "pipeline", "--branch", "feature/x", "--mode", "worktree", "--window", "new"]);
-    expect(openArgs({ repos: ["/r/a", "/r/b"], branch: "feature/7", from: "staging", mode: "switch", window: "this" })).toEqual(["worktree", "open", "--repos", "/r/a,/r/b", "--branch", "feature/7", "--mode", "switch", "--window", "this", "--from", "staging"]);
+  it("every step says 'stap n/3' and what was already chosen", () => {
+    expect(stepTitle(1, [])).toBe("Repos op branch openen · stap 1/3");
+    expect(stepTitle(2, ["pipeline"])).toBe("Repos op branch openen · stap 2/3 · pipeline");
+    expect(stepTitle(3, ["pipeline", "feature/7"])).toBe("Repos op branch openen · stap 3/3 · pipeline · feature/7");
+  });
+
+  it("step 3 is one choice of how and where, worktrees first", () => {
+    const ways = openWays();
+    expect(ways[0].label).toContain("recommended");
+    expect(ways.map((w) => w.value)).toEqual([
+      { mode: "worktree", window: "new" },
+      { mode: "worktree", window: "this" },
+      { mode: "switch", window: "this" },
+      { mode: "switch", window: "new" },
+    ]);
+  });
+
+  it("builds exactly the CLI command lines; the extension opens the window itself (--window none)", () => {
+    expect(openArgs({ group: "pipeline", branch: "feature/x", mode: "worktree" })).toEqual(["worktree", "open", "--group", "pipeline", "--branch", "feature/x", "--mode", "worktree", "--window", "none"]);
+    expect(openArgs({ repos: ["/r/a", "/r/b"], branch: "feature/7", from: "staging", mode: "switch" })).toEqual(["worktree", "open", "--repos", "/r/a,/r/b", "--branch", "feature/7", "--mode", "switch", "--window", "none", "--from", "staging"]);
     expect(branchesArgs({ group: "pipeline" })).toEqual(["worktree", "branches", "--group", "pipeline"]);
+  });
+
+  it("opens the workspace file in this window or a new one, and says so when there is nothing to open", () => {
+    const res: OpenResultJson = { branch: "b", mode: "worktree", folder: "/s/b", workspace: "/s/b/pipeline.code-workspace", opened: false, repos: [{ repo: "a", ok: true, state: "existing", branch: "b", note: "worktree", path: "/s/b/a" }] };
+    expect(openTarget(res, "this")).toEqual({ file: "/s/b/pipeline.code-workspace", options: { forceReuseWindow: true } });
+    expect(openTarget(res, "new")).toEqual({ file: "/s/b/pipeline.code-workspace", options: { forceNewWindow: true } });
+    expect(openTarget({ ...res, workspace: undefined, repos: [{ ...res.repos[0], ok: false }] }, "this")).toEqual({ error: "No repository could be opened on b, so the window was not changed." });
   });
 
   it("summarizes the result: all open, or which repositories need attention", () => {
