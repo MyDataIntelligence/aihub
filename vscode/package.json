@@ -100,6 +100,14 @@
         "title": "AI Context Hub: How to install the aihub CLI"
       },
       {
+        "command": "aihub.performance.report",
+        "title": "AI Context Hub: Show Performance Report"
+      },
+      {
+        "command": "aihub.performance.export",
+        "title": "AI Context Hub: Export Performance Log"
+      },
+      {
         "command": "aihub.git.resetToRef",
         "title": "Reset to Branch or Commit...",
         "category": "AI Context Hub"
@@ -437,6 +445,24 @@
             "main"
           ],
           "description": "Base branches offered for a new branch in a set."
+        },
+        "aihub.performanceLog.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep a local performance log of what the extension costs: activation per phase, commands, status reads, every child process (git, aihub, az), timers, watchers, notifications, and every 30-60 s the event-loop delay, CPU and memory of the extension host. JSON lines under the extension's global storage (perf/), at most 10 MB per day, 7 days kept, never sent anywhere. No tokens, e-mail addresses or file contents. See AI Context Hub: Show Performance Report."
+        },
+        "aihub.performanceLog.level": {
+          "type": "string",
+          "enum": [
+            "basic",
+            "verbose"
+          ],
+          "default": "basic",
+          "enumDescriptions": [
+            "One host sample per minute; timers and watchers as counts in the sample.",
+            "One host sample every 30 s, plus a line per timer fire and watcher event."
+          ],
+          "description": "How much the performance log keeps."
         },
         "aihub.worktrees.remote": {
           "type": "string",

@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { trackedExecFile } from "../perf/probe";
 import * as fs from "fs";
 import * as path from "path";
 import type { Git, GitResult } from "./git";
@@ -245,7 +245,7 @@ export function createRunner(log?: (line: string) => void): Run {
         }
       }
       try {
-        execFile(file, finalArgs, options, (error, stdout, stderr) => {
+        trackedExecFile(file, finalArgs, options, (error, stdout, stderr) => {
           const out = String(stdout ?? "");
           const err = String(stderr ?? "");
           if (!error) {
@@ -264,7 +264,7 @@ export function createRunner(log?: (line: string) => void): Run {
           }
           const spawnError = String(e.code ?? e.message ?? "UNKNOWN");
           resolve({ code: -1, stdout: out, stderr: err || e.message, spawnError });
-        });
+        }, { cmd: command, args });
       } catch (e) {
         const spawnError = String((e as NodeJS.ErrnoException).code ?? (e as Error).message);
         resolve({ code: -1, stdout: "", stderr: (e as Error).message, spawnError });

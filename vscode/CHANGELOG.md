@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Built-in performance log, on by default and local only (`aihub.performanceLog.enabled`, `aihub.performanceLog.level`): activation per phase, commands, status reads, every child process through one spawn wrapper, timers and watchers, notifications, and a host sample (event-loop delay, CPU, memory) every 30-60 s. Commands "AI Context Hub: Show Performance Report" and "AI Context Hub: Export Performance Log"; `aihub doctor` shows where the log is. Secrets, e-mail addresses and file contents are never written.
+
 ## 3.1.0
 
 - Status bar item bottom-left right after the branch item: "⎇ Repos op branch openen" or "⎇ <branch> · 3 repos" in a set (tooltip per repo); also a button in the Source Control title and the editor title, the command "AI Context Hub: Repos op branch openen..." with Ctrl+Alt+B.

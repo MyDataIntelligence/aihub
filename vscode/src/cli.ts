@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { trackedExecFile } from "./perf/probe";
 
 /** The oldest CLI that has every `--json` read the extension uses. */
 export const MIN_CLI_VERSION = "1.0.2";
@@ -38,7 +38,7 @@ export function makeRunner(cfg: CliConfig, platform: NodeJS.Platform = process.p
     new Promise((resolve, reject) => {
       const all = [...(cfg.prefixArgs ?? []), ...args];
       const shell = needsShell(cfg, platform);
-      execFile(
+      trackedExecFile(
         shell ? quote(cfg.command) : cfg.command,
         shell ? all.map(quote) : all,
         { cwd, timeout: cfg.timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, shell, env: { ...process.env, ...cfg.env, NO_COLOR: "1" } },
@@ -52,6 +52,7 @@ export function makeRunner(cfg: CliConfig, platform: NodeJS.Platform = process.p
           if (/not recognized as an internal or external command|command not found/i.test(text)) return reject(new CliError("missing", `aihub was not found. Install it with: ${INSTALL_COMMAND}`));
           reject(new CliError("failed", text.split(/\r?\n/).filter(Boolean).slice(-3).join(" ") || `aihub ${args.join(" ")} failed`, typeof e.code === "number" ? e.code : undefined));
         },
+        { cmd: cfg.prefixArgs?.length ? "aihub" : cfg.command, args },
       );
     });
 }

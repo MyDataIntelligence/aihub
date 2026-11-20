@@ -13,6 +13,8 @@ import { registerGitCommands } from "./gitUi";
 import { ThreadsController } from "./threadsUi";
 import { LearnController } from "./learnUi";
 import { registerWorktreeCommands } from "./worktreeUi";
+import { clearTrackedInterval, clearTrackedTimeout, count, trackedInterval, trackedTimeout, trackedWatcher } from "./perf/probe";
+import { startPerf, stopPerf } from "./perfUi";
 
 const cfg = () => vscode.workspace.getConfiguration("aihub");
 
@@ -40,6 +42,8 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   private subs: vscode.Disposable[] = [];
   /** Called after every successful read (the review threads follow the PR). */
   onModel: ((m: BarModel) => void) | undefined;
+  /** Called after every read, ok or not (the activation timer waits for the first one). */
+  onPublish: ((ok: boolean) => void) | undefined;
 
   constructor(private ctx: vscode.ExtensionContext) {
     this.refresher = new Refresher(
@@ -58,6 +62,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     this.subs.push(
       vscode.window.registerWebviewViewProvider("aihub.bar", this, { webviewOptions: { retainContextWhenHidden: true } }),
       vscode.window.onDidChangeWindowState((s) => {
+        count("event.windowState");
         this.refresher.focused = s.focused;
         if (s.focused) void this.refresher.request("focus");
       }),
@@ -69,6 +74,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
       }),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.configure()),
       vscode.window.onDidChangeActiveTextEditor(() => {
+        count("event.activeEditor");
         if (repoFolder() !== this.cwd) {
           this.configure();
           void this.refresher.request("manual");
@@ -87,19 +93,24 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     this.runner = makeRunner({ command: String(cfg().get("cliPath", "aihub")) || "aihub", timeoutMs: Math.max(5, Number(cfg().get("timeoutSeconds", 30))) * 1000 });
     this.cliChecked = false;
     this.loader = new BarLoader(this.runner, { cwd: this.cwd ?? "", fabric: !!cfg().get("fabric.enabled", true), fabricTtlMs: Math.max(180_000, this.intervalMs() * 3) });
-    if (this.timer) clearInterval(this.timer);
-    this.timer = setInterval(() => void this.refresher.request("timer"), this.intervalMs());
+    clearTrackedInterval(this.timer);
+    this.timer = trackedInterval("bar.refresh", () => void this.refresher.request("timer"), this.intervalMs());
     this.watchGit();
   }
 
   private gitWatcher: vscode.FileSystemWatcher | undefined;
+  private gitWatcherStats: ReturnType<typeof trackedWatcher> | undefined;
   private watchGit() {
     this.gitWatcher?.dispose();
+    this.gitWatcherStats?.dispose();
     if (!this.cwd) return;
-    this.gitWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(this.cwd, ".git/{HEAD,refs/heads/**}"));
+    const glob = ".git/{HEAD,refs/heads/**}";
+    this.gitWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(this.cwd, glob));
+    const stats = (this.gitWatcherStats = trackedWatcher("bar.gitBranch", glob));
     const fire = () => {
-      clearTimeout(this.gitDebounce);
-      this.gitDebounce = setTimeout(() => {
+      stats.hit();
+      clearTrackedTimeout(this.gitDebounce);
+      this.gitDebounce = trackedTimeout("bar.gitDebounce", () => {
         this.loader.invalidate();
         void this.refresher.request("git");
       }, 1500);
@@ -111,7 +122,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   start() {
     this.renderReposetItem();
     // Silent by default: no popup, no panel opening. The status bar is the entry; the first read is delayed so startup stays fast.
-    setTimeout(() => void this.refresher.request("start"), 2000);
+    trackedTimeout("bar.firstRead", () => void this.refresher.request("start"), 2000);
   }
 
   refresh(): Promise<void> {
@@ -127,6 +138,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     else this.log.appendLine(`${new Date().toISOString()} ${r.error.kind}: ${r.error.message}`);
     this.renderStatusBar();
     this.renderView();
+    this.onPublish?.(r.ok);
     if (r.ok) this.onModel?.(r.model);
   }
 
@@ -304,9 +316,10 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   dispose() {
-    if (this.timer) clearInterval(this.timer);
-    clearTimeout(this.gitDebounce);
+    clearTrackedInterval(this.timer);
+    clearTrackedTimeout(this.gitDebounce);
     this.gitWatcher?.dispose();
+    this.gitWatcherStats?.dispose();
     this.items.forEach((i) => i.dispose());
     this.reposetItem?.dispose();
     this.log.dispose();
@@ -317,7 +330,18 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
 const toneColor = (t: Tone): vscode.ThemeColor | undefined => (t === "ok" ? new vscode.ThemeColor("charts.green") : t === "run" ? new vscode.ThemeColor("charts.blue") : undefined);
 
 export function activate(ctx: vscode.ExtensionContext) {
-  const bar = new Bar(ctx);
+  // first, so every command, notification and process after this is measured
+  let bar: Bar | undefined;
+  const act = startPerf(ctx, () => bar?.cwdNow());
+  act.phase("bar (settings, panel, status bar listeners)");
+  bar = new Bar(ctx);
+  bar.onPublish = (ok) => act.firstRefresh(ok);
+  act.phase("commands");
+  activateRest(ctx, bar, act.phase);
+  act.done();
+}
+
+function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: string) => void) {
   ctx.subscriptions.push(
     bar,
     vscode.commands.registerCommand("aihub.refresh", () => bar.refresh()),
@@ -352,18 +376,26 @@ export function activate(ctx: vscode.ExtensionContext) {
     await bar.sendText(text);
   };
   ctx.subscriptions.push(vscode.commands.registerCommand("aihub.editor.ask", selection("Question about the code")), vscode.commands.registerCommand("aihub.editor.suggestFix", selection("Suggest a fix for the code")));
+  phase("review threads");
   const threads = new ThreadsController(() => bar.runnerNow(), () => bar.cwdNow(), (t) => bar.sendText(t), (l) => bar.logLine(l), () => void bar.refresh());
   threads.register(ctx);
+  phase("learn view");
   const learn = new LearnController(ctx, () => bar.runnerNow(), () => bar.cwdNow(), (l) => bar.logLine(l));
   learn.register(ctx);
   bar.onModel = (m) => void threads.sync(m.pr && m.pr.status === "active" ? m.pr.id : undefined, m.openThreads);
+  phase("branch menu");
   registerGitCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
+  phase("repos on branch");
   const reposet = new RepoSetController(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l), refresh: () => (refreshSets(), void bar.refresh()) });
   reposet.register();
+  phase("worktree sets view");
   const refreshSets = registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id), () => reposet.groups());
+  phase("status bar");
   bar.start();
   // the groups come from the CLI: ask again once the first status read is behind us
-  setTimeout(() => refreshSets(), 4000);
+  trackedTimeout("worktreeSets.firstRefresh", () => refreshSets(), 4000);
 }
 
-export function deactivate() {}
+export function deactivate(): Promise<void> {
+  return stopPerf();
+}
