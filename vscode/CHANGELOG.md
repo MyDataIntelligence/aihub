@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.2
+
+- Fewer git processes: the Worktree Sets view reads the status of a set once per refresh and shares it between the rows (it read the whole set once per repository row: repos x repos x 6 git processes).
+- Automatic refreshes of the bar (timer, focus, branch change) back off after a slow read: they wait at least ten times the duration of the last read, at most 10 minutes. A fast read changes nothing; "Refresh" is never delayed. The performance report counts these as `refresh.skip.<reason>.backoff`. Notes: docs/releases/3.1.2.md.
+
 ## 3.1.1
 
 - Built-in performance log, on by default and local only (`aihub.performanceLog.enabled`, `aihub.performanceLog.level`): activation per phase, commands, status reads, every child process through one spawn wrapper, timers and watchers, notifications, and a host sample (event-loop delay, CPU, memory) every 30-60 s. Commands "AI Context Hub: Show Performance Report" and "AI Context Hub: Export Performance Log"; `aihub doctor` shows where the log is. Secrets, e-mail addresses and file contents are never written.
