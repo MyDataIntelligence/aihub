@@ -6,7 +6,7 @@ import { findRepos, validateBranchName, type Repo } from "./worktrees/core";
 import { deleteGroup, listGroups, saveGroup } from "./worktrees/extras";
 import { createGit } from "./worktrees/git";
 import { timed } from "./perf/probe";
-import { cleanUpCandidate, createSet, lossSummary, mergedWorktrees, pushSet, removeSet, setStatuses, syncSet, type RepoStep } from "./worktrees/service";
+import { cleanUpCandidate, createSet, createStatusCache, lossSummary, mergedWorktrees, pushSet, removeSet, setStatuses, syncSet, type RepoStep } from "./worktrees/service";
 import { defaultSetsRoot, listSetsIn, readSet, removeRepoFromSet, setWorkspaceFile, type SetRepo, type WorktreeSet } from "./worktrees/sets";
 
 /**
@@ -32,12 +32,16 @@ type Node = { kind: "set"; set: WorktreeSet } | { kind: "repo"; set: WorktreeSet
 export class WorktreeSetsProvider implements vscode.TreeDataProvider<Node> {
   private emitter = new vscode.EventEmitter<Node | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
+  private cache: ReturnType<typeof createStatusCache>;
   constructor(
     private git: ReturnType<typeof createGit>,
     private groups: () => Promise<GroupJson[]> = async () => [],
-  ) {}
+  ) {
+    this.cache = createStatusCache(git);
+  }
 
   refresh() {
+    this.cache.clear();
     this.emitter.fire(undefined);
   }
 
@@ -75,8 +79,8 @@ Open on branch... opens all of them on one branch`;
     it.contextValue = "aihubSetRepo";
     it.iconPath = new vscode.ThemeIcon("repo");
     it.tooltip = n.repo.path;
-    // one status read per repository row (git status per repo of the set)
-    const s = (await timed("tree", "worktreeSets.repoStatus", () => setStatuses(this.git, remote(), n.set), { repos: n.set.repos.length })).find((x) => x.name === n.repo.name);
+    // one status read per set, shared by all its rows until the next refresh (git status per repo of the set)
+    const s = (await timed("tree", "worktreeSets.repoStatus", () => this.cache.get(remote(), n.set), { repos: n.set.repos.length })).find((x) => x.name === n.repo.name);
     if (s) it.description = !s.exists ? "missing" : [s.dirty ? `${s.dirty} changed` : "", s.ahead ? `${s.ahead} to push` : s.unpushed ? `${s.unpushed} to push` : "", s.behind ? `${s.behind} behind` : ""].filter(Boolean).join(", ") || "clean";
     return it;
   }

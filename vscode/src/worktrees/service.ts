@@ -60,6 +60,28 @@ export async function setStatuses(git: Git, remote: string, set: WorktreeSet): P
   return Promise.all(set.repos.map((r) => repoStatus(git, remote, set, r)));
 }
 
+/** Shares one `setStatuses` read per set (keyed by remote and folder) between the rows of a tree refresh; `clear()` before a refresh. Failed reads are not kept. */
+export function createStatusCache(git: Git): { get(remote: string, set: WorktreeSet): Promise<RepoStatus[]>; clear(): void } {
+  const cache = new Map<string, Promise<RepoStatus[]>>();
+  return {
+    get(remote, set) {
+      const key = `${remote}\n${set.folder}`;
+      let p = cache.get(key);
+      if (!p) {
+        p = setStatuses(git, remote, set);
+        cache.set(key, p);
+        p.catch(() => {
+          if (cache.get(key) === p) cache.delete(key);
+        });
+      }
+      return p;
+    },
+    clear() {
+      cache.clear();
+    },
+  };
+}
+
 /** What would be lost by removing the set: dirty worktrees and unpushed commits, for the confirm dialog. */
 export function lossSummary(statuses: RepoStatus[]): string[] {
   const out: string[] = [];
