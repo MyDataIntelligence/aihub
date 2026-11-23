@@ -2,15 +2,15 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { cleanUpCandidate, createSet, lossSummary, mergedWorktrees, pushSet, removeSet, setStatuses, syncSet } from "../src/worktrees/service";
+import { cleanUpCandidate, createSet, createStatusCache, lossSummary, mergedWorktrees, pushSet, removeSet, setStatuses, syncSet } from "../src/worktrees/service";
 import { findRepos } from "../src/worktrees/core";
 import { readSet } from "../src/worktrees/sets";
 import { git, sh, write } from "./gitHelpers";
 
-/** Two repos (each with an origin on staging) below one folder. */
-function twoRepos() {
+/** Repos (each with an origin on staging) below one folder; two by default. */
+function twoRepos(names = ["alpha", "beta"]) {
   const root = mkdtempSync(join(tmpdir(), "aihub-wt-"));
-  const repos = ["alpha", "beta"].map((name) => {
+  const repos = names.map((name) => {
     const origin = join(root, `${name}.git`);
     mkdirSync(origin);
     sh(origin, "init", "--bare", "-b", "staging");
@@ -97,6 +97,32 @@ describe("worktree sets", () => {
     const again = await mergedWorktrees(git, [w.repos[0]], "origin", ["staging"]);
     expect((await cleanUpCandidate(git, again[0])).ok).toBe(true);
     expect(existsSync(wt)).toBe(false);
+  });
+
+  it("shares one status read per set across the rows, and re-reads after clear()", async () => {
+    const w = twoRepos(["alpha", "beta", "gamma"]);
+    const { set } = await createSet(git, { root: w.sets, branch: "feature/12-c", base: "staging", remote: "origin", repos: w.repos });
+    expect(set!.repos).toHaveLength(3);
+    let calls = 0;
+    const counting: typeof git = (args, cwd) => {
+      calls++;
+      return git(args, cwd);
+    };
+    const single = await setStatuses(counting, "origin", set!);
+    const singleCalls = calls;
+    expect(singleCalls).toBeGreaterThan(0);
+    const cache = createStatusCache(counting);
+    calls = 0;
+    const rows = await Promise.all(set!.repos.map(() => cache.get("origin", set!)));
+    expect(calls).toBe(singleCalls);
+    expect(rows[0].map((s) => s.name).sort()).toEqual(["alpha", "beta", "gamma"]);
+    expect(rows[0]).toEqual(single);
+    calls = 0;
+    await cache.get("origin", set!);
+    expect(calls).toBe(0);
+    cache.clear();
+    await cache.get("origin", set!);
+    expect(calls).toBe(singleCalls);
   });
 
   it("removes a set; a dirty repo blocks it without force", async () => {

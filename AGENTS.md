@@ -14,3 +14,14 @@
 - Every merge to `staging` may be published as a test version on the npm dist-tag `next` (`npm i -g @ferronhooi/aihub@next`). A version tag `vX.Y.Z` on `main` publishes to `latest` with release notes.
 - Feature branches: `<topic>` or `feat/<topic>`, `fix/<topic>`; one topic per pull request; delete after merge.
 - Never push directly to `staging` or `main`; no force pushes.
+
+## Speed (the extension must never make the editor slow)
+
+The target machine is a Windows laptop running VS Code in a VM with antivirus: starting a process is expensive there (one `git` call is about three process starts), so the number of processes started per minute is the budget that matters.
+
+- No background work for something the user cannot see: a hidden view does not poll; it is marked stale and reads once when it is shown.
+- One read per refresh: never one process per row or per item. Rows of one tree share one cached read, cleared on refresh.
+- Every automatic trigger (timer, focus, file watcher) is debounced, skipped while the window is not focused, and backs off after a slow read (`vscode/src/refresher.ts`). Only a manual refresh is never delayed.
+- Nothing heavy in `activate()`: no file scans, no process, no network; the first read is delayed.
+- Watch narrow globs (`.git/HEAD`, not `**/*`); no synchronous file or process calls on a path that runs more than once.
+- A change that adds a timer, a watcher or a spawned process says in the pull request how often it runs, and is checked with "AI Context Hub: Show Performance Report".
