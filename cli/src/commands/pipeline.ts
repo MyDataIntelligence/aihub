@@ -4,7 +4,9 @@ import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import { repoRoot } from "../lib/git.js";
 import { loadTeam } from "../lib/team.js";
-import { parseRunRef, pipelineFailed, pipelineFollow, pipelineLogs, pipelineRetry, pipelineRun, pipelineRuns, pipelineStatus } from "../lib/pipeline.js";
+import { parseRunRef, pipelineFailed, pipelineFollow, pipelineLogs, pipelineRerun, pipelineRetry, pipelineRun, pipelineRuns, pipelineStatus } from "../lib/pipeline.js";
+import { ensureProtocol } from "../lib/open.js";
+import { startWatch } from "../lib/watch.js";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -35,9 +37,15 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     return void ctx.out(await pipelineLogs(ctx, { run: sel.run, step: v.step, search: v.search, tail: num(v.tail, "--tail"), json: v.json }));
   }
   if (sub === "run") return void ctx.out(await pipelineRun(ctx, { name: v.name, branch: v.branch, paramsFile: v["params-file"], json: v.json }));
+  // after a pushed fix: the new run of the failed pipeline (started by the push, or queued now), followed in the background
+  if (sub === "rerun") {
+    const r = await pipelineRerun(ctx, { run: v.run });
+    const watch = startWatch(ctx, { run: String(r.id), notify: true }, undefined, undefined, () => ensureProtocol());
+    return void ctx.out(v.json ? JSON.stringify({ ...r, watch }) : `run ${r.id} of ${r.pipeline} on ${r.branch} ${r.queued ? "queued" : "started by the push"}; ${watch}`);
+  }
   if (sub === "retry") {
     if (!sel.run) throw new AihubError("aihub pipeline retry needs --run <id> (see 'aihub pipeline runs')");
     return void ctx.out(await pipelineRetry(ctx, { run: sel.run, stage: v.stage, json: v.json }));
   }
-  throw new AihubError("usage: aihub pipeline follow|status|runs|logs|run|retry [flags]");
+  throw new AihubError("usage: aihub pipeline follow|status|runs|logs|run|rerun|retry [flags]");
 }

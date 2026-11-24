@@ -129,7 +129,7 @@ export async function startStory(ctx: Ctx, o: StartOpts): Promise<string> {
   }
   lines.push(`story ${o.id} '${wi.title}': ${stateText}`);
   // "start" is only the start: implementing is a separate request of the user
-  if (!o.json) lines.push("Started only. Implementing is a separate request: wait for the user.");
+  if (!o.json) lines.push(`Done: story ${o.id} is started. Implementing is a separate request (the user says "bouw story ${o.id}"); end the answer here, without a question.`);
   return o.json ? JSON.stringify({ story: o.id, title: wi.title, state: stateText, repos: results }) : lines.join("\n");
 }
 

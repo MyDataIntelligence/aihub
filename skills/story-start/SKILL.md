@@ -15,7 +15,7 @@ aihub story start --id 123
 ```
 
 2. Several repositories: add `--repos repo-a,repo-b` (clones next to this one). Add `--base release/1.2` only when the user names another base.
-3. Report the branch, the base and the new story state in one line, offer the next step in one line ("Zal ik hem nu bouwen?") and STOP. Do not read the story, the code or the templates, do not implement, commit, push or open a PR in the same turn: that is a separate request (implement, story-run).
+3. Report the branch, the base and the new story state in one line, then one statement, never a question: "Bouwen is een aparte vraag: zeg 'bouw story 123'." STOP. Do not read the story, the code or the templates, do not implement, commit, push or open a PR in the same turn: that is a separate request (implement, story-run).
 
 Do not read `team.yaml` or the templates yourself: the CLI applies them.
 
@@ -29,4 +29,4 @@ Branch name from `team.yaml` (`branches.feature`), the base branch, the push, th
 ## If it fails
 Report the error text in one line. Not signed in: `aihub doctor`. A dirty checkout is not switched: say so. Never invent ids.
 
-Rules: one command, 0 questions. Local git uses your own tools.
+Rules: one command, 0 questions; done is done, no closing question. Local git uses your own tools.

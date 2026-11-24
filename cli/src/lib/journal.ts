@@ -29,7 +29,7 @@ export function isJournaled(name: string, args: string[]): boolean {
   if (name === "note") return sub === "add";
   if (name === "story") return !["recall", "search", "template", "show", "context"].includes(sub ?? "");
   if (name === "pr") return ["create", "update", "complete", "requeue", "abandon", "reopen"].includes(sub ?? "");
-  if (name === "pipeline") return ["follow", "run", "retry"].includes(sub ?? "");
+  if (name === "pipeline") return ["follow", "run", "rerun", "retry"].includes(sub ?? "");
   if (name === "comments") return sub === "reply";
   if (name === "test") return args.includes("--run");
   if (name === "worktree") return sub !== "list";

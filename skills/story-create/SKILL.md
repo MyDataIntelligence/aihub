@@ -25,3 +25,5 @@ Work item type, area and iteration, parent link and tags come from `team.yaml` (
 
 ## If it fails
 Missing field or template error: run `aihub doctor`, fix the file, retry once. Never invent a work item id or link.
+
+Done is done: end with the result and at most one statement about the next step, never with a question.
