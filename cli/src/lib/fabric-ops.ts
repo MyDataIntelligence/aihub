@@ -87,6 +87,8 @@ export interface LogSection {
   available: boolean;
   lines: string[];
   note?: string;
+  /** A raw text log (Livy, driver stderr/stdout): digested by default, whole only with --out. */
+  raw?: boolean;
 }
 
 /** Keep only the lines that contain `search` (case-insensitive) and then only the last `tail` lines. */
