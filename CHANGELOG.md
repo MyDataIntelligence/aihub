@@ -2,6 +2,15 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.3.0
+- `aihub worktree cleanup [--json] [--repos a,b] [--no-size] [--offline]`: every worktree of this repository and your repo groups with size, last activity, uncommitted and unpushed work, merged, the pull request and the story of its branch; finished worktrees without local work are preselected. `--remove p1,p2 [--delete-branch]` removes them safely (folder links first, never --force, never local work) and says how much space was freed.
+- `aihub robot local [--json] [--command --file f --test t --env e]` and `aihub robot result [--since ms] [--dir d]`: the local Robot run behind the VS Code button (the team's runner or `python -m robot`, the repository's venv, only the test environments of team.yaml `robot.environments`) and its result (counts, failing tests, log.html, report.html). team.yaml: `robot.runner`, `robot.environments`.
+- `aihub repos local [--root] [--json]`: the clones under the repos root (two levels deep) plus the known ones, with branch and origin read from `.git/HEAD` and `.git/config` (no git process per repository); linked worktrees are left out.
+- `aihub repos ado [--refresh] [--json]`: every repository of the projects in team.yaml `projects`, else of every project you can see, joined with its local clone (same origin, else the same name under the repos root); cached four hours.
+- `aihub repos clone --repos <project/name>[,...] [--root]`: clones into the repos root (`--root`, team.yaml `reposRoot`, else the folder of the current repository); an existing folder is never touched; per repository its status and git's own error. `--name` keeps working.
+- `aihub worktree groups save <name> --repos ... --team`: saves the group in `repositories[].groups` of team.yaml and keeps its comments (commit the file).
+- An az token in its last 15 minutes is renewed in a detached `aihub token refresh`, so no command waits for az (3-12 s on a slow laptop). Release notes: docs/releases/1.3.0.md.
+
 ## 1.2.0
 - `aihub doctor --perf [--json] [--paths a,b]`: the Performance Advisor engine (read-only measurements: node and git start, a scan probe, the performance log, Defender/Windows Search/drive facts without admin, per repository OneDrive, network drive, indexing, file count and git config) with one finding per cause, each with evidence, change, risk and undo; `--apply <id>` / `--undo <id>` for your own settings, admin changes only with `--elevate` (one UAC prompt), `--dry-run`.
 - `aihub worktree open --story <id>`: a set for a story also when the story number is not in the branch name; the worktrees go to the story folder and the branches are linked locally with the star (used by New Worktree Set in the VS Code extension 3.3.0). Skills unchanged since 1.1.0. Release notes: docs/releases/1.2.0.md.
