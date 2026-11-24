@@ -2,6 +2,12 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.1.0
+- `aihub story branches`: the branches of a story per repository with Development links in Azure DevOps, one star per repository, labels, old/parked, the story folder layout and the story title in `story-worktrees.json`; safe remove and move of a worktree (folder links removed first, never `--force` over local work).
+- `aihub status` starts three git processes instead of six: `rev-parse --show-toplevel --git-common-dir` and one `status --porcelain=v2 --branch` (branch, upstream, ahead, changes) plus the remote; `rev-list` only for a branch without an upstream (about 0.95 s became about 0.49 s without a sign-in).
+- Every aihub run loads only the module of the command it runs (`aihub --version` 0.41 s became 0.28 s).
+- `aihub worktree branches --json` gives `current` (the branch most repositories are on); `aihub worktree open --window none` opens nothing (the VS Code extension opens the workspace itself); `--mode switch` from inside a set switches the normal checkouts, not the set; the workspace file sets `terminal.integrated.cwd`. Release notes: docs/releases/1.1.0.md.
+
 ## 1.0.9
 - Faster `aihub status` without a sign-in: az is skipped when it has no signed-in account, a failed az or git credential attempt is remembered for a few minutes (until the az login changes), a refused PAT stops after the first read. The answer says `signedIn: false` with one warning instead of a warning per read (7-12 s became ~0.6 s).
 - `aihub bar --json [--fabric]`: everything the VS Code status bar shows (status, checks of the active PR, Fabric failures and logs, watching, events) in one process; git reads are shared within it.
@@ -10,7 +16,7 @@ One `## <version>` heading per release, one bullet per change. `aihub update` sh
 ## 1.0.8
 - `aihub worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--json]`: several repositories on the SAME branch at once. An existing branch (local or origin) is used, a missing one is created from `--from` or the repository's team.yaml `defaultTarget` (local only, not pushed); mode worktree leaves the normal checkout alone, mode switch refuses a repository with uncommitted changes and continues with the others; one `.code-workspace` with all folders opens in one VS Code window; one table row per repository. `aihub worktree groups list|save|remove` (personal, `~/.config/aihub/groups.json`; team.yaml `repositories[].groups` also works), `aihub worktree branches --group X` (where a branch exists, e.g. 2/3), `aihub worktree remove --branch <b>`.
 - Quiet background on Windows: every child process (git, az, node, the toast PowerShell, `aihub open`) is started through one wrapper with `windowsHide: true`, the toast and the logon entry run PowerShell hidden and non-interactive behind `conhost --headless`, and the `aihub://` handler has no console. No window pops up or takes focus while following a pipeline.
-- Fewer toasts: one toast per poll round ("aihub · 3 nieuwe dingen: !42 2 comments · review gevraagd op !51") with Open and "Stil 1 uur", never more than one per 2 minutes. `aihub watch config --notify all|needed|off` (default `needed`: mentions, review requests, replies to my comments, my red builds; the rest only in `aihub watch events`) and `aihub watch quiet --for 1h|--until 18:00|--off`. Release notes: docs/releases/1.0.8.md.
+- Fewer toasts: one toast per poll round ("aihub Â· 3 nieuwe dingen: !42 2 comments Â· review gevraagd op !51") with Open and "Stil 1 uur", never more than one per 2 minutes. `aihub watch config --notify all|needed|off` (default `needed`: mentions, review requests, replies to my comments, my red builds; the rest only in `aihub watch events`) and `aihub watch quiet --for 1h|--until 18:00|--off`. Release notes: docs/releases/1.0.8.md.
 
 ## 1.0.7
 - `legacy remove`: dangling links removed as links, a running old Hub core holding the jar is stopped first, a half-removed package is still detected.
