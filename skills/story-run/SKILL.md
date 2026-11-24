@@ -8,7 +8,7 @@ description: "Use when the user wants a story done end to end without questions:
 The story exists and the user wants a finished, green pull request. Ask nothing except a genuinely ambiguous choice (two plausible repositories, a contradiction in the story).
 
 ## Steps
-Resuming, new chat or compaction? `aihub status --resume` first (local, instant), then `aihub status`; continue from there. Only the story id: `aihub story recall --id N`.
+Resuming, new chat or compaction? `aihub status` once (it includes the last step on this branch); continue from there. Only the story id: `aihub story recall --id N`.
 
 Chain these skills at once, carrying the ids forward:
 1. story-start: `aihub story start --id 123` (add `--repos` when the story names several repositories).

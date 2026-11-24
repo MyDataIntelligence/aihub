@@ -155,6 +155,37 @@ describe("journal and resume", () => {
     expect(out).toContain("Set: story-5");
   });
 
+  it("status --resume never shows journal lines of another branch in the same clone", async () => {
+    const s = makeSet();
+    // the main checkout of repo-a works on another branch and writes to the shared journal
+    sh(s.aMain, ["switch", "-c", "feature/9-andere-story"]);
+    write(s.aMain, "z.txt", "1\n");
+    await run(s.aMain, ["commit", "--type", "feat", "--subject", "other story work"]);
+    expect(readJournal(s.a).some((e) => e.branch === "feature/9-andere-story")).toBe(true);
+    const r = await run(s.a, ["status", "--resume"]);
+    expect(r.out).not.toContain("other story work");
+    expect(r.out).toContain("Last time: nothing recorded yet");
+  });
+
+  it("aihub status shows the last step of this branch and the latest note, so resume is one call", async () => {
+    const s = makeSet();
+    write(s.a, "x.txt", "1\n");
+    await run(s.a, ["commit", "--type", "feat", "--subject", "first change"]);
+    await run(s.a, ["note", "add", "waiting for the API owner"]);
+    const { fn } = fakeFetch([]);
+    const { ctx, lines } = ctxFor(s.a, fn);
+    ctx.now = () => Date.parse("2026-11-18T12:30:00Z");
+    expect(await main(["status"], ctx, commands)).toBe(0);
+    const out = lines.join("\n");
+    expect(out).toMatch(/Last time: aihub commit --type feat --subject first change -> .* \(30 min ago\)/);
+    expect(out).toContain("Note: waiting for the API owner");
+    lines.length = 0;
+    await main(["status", "--json"], ctx, commands);
+    const j = JSON.parse(lines[0]);
+    expect(j.last).toMatchObject({ command: "aihub commit --type feat --subject first change", status: "ok", ago: "30 min ago" });
+    expect(j.note).toBe("waiting for the API owner");
+  });
+
   it("the Dutch team gets the Dutch labels", async () => {
     const s = makeSet();
     write(s.a, ".agents/skills/_shared/references/team.yaml", TEAM.replace("language: en", "language: nl"));
