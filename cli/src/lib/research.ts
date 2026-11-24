@@ -1,8 +1,9 @@
-import { copyFileSync, existsSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { aihubDir, ensureDir } from "./aihubDir.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
+import { readUtf8 } from "./team.js";
 import { wikiUpdate } from "./wiki.js";
 
 /** The headings every feasibility report has, in order. */
@@ -60,7 +61,7 @@ export const titleOf = (text: string, file: string) => /^#\s+(.+)$/m.exec(text)?
  */
 export async function researchSave(ctx: Ctx, o: { file: string; wiki?: string; json?: boolean }): Promise<string> {
   if (!existsSync(o.file)) throw new AihubError(`report file not found: ${o.file}`);
-  const text = readFileSync(o.file, "utf8");
+  const text = readUtf8(o.file);
   if (!text.trim()) throw new AihubError("the report file is empty");
   const missing = missingHeadings(text);
   if (missing.length) throw new AihubError(`the report lacks the heading(s): ${missing.map((h) => `"## ${h}"`).join(", ")}. Start from aihub research template, fill every section, then save again.`);

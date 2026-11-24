@@ -89,6 +89,17 @@ export interface StoryStates {
   finished: string;
 }
 
+/** The states of a work item type with their category (Proposed, InProgress, Resolved, Completed, Removed); undefined when Azure DevOps does not answer. */
+export async function workItemTypeStates(c: AdoClient, type: string): Promise<{ name: string; category: string }[] | undefined> {
+  try {
+    const r = await c.get<{ value?: { name: string; category?: string }[] }>(`wit/workitemtypes/${encodeURIComponent(type)}/states`);
+    const list = (r.value ?? []).map((x) => ({ name: x.name, category: x.category ?? "" }));
+    return list.length ? list : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function storyStates(team: TeamConfig): StoryStates {
   const s = ((team.workItems as { states?: Partial<StoryStates> } | undefined)?.states ?? {}) as Partial<StoryStates>;
   return { active: s.active || "Active", finished: s.finished || "Done" };

@@ -33,8 +33,11 @@ export interface TeamConfig {
 export const TEAM_FILE = ".agents/skills/_shared/references/team.yaml";
 
 /** Read a UTF-8 file, dropping a BOM and normalising CRLF. */
+/** A text file without BOM and with \n line ends; UTF-16 files (Windows PowerShell `>` and Out-File) are decoded too. */
 export function readUtf8(path: string): string {
-  return readFileSync(path, "utf8").replace(/^﻿/, "").replace(/\r\n/g, "\n");
+  const b = readFileSync(path);
+  const utf16 = b[0] === 0xff && b[1] === 0xfe ? b.subarray(2) : b[0] === 0xfe && b[1] === 0xff ? Buffer.from(b.subarray(2)).swap16() : undefined;
+  return (utf16 ? utf16.toString("utf16le") : b.toString("utf8")).replace(/^﻿/, "").replace(/\r\n/g, "\n");
 }
 
 export function loadTeam(repoRoot: string): TeamConfig {
