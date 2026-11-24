@@ -68,6 +68,8 @@ describe("aihub review prepare / post --pick", () => {
     expect(r.out).toContain("+    2 y = 3");
     expect(r.out).toContain("--pick 1,3");
     expect(r.calls.filter((c) => c.method === "POST")).toHaveLength(0);
+    // the folder of the findings file exists, so the agent can write it without a mkdir first
+    expect(existsSync(dirname(s.file))).toBe(true);
     const j = await run(s.dir, prRoutes(), ["review", "prepare", "--pr", "5", "--json"]);
     expect(JSON.parse(j.out).findingsFile).toBe(s.file);
   });
