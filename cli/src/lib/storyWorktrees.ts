@@ -36,8 +36,8 @@ export interface StoryBranch {
 export interface StoryWorktrees {
   version: number;
   branches: Record<string, StoryBranch>;
-  /** per story: never ask again; the last sessions (branch per session start, newest last) */
-  stories: Record<string, { neverAsk?: boolean; sessions?: string[] }>;
+  /** per story: its title (when a tool knew it), never ask again, the last sessions (branch per session start, newest last) */
+  stories: Record<string, { title?: string; neverAsk?: boolean; sessions?: string[] }>;
 }
 
 export const emptyStoryWorktrees = (): StoryWorktrees => ({ version: STORY_WORKTREES_VERSION, branches: {}, stories: {} });

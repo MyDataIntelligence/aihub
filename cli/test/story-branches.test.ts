@@ -102,6 +102,8 @@ describe("aihub story branches (the list)", () => {
       expect.objectContaining({ repo: "repo-a", branch: "feature/9-export", linked: "both", status: "current", local: true, pushed: true, ahead: 0, pr: { id: 41, draft: true, status: "active" } }),
       expect.objectContaining({ repo: "repo-b", branch: "feature/9-export-api", linked: "ado", status: "parked", local: true, pushed: false, ahead: 0 }),
     ]);
+    // the title goes into the shared file, for the Worktree Maker (no Azure DevOps access there)
+    expect(readStoryWorktrees(storyWorktreesFileFor(b.dir)!).stories["9"].title).toBe("Export bouwen");
     const text = await run(a.dir, routes, ["story", "branches", "--id", "9"]);
     expect(text.out).toMatch(/★ repo-a: feature\/9-export\s+pushed, PR !41 \(draft\)/);
   });

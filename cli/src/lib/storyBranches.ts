@@ -166,9 +166,23 @@ export async function listStoryBranches(ctx: Ctx, o: { id?: number; mine?: boole
       const pr = (await prs(row.repo)).find((p) => p.sourceRefName === `refs/heads/${row.branch}`);
       if (pr) row.pr = { id: pr.pullRequestId, draft: !!pr.isDraft, status: pr.status ?? "active" };
     }
+    // the Worktree Maker has no Azure DevOps access: the title goes into the shared file of each repository with this story
+    for (const r of repos) if (r.dir && [...rows.values()].some((x) => x.repo === r.name)) rememberTitle(r.dir, id, wi.title);
     out.push({ id, title: wi.title, state: wi.state, branches: [...rows.values()].sort((a, b) => a.repo.localeCompare(b.repo) || rank(a.status) - rank(b.status) || a.branch.localeCompare(b.branch)) });
   }
   return out;
+}
+
+/** Writes the story title into the repository's story-worktrees.json, only when it is new or changed. */
+function rememberTitle(dir: string, id: number, title: string): void {
+  const file = storyWorktreesFileFor(dir);
+  if (!file || !title) return;
+  try {
+    if (readStoryWorktrees(file).stories[String(id)]?.title === title) return;
+    updateStoryWorktrees(file, (d) => ({ ...d, stories: { ...d.stories, [String(id)]: { ...d.stories[String(id)], title } } }));
+  } catch {
+    /* a newer schema: left alone */
+  }
 }
 
 const rank = (s: BranchStatus) => (s === "current" ? 0 : s === "parked" ? 1 : 2);
