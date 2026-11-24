@@ -57,7 +57,7 @@ export interface PrJson {
 export type HowMode = "worktree" | "switch";
 export type HowWindow = "new" | "this";
 
-export type BranchChoice = { kind: "existing"; branch: string } | { kind: "new-story" } | { kind: "pr" } | { kind: "typed" };
+export type BranchChoice = { kind: "existing"; branch: string } | { kind: "new-story" } | { kind: "pr" } | { kind: "typed" } | { kind: "plain" };
 
 export interface PickItem<T> {
   label: string;

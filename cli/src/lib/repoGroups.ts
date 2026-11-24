@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { isMap, isScalar, isSeq, parseDocument, type YAMLMap, type YAMLSeq } from "yaml";
 import type { Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { repoRoot } from "./git.js";
 import { configHome } from "./notifyPolicy.js";
 import { resolveRepoDirs, type RepoDir } from "./repos.js";
-import { loadTeam, type TeamConfig } from "./team.js";
+import { loadTeam, TEAM_FILE, type TeamConfig } from "./team.js";
 
 /**
  * Repository groups: a name for several clones that are opened together on one branch. They live in the user's own
@@ -115,4 +116,40 @@ export function groupDirs(ctx: Ctx, g: Group): { dirs: RepoDir[]; missing: strin
   for (const r of g.repos) if (r.path && gitFolder(r.path)) dirs.push({ name: r.name, dir: r.path });
   for (const r of g.repos) if (!(r.path && gitFolder(r.path))) missing.push(r.name);
   return { dirs, missing };
+}
+
+/**
+ * Saves a group in the team.yaml of the current repository (for the whole team), keeping its comments: every
+ * repository gets the group in `repositories[].groups`; one that is not next to this repository gets its `path`
+ * (relative to the repository). The file is changed in the working tree only: commit it like any other change.
+ */
+export function saveTeamGroup(ctx: Ctx, name: string, specs: string[]): Group & { file: string } {
+  if (!/^[\w.-]+$/.test(name)) throw new AihubError("a group name uses letters, digits, '.', '-' and '_'");
+  const root = currentRoot(ctx);
+  if (!root) throw new AihubError("a team group is saved in the team.yaml of a repository: run this inside a clone");
+  const repos = resolveRepos(ctx, specs).map((r) => ({ name: r.name, path: r.dir }));
+  const file = join(root, TEAM_FILE);
+  const doc = existsSync(file) ? parseDocument(readFileSync(file, "utf8")) : parseDocument("");
+  if (!doc.contents || !isMap(doc.contents)) doc.contents = doc.createNode({}) as never;
+  let seq = doc.get("repositories");
+  if (!isSeq(seq)) {
+    doc.set("repositories", doc.createNode([]));
+    seq = doc.get("repositories");
+  }
+  const items = (seq as YAMLSeq).items as YAMLMap[];
+  for (const r of repos) {
+    let entry = items.find((m) => isMap(m) && String(m.get("name") ?? "").toLowerCase() === r.name.toLowerCase());
+    if (!entry) {
+      const next = resolve(dirname(root), r.name).toLowerCase() === resolve(r.path).toLowerCase();
+      entry = doc.createNode(next ? { name: r.name } : { name: r.name, path: relative(root, r.path).split("\\").join("/") }) as YAMLMap;
+      (seq as YAMLSeq).add(entry);
+    }
+    const groups = entry.get("groups");
+    if (isSeq(groups)) {
+      if (!groups.items.some((g) => String(isScalar(g) ? g.value : g) === name)) groups.add(name);
+    } else entry.set("groups", doc.createNode([name]));
+  }
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, doc.toString(), "utf8");
+  return { name, repos, source: "team", file };
 }

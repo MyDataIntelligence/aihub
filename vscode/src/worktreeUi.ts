@@ -40,9 +40,26 @@ export class WorktreeSetsProvider implements vscode.TreeDataProvider<Node> {
     this.cache = createStatusCache(git);
   }
 
-  refresh() {
-    this.cache.clear();
+  /** A refresh while the view is hidden waits: the view is drawn (and git asked) only when someone looks. */
+  private stale = false;
+  visible = () => true;
+
+  /** Redraws the view; statuses are read again only for repositories whose git files changed (`all`: forget everything). */
+  refresh(all = false) {
+    if (all) this.cache.clear();
+    if (!this.visible()) return void (this.stale = true);
+    this.stale = false;
     this.emitter.fire(undefined);
+  }
+
+  /** The view became visible: draw what changed meanwhile. */
+  shown() {
+    if (this.stale) this.refresh();
+  }
+
+  /** A file was saved: the status of its repository is read again on the next draw. */
+  saved(file: string) {
+    this.cache.invalidate(file);
   }
 
   async getChildren(n?: Node): Promise<Node[]> {
@@ -68,7 +85,9 @@ Open on branch... opens all of them on one branch`;
       return it;
     }
     if (n.kind === "set") {
-      const it = new vscode.TreeItem(n.set.branch, vscode.TreeItemCollapsibleState.Expanded);
+      // only the set of this window is open: a collapsed set reads no status (all sets at once was the process storm)
+      const open = (vscode.workspace.workspaceFolders ?? []).some((f) => f.uri.fsPath.toLowerCase().startsWith(n.set.folder.toLowerCase()));
+      const it = new vscode.TreeItem(n.set.branch, open ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed);
       it.description = `${n.set.repos.length} repo${n.set.repos.length === 1 ? "" : "s"}`;
       it.contextValue = "aihubSet";
       it.iconPath = new vscode.ThemeIcon("repo-forked");
@@ -79,7 +98,7 @@ Open on branch... opens all of them on one branch`;
     it.contextValue = "aihubSetRepo";
     it.iconPath = new vscode.ThemeIcon("repo");
     it.tooltip = n.repo.path;
-    // one status read per set, shared by all its rows until the next refresh (git status per repo of the set)
+    // one git status per repository, kept until git changes something in it or a file in it is saved
     const s = (await timed("tree", "worktreeSets.repoStatus", () => this.cache.get(remote(), n.set), { repos: n.set.repos.length })).find((x) => x.name === n.repo.name);
     if (s) it.description = !s.exists ? "missing" : [s.dirty ? `${s.dirty} changed` : "", s.ahead ? `${s.ahead} to push` : s.unpushed ? `${s.unpushed} to push` : "", s.behind ? `${s.behind} behind` : ""].filter(Boolean).join(", ") || "clean";
     return it;
@@ -88,10 +107,16 @@ Open on branch... opens all of them on one branch`;
 
 const summary = (steps: RepoStep[]) => steps.map((s) => `${s.name}: ${s.status === "ok" ? "" : s.status + ": "}${s.message}${s.nextStep ? ` (${s.nextStep})` : ""}`).join("\n");
 
-export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (line: string) => void, toChat: (actionId: string) => Promise<void>, groups: () => Promise<GroupJson[]> = async () => []): () => void {
+export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (line: string) => void, toChat: (actionId: string) => Promise<void>, groups: () => Promise<GroupJson[]> = async () => [], cleanup?: () => Promise<boolean>): () => void {
   const git = createGit("git", log);
   const provider = new WorktreeSetsProvider(git, groups);
-  ctx.subscriptions.push(vscode.window.registerTreeDataProvider("aihub.worktreeSets", provider));
+  const view = vscode.window.createTreeView("aihub.worktreeSets", { treeDataProvider: provider });
+  provider.visible = () => view.visible;
+  ctx.subscriptions.push(
+    view,
+    view.onDidChangeVisibility(() => view.visible && provider.shown()),
+    vscode.workspace.onDidSaveTextDocument((d) => provider.saved(d.uri.fsPath)),
+  );
   const reg = (id: string, fn: (...a: any[]) => Promise<void>) =>
     ctx.subscriptions.push(
       vscode.commands.registerCommand(id, async (...a: any[]) => {
@@ -232,6 +257,8 @@ export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (lin
   });
 
   reg("aihub.worktrees.cleanup", async () => {
+    // with aihub 1.3+: PR, story and local work per worktree (aihub worktree cleanup); else the git-only merged check below
+    if (cleanup && (await cleanup())) return;
     const roots = repoRoots();
     const repos = roots.length ? await findRepos(roots, Number(cfg().get("scanDepth", 2))) : [];
     if (!repos.length) return void vscode.window.showInformationMessage("No repositories found to scan.");
@@ -263,7 +290,7 @@ export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (lin
     if (pick) await deleteGroup(ctx.globalState, pick.label);
   });
 
-  reg("aihub.worktrees.refresh", async () => provider.refresh());
+  reg("aihub.worktrees.refresh", async () => provider.refresh(true));
 
   reg("aihub.worktrees.setActions", async (n?: Node) => {
     const items = [

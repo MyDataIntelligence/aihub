@@ -2,7 +2,7 @@
   "name": "ai-context-hub",
   "displayName": "AI Context Hub",
   "description": "A thin status bar and panel over the aihub CLI: story, branch, pull request, pipeline, review threads, Fabric runs and watch events. Actions open in your chat (Copilot Chat or opencode).",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "publisher": "FerronHooi",
   "license": "MIT",
   "private": true,
@@ -194,7 +194,7 @@
       },
       {
         "command": "aihub.worktrees.cleanup",
-        "title": "Clean Up Merged Worktrees...",
+        "title": "Clean Up Worktrees...",
         "category": "AI Context Hub"
       },
       {
@@ -497,6 +497,12 @@
         "command": "aihub.openRecent",
         "title": "Open Recent Worktree Set or Story",
         "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.robot.run",
+        "title": "Run Robot Test...",
+        "category": "AI Context Hub",
+        "icon": "$(play)"
       }
     ],
     "configuration": {
@@ -603,6 +609,15 @@
           ],
           "description": "How much the performance log keeps."
         },
+        "aihub.worktrees.cleanupReminder": {
+          "type": "string",
+          "enum": [
+            "weekly",
+            "off"
+          ],
+          "default": "weekly",
+          "description": "Ask to clean up worktrees whose pull request is completed or abandoned, whose story is done, or that are merged (and that have no local work): at most once a week, sooner when three or more can go, never more than once a day. Clean Up Worktrees... always works."
+        },
         "aihub.worktrees.remote": {
           "type": "string",
           "default": "origin",
@@ -628,6 +643,11 @@
           "scope": "window",
           "default": null,
           "description": "Written by aihub into the .code-workspace of a repo set (story, group, branch, mode, repositories); the status bar shows it. Not meant to be edited."
+        },
+        "aihub.reposRoot": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The folder with your clones for the repo opener (New Worktree Set, Repositories on a branch). A repository that is not cloned yet is cloned here. Empty: team.yaml `reposRoot`, else the folder the current repository is in."
         }
       }
     },
@@ -671,6 +691,11 @@
           "submenu": "aihub.cm.Group",
           "when": "workspaceFolderCount > 0",
           "group": "7_aihub@1"
+        },
+        {
+          "command": "aihub.robot.run",
+          "when": "resourceExtname == .robot",
+          "group": "7_aihub@2"
         }
       ],
       "aihub.cm.Group": [
@@ -817,6 +842,11 @@
           "command": "aihub.stories.refresh",
           "when": "view == aihub.myStories",
           "group": "navigation@2"
+        },
+        {
+          "command": "aihub.robot.run",
+          "when": "view == aihub.bar",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -1016,6 +1046,10 @@
       ],
       "aihub.cm.Robot": [
         {
+          "command": "aihub.robot.run",
+          "group": "0_run@1"
+        },
+        {
           "command": "aihub.chat.test",
           "group": "1_x@1"
         }
@@ -1158,6 +1192,11 @@
         {
           "command": "aihub.reposet.open",
           "group": "navigation@0"
+        },
+        {
+          "command": "aihub.robot.run",
+          "when": "resourceExtname == .robot",
+          "group": "navigation@1"
         }
       ]
     },

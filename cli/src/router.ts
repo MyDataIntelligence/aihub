@@ -66,6 +66,7 @@ export const commands: Record<string, CommandFn> = {
   note: lazy(() => import("./commands/note.js")),
   status: lazy(() => import("./commands/status.js")),
   bar: lazy(() => import("./commands/bar.js")),
+  token: lazy(() => import("./commands/token.js")),
   watch: lazy(() => import("./commands/watch.js")),
   update: lazy(() => import("./commands/update.js")),
   explain: lazy(() => import("./commands/explain.js")),
