@@ -21,13 +21,14 @@ export class MissingTeamSetting extends AihubError {
   constructor(
     readonly key: string,
     readonly choices: string[],
+    hint = "",
   ) {
-    super(`missing team setting ${key}${choices.length ? ` (found: ${choices.join(", ")})` : ""}: ask the user, then run: aihub team set ${key} "<value>"`);
+    super(`missing team setting ${key}${choices.length ? ` (found: ${choices.join(", ")})` : ""}: ask the user, then run: aihub team set ${key} "<value>"${hint}`);
     this.name = "MissingTeamSetting";
   }
 }
 
-export const missingSetting = (key: string, choices: string[] = []) => new MissingTeamSetting(key, choices);
+export const missingSetting = (key: string, choices: string[] = [], hint = "") => new MissingTeamSetting(key, choices, hint);
 
 export interface KeySpec {
   key: string;

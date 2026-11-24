@@ -17,6 +17,12 @@ InProgress states, for example) it stops before it creates or changes anything, 
 `missing team setting workItems.states.active (found: Doing, Review): ask the user, then run: aihub team set workItems.states.active "<value>"`.
 Detections are cached for a day in the aihub home (`team-detect.json`); a key that is in `team.yaml` costs no detection at all.
 
+Without `repositories[].defaultTarget`, `aihub pr create` and `aihub branch update` target the branch the feature branch was
+cut from (local git only, no fetch): of `origin/HEAD`, the protected branches and what the upstream and reflogs name, the one
+whose merge-base is closest to HEAD. The result line says `target: <branch> (derived from the branch point)`. A tie or no
+shared history stops with exit code 3 and the `aihub team set repositories[0].defaultTarget` line; `--target` overrules it
+for one call. `aihub team set` also works before there is a `team.yaml`: it writes the proposal first.
+
 The documented schema is [`skills/_shared/references/team.schema.yaml`](../skills/_shared/references/team.schema.yaml).
 Templates are separate files next to it (stories, commits) or in the repo (`.azuredevops/pull_request_template.md`).
 

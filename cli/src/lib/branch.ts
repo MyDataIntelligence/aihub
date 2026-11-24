@@ -1,8 +1,9 @@
 import { repoDefaultBranch } from "./ado.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
-import { currentBranch, fetchBranch, git, gitRaw, originDefaultBranch, withTempWorktree } from "./git.js";
-import { defaultTargetFor, isProtected, loadTeam } from "./team.js";
+import { currentBranch, fetchBranch, git, gitRaw, withTempWorktree } from "./git.js";
+import { isProtected, loadTeam } from "./team.js";
+import { targetFor } from "./baseBranch.js";
 
 export interface UpdateBranchOpts {
   branch?: string;
@@ -26,7 +27,7 @@ export async function branchUpdate(ctx: Ctx, o: UpdateBranchOpts): Promise<strin
   const branch = o.branch ?? checkedOut;
   if (!branch) throw new AihubError("detached HEAD; pass --branch <name>");
   const target =
-    o.target ?? defaultTargetFor(team, client.remote.repo) ?? (originDefaultBranch(root) || undefined) ?? (await repoDefaultBranch(client)) ?? "main";
+    o.target ?? targetFor(ctx, root, branch, team, client.remote.repo)?.target ?? (await repoDefaultBranch(client)) ?? "main";
   if (branch === target) throw new AihubError(`'${branch}' is the target itself; nothing to update`);
   if (isProtected(team, branch)) throw new AihubError(`'${branch}' is a protected branch; the CLI does not change it`);
   if (!fetchBranch(root, target)) throw new AihubError(`target branch '${target}' not found on origin`);
