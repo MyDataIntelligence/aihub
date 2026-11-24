@@ -35,6 +35,8 @@ export interface OpenRepoJson {
 }
 
 export interface OpenResultJson {
+  /** the story of a story branch (aihub 1.1+) */
+  story?: number;
   group?: string;
   branch: string;
   mode: "worktree" | "switch";

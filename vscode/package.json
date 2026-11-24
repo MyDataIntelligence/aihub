@@ -433,6 +433,54 @@
         "title": "Open Worktree in New Window",
         "category": "AI Context Hub",
         "icon": "$(empty-window)"
+      },
+      {
+        "command": "aihub.newWorktreeSet",
+        "title": "New Worktree Set...",
+        "category": "AI Context Hub",
+        "icon": "$(add)"
+      },
+      {
+        "command": "aihub.recentSets",
+        "title": "Recent Worktree Sets...",
+        "category": "AI Context Hub",
+        "icon": "$(history)"
+      },
+      {
+        "command": "aihub.recentStories",
+        "title": "Recent Stories...",
+        "category": "AI Context Hub",
+        "icon": "$(history)"
+      },
+      {
+        "command": "aihub.openRepoSet",
+        "title": "Open Repo Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.openStory",
+        "title": "Open Story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.openRecentSet",
+        "title": "Open Recent Worktree Set",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.openRecentStory",
+        "title": "Open Recent Story",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.getRecents",
+        "title": "Get Recent Sets and Stories",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.reposet.menu",
+        "title": "Open Repo Set Menu",
+        "category": "AI Context Hub"
       }
     ],
     "configuration": {
@@ -1045,6 +1093,30 @@
         },
         {
           "command": "aihub.stories.openWorktree",
+          "when": "false"
+        },
+        {
+          "command": "aihub.openRepoSet",
+          "when": "false"
+        },
+        {
+          "command": "aihub.openStory",
+          "when": "false"
+        },
+        {
+          "command": "aihub.openRecentSet",
+          "when": "false"
+        },
+        {
+          "command": "aihub.openRecentStory",
+          "when": "false"
+        },
+        {
+          "command": "aihub.getRecents",
+          "when": "false"
+        },
+        {
+          "command": "aihub.reposet.menu",
           "when": "false"
         }
       ],

@@ -35,6 +35,8 @@ const slowRunner = (): Runner => makeRunner({ command: String(cfg().get("cliPath
 export interface StoryDeps {
   cwd: () => string | undefined;
   log: (line: string) => void;
+  /** the recent list: called before the window changes */
+  opened?: (story: { id: number; title: string }) => Promise<void>;
 }
 
 /** The git dir of a checkout or linked worktree (where HEAD and logs/HEAD are), read from `.git` without git. */
@@ -461,6 +463,7 @@ export function registerStories(ctx: vscode.ExtensionContext, deps: StoryDeps): 
     const way = await pick<OpenWay>(openWays(), `Open Story · #${story.id} ${story.title}`, "How should the ★ branches be opened?");
     if (!way) return;
     const out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Opening story ${story.id}...` }, () => cli(["story", "open", "--id", String(story.id), "--mode", way.mode, "--window", "none"]));
+    await deps.opened?.({ id: story.id, title: story.title }).catch(() => undefined);
     await showOpened(JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson, way.window, deps.log);
   });
   return { view, tracker };
