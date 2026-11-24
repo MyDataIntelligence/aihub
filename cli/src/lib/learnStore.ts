@@ -7,6 +7,17 @@ import { AihubError } from "./errors.js";
 import type { Ctx } from "./context.js";
 import type { ChangeFacts } from "./learn.js";
 import { validateExplanation } from "./learnSchema.js";
+import { readUtf8 } from "./team.js";
+
+/** A JSON file the agent wrote (UTF-8, UTF-8 with BOM or UTF-16); a parse error names the file and the fix. */
+export function readJsonFile<T = unknown>(file: string): T {
+  if (!existsSync(file)) throw new AihubError(`file not found: ${file}`);
+  try {
+    return JSON.parse(readUtf8(file)) as T;
+  } catch (e) {
+    throw new AihubError(`${file} is not valid JSON: ${(e as Error).message}. Write it as plain JSON (UTF-8), one object, no comments.`);
+  }
+}
 
 /**
  * The personal Learn store: `~/.config/aihub/learn` (AIHUB_LEARN_HOME or XDG_CONFIG_HOME move it). Per user only:
@@ -68,13 +79,8 @@ const readLesson = (file: string): Lesson | undefined => {
 /** Validates and stores an explanation. The id is <date>-<what>; saving the same change again replaces it. */
 export function learnSave(ctx: Ctx, o: { file: string; facts?: string }): Lesson {
   if (!existsSync(o.file)) throw new AihubError(`explanation file not found: ${o.file}`);
-  let explanation: Lesson["explanation"];
-  try {
-    explanation = JSON.parse(readFileSync(o.file, "utf8"));
-  } catch (e) {
-    throw new AihubError(`${o.file} is not valid JSON: ${(e as Error).message}`);
-  }
-  const facts = o.facts && existsSync(o.facts) ? (JSON.parse(readFileSync(o.facts, "utf8")) as ChangeFacts) : undefined;
+  const explanation = readJsonFile<Lesson["explanation"]>(o.file);
+  const facts = o.facts && existsSync(o.facts) ? readJsonFile<ChangeFacts>(o.facts) : undefined;
   const v = validateExplanation(explanation, facts);
   if (!v.ok) throw new AihubError(`the explanation is not valid, nothing was saved:\n${v.errors.map((e) => `  ${e}`).join("\n")}`);
   const { name, key } = repoIdentity(ctx);

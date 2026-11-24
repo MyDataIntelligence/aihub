@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
+import { dirname } from "node:path";
 import { parse, stringify } from "yaml";
 import { getPr, type AdoClient, type PullRequest, shortBranch } from "./ado.js";
-import { aihubDir } from "./aihubDir.js";
+import { aihubDir, ensureDir } from "./aihubDir.js";
 import { getThreads, type ThreadView } from "./comments.js";
 import { repoClient, type Ctx } from "./context.js";
 import { diffLines } from "./diff.js";
@@ -180,12 +181,14 @@ export async function reviewPrepare(ctx: Ctx, o: { pr: string; maxFiles?: number
   const { root } = repoClient(ctx);
   const id = parsePrRef(o.pr);
   const path = findingsPath(root, id);
+  // the folder exists, so writing the findings file right away works
+  ensureDir(dirname(path));
   const show = await reviewShow(ctx, { pr: o.pr, maxFiles: o.maxFiles ?? 15, maxDiffLines: o.maxDiffLines ?? 60, json: o.json });
   if (o.json) return JSON.stringify({ ...(JSON.parse(show) as object), findingsFile: path, format: "yaml list of {n, severity: blocker|major|minor|nit, file, line, text, suggestion}" });
   return [
     `PRE-REVIEW !${id}: nothing is posted until the developer picks findings.`,
     `Write your findings to ${path} as a YAML list, numbered from 1: {n, severity: blocker|major|minor|nit, file, line, text, suggestion}.`,
-    "Use the new-file line numbers of the diff below. Then show the numbered list and ask which to post: aihub review post --pr " + id + " --pick 1,3",
+    "Use the new-file line numbers of the diff below. Then show the numbered list and ask which to post: aihub review post --pr " + id + " --pick 1,3 (the user asked to post them right away: --pick all).",
     "",
     show,
   ].join("\n");

@@ -129,6 +129,12 @@ export function fieldsToSections(team: TeamConfig, fields: Record<string, any>, 
   return sections;
 }
 
+/** Description text before the first `##` heading when no template heading holds it (a story written by hand). */
+export function currentText(team: TeamConfig, fields: Record<string, any>, templateHeadings: string[]): string {
+  if (templateHeadings.some((h) => isPrimaryDescription(h) && fieldFor(team, h) === DESCRIPTION)) return "";
+  return parseSections(htmlToMd(String(fields[DESCRIPTION] ?? ""))).preamble.trim();
+}
+
 export function loadStoryTemplate(root: string, team: TeamConfig): string {
   const candidates = [team.workItems?.storyTemplate, "skills/_shared/assets/story-template.md"].filter(Boolean) as string[];
   for (const c of candidates) {
@@ -181,10 +187,14 @@ export async function storyShow(ctx: Ctx, o: { id: number; json?: boolean }): Pr
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
   const s = await getStory(client, o.id);
-  const sections = fieldsToSections(team, s.fields, templateHeadings(loadStoryTemplate(root, team)));
-  if (o.json) return JSON.stringify({ id: s.id, type: s.type, state: s.state, title: s.title, parent: s.parent, url: s.url, sections });
+  const heads = templateHeadings(loadStoryTemplate(root, team));
+  const sections = fieldsToSections(team, s.fields, heads);
+  const current = currentText(team, s.fields, heads);
+  if (o.json) return JSON.stringify({ id: s.id, type: s.type, state: s.state, title: s.title, parent: s.parent, url: s.url, sections, ...(current ? { currentText: current } : {}) });
   const head = `Story ${s.id} [${s.type}, ${s.state}] ${s.title}\n${s.url}${s.parent ? `\nparent: ${s.parent}` : ""}`;
-  return `${head}\n\n${renderSections(sections.map((x) => ({ heading: x.heading, body: x.body || "(empty)" })))}`.trimEnd();
+  // text outside the template headings would hide behind "(empty)" sections, yet it holds the only facts there are
+  const text = current ? `\n\nCurrent text (not in template form; use it as the facts for the sections):\n${current}` : "";
+  return `${head}${text}\n\n${renderSections(sections.map((x) => ({ heading: x.heading, body: x.body || "(empty)" })))}`.trimEnd();
 }
 
 export async function storyCreate(ctx: Ctx, o: { title?: string; bodyFile?: string; parent?: number; type?: string; json?: boolean }): Promise<string> {
