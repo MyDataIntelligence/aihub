@@ -3,10 +3,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AihubError } from "../lib/errors.js";
 import { FabricHttpError, guardEnv, inferEnv, type FabricClient, type FabricItem, type JobInstance } from "../lib/fabric.js";
-import { causeOfChain, classifyError, codeRefusals, errorsOnly, failedCell, parseSqlHost, rememberRun, searchLines, SPARK_VIEWS, sparkExecutor, sparkJob, sparkSql, sparkStage, sparkTask, sqlGuard, stagesSummary, tailLines, branchWorkspace, type SparkView } from "../lib/fabric-diag.js";
+import { causeOfChain, classifyError, codeRefusals, errorsOnly, failedCell, MAX_TAIL_LINES, parseSqlHost, rememberRun, searchLines, SPARK_VIEWS, sparkExecutor, sparkJob, sparkSql, sparkStage, sparkTask, sqlGuard, stagesSummary, tailLines, branchWorkspace, type SparkView } from "../lib/fabric-diag.js";
 import { COMMANDS, findProfiles, findProjects, jobDefinition, projectFiles, readRunResults, logTail, safeProjectDir, scaffoldFiles, setHash, writeScaffold, routeOf, MAX_FILES } from "../lib/fabric-dbt.js";
 import { durationText, extractStack, oneLine, parseUtc, toTable } from "../lib/fabric-ops.js";
 import { redact } from "../lib/fabric-redact.js";
+import { clampLines, WINDOW_BYTES } from "../lib/fabric-digest.js";
 import { isDroppedConnection, powershellSqlQuery } from "../lib/fabric-sql-fallback.js";
 import { readKeyVaultSecret } from "../lib/fabric-auth.js";
 import { dryRun, emit, itemArg, makeClient, need, target, where, type Setup, type Target } from "./fabric.js";
@@ -182,11 +183,17 @@ async function sparkLogs(s: Setup, client: FabricClient, t: Target, item: Fabric
   if (s.v.errors) text = errorsOnly(text);
   if (s.v.search) {
     const r2 = searchLines(text, s.v.search as string, num(s, "context", 2));
-    return emit(s, r2, `${r2.matches.length} match(es)${r2.truncated ? " (truncated)" : ""} in ${type} log ${file}\n${r2.matches.map((m) => `-- line ${m.line}\n${m.text}`).join("\n")}`);
+    const shown = clampLines(r2.matches.map((m) => `-- line ${m.line}\n${m.text}`).join("\n").split("\n"), WINDOW_BYTES, "narrow --search or add --out <file>");
+    return emit(s, { ...r2, matches: r2.matches.slice(0, 50) }, `${r2.matches.length} match(es)${r2.truncated ? " (truncated)" : ""} in ${type} log ${file}\n${shown.join("\n")}`);
   }
-  if (s.v.tail) text = tailLines(text, num(s, "tail", 100));
+  // the cause comes from the whole log; stdout and --json get a window: --tail N (default the last 60 lines), capped in bytes
   const cause = classifyError(text);
-  emit(s, { session: session.livyId, type, file, cause, text }, `${type} log ${type === "livy" ? "" : file} of session ${session.livyId}${cause.kind !== "unknown" ? ` (likely cause: ${cause.kind}: ${cause.hint})` : ""}\n${text.slice(0, 20_000)}`);
+  const total = text.split("\n").length;
+  const out = s.v.out as string | undefined;
+  if (out) writeFileSync(out, text, "utf8");
+  const more = out ? `the whole log (${total} lines) is in ${out}` : `the whole log (${total} lines): add --out <file>`;
+  text = clampLines(tailLines(text, s.v.tail ? num(s, "tail", 100) : Math.min(60, MAX_TAIL_LINES)).split("\n"), WINDOW_BYTES, more).join("\n");
+  emit(s, { session: session.livyId, type, file, cause, lines: total, text, ...(out ? { fullLog: out } : {}) }, `${type} log ${type === "livy" ? "" : file} of session ${session.livyId}${cause.kind !== "unknown" ? ` (likely cause: ${cause.kind}: ${cause.hint})` : ""}\n${text}${total > 60 && !s.v.tail ? `\n(last 60 of ${total} lines; ${more})` : out ? `\n(${more})` : ""}`);
 }
 
 // ---- Livy statements ----------------------------------------------------------------------------------------------------
@@ -259,7 +266,7 @@ export async function livyCmd(s: Setup, sub: string | undefined): Promise<void> 
 
 // ---- failure follow: root cause chain pipeline -> notebook -> Spark -------------------------------------------------------
 
-interface Link {
+export interface Link {
   level: number;
   kind: string;
   name: string;
@@ -349,6 +356,16 @@ async function sparkLinks(client: FabricClient, wsId: string, item: FabricItem, 
   }
 }
 
+/** The chain as indented lines (`from` drops the first links, e.g. the job a caller printed already), then the likely cause. */
+export function formatChain(chain: Link[], from = 0): string[] {
+  const lines = chain.slice(from).map((l) => `${"  ".repeat(Math.max(0, l.level - from))}${l.kind} ${l.name}${l.status ? ` [${l.status}]` : ""}${l.error ? `: ${l.error}` : ""}${l.detail && l.level > 0 ? ` (${l.detail})` : ""}`);
+  if (chain.some((l) => l.error)) {
+    const c = causeOfChain(chain);
+    lines.push(`likely cause: ${c.kind}: ${c.hint}`);
+  }
+  return lines;
+}
+
 /** Without --workspace, the per-branch workspace of the current branch ("<prefix> <branch label>"): sets s.v.workspace. */
 export async function resolveBranchWorkspace(s: Setup, client: FabricClient): Promise<void> {
   if (s.v.workspace || !s.branch) return;
@@ -364,7 +381,8 @@ export async function failuresCmd(s: Setup): Promise<void> {
   let t: Target;
   await resolveBranchWorkspace(s, client);
   t = await target(s, client, false);
-  const items = (await client.items(t.id)).filter((i) => ["DataPipeline", "Notebook"].includes(i.type)).slice(0, 50);
+  // --item: only that item's runs ("why did the last run of notebook X fail")
+  const items = s.v.item ? [await itemArg(s, client, t.id)] : (await client.items(t.id)).filter((i) => ["DataPipeline", "Notebook"].includes(i.type)).slice(0, 50);
   const rows: { item: FabricItem; job: JobInstance }[] = [];
   for (const it of items) {
     try {
@@ -382,12 +400,7 @@ export async function failuresCmd(s: Setup): Promise<void> {
   let chain: Link[] = [];
   if (failed[0]) {
     chain = await rootCause(client, t.id, failed[0].item, failed[0].job);
-    lines.push(`root cause chain of the newest failure (${failed[0].item.displayName}):`);
-    for (const l of chain) lines.push(`${"  ".repeat(l.level)}${l.kind} ${l.name}${l.status ? ` [${l.status}]` : ""}${l.error ? `: ${l.error}` : ""}${l.detail && l.level > 0 ? ` (${l.detail})` : ""}`);
-    if (chain.some((l) => l.error)) {
-      const c = causeOfChain(chain);
-      lines.push(`likely cause: ${c.kind}: ${c.hint}`);
-    }
+    lines.push(`root cause chain of the newest failure (${failed[0].item.displayName}):`, ...formatChain(chain));
     lines.push(`details: aihub fabric logs --workspace ${t.ws.name} --item ${failed[0].item.displayName} --job ${failed[0].job.id}`);
   }
   emit(s, { workspace: t.ws.name, failed: failed.map((r) => ({ item: r.item.displayName, job: r.job.id })), active: active.length, chain }, lines.join("\n"));

@@ -1,6 +1,6 @@
 import { AihubError } from "./errors.js";
 import { FabricHttpError, type FabricClient, type FabricItem, type JobInstance } from "./fabric.js";
-import { durationText, extractStack, oneLine, parseUtc, type LogSection } from "./fabric-ops.js";
+import { durationText, oneLine, parseUtc, type LogSection } from "./fabric-ops.js";
 
 /** Item types that have a job scheduler worth scanning. */
 export const JOB_ITEM_TYPES = ["Notebook", "DataPipeline", "SparkJobDefinition", "Lakehouse", "Dataflow", "CopyJob"];
@@ -40,8 +40,7 @@ export async function collectJobLogs(client: FabricClient, wsId: string, item: F
       const sid = s.livyId ?? s.id;
       const app = s.sparkApplicationId;
       await attempt("Spark monitoring Livy log", `Livy log (session ${sid})`, () => client.request("GET", `/workspaces/${wsId}/${base}/${item.id}/livySessions/${sid}/applications/none/logs?type=livy`, undefined, { accept: "text/plain" }), sections, (r) => {
-        const lines = txt(r.text);
-        return { lines: lines.slice(-40) };
+        return { lines: txt(r.text), raw: true };
       });
       if (!app) continue;
       // Endpoints verified against Microsoft Learn (2026-11): driver log
@@ -51,9 +50,7 @@ export async function collectJobLogs(client: FabricClient, wsId: string, item: F
       for (const f of ["stderr", "stdout"] as const) {
         const url = `/workspaces/${wsId}/${base}/${item.id}/livySessions/${sid}/applications/${app}/logs?type=driver&fileName=${f}`;
         await attempt("Spark monitoring driver log", `driver ${f} (session ${sid})`, () => client.request("GET", url, undefined, { accept: "text/plain" }), sections, (r) => {
-          const lines = txt(r.text);
-          const stack = f === "stderr" ? extractStack(lines) : [];
-          return { lines: stack.length ? ["error excerpt:", ...stack.map((l) => `  ${l}`), "full log:", ...lines] : lines };
+          return { lines: txt(r.text), raw: true };
         });
       }
     }
