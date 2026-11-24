@@ -103,14 +103,21 @@ export function openRepo(r: RepoDir, o: { branch: string; from?: string; mode: O
 
 const norm = (p: string) => p.replace(/\\/g, "/");
 
+/** The folder that holds all of them (the set folder for worktrees, the clones' parent for switch), else the set folder. */
+function commonRoot(folder: string, paths: string[]): string {
+  if (paths.every((p) => samePath(dirname(p), folder))) return folder;
+  const parents = [...new Set(paths.map((p) => resolve(dirname(p))))];
+  return parents.length === 1 ? parents[0] : folder;
+}
+
 export function workspaceJson(folder: string, repos: RepoResult[]): string {
-  const folders = repos
-    .filter((r) => r.ok && r.path)
-    .map((r) => {
-      const rel = relative(folder, r.path!);
-      return { name: r.repo, path: norm(rel && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel) ? rel : r.path!) };
-    });
-  return JSON.stringify({ folders, settings: {} }, null, 2);
+  const ok = repos.filter((r) => r.ok && r.path);
+  const folders = ok.map((r) => {
+    const rel = relative(folder, r.path!);
+    return { name: r.repo, path: norm(rel && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel) ? rel : r.path!) };
+  });
+  // a new terminal starts in the set's root, not in whichever repository VS Code would ask for
+  return JSON.stringify({ folders, settings: { "terminal.integrated.cwd": norm(commonRoot(folder, ok.map((r) => r.path!))) } }, null, 2);
 }
 
 export type CodeLauncher = (file: string, window: OpenWindow, env: NodeJS.ProcessEnv) => boolean;
@@ -138,9 +145,21 @@ export function defaultSetsRootFor(cwd: string, root: string | undefined, firstR
   return defaultSetsRoot(main);
 }
 
-export function openSet(ctx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = launchCode): OpenSetResult {
+/** Run from inside a set, repository names resolve next to the normal checkout it came from, not to the set's worktrees. */
+function outsideSet(ctx: Ctx): Ctx {
+  const here = findSet(ctx.cwd);
+  const meta = here && readSetMeta(here.folder);
+  if (!meta?.repos?.length) return ctx;
+  const mine = meta.repos.find((r) => samePath(r.path, ctx.cwd) || resolve(ctx.cwd).toLowerCase().startsWith(resolve(r.path).toLowerCase())) ?? meta.repos[0];
+  return mine.source && existsSync(mine.source) ? { ...ctx, cwd: mine.source } : ctx;
+}
+
+export function openSet(setCtx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = launchCode): OpenSetResult {
   const branch = o.branch?.trim();
   if (!branch) throw new AihubError("--branch <name> is required");
+  // the sets root is still found from where this runs (next to the set, never inside it)
+  const setsBase = setCtx.cwd;
+  const ctx = outsideSet(setCtx);
   const mode = o.mode ?? "worktree";
   let dirs: RepoDir[];
   let missing: string[] = [];
@@ -157,7 +176,7 @@ export function openSet(ctx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = launc
     root = undefined;
   }
   const team = root ? loadTeam(root) : {};
-  const setsRoot = resolve(o.root ?? defaultSetsRootFor(ctx.cwd, root, dirs[0].dir));
+  const setsRoot = resolve(o.root ?? defaultSetsRootFor(setsBase, root, dirs[0].dir));
   const folder = join(setsRoot, slug(branch));
   const repos = dirs.map((d) => openRepo(d, { branch, from: o.from, mode, folder, team }));
   for (const m of missing) repos.push({ repo: m, ok: false, state: "failed", branch, note: "folder not found on this PC" });
@@ -210,6 +229,11 @@ export function listBranches(dirs: RepoDir[], limit = 60): BranchRow[] {
   }
   const names = dirs.map((d) => d.name);
   return order.slice(0, limit).map((n) => ({ name: n, in: names.filter((x) => where.get(n)!.has(x)), missing: names.filter((x) => !where.get(n)!.has(x)) }));
+}
+
+/** The branch each clone is on now ("" when detached): the picker offers it first. */
+export function currentBranches(dirs: RepoDir[]): Record<string, string> {
+  return Object.fromEntries(dirs.map((d) => [d.name, tryGit(d.dir, ["branch", "--show-current"]).out.trim()]));
 }
 
 export function readSetMeta(folder: string): SetMeta | undefined {

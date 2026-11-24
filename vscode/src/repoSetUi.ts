@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -8,19 +9,22 @@ import {
   branchItems,
   branchesArgs,
   groupItems,
-  howItems,
   openArgs,
+  openTarget,
+  openWays,
+  preferredBranch,
   prItems,
+  setFromMeta,
+  stepTitle,
   summarizeOpen,
-  windowItems,
   type BranchChoice,
   type BranchesJson,
   type GroupJson,
-  type HowMode,
-  type HowWindow,
   type OpenResultJson,
+  type OpenWay,
   type PickItem,
   type PrJson,
+  type SetModel,
 } from "./repoSetModel";
 
 /**
@@ -30,14 +34,78 @@ import {
 
 const cfg = () => vscode.workspace.getConfiguration("aihub");
 
+/**
+ * The set this folder belongs to, read from `.aihub-set.json` above it. Only for the status bar item when
+ * `aihub status` has no answer (no Azure DevOps remote, offline): a set is local and stays visible then.
+ * Asynchronous, and read once per folder (the cache lives as long as the window: a window becomes a set by reopening).
+ */
+const localSets = new Map<string, Promise<SetModel | null>>();
+export function readLocalSet(cwd: string | undefined): Promise<SetModel | null> {
+  if (!cwd) return Promise.resolve(null);
+  const key = path.resolve(cwd);
+  let hit = localSets.get(key);
+  if (!hit) localSets.set(key, (hit = findLocalSet(key)));
+  return hit;
+}
+
+const exists = (p: string) => fs.promises.access(p).then(() => true, () => false);
+
+async function findLocalSet(start: string): Promise<SetModel | null> {
+  let dir = start;
+  for (let i = 0; i < 6; i++) {
+    const meta = path.join(dir, ".aihub-set.json");
+    if (await exists(meta)) {
+      try {
+        const m = JSON.parse(await fs.promises.readFile(meta, "utf8")) as { repos?: { path: string }[] };
+        const there = new Set<string>();
+        for (const r of m.repos ?? []) if (await exists(r.path)) there.add(r.path);
+        return setFromMeta(m, (p) => there.has(p));
+      } catch {
+        return null;
+      }
+    }
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+
 /** A runner with room for several `git fetch`es; the status reads keep their short limit. */
 const slowRunner = (): Runner => makeRunner({ command: String(cfg().get("cliPath", "aihub")) || "aihub", timeoutMs: 180_000 });
 
-const pick = async <T>(items: PickItem<T>[], title: string, placeHolder: string): Promise<T | undefined> => {
-  const qp = items.map((i) => (i.separator ? ({ label: i.label, kind: vscode.QuickPickItemKind.Separator } as vscode.QuickPickItem) : { label: i.label, description: i.description, detail: i.detail, value: i.value }));
-  const r = (await vscode.window.showQuickPick(qp as (vscode.QuickPickItem & { value?: T })[], { title, placeHolder, matchOnDescription: true, matchOnDetail: true })) as { value?: T } | undefined;
-  return r?.value;
-};
+type Row<T> = vscode.QuickPickItem & { value?: T };
+
+/**
+ * One step of the flow. `items` may still be loading: the pick opens at once with its title and a busy bar and is
+ * filled when the list is there, so no "Reading..." toast hangs between two steps. The first row is focused.
+ */
+const pick = <T>(items: PickItem<T>[] | Promise<PickItem<T>[]>, title: string, placeHolder: string): Promise<T | undefined> =>
+  new Promise((resolve) => {
+    const qp = vscode.window.createQuickPick<Row<T>>();
+    let done = false;
+    const finish = (v: T | undefined) => {
+      if (done) return;
+      done = true;
+      resolve(v);
+      qp.hide();
+      qp.dispose();
+    };
+    Object.assign(qp, { title, placeholder: placeHolder, matchOnDescription: true, matchOnDetail: true, ignoreFocusOut: true, busy: true });
+    qp.onDidAccept(() => finish(qp.selectedItems[0]?.value ?? qp.activeItems[0]?.value));
+    qp.onDidHide(() => finish(undefined));
+    qp.show();
+    void Promise.resolve(items).then((list) => {
+      const rows = list.map((i) => (i.separator ? ({ label: i.label, kind: vscode.QuickPickItemKind.Separator } as Row<T>) : ({ label: i.label, description: i.description, detail: i.detail, value: i.value } as Row<T>)));
+      qp.items = rows;
+      const first = rows.find((r) => r.kind !== vscode.QuickPickItemKind.Separator);
+      if (first) qp.activeItems = [first];
+      qp.busy = false;
+    });
+  });
+
+/** How long a read of the branches of one group or repository list is reused (a picker opened twice in a row). */
+const BRANCH_CACHE_MS = 60_000;
 
 export interface RepoSetDeps {
   cwd: () => string | undefined;
@@ -47,6 +115,8 @@ export interface RepoSetDeps {
 }
 
 export class RepoSetController {
+  private branchCache = new Map<string, { at: number; rows: Promise<BranchesJson> }>();
+
   constructor(
     private ctx: vscode.ExtensionContext,
     private deps: RepoSetDeps,
@@ -84,7 +154,7 @@ export class RepoSetController {
     if (!found.length) return void vscode.window.showWarningMessage(`No git repositories found in ${search.join(", ")}.`);
     const picks = await vscode.window.showQuickPick(
       found.map((r) => ({ label: r.name, description: r.path, repo: r })),
-      { canPickMany: true, title: "Repos op branch openen (1/3)", placeHolder: "Tick the repositories" },
+      { canPickMany: true, title: stepTitle(1, []), placeHolder: "Tick the repositories" },
     );
     if (!picks?.length) return;
     const repos = picks.map((p) => p.repo);
@@ -97,13 +167,27 @@ export class RepoSetController {
     return { repos };
   }
 
-  private async chooseBranch(target: { group?: string; repos?: string[] }, total: number): Promise<{ branch: string; from?: string } | undefined> {
-    const run = slowRunner();
-    const rows = await Promise.resolve(vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Reading the branches..." }, () => readJson<BranchesJson>(run, branchesArgs(target), this.cwd()))).catch((e: Error) => {
-      void vscode.window.showWarningMessage(`Could not read the branches: ${e.message}`);
-      return { repos: [], branches: [] } as BranchesJson;
-    });
-    const choice = await pick<BranchChoice>(branchItems(rows.branches, rows.repos.length || total), "Repos op branch openen (2/3)", "Choose the branch");
+  /** The branches of a group or repository list: read only when that group is chosen, then kept a minute. */
+  private branches(target: { group?: string; repos?: string[] }): Promise<BranchesJson> {
+    const key = JSON.stringify(target);
+    const hit = this.branchCache.get(key);
+    if (hit && Date.now() - hit.at < BRANCH_CACHE_MS) return hit.rows;
+    const rows = readJson<BranchesJson>(slowRunner(), branchesArgs(target), this.cwd());
+    this.branchCache.set(key, { at: Date.now(), rows });
+    rows.catch(() => this.branchCache.delete(key));
+    return rows;
+  }
+
+  private async chooseBranch(target: { group?: string; repos?: string[] }, total: number, chosen: string[]): Promise<{ branch: string; from?: string } | undefined> {
+    const here = path.basename(this.cwd());
+    const items = this.branches(target).then(
+      (rows) => branchItems(rows.branches, rows.repos.length || total, preferredBranch(rows.branches, rows.current, here)),
+      (e: Error) => {
+        void vscode.window.showWarningMessage(`Could not read the branches: ${e.message}`);
+        return branchItems([], total);
+      },
+    );
+    const choice = await pick<BranchChoice>(items, stepTitle(2, chosen), "Choose the branch (Enter takes the first one)");
     if (!choice) return;
     if (choice.kind === "existing") return { branch: choice.branch };
     if (choice.kind === "new-story" || choice.kind === "typed") {
@@ -116,46 +200,54 @@ export class RepoSetController {
       });
       return branch ? { branch: branch.trim() } : undefined;
     }
-    const prs = await Promise.resolve(vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Reading your pull requests..." }, () => readJson<PrJson[]>(run, ["pr", "list", "--mine"], this.cwd()))).catch((e: Error) => {
+    const prs = readJson<PrJson[]>(slowRunner(), ["pr", "list", "--mine"], this.cwd()).catch((e: Error) => {
       void vscode.window.showWarningMessage(`Could not read your pull requests: ${e.message}`);
       return [] as PrJson[];
     });
-    if (!prs.length) return void vscode.window.showInformationMessage("No active pull requests of yours.");
-    const p = await pick(prItems(prs), "Branch of a pull request", "Choose the pull request");
+    const p = await pick(
+      prs.then((list) => (list.length ? prItems(list) : [{ label: "No active pull requests of yours", value: undefined }])),
+      "Branch of a pull request",
+      "Choose the pull request",
+    );
     return p ? { branch: p.source, from: p.target } : undefined;
   }
 
-  /** The whole flow. `group` skips step 1 (the Worktree Sets view's "Open on branch..." button). */
-  async open(group?: string): Promise<void> {
+  /**
+   * The whole flow: 1 group or repositories, 2 branch, 3 how and where. `group` skips step 1 (the Worktree Sets
+   * view's "Open on branch..." button); `branch` (a story or a set that already knows its branch) skips step 2.
+   */
+  async open(group?: string, branch?: string): Promise<void> {
     let target: { group?: string; repos?: string[] };
     let total = 0;
+    let label: string;
     if (group) {
       target = { group };
-      total = (await this.groups()).find((g) => g.name === group)?.repos.length ?? 0;
+      label = group;
+      if (!branch) total = (await this.groups()).find((g) => g.name === group)?.repos.length ?? 0;
     } else {
-      const choice = await pick(groupItems(await this.groups()), "Repos op branch openen (1/3)", "Choose a group, or tick repositories");
+      const choice = await pick(this.groups().then(groupItems), stepTitle(1, []), "Choose a group, or tick repositories");
       if (!choice) return;
       if ("group" in choice) {
         target = { group: choice.group.name };
+        label = choice.group.name;
         total = choice.group.repos.length;
       } else {
         const t = await this.tickRepos();
         if (!t) return;
         target = t.group ? { group: t.group } : { repos: t.repos.map((r) => r.path) };
+        label = t.group ?? t.repos.map((r) => r.name).join(", ");
         total = t.repos.length;
       }
     }
-    const b = await this.chooseBranch(target, total);
+    const b = branch ? { branch } : await this.chooseBranch(target, total, [label]);
     if (!b) return;
-    const mode = await pick<HowMode>(howItems(), "Repos op branch openen (3/3)", `How should ${b.branch} be opened?`);
-    if (!mode) return;
-    const window = await pick<HowWindow>(windowItems(), "Repos op branch openen (3/3)", "Where?");
-    if (!window) return;
-    const args = openArgs({ ...target, branch: b.branch, from: b.from, mode, window });
+    const way = await pick<OpenWay>(openWays(), stepTitle(3, [label, b.branch]), `How should ${b.branch} be opened?`);
+    if (!way) return;
+    const args = openArgs({ ...target, branch: b.branch, from: b.from, mode: way.mode });
     this.deps.log(`aihub ${args.join(" ")}`);
     let out: string;
     try {
-      out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Opening ${b.branch}...` }, () => slowRunner()([...args, "--json"], this.cwd()));
+      out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Opening ${b.branch} (${way.mode === "worktree" ? "worktrees" : "switching the checkouts"})...` }, () => slowRunner()([...args, "--json"], this.cwd()));
     } catch (e) {
       return void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
     }
@@ -166,15 +258,29 @@ export class RepoSetController {
     } catch {
       return void vscode.window.showErrorMessage("AI Context Hub: aihub worktree open did not print JSON. Update the CLI: npm i -g @ferronhooi/aihub");
     }
+    this.branchCache.clear();
     const sum = summarizeOpen(res);
     this.deps.log(`${sum.title}\n${sum.lines.join("\n")}`);
-    void (sum.ok ? vscode.window.showInformationMessage(sum.title) : vscode.window.showWarningMessage(`${sum.title}\n${sum.lines.join("\n")}`, { modal: true }));
+    const to = openTarget(res, way.window);
+    if ("error" in to) return void vscode.window.showErrorMessage(`AI Context Hub: ${to.error}\n${sum.lines.join("\n")}`, { modal: true });
+    // repositories that need attention are reported before the window changes (a reload would drop the message)
+    if (!sum.ok) {
+      const go = await vscode.window.showWarningMessage(`${sum.title}\n${sum.lines.join("\n")}`, { modal: true }, "Open the others");
+      if (go !== "Open the others") return void this.deps.refresh();
+    }
+    this.deps.log(`open ${to.file} ${way.window === "this" ? "in this window" : "in a new window"}`);
+    try {
+      await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(to.file), to.options);
+    } catch (e) {
+      return void vscode.window.showErrorMessage(`AI Context Hub: the set is ready, but VS Code could not open ${to.file}: ${(e as Error).message}`);
+    }
+    if (way.window === "new") void vscode.window.showInformationMessage(sum.title);
     this.deps.refresh();
   }
 
   register(): void {
     this.ctx.subscriptions.push(
-      vscode.commands.registerCommand("aihub.reposet.open", () => this.open().catch((e) => vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`))),
+      vscode.commands.registerCommand("aihub.reposet.open", (branch?: unknown) => this.open(undefined, typeof branch === "string" ? branch : undefined).catch((e) => vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`))),
       vscode.commands.registerCommand("aihub.reposet.openGroup", (n?: { group?: GroupJson }) => this.open(n?.group?.name).catch((e) => vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`))),
     );
   }

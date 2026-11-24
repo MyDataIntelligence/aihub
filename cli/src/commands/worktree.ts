@@ -2,7 +2,7 @@ import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import { list, optInt, parseFlags, posInt } from "../lib/cliargs.js";
 import { findGroup, groupDirs, listGroups, removeGroup, resolveRepos, saveGroup } from "../lib/repoGroups.js";
-import { formatOpenSet, listBranches, openSet, type OpenMode, type OpenWindow } from "../lib/repoSet.js";
+import { currentBranches, formatOpenSet, listBranches, openSet, type OpenMode, type OpenWindow } from "../lib/repoSet.js";
 import { createSet, listSets, removeSet } from "../lib/worktree.js";
 
 const USAGE =
@@ -45,7 +45,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const dirs = v.group ? groupDirs(ctx, findGroup(ctx, String(v.group))).dirs : resolveRepos(ctx, list(v.repos));
     if (!dirs.length) throw new AihubError("--group <name> or --repos a,b needed");
     const rows = listBranches(dirs);
-    ctx.out(json ? JSON.stringify({ repos: dirs.map((d) => d.name), branches: rows }) : rows.map((b) => `${b.name}  (${b.in.length}/${dirs.length}${b.missing.length ? `, missing in ${b.missing.join(", ")}` : ""})`).join("\n"));
+    ctx.out(json ? JSON.stringify({ repos: dirs.map((d) => d.name), current: currentBranches(dirs), branches: rows }) : rows.map((b) => `${b.name}  (${b.in.length}/${dirs.length}${b.missing.length ? `, missing in ${b.missing.join(", ")}` : ""})`).join("\n"));
   } else throw new AihubError(USAGE);
 }
 
