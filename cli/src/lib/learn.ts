@@ -3,7 +3,8 @@ import { basename, extname, join } from "node:path";
 import { findActivePr, getPr, shortBranch } from "./ado.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
-import { defaultTargetFor, loadTeam } from "./team.js";
+import { loadTeam } from "./team.js";
+import { targetFor } from "./baseBranch.js";
 import { git, hasRef, originDefaultBranch, repoRoot, workItemFromBranch } from "./git.js";
 
 /**
@@ -110,7 +111,7 @@ export async function resolveRange(ctx: Ctx, o: RangeInput): Promise<ChangeFacts
   }
   const branch = o.branch ?? git(root, ["rev-parse", "--abbrev-ref", "HEAD"]).trim();
   const head = tipRef(root, branch) || "HEAD";
-  // the branch's real target: the target of its active PR, else the team's defaultTarget, else the repository default
+  // the branch's real target: the target of its active PR, else team.yaml, else the branch it was cut from (baseBranch.ts), else the repository default
   let target = "";
   let repoName = "";
   try {
@@ -123,7 +124,7 @@ export async function resolveRange(ctx: Ctx, o: RangeInput): Promise<ChangeFacts
   }
   if (!target) {
     const team = loadTeam(root);
-    const t = (repoName ? defaultTargetFor(team, repoName) : undefined) ?? team.repositories?.[0]?.defaultTarget;
+    const t = targetFor(ctx, root, branch, team, repoName)?.target ?? team.repositories?.[0]?.defaultTarget;
     if (t && t !== branch && tipRef(root, t)) target = t;
   }
   target ||= originDefaultBranch(root) || (hasRef(root, "origin/main") ? "main" : hasRef(root, "origin/staging") ? "staging" : "main");
