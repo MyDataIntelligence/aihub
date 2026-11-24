@@ -95,33 +95,65 @@ export function canRemoveWorktree(source: string, path: string): WorktreeCheck {
   return { ok: true };
 }
 
+/** Bytes in `dir`, links not followed (a linked node_modules counts as nothing: it is not freed). */
+export function dirSize(dir: string): number {
+  let total = 0;
+  const walk = (d: string) => {
+    let names: string[];
+    try {
+      names = readdirSync(d);
+    } catch {
+      return;
+    }
+    for (const n of names) {
+      const p = join(d, n);
+      let st;
+      try {
+        st = lstatSync(p);
+      } catch {
+        continue;
+      }
+      if (st.isSymbolicLink()) continue;
+      if (st.isDirectory()) walk(p);
+      else total += st.size;
+    }
+  };
+  walk(dir);
+  return total;
+}
+
 export interface RemoveResult {
   removed: boolean;
   branchDeleted: boolean;
   note: string;
+  /** bytes of the worktree folder that was removed (links not counted); 0 when nothing was removed */
+  freedBytes: number;
 }
 
 /** `git worktree remove` (no --force) after taking out directory links; optionally `git branch -d` (refuses unmerged work). */
 export function removeWorktreeSafely(source: string, path: string | undefined, branch: string, o: { deleteBranch?: boolean } = {}): RemoveResult {
   let removed = false;
+  let freedBytes = 0;
   if (path && existsSync(path)) {
     const check = canRemoveWorktree(source, path);
-    if (!check.ok) return { removed: false, branchDeleted: false, note: `kept: ${check.reason}` };
+    if (!check.ok) return { removed: false, branchDeleted: false, note: `kept: ${check.reason}`, freedBytes: 0 };
     const links = findDirLinks(path);
     for (const l of links) removeDirLink(join(path, l.rel));
+    const size = dirSize(path);
     const r = tryGit(source, ["worktree", "remove", path]);
     if (!r.ok) {
       restoreDirLinks(path, links);
-      return { removed: false, branchDeleted: false, note: `kept: ${r.err.split("\n")[0] || "git worktree remove failed"}` };
+      return { removed: false, branchDeleted: false, note: `kept: ${r.err.split("\n")[0] || "git worktree remove failed"}`, freedBytes: 0 };
     }
     removed = true;
+    freedBytes = size;
   } else tryGit(source, ["worktree", "prune"]);
-  if (!o.deleteBranch || !refSha(source, `refs/heads/${branch}`)) return { removed, branchDeleted: false, note: removed ? "worktree removed, branch kept" : "no worktree" };
-  if (listWorktrees(source).some((w) => w.branch === branch)) return { removed, branchDeleted: false, note: `${removed ? "worktree removed; " : ""}branch kept: it is checked out elsewhere` };
+  if (!o.deleteBranch || !refSha(source, `refs/heads/${branch}`)) return { removed, branchDeleted: false, note: removed ? "worktree removed, branch kept" : "no worktree", freedBytes };
+  if (listWorktrees(source).some((w) => w.branch === branch)) return { removed, branchDeleted: false, note: `${removed ? "worktree removed; " : ""}branch kept: it is checked out elsewhere`, freedBytes };
   const d = tryGit(source, ["branch", "-d", branch]);
   return d.ok
-    ? { removed, branchDeleted: true, note: `${removed ? "worktree and " : ""}local branch removed (the remote branch stays)` }
-    : { removed, branchDeleted: false, note: `${removed ? "worktree removed; " : ""}branch kept: not merged (git branch -d refused)` };
+    ? { removed, branchDeleted: true, note: `${removed ? "worktree and " : ""}local branch removed (the remote branch stays)`, freedBytes }
+    : { removed, branchDeleted: false, note: `${removed ? "worktree removed; " : ""}branch kept: not merged (git branch -d refused)`, freedBytes };
 }
 
 /** `git worktree move` with the directory links taken out first and put back after. */
