@@ -4,9 +4,10 @@ import { list, optInt, parseFlags, posInt } from "../lib/cliargs.js";
 import { findGroup, groupDirs, listGroups, removeGroup, resolveRepos, saveGroup } from "../lib/repoGroups.js";
 import { currentBranches, formatOpenSet, listBranches, openSet, type OpenMode, type OpenWindow } from "../lib/repoSet.js";
 import { createSet, listSets, removeSet } from "../lib/worktree.js";
+import { formatCleanup, formatRemoved, listCleanup, removeCleanup } from "../lib/worktreeCleanup.js";
 
 const USAGE =
-  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b>";
+  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -22,6 +23,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     mode: { type: "string" },
     window: { type: "string" },
     json: { type: "boolean" },
+    remove: { type: "string" },
+    "delete-branch": { type: "boolean" },
+    "no-size": { type: "boolean" },
+    offline: { type: "boolean" },
   });
   const root = v.root as string | undefined;
   const json = !!v.json;
@@ -41,6 +46,13 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const bad = r.repos.filter((x) => !x.ok).length;
     // --json is for programs (the VS Code extension): the table says which repositories failed, so the exit code stays 0
     if (bad && !json) throw new AihubError(`${bad} of ${r.repos.length} repositories need attention (the others are open)`);
+  } else if (sub === "cleanup") {
+    // aihub worktree cleanup [--json] [--repos a,b] [--no-size] [--offline] [--remove p1,p2 [--delete-branch]]
+    const rows = await listCleanup(ctx, { repos: list(v.repos), sizes: !v["no-size"], offline: !!v.offline });
+    if (v.remove) {
+      const done = removeCleanup(rows, String(v.remove).split(",").map((p) => p.trim()).filter(Boolean), { deleteBranch: !!v["delete-branch"] });
+      ctx.out(json ? JSON.stringify({ removed: done, freedBytes: done.reduce((n, r) => n + r.freedBytes, 0) }) : formatRemoved(done));
+    } else ctx.out(json ? JSON.stringify({ worktrees: rows, preselected: rows.filter((r) => r.preselected).length, preselectedBytes: rows.filter((r) => r.preselected).reduce((n, r) => n + (r.sizeBytes ?? 0), 0) }) : formatCleanup(rows));
   } else if (sub === "branches") {
     const dirs = v.group ? groupDirs(ctx, findGroup(ctx, String(v.group))).dirs : resolveRepos(ctx, list(v.repos));
     if (!dirs.length) throw new AihubError("--group <name> or --repos a,b needed");

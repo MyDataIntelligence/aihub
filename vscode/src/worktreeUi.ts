@@ -88,7 +88,7 @@ Open on branch... opens all of them on one branch`;
 
 const summary = (steps: RepoStep[]) => steps.map((s) => `${s.name}: ${s.status === "ok" ? "" : s.status + ": "}${s.message}${s.nextStep ? ` (${s.nextStep})` : ""}`).join("\n");
 
-export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (line: string) => void, toChat: (actionId: string) => Promise<void>, groups: () => Promise<GroupJson[]> = async () => []): () => void {
+export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (line: string) => void, toChat: (actionId: string) => Promise<void>, groups: () => Promise<GroupJson[]> = async () => [], cleanup?: () => Promise<boolean>): () => void {
   const git = createGit("git", log);
   const provider = new WorktreeSetsProvider(git, groups);
   ctx.subscriptions.push(vscode.window.registerTreeDataProvider("aihub.worktreeSets", provider));
@@ -232,6 +232,8 @@ export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (lin
   });
 
   reg("aihub.worktrees.cleanup", async () => {
+    // with aihub 1.3+: PR, story and local work per worktree (aihub worktree cleanup); else the git-only merged check below
+    if (cleanup && (await cleanup())) return;
     const roots = repoRoots();
     const repos = roots.length ? await findRepos(roots, Number(cfg().get("scanDepth", 2))) : [];
     if (!repos.length) return void vscode.window.showInformationMessage("No repositories found to scan.");

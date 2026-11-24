@@ -194,7 +194,7 @@
       },
       {
         "command": "aihub.worktrees.cleanup",
-        "title": "Clean Up Merged Worktrees...",
+        "title": "Clean Up Worktrees...",
         "category": "AI Context Hub"
       },
       {
@@ -602,6 +602,15 @@
             "One host sample every 30 s, plus a line per timer fire and watcher event."
           ],
           "description": "How much the performance log keeps."
+        },
+        "aihub.worktrees.cleanupReminder": {
+          "type": "string",
+          "enum": [
+            "weekly",
+            "off"
+          ],
+          "default": "weekly",
+          "description": "Ask to clean up worktrees whose pull request is completed or abandoned, whose story is done, or that are merged (and that have no local work): at most once a week, sooner when three or more can go, never more than once a day. Clean Up Worktrees... always works."
         },
         "aihub.worktrees.remote": {
           "type": "string",
