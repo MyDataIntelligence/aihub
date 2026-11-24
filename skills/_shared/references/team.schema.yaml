@@ -67,6 +67,10 @@ fabric:                            # Fabric workspaces for `aihub fabric` (optio
 
 robot:                             # Robot integration tests for `aihub robot` (optional)
   pipeline: <pipeline>             # Azure DevOps pipeline that runs the Robot suites (optional; needed for robot run)
+  runner: <path>                   # local runner script, e.g. tests/robot/rf-run.py; runs from its own folder (optional; else the first rf-run.py, else python -m robot)
+  environments:                    # test environments for a local run (Run Robot Test); the first is the default (optional)
+    <environment>:                 # e.g. tst; only these can be chosen
+      <VARIABLE>: <value>          # environment variables for that run, e.g. INTEGRATION_DEPENDENCY_ENVIRONMENT: tst
   defaultTarget: <target>          # name in targets used when robot run has no --on (optional)
   targets:                         # named places to run Robot, e.g. feature and staging (optional)
     <target>:                      # the name you say: "draai Robot op <target>"

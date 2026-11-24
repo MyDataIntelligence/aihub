@@ -497,6 +497,12 @@
         "command": "aihub.openRecent",
         "title": "Open Recent Worktree Set or Story",
         "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.robot.run",
+        "title": "Run Robot Test...",
+        "category": "AI Context Hub",
+        "icon": "$(play)"
       }
     ],
     "configuration": {
@@ -680,6 +686,11 @@
           "submenu": "aihub.cm.Group",
           "when": "workspaceFolderCount > 0",
           "group": "7_aihub@1"
+        },
+        {
+          "command": "aihub.robot.run",
+          "when": "resourceExtname == .robot",
+          "group": "7_aihub@2"
         }
       ],
       "aihub.cm.Group": [
@@ -826,6 +837,11 @@
           "command": "aihub.stories.refresh",
           "when": "view == aihub.myStories",
           "group": "navigation@2"
+        },
+        {
+          "command": "aihub.robot.run",
+          "when": "view == aihub.bar",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -1025,6 +1041,10 @@
       ],
       "aihub.cm.Robot": [
         {
+          "command": "aihub.robot.run",
+          "group": "0_run@1"
+        },
+        {
           "command": "aihub.chat.test",
           "group": "1_x@1"
         }
@@ -1167,6 +1187,11 @@
         {
           "command": "aihub.reposet.open",
           "group": "navigation@0"
+        },
+        {
+          "command": "aihub.robot.run",
+          "when": "resourceExtname == .robot",
+          "group": "navigation@1"
         }
       ]
     },
