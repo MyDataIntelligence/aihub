@@ -129,6 +129,15 @@ describe("aihub probe devops and api", () => {
     const docs = await go([{ match: /learn\.microsoft\.com/, respond: () => ({ text: "<html><script>x()</script><h1>Job scheduler</h1><p>Run on demand.</p></html>" }) }], ["probe", "api", "--get", "https://learn.microsoft.com/rest/api/fabric/core/job-scheduler"]);
     expect(docs.out).toContain("Job scheduler Run on demand.");
     expect(docs.out).not.toContain("x()");
+    // a real docs page: menus and banners around the content; only the main element counts
+    const page =
+      "<html><body><header><a>Skip to main content</a><p>This browser is no longer supported.</p></header><nav><ul><li>Fabric</li><li>Power BI</li></ul></nav>" +
+      "<main><nav>Breadcrumb</nav><h1>Run a notebook through the API</h1><p>Use the job scheduler &amp; a service principal.</p><aside>Feedback</aside></main><footer>Privacy</footer></body></html>";
+    const learn = await go([{ match: /learn\.microsoft\.com/, respond: () => ({ text: page }) }], ["probe", "api", "--get", "https://learn.microsoft.com/fabric/data-engineering/notebook-public-api"]);
+    expect(learn.out).toContain("Run a notebook through the API Use the job scheduler & a service principal.");
+    for (const noise of ["Skip to main content", "no longer supported", "Power BI", "Breadcrumb", "Feedback", "Privacy"]) expect(learn.out).not.toContain(noise);
+    const long = await go([{ match: /learn\.microsoft\.com/, respond: () => ({ text: `<main><p>${"woord ".repeat(2000)}</p></main>` }) }], ["probe", "api", "--get", "https://learn.microsoft.com/x"]);
+    expect(long.out.length).toBeLessThan(2500);
     const bad = await go([], ["probe", "api", "--get", "https://evil.example.com/x"]);
     expect(bad.code).toBe(1);
     expect(bad.errs).toContain("not allowed");
