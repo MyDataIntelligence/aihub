@@ -36,6 +36,30 @@ describe("aihub pipeline timeline", () => {
     expect(out).not.toContain("Checkout");
     expect(out).not.toContain("deprecated");
   });
+
+  it("--failed reads the log of a task whose only error is 'exited with code 1' and shows the real error line", async () => {
+    const { dir } = makeRepo();
+    const records = [
+      rec("s1", null, "Stage", "Test", "failed", "00:10", "01:10"),
+      rec("j1", "s1", "Job", "Job", "failed", "00:10", "01:00"),
+      rec("t1", "j1", "Task", "Schema controleren", "failed", "00:20", "00:50", { log: { id: 7 }, issues: [{ type: "error", message: "Bash exited with code '1'." }] }),
+    ];
+    const LOG = ["2026-11-18T10:00:20.0Z Starting: Schema controleren", "2026-11-18T10:00:21.0Z ##[error]BENCH-abc123-PIPE: tabel klanten mist de kolom klantnummer", "2026-11-18T10:00:21.5Z ##[error]Bash exited with code '1'."].join(NL);
+    const r: Route[] = [
+      { match: /_apis\/build\/builds\/21\/timeline\?/, respond: () => ({ body: { records } }) },
+      { match: /_apis\/build\/builds\/21\/logs\/7/, respond: () => ({ text: LOG }) },
+      { match: /_apis\/build\/builds\/21\?/, respond: () => ({ body: build(21) }) },
+    ];
+    const { ctx, lines } = ctxFor(dir, fakeFetch(r).fn);
+    expect(await main(["pipeline", "timeline", "--run", "21", "--failed"], ctx)).toBe(0);
+    const out = lines.join(NL);
+    expect(out).toContain("log error: BENCH-abc123-PIPE: tabel klanten mist de kolom klantnummer");
+    expect(out).not.toContain("log error: Bash exited");
+    // without --failed no log is read
+    const g = fakeFetch(r);
+    expect(await main(["pipeline", "timeline", "--run", "21"], ctxFor(dir, g.fn).ctx)).toBe(0);
+    expect(g.calls.some((c) => /logs\/7/.test(c.url))).toBe(false);
+  });
 });
 
 describe("aihub pipeline tests, coverage, vars, compare", () => {
