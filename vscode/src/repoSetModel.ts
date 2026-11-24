@@ -1,5 +1,5 @@
 /**
- * "Repos op branch openen": the pure parts of the quick-pick flow. The CLI does the work (`aihub worktree open`);
+ * "Open Repo Set": the pure parts of the quick-pick flow. The CLI does the work (`aihub worktree open`);
  * this file builds the pick lists and the command line and turns the answer into a message. No vscode, no I/O.
  */
 
@@ -118,9 +118,9 @@ export function branchItems(rows: BranchJson[], total: number, preferred?: strin
   return items;
 }
 
-/** "Repos op branch openen · stap 2/3 · pipeline": the step and what was already chosen. */
+/** "Open Repo Set · stap 2/3 · pipeline": the step and what was already chosen. */
 export function stepTitle(step: 1 | 2 | 3, chosen: string[]): string {
-  return ["Repos op branch openen", `stap ${step}/3`, ...chosen.filter(Boolean)].join(" · ");
+  return ["Open Repo Set", `stap ${step}/3`, ...chosen.filter(Boolean)].join(" · ");
 }
 
 export function prItems(prs: PrJson[]): PickItem<PrJson>[] {
@@ -213,7 +213,7 @@ export function setChip(s: SetModel | null | undefined): { label: string; title:
 /** The status bar item next to the built-in branch item: the set's branch and repo count, else the entry itself. */
 export function reposetStatus(s: SetModel | null | undefined): { text: string; tooltip: string } {
   const NL = String.fromCharCode(10);
-  if (!s) return { text: "$(repo-forked) Repos op branch openen", tooltip: ["Open several repositories on the same branch in one window.", "", "Click to choose a group or repositories, a branch and how."].join(NL) };
+  if (!s) return { text: "$(repo-forked) Open Repo Set", tooltip: ["Open several repositories on the same branch in one window.", "", "Click to choose a group or repositories, a branch and how."].join(NL) };
   const total = s.total ?? s.repos.length;
   const rows = s.repos.map((r) => `- ${r}: ${s.branch}`);
   return { text: `$(repo-forked) ${s.branch} · ${total} repos`, tooltip: [`**${s.group ?? "Set"}** on ${s.branch} (${s.repos.length}/${total} repositories)`, "", ...rows, "", "Click to open repositories on another branch."].join(NL) };

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * The "Repos op branch openen" controller against a fake vscode and a fake CLI: which steps are asked, what is
+ * The "Open Repo Set" controller against a fake vscode and a fake CLI: which steps are asked, what is
  * pre-selected, and that "this window" really reopens this window on the set (vscode.openFolder), not a `code -r`.
  */
 
@@ -126,7 +126,7 @@ beforeEach(() => {
   };
 });
 
-describe("Repos op branch openen, the whole flow", () => {
+describe("Open Repo Set, the whole flow", () => {
   it("worktrees, this window: reopens THIS window on the set's workspace file, the CLI starts no VS Code", async () => {
     h.answers.push(startsWith("pipeline"), startsWith("feature/story-7"), startsWith("Worktrees, this window"));
     await controller().open();
@@ -146,7 +146,7 @@ describe("Repos op branch openen, the whole flow", () => {
   it("step 2 has the current branch on top and focused, with titles 'stap n/3' and what was chosen; no progress toast in between", async () => {
     h.answers.push(startsWith("pipeline"), (_l, active) => active, startsWith("Worktrees, new window"));
     await controller().open();
-    expect(h.picks.map((p) => p.title)).toEqual(["Repos op branch openen · stap 1/3", "Repos op branch openen · stap 2/3 · pipeline", "Repos op branch openen · stap 3/3 · pipeline · develop"]);
+    expect(h.picks.map((p) => p.title)).toEqual(["Open Repo Set · stap 1/3", "Open Repo Set · stap 2/3 · pipeline", "Open Repo Set · stap 3/3 · pipeline · develop"]);
     expect(h.picks[1].labels[0]).toContain("develop");
     expect(h.picks[1].active).toContain("develop");
     expect(h.progress).not.toContain("Reading the branches...");
@@ -156,7 +156,7 @@ describe("Repos op branch openen, the whole flow", () => {
   it("a branch passed in (a story or a set) is not asked again, and the branches are not even read", async () => {
     h.answers.push(startsWith("Worktrees, this window"));
     await controller().open("pipeline", "feature/story-7");
-    expect(h.picks.map((p) => p.title)).toEqual(["Repos op branch openen · stap 3/3 · pipeline · feature/story-7"]);
+    expect(h.picks.map((p) => p.title)).toEqual(["Open Repo Set · stap 3/3 · pipeline · feature/story-7"]);
     expect(h.calls.some((a) => a[1] === "branches")).toBe(false);
   });
 

@@ -28,7 +28,7 @@ import {
 } from "./repoSetModel";
 
 /**
- * "Repos op branch openen": group or repositories -> branch -> how. It is a local action: the quick pick runs
+ * "Open Repo Set": group or repositories -> branch -> how. It is a local action: the quick pick runs
  * `aihub worktree open ... --json` itself (it never goes to the chat). All git work is in the CLI.
  */
 
@@ -80,7 +80,7 @@ type Row<T> = vscode.QuickPickItem & { value?: T };
  * One step of the flow. `items` may still be loading: the pick opens at once with its title and a busy bar and is
  * filled when the list is there, so no "Reading..." toast hangs between two steps. The first row is focused.
  */
-const pick = <T>(items: PickItem<T>[] | Promise<PickItem<T>[]>, title: string, placeHolder: string): Promise<T | undefined> =>
+export const pick = <T>(items: PickItem<T>[] | Promise<PickItem<T>[]>, title: string, placeHolder: string): Promise<T | undefined> =>
   new Promise((resolve) => {
     const qp = vscode.window.createQuickPick<Row<T>>();
     let done = false;
@@ -106,6 +106,35 @@ const pick = <T>(items: PickItem<T>[] | Promise<PickItem<T>[]>, title: string, p
 
 /** How long a read of the branches of one group or repository list is reused (a picker opened twice in a row). */
 const BRANCH_CACHE_MS = 60_000;
+
+/**
+ * After `aihub worktree open|story open --window none`: report the repositories that need attention, then open the
+ * workspace file in this window or a new one (vscode.openFolder; the CLI never starts VS Code itself).
+ */
+export async function showOpened(res: OpenResultJson, window: "new" | "this", log: (l: string) => void): Promise<boolean> {
+  const sum = summarizeOpen(res);
+  const detail = sum.lines.join("\n");
+  log(`${sum.title}\n${detail}`);
+  const to = openTarget(res, window);
+  if ("error" in to) {
+    void vscode.window.showErrorMessage(`AI Context Hub: ${to.error}\n${detail}`, { modal: true });
+    return false;
+  }
+  // repositories that need attention are reported before the window changes (a reload would drop the message)
+  if (!sum.ok) {
+    const go = await vscode.window.showWarningMessage(`${sum.title}\n${detail}`, { modal: true }, "Open the others");
+    if (go !== "Open the others") return false;
+  }
+  log(`open ${to.file} ${window === "this" ? "in this window" : "in a new window"}`);
+  try {
+    await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(to.file), to.options);
+  } catch (e) {
+    void vscode.window.showErrorMessage(`AI Context Hub: the set is ready, but VS Code could not open ${to.file}: ${(e as Error).message}`);
+    return false;
+  }
+  if (window === "new") void vscode.window.showInformationMessage(sum.title);
+  return true;
+}
 
 export interface RepoSetDeps {
   cwd: () => string | undefined;
@@ -259,22 +288,7 @@ export class RepoSetController {
       return void vscode.window.showErrorMessage("AI Context Hub: aihub worktree open did not print JSON. Update the CLI: npm i -g @ferronhooi/aihub");
     }
     this.branchCache.clear();
-    const sum = summarizeOpen(res);
-    this.deps.log(`${sum.title}\n${sum.lines.join("\n")}`);
-    const to = openTarget(res, way.window);
-    if ("error" in to) return void vscode.window.showErrorMessage(`AI Context Hub: ${to.error}\n${sum.lines.join("\n")}`, { modal: true });
-    // repositories that need attention are reported before the window changes (a reload would drop the message)
-    if (!sum.ok) {
-      const go = await vscode.window.showWarningMessage(`${sum.title}\n${sum.lines.join("\n")}`, { modal: true }, "Open the others");
-      if (go !== "Open the others") return void this.deps.refresh();
-    }
-    this.deps.log(`open ${to.file} ${way.window === "this" ? "in this window" : "in a new window"}`);
-    try {
-      await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(to.file), to.options);
-    } catch (e) {
-      return void vscode.window.showErrorMessage(`AI Context Hub: the set is ready, but VS Code could not open ${to.file}: ${(e as Error).message}`);
-    }
-    if (way.window === "new") void vscode.window.showInformationMessage(sum.title);
+    await showOpened(res, way.window, this.deps.log);
     this.deps.refresh();
   }
 
