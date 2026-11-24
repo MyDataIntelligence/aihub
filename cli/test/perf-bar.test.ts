@@ -129,3 +129,50 @@ describe("CLI performance log", () => {
     expect(urlForLog("https://x.test/users/dev.person@example.test/x").path).toBe("/users/<email>/x");
   });
 });
+
+describe("git state of aihub status in two git calls plus the remote", () => {
+  it("reads branch, changes and unpushed commits like the separate calls did", async () => {
+    const { repoState, hasWorkToCommit, unpushedCount } = await import("../src/lib/gitx.js");
+    const { dir } = makeRepo();
+    // a branch with an upstream, one commit ahead, and a change
+    sh(dir, ["checkout", "-b", "feature/7-csv"]);
+    sh(dir, ["push", "-u", "origin", "feature/7-csv"]);
+    writeFileSync(join(dir, "a.txt"), "a\n");
+    sh(dir, ["add", "a.txt"]);
+    sh(dir, ["commit", "-m", "a"]);
+    writeFileSync(join(dir, "b.txt"), "b\n");
+    let s = repoState(dir);
+    expect(s).toMatchObject({ branch: "feature/7-csv", dirty: true, unpushed: 1 });
+    expect(s.dirty).toBe(hasWorkToCommit(dir));
+    expect(s.unpushed).toBe(unpushedCount(dir));
+    expect(s.commonDir.replace(/\\/g, "/")).toMatch(/\/\.git$/);
+    // no upstream yet: the commits not on any remote
+    sh(dir, ["checkout", "-b", "feature/8-new"]);
+    sh(dir, ["add", "b.txt"]);
+    sh(dir, ["commit", "-m", "b"]);
+    s = repoState(dir);
+    expect(s).toMatchObject({ branch: "feature/8-new", dirty: false, unpushed: 2 });
+    expect(s.unpushed).toBe(unpushedCount(dir));
+    // build output is not work to commit
+    writeFileSync(join(dir, "x.pyc"), "");
+    expect(repoState(dir).dirty).toBe(false);
+    sh(dir, ["checkout", "--detach"]);
+    expect(() => repoState(dir)).toThrow(/detached HEAD/);
+  });
+
+  it("aihub status starts three git processes with an upstream: rev-parse, status, the remote (was six)", async () => {
+    const { dir } = makeRepo();
+    sh(dir, ["checkout", "-b", "feature/7-csv"]);
+    sh(dir, ["push", "-u", "origin", "feature/7-csv"]);
+    const log = tmp("cli-perf-");
+    startPerf({ AIHUB_PERF_LOG: log }, ["status"]);
+    const { ctx } = ctxFor(dir, fakeFetch([]).fn);
+    ctx.env = { AIHUB_HOME: tmp("aihub-home-") };
+    ctx.exec = noLogin as never;
+    expect(await main(["status", "--json"], ctx)).toBe(0);
+    flushPerf();
+    startPerf({}, []);
+    const procs = readdirSync(log).flatMap((f) => readFileSync(join(log, f), "utf8").trim().split("\n")).map((l) => JSON.parse(l)).filter((e) => e.type === "cli.proc" && e.cmd === "git");
+    expect(procs.map((p) => p.sub)).toEqual(["rev-parse", "status", "config"]);
+  });
+});
