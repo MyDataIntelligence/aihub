@@ -41,3 +41,5 @@ Diffs with line numbers, the findings path, threads on the right file and line, 
 Run `aihub doctor`. A huge PR is cut off: pass `--max-files`, or review per file. Never vote.
 
 Rules: write comments in the team language, polite and specific. Do not change code.
+
+Done is done: end with the result and at most one statement about the next step, never with a question.

@@ -28,3 +28,5 @@ PR id, thread lookup and the status change. Do not post replies one by one and n
 
 ## If it fails
 Unknown thread id: rerun `aihub comments get`. Disagree with a comment: reply with the reason and `wontFix`. Never invent ids.
+
+Done is done: end with the result and at most one statement about the next step, never with a question.

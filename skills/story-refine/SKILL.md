@@ -28,3 +28,5 @@ Template headings, field mapping, history comment and links. Sections left out o
 Unknown id or no access: run `aihub doctor`, report the error text. Never invent ids or links.
 
 Rules: write in the template language. Do not change code in this skill. Local git uses your own tools.
+
+Done is done: end with the result and at most one statement about the next step, never with a question.
