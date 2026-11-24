@@ -35,6 +35,8 @@ export interface OpenRepoJson {
 }
 
 export interface OpenResultJson {
+  /** the story of a story branch (aihub 1.1+) */
+  story?: number;
   group?: string;
   branch: string;
   mode: "worktree" | "switch";
@@ -119,8 +121,8 @@ export function branchItems(rows: BranchJson[], total: number, preferred?: strin
 }
 
 /** "Open Repo Set · stap 2/3 · pipeline": the step and what was already chosen. */
-export function stepTitle(step: 1 | 2 | 3, chosen: string[]): string {
-  return ["Open Repo Set", `stap ${step}/3`, ...chosen.filter(Boolean)].join(" · ");
+export function stepTitle(step: 1 | 2 | 3, chosen: string[], flow = "Open Repo Set"): string {
+  return [flow, `stap ${step}/3`, ...chosen.filter(Boolean)].join(" · ");
 }
 
 export function prItems(prs: PrJson[]): PickItem<PrJson>[] {
@@ -148,6 +150,8 @@ export interface OpenRequest {
   branch: string;
   from?: string;
   mode: HowMode;
+  /** the story the new set is for (links it, gives the star and the story folder) */
+  story?: number;
 }
 
 /**
@@ -158,6 +162,7 @@ export interface OpenRequest {
 export function openArgs(r: OpenRequest): string[] {
   const a = ["worktree", "open", ...(r.group ? ["--group", r.group] : ["--repos", (r.repos ?? []).join(",")]), "--branch", r.branch, "--mode", r.mode, "--window", "none"];
   if (r.from) a.push("--from", r.from);
+  if (r.story) a.push("--story", String(r.story));
   return a;
 }
 
@@ -213,8 +218,22 @@ export function setChip(s: SetModel | null | undefined): { label: string; title:
 /** The status bar item next to the built-in branch item: the set's branch and repo count, else the entry itself. */
 export function reposetStatus(s: SetModel | null | undefined): { text: string; tooltip: string } {
   const NL = String.fromCharCode(10);
-  if (!s) return { text: "$(repo-forked) Open Repo Set", tooltip: ["Open several repositories on the same branch in one window.", "", "Click to choose a group or repositories, a branch and how."].join(NL) };
+  if (!s) return { text: "$(repo-forked) Worktree Sets", tooltip: ["Open several repositories on the same branch in one window.", "", "Click for New Worktree Set, Open Worktree Set and the recent stories and sets."].join(NL) };
   const total = s.total ?? s.repos.length;
   const rows = s.repos.map((r) => `- ${r}: ${s.branch}`);
   return { text: `$(repo-forked) ${s.branch} · ${total} repos`, tooltip: [`**${s.group ?? "Set"}** on ${s.branch} (${s.repos.length}/${total} repositories)`, "", ...rows, "", "Click to open repositories on another branch."].join(NL) };
+}
+
+/** The branch name offered for a new set of a story: feature/<id>-<slug of the title>. */
+export function storyBranchSuggestion(story: { id: number; title?: string } | undefined): string {
+  if (!story) return "feature/";
+  const slug = (story.title ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "");
+  return `feature/${story.id}-${slug}`;
 }

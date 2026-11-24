@@ -2,6 +2,8 @@ import { readLocalSet, RepoSetController } from "./repoSetUi";
 import { reposetStatus } from "./repoSetModel";
 import { windowSet } from "./storyModel";
 import { registerStories } from "./storyUi";
+import { RecentStore, registerRecents, rememberStory } from "./recentsUi";
+import { AdvisorController } from "./advisorUi";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
 import { checkCli, CLI_VERSION_KEY, cliVersionStillKnown, CliError, INSTALL_COMMAND, makeRunner, type CachedCliVersion, type Runner } from "./cli";
@@ -168,14 +170,15 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private renderReposetItem() {
     const it = (this.reposetItem ??= vscode.window.createStatusBarItem("aihub.reposet", vscode.StatusBarAlignment.Left, 10999));
-    it.name = "AI Context Hub: Open Repo Set";
+    it.name = "AI Context Hub: Worktree Sets";
     // a set is local: also without an `aihub status` answer (no Azure DevOps remote, offline) it shows its branch
     const show = (set: Parameters<typeof reposetStatus>[0]) => {
       const v = reposetStatus(set);
       it.text = v.text;
       it.tooltip = new vscode.MarkdownString(v.tooltip);
     };
-    it.command = "aihub.reposet.open";
+    // a menu like PyCharm's Open / Recent Projects: open a repo set, a new set, a story, or a recent one
+    it.command = "aihub.reposet.menu";
     // the set of the status read; else what the workspace file says (also for switched checkouts, which have no set file)
     show((this.last?.ok ? this.last.model.set : null) ?? windowSet(cfg().get("set")));
     it.show();
@@ -423,9 +426,16 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   const reposet = new RepoSetController(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l), refresh: () => (refreshSets(), void bar.refresh()) });
   reposet.register();
   phase("my stories");
-  registerStories(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l) });
+  const recents = new RecentStore(ctx.globalState);
+  // "My Stories" read lazily: only when a picker of New / Open Worktree Set is shown
+  let stories: ReturnType<typeof registerStories> | undefined;
+  const myStories = async () => (stories ? (await stories.view.stories(true)).map((s) => ({ id: s.id, title: s.title, repos: new Set(s.branches.map((b) => b.repo)).size })) : []);
+  registerRecents(ctx, recents, reposet, (l) => bar.logLine(l), myStories);
+  stories = registerStories(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l), opened: (s) => rememberStory(recents, s) });
   phase("worktree sets view");
   const refreshSets = registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id), () => reposet.groups());
+  phase("performance advisor");
+  new AdvisorController(ctx, () => bar.cwdNow()).register();
   phase("status bar");
   bar.start();
   // the groups come from the CLI: ask again once the first status read is behind us

@@ -35,6 +35,8 @@ const slowRunner = (): Runner => makeRunner({ command: String(cfg().get("cliPath
 export interface StoryDeps {
   cwd: () => string | undefined;
   log: (line: string) => void;
+  /** the recent list: called before the window changes */
+  opened?: (story: { id: number; title: string }) => Promise<void>;
 }
 
 /** The git dir of a checkout or linked worktree (where HEAD and logs/HEAD are), read from `.git` without git. */
@@ -81,14 +83,15 @@ export class StoriesView implements vscode.TreeDataProvider<StoryNode> {
     this.emitter.fire(undefined);
   }
 
-  stories(): Promise<StoryJson[]> {
+  /** `quiet`: a picker that only adds the stories when they come (no warning when Azure DevOps cannot be read) */
+  stories(quiet = false): Promise<StoryJson[]> {
     const cwd = this.deps.cwd();
     if (!cwd) return Promise.resolve([]);
     this.data ??= readJson<{ stories: StoryJson[] }>(slowRunner(), ["story", "branches"], cwd).then(
       (r) => r.stories,
       (e: Error) => {
         this.deps.log(`story branches: ${e.message}`);
-        void vscode.window.showWarningMessage(`AI Context Hub: could not read your stories: ${e.message}`);
+        if (!quiet) void vscode.window.showWarningMessage(`AI Context Hub: could not read your stories: ${e.message}`);
         this.data = undefined;
         return [];
       },
@@ -461,6 +464,7 @@ export function registerStories(ctx: vscode.ExtensionContext, deps: StoryDeps): 
     const way = await pick<OpenWay>(openWays(), `Open Story · #${story.id} ${story.title}`, "How should the ★ branches be opened?");
     if (!way) return;
     const out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Opening story ${story.id}...` }, () => cli(["story", "open", "--id", String(story.id), "--mode", way.mode, "--window", "none"]));
+    await deps.opened?.({ id: story.id, title: story.title }).catch(() => undefined);
     await showOpened(JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson, way.window, deps.log);
   });
   return { view, tracker };

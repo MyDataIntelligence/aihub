@@ -2,7 +2,7 @@
   "name": "ai-context-hub",
   "displayName": "AI Context Hub",
   "description": "A thin status bar and panel over the aihub CLI: story, branch, pull request, pipeline, review threads, Fabric runs and watch events. Actions open in your chat (Copilot Chat or opencode).",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "publisher": "FerronHooi",
   "license": "MIT",
   "private": true,
@@ -73,7 +73,7 @@
       },
       {
         "command": "aihub.reposet.open",
-        "title": "Open Repo Set...",
+        "title": "Open Repositories on a Branch...",
         "category": "AI Context Hub",
         "icon": "$(repo-forked)",
         "shortTitle": "Open Repo Set"
@@ -111,6 +111,10 @@
       {
         "command": "aihub.performance.export",
         "title": "AI Context Hub: Export Performance Log"
+      },
+      {
+        "command": "aihub.performance.advisor",
+        "title": "AI Context Hub: Performance Advisor"
       },
       {
         "command": "aihub.git.resetToRef",
@@ -155,7 +159,7 @@
       },
       {
         "command": "aihub.worktrees.openInNewWindow",
-        "title": "Open Worktree Set in New Window",
+        "title": "Open This Set in New Window",
         "category": "AI Context Hub"
       },
       {
@@ -433,6 +437,66 @@
         "title": "Open Worktree in New Window",
         "category": "AI Context Hub",
         "icon": "$(empty-window)"
+      },
+      {
+        "command": "aihub.newWorktreeSet",
+        "title": "New Worktree Set...",
+        "category": "AI Context Hub",
+        "icon": "$(add)"
+      },
+      {
+        "command": "aihub.recentSets",
+        "title": "Recent Worktree Sets...",
+        "category": "AI Context Hub",
+        "icon": "$(history)"
+      },
+      {
+        "command": "aihub.recentStories",
+        "title": "Recent Stories...",
+        "category": "AI Context Hub",
+        "icon": "$(history)"
+      },
+      {
+        "command": "aihub.openRepoSet",
+        "title": "Open Worktree Set...",
+        "category": "AI Context Hub",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "aihub.openStory",
+        "title": "Open Story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.openRecentSet",
+        "title": "Open Recent Worktree Set",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.openRecentStory",
+        "title": "Open Recent Story",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.getRecents",
+        "title": "Get Recent Sets and Stories",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.reposet.menu",
+        "title": "Open Repo Set Menu",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.recent",
+        "title": "Recent Worktree Sets and Stories...",
+        "category": "AI Context Hub",
+        "icon": "$(history)"
+      },
+      {
+        "command": "aihub.openRecent",
+        "title": "Open Recent Worktree Set or Story",
+        "category": "AI Context Hub"
       }
     ],
     "configuration": {
@@ -515,6 +579,16 @@
           "type": "boolean",
           "default": true,
           "description": "Keep a local performance log of what the extension costs: activation per phase, commands, status reads, every child process (git, aihub, az), timers, watchers, notifications, and every 30-60 s the event-loop delay, CPU and memory of the extension host. JSON lines under the extension's global storage (perf/), at most 10 MB per day, 7 days kept, never sent anywhere. No tokens, e-mail addresses or file contents. See AI Context Hub: Show Performance Report."
+        },
+        "aihub.performanceAdvisor.notify": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check once a day (first 10 minutes after the start) what makes git, node and VS Code slow here (aihub doctor --perf) and offer one finding as a notification: at most one notification a day, each finding at most once. All findings are in AI Context Hub: Performance Advisor."
+        },
+        "aihub.performanceAdvisor.adminDryRun": {
+          "type": "boolean",
+          "default": false,
+          "description": "Administrator changes of the Performance Advisor (Defender exclusions) only show what would run, without the UAC prompt. For trying it out."
         },
         "aihub.performanceLog.level": {
           "type": "string",
@@ -1045,6 +1119,38 @@
         },
         {
           "command": "aihub.stories.openWorktree",
+          "when": "false"
+        },
+        {
+          "command": "aihub.openStory",
+          "when": "false"
+        },
+        {
+          "command": "aihub.openRecentSet",
+          "when": "false"
+        },
+        {
+          "command": "aihub.openRecentStory",
+          "when": "false"
+        },
+        {
+          "command": "aihub.getRecents",
+          "when": "false"
+        },
+        {
+          "command": "aihub.reposet.menu",
+          "when": "false"
+        },
+        {
+          "command": "aihub.openRecent",
+          "when": "false"
+        },
+        {
+          "command": "aihub.recentSets",
+          "when": "false"
+        },
+        {
+          "command": "aihub.recentStories",
           "when": "false"
         }
       ],
