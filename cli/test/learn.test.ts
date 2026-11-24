@@ -162,6 +162,24 @@ describe("aihub learn validate", () => {
     expect(bad.out).toContain("kind must be");
   });
 
+  it("without team.yaml or a PR compares with the branch it was cut from, not with main", async () => {
+    const { dir } = makeRepo();
+    // an integration branch with its own commits, and a feature branch cut from it
+    sh(dir, ["switch", "-c", "bench-base"]);
+    write(dir, "base-only.txt", "on the base branch\n");
+    sh(dir, ["add", "."]);
+    sh(dir, ["commit", "-m", "base work"]);
+    sh(dir, ["push", "-u", "origin", "bench-base"]);
+    sh(dir, ["switch", "-c", "feature/9-btw"]);
+    write(dir, "app/btw.py", "def btw(x):\n    return round(x * 0.21, 2)\n");
+    sh(dir, ["add", "."]);
+    sh(dir, ["commit", "-m", "feat: btw (AB#9)"]);
+    const r = await go(dir, ["learn", "change", "--json"]);
+    const f = JSON.parse(r.out);
+    expect(f.source.range).toMatch(/bench-base\.\.\./);
+    expect(f.files.map((x: { path: string }) => x.path)).toEqual(["app/btw.py"]);
+  });
+
   it("reads files that Windows PowerShell wrote with > (UTF-16 with BOM) and UTF-8 with BOM", async () => {
     const dir = world();
     const ex = join(tmp(), "e.json");
