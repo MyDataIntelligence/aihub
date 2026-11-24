@@ -119,6 +119,7 @@ beforeEach(() => {
   h.infos = [];
   h.progress = [];
   h.cli = (args) => {
+    if (args[0] === "repos") return JSON.stringify({ repos: [] });
     if (args[1] === "groups") return JSON.stringify(groups);
     if (args[1] === "branches") return JSON.stringify(branches);
     if (args[1] === "open") return JSON.stringify(result(args[args.indexOf("--branch") + 1], args[args.indexOf("--mode") + 1]));
@@ -169,9 +170,30 @@ describe("Open Repo Set, the whole flow", () => {
     expect(h.calls.filter((a) => a[1] === "branches")).toHaveLength(1);
   });
 
+  it("the repo opener: a repository that is not cloned is cloned first, then goes into the set with the local ones", async () => {
+    const vscode = await import("vscode");
+    (vscode.window.showQuickPick as any).mockResolvedValueOnce({ value: "" }); // "Continue" (do not save as a group)
+    h.cli = (args) => {
+      if (args[0] === "repos" && args[1] === "local") return JSON.stringify({ repos: [{ name: "repo-a", path: "/w/repo-a", branch: "develop", key: "o/p/repo-a" }] });
+      if (args[0] === "repos" && args[1] === "ado") return JSON.stringify({ repos: [{ project: "p", name: "repo-a", key: "o/p/repo-a", path: "/w/repo-a", branch: "develop" }, { project: "p", name: "repo-z", key: "o/p/repo-z" }] });
+      if (args[0] === "repos" && args[1] === "clone") return JSON.stringify([{ repo: "repo-z", project: "p", path: "/w/repo-z", status: "cloned" }]);
+      if (args[1] === "groups") return JSON.stringify(groups);
+      if (args[1] === "branches") return JSON.stringify(branches);
+      if (args[1] === "open") return JSON.stringify(result(args[args.indexOf("--branch") + 1], "worktree"));
+      return "";
+    };
+    h.answers.push((l) => l.find((x) => x === "repo-z"), startsWith("develop"), startsWith("Worktrees, new window"));
+    await controller().open();
+    expect(h.picks[0].labels).toContain("repo-z");
+    const clone = h.calls.find((a) => a[1] === "clone")!;
+    expect(clone).toEqual(expect.arrayContaining(["--repos", "p/repo-z"]));
+    expect(h.calls.find((a) => a[1] === "open")).toEqual(expect.arrayContaining(["--repos", "/w/repo-z", "--branch", "develop"]));
+  });
+
   it("a failure gives a clear message, the window is not touched", async () => {
     h.cli = (args) => {
-      if (args[1] === "groups") return JSON.stringify(groups);
+      if (args[0] === "repos") return JSON.stringify({ repos: [] });
+    if (args[1] === "groups") return JSON.stringify(groups);
       if (args[1] === "branches") return JSON.stringify(branches);
       return JSON.stringify({ ...result("x", "worktree"), workspace: undefined, repos: [{ repo: "repo-a", ok: false, state: "failed", branch: "x", note: "boom" }] });
     };

@@ -643,6 +643,11 @@
           "scope": "window",
           "default": null,
           "description": "Written by aihub into the .code-workspace of a repo set (story, group, branch, mode, repositories); the status bar shows it. Not meant to be edited."
+        },
+        "aihub.reposRoot": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The folder with your clones for the repo opener (New Worktree Set, Repositories on a branch). A repository that is not cloned yet is cloned here. Empty: team.yaml `reposRoot`, else the folder the current repository is in."
         }
       }
     },
