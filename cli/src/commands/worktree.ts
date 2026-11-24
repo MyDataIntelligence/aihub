@@ -1,7 +1,7 @@
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import { list, optInt, parseFlags, posInt } from "../lib/cliargs.js";
-import { findGroup, groupDirs, listGroups, removeGroup, resolveRepos, saveGroup } from "../lib/repoGroups.js";
+import { findGroup, groupDirs, listGroups, removeGroup, resolveRepos, saveGroup, saveTeamGroup } from "../lib/repoGroups.js";
 import { currentBranches, formatOpenSet, listBranches, openSet, type OpenMode, type OpenWindow } from "../lib/repoSet.js";
 import { createSet, listSets, removeSet } from "../lib/worktree.js";
 import { formatCleanup, formatRemoved, listCleanup, removeCleanup } from "../lib/worktreeCleanup.js";
@@ -64,10 +64,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
 function groups(argv: string[], ctx: Ctx): void {
   const [sub, ...rest] = argv;
   const name = rest[0] && !rest[0].startsWith("-") ? rest[0] : undefined;
-  const v = parseFlags(name ? rest.slice(1) : rest, { repos: { type: "string" }, json: { type: "boolean" } });
+  const v = parseFlags(name ? rest.slice(1) : rest, { repos: { type: "string" }, team: { type: "boolean" }, json: { type: "boolean" } });
   if (sub === "save") {
-    if (!name) throw new AihubError("usage: aihub worktree groups save <name> --repos a,b,c");
-    const g = saveGroup(ctx, name, list(v.repos));
+    if (!name) throw new AihubError("usage: aihub worktree groups save <name> --repos a,b,c [--team]");
+    // --team: in team.yaml of this repository (for everyone, commit it); else personal
+    const g = v.team ? saveTeamGroup(ctx, name, list(v.repos)) : saveGroup(ctx, name, list(v.repos));
     return void ctx.out(v.json ? JSON.stringify(g) : `group ${g.name}: ${g.repos.map((r) => r.name).join(", ")}`);
   }
   if (sub === "remove") {

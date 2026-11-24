@@ -1,4 +1,6 @@
 import * as fs from "fs";
+import { offerSaveGroup, pickRepos } from "./repoPickerUi";
+import { plainWorkspace } from "./repoPickerModel";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -216,17 +218,37 @@ export class RepoSetController {
     return rows;
   }
 
-  private async chooseBranch(target: { group?: string; repos?: string[] }, total: number, chosen: string[]): Promise<{ branch: string; from?: string } | undefined> {
+  /** "Open as they are": the folders in one window, on the branches they are on (no worktree, no switch). */
+  private async openPlain(paths: string[], label: string): Promise<void> {
+    const where = await pick<"new" | "this">(
+      [
+        { label: "$(multiple-windows) New window", value: "new" },
+        { label: "$(window) This window", value: "this" },
+      ],
+      stepTitle(3, [label, "as they are"], this.flow),
+      "Where?",
+    );
+    if (!where) return;
+    const dir = vscode.Uri.joinPath(this.ctx.globalStorageUri, "workspaces").fsPath;
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${label.replace(/[^\w.-]+/g, "-").slice(0, 60) || "repos"}.code-workspace`);
+    fs.writeFileSync(file, plainWorkspace(paths, label), "utf8");
+    const res: OpenResultJson = { branch: "", mode: "switch", folder: dir, workspace: file, opened: false, repos: paths.map((p) => ({ repo: path.basename(p), ok: true, state: "already-on", branch: "", note: "as it is", path: p })), group: label };
+    await showOpened(res, where, this.deps.log);
+  }
+
+  private async chooseBranch(target: { group?: string; repos?: string[] }, total: number, chosen: string[], plain = false): Promise<{ branch: string; from?: string } | { plain: true } | undefined> {
     const here = path.basename(this.cwd());
     const items = this.branches(target).then(
-      (rows) => branchItems(rows.branches, rows.repos.length || total, preferredBranch(rows.branches, rows.current, here)),
+      (rows) => withPlain(branchItems(rows.branches, rows.repos.length || total, preferredBranch(rows.branches, rows.current, here)), plain),
       (e: Error) => {
         void vscode.window.showWarningMessage(`Could not read the branches: ${e.message}`);
-        return branchItems([], total);
+        return withPlain(branchItems([], total), plain);
       },
     );
     const choice = await pick<BranchChoice>(items, stepTitle(2, chosen, this.flow), "Choose the branch (Enter takes the first one)");
     if (!choice) return;
+    if (choice.kind === "plain") return { plain: true };
     if (choice.kind === "existing") return { branch: choice.branch };
     if (choice.kind === "new-story" || choice.kind === "typed") {
       const branch = await vscode.window.showInputBox({
@@ -282,28 +304,26 @@ export class RepoSetController {
     let target: { group?: string; repos?: string[] };
     let total = 0;
     let label: string;
+    let plainPaths: string[] | undefined;
     if (group) {
       target = { group };
       label = group;
       if (!branch) total = (await this.groups()).find((g) => g.name === group)?.repos.length ?? 0;
     } else {
-      const choice = await pick(this.groups().then(groupItems), stepTitle(1, [], this.flow), "Choose a group, or tick repositories");
-      if (!choice) return;
-      if ("group" in choice) {
-        target = { group: choice.group.name };
-        label = choice.group.name;
-        total = choice.group.repos.length;
-      } else {
-        const t = await this.tickRepos();
-        if (!t) return;
-        target = t.group ? { group: t.group } : { repos: t.repos.map((r) => r.path) };
-        label = t.group ?? t.repos.map((r) => r.name).join(", ");
-        total = t.repos.length;
-      }
+      // the repo opener: any repositories, local or in Azure DevOps (cloned first), groups and recent ones on top
+      const picked = await pickRepos({ run: slowRunner(), cwd: this.cwd(), state: this.ctx.globalState, groups: () => this.groups(), title: stepTitle(1, [], this.flow), log: this.deps.log });
+      if (!picked) return;
+      const saved = await offerSaveGroup(slowRunner(), this.cwd(), picked);
+      if (saved === undefined) return;
+      target = saved ? { group: saved } : { repos: picked.paths };
+      label = saved || picked.label;
+      total = picked.paths.length;
+      plainPaths = picked.paths;
     }
     // "New Worktree Set...": step 2 is the name of the new branch, step 3 only the worktree ways
-    const b = branch ? { branch } : o.newBranch ? await this.newBranchName(label, o.story) : await this.chooseBranch(target, total, [label]);
+    const b = branch ? { branch } : o.newBranch ? await this.newBranchName(label, o.story) : await this.chooseBranch(target, total, [label], !!plainPaths);
     if (!b) return;
+    if ("plain" in b) return this.openPlain(plainPaths!, label);
     const way = await pick<OpenWay>(o.newBranch ? openWays().filter((w) => w.value?.mode === "worktree") : openWays(), stepTitle(3, [label, b.branch], this.flow), `How should ${b.branch} be opened?`);
     if (!way) return;
     const args = openArgs({ ...target, branch: b.branch, from: b.from, mode: way.mode, story: o.story?.id });
@@ -334,4 +354,10 @@ export class RepoSetController {
       vscode.commands.registerCommand("aihub.reposet.openGroup", (n?: { group?: GroupJson }) => this.open(n?.group?.name).catch((e) => vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`))),
     );
   }
+}
+
+/** Step 2 of a free pick of repositories also offers to open them as they are. */
+function withPlain(items: PickItem<BranchChoice>[], plain: boolean): PickItem<BranchChoice>[] {
+  // last, so the current branch stays the first row (one Enter)
+  return plain ? [...items, { label: "", separator: true }, { label: "$(folder-opened) Open as they are", description: "the branches they are on now: no worktree, no switch", value: { kind: "plain" } }] : items;
 }
