@@ -45,9 +45,19 @@ npx skills add MyDataIntelligence/aihub -g -a opencode -a github-copilot -a code
 
 ```sh
 cd <team-repo>
-aihub init      # proposes team.yaml and the templates as a pull request
-aihub doctor    # checks sign-in, remote, templates and team file
+aihub team setup            # detects what it can, writes a proposed team.yaml, lists the open questions
+aihub team set <key> <value> # one per answer (the agent asks you and runs it)
+aihub init                  # proposes team.yaml and the templates as a pull request
+aihub doctor                # checks sign-in, remote, templates and team file
 ```
+
+`aihub team setup` reads the git remote (organization, project, repository), `origin/HEAD` (default target), the branch
+names (feature pattern, release branches), the process of the project (story type, start and finish states), the branch
+policies (protected branches, build validation pipelines) and the PR template Azure DevOps already uses; with a Fabric token
+at hand also the workspaces named after the repository. What it is sure of goes into the proposal silently; what it can only
+guess becomes a numbered question with the choices and the one `aihub team set` command to answer it (at most five). It is not
+interactive, so an agent can run it, ask you the questions and run the answers. Detections are cached for a day in the aihub
+home. `aihub init` without a `team.yaml` runs the same setup first and stops while questions are open.
 
 The same files are in [`team-pack/`](../team-pack/README.md) (also attached to each release as `aihub-team-pack-<version>.zip`) if you prefer to copy them by hand.
 
@@ -57,7 +67,7 @@ looks) (team knowledge only; skills and slash commands live in the user folders 
 also writes the slash commands into `.opencode/command/` and `.github/prompts/`). With the pack it also proposes (each only when missing) `.github/instructions/<area>.instructions.md` skeletons with `applyTo:` front matter and empty rule bullets for the file types the repository really has, and a short marked block in `AGENTS.md` (created, or appended when the file has no aihub line); `--no-instructions` and `--no-agents-md` skip them. It creates the branch `chore/aihub-team-pack`,
 commits, pushes and opens a pull request that lists created and skipped files; review and merge it. With `--no-pr` it
 only writes the files. `aihub doctor [--json]` prints one `OK` or `FIX` line per check (Node, git, remote, sign-in
-method, `team.yaml` against the schema, PR template location, skills per client) with the fix.
+method, `team.yaml` against the schema, keys it could only guess as `aihub team set` lines, Fabric token, PR template location, skills per client) with the fix.
 
 ## Daily use
 
@@ -91,7 +101,8 @@ you (changed in the last 14 days, the newest 25); `--interval` needs a unit (30s
 
 Team knowledge lives in the team repository, never in this pack:
 
-1. Edit `.agents/skills/_shared/references/team.yaml` (see [team.yaml](team-yaml.md)), the story template
+1. Change a key with `aihub team set <key> <value>` (keeps comments, checks the schema; `aihub team show` lists the values in use
+   and their source) or edit `.agents/skills/_shared/references/team.yaml` (see [team.yaml](team-yaml.md)), the story template
    (`.agents/skills/_shared/assets/story-template.md`), the commit template or `.azuredevops/pull_request_template.md`.
 2. Open a pull request and let a teammate review it.
 3. After the merge everyone gets the change with a normal pull; run `aihub doctor` to confirm.

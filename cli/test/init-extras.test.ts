@@ -21,7 +21,7 @@ function repo(files: Record<string, string> = {}) {
 
 async function init(dir: string, args: string[] = []) {
   const { ctx, lines, errs } = ctxFor(dir, fakeFetch([]).fn);
-  const code = await main(["init", "--no-pr", ...args], ctx);
+  const code = await main(["init", "--no-pr", ...(args.includes("--language") ? [] : ["--language", "en"]), ...args], ctx);
   return { code, out: lines.join("\n"), errs };
 }
 

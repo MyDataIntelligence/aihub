@@ -1,8 +1,21 @@
 # team.yaml
 
 `team.yaml` holds everything the CLI needs to know about one team. It lives in the team repository at
-`.agents/skills/_shared/references/team.yaml` and is created by `aihub init` (proposed as a pull request, never
-overwriting an existing file). The generic pack never contains team knowledge.
+`.agents/skills/_shared/references/team.yaml` and is created by `aihub team setup` and `aihub init` (proposed as a pull
+request, never overwriting an existing file). The generic pack never contains team knowledge.
+
+## Guided setup
+
+| Command | What it does |
+|---|---|
+| `aihub team setup [--refresh] [--json]` | Detects what it can (git remote, `origin/HEAD`, branch names, work item states, branch policies, PR template; Fabric workspaces only with a token at hand), writes a commented proposal when there is no `team.yaml`, and lists only the questions it cannot answer (at most five), each with its `aihub team set` command. |
+| `aihub team set <key> <value>` | Changes one key (`workItems.states.active`, `repositories[0].releaseBranches`, ...), keeps comments and order, refuses a change that breaks the schema and any secret. Lists are comma-separated. |
+| `aihub team show [--missing] [--json]` | The value aihub uses per key and its source: `team.yaml`, `detected` (sure or guess, and from where) or `default`. |
+
+A command that needs a key `team.yaml` leaves open uses a sure detection silently. When it can only guess (two
+InProgress states, for example) it stops before it creates or changes anything, with exit code 3 and one line:
+`missing team setting workItems.states.active (found: Doing, Review): ask the user, then run: aihub team set workItems.states.active "<value>"`.
+Detections are cached for a day in the aihub home (`team-detect.json`); a key that is in `team.yaml` costs no detection at all.
 
 The documented schema is [`skills/_shared/references/team.schema.yaml`](../skills/_shared/references/team.schema.yaml).
 Templates are separate files next to it (stories, commits) or in the repo (`.azuredevops/pull_request_template.md`).

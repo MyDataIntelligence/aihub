@@ -1,16 +1,17 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { parseDocument } from "yaml";
-import { parseRemote } from "./ado.js";
-import { repoClient, type Ctx } from "./context.js";
+import { parse } from "yaml";
+import type { Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
-import { git, hasRef, originDefaultBranch, pushIfNeeded, remoteUrl, repoRoot, showFile } from "./git.js";
+import { git, hasRef, originDefaultBranch, pushIfNeeded, repoRoot, showFile } from "./git.js";
 import { listFiles, packRoot, readPackFile } from "./pack.js";
 import { createPr } from "./pr.js";
 import { trace } from "./trace.js";
 import { agentsBlock, detectAreas, instructionFile, instructionsReadme, planAgentsMd, trackedFiles } from "./initExtras.js";
-import { TEAM_FILE } from "./team.js";
+import { readUtf8, TEAM_FILE } from "./team.js";
+import { setup } from "../commands/team.js";
+import { PROPOSAL_MARK } from "./team-guide.js";
 import { resolveTemplate } from "./templates.js";
 
 export type Language = "nl" | "en";
@@ -36,6 +37,8 @@ export interface Planned {
   content: string;
   /** The file exists: this is its new content (an aihub block appended), written only for AGENTS.md. */
   append?: boolean;
+  /** The untracked team.yaml proposal of `aihub team setup`: committed as it is. */
+  proposal?: boolean;
 }
 
 export interface InitResult {
@@ -45,6 +48,8 @@ export interface InitResult {
   skipped: { path: string; reason: string }[];
   branch?: string;
   pr?: string;
+  /** No team.yaml yet and open questions: the setup report, nothing else was done. */
+  questions?: string[];
 }
 
 export function parseLanguage(v: string | undefined): Language {
@@ -58,34 +63,13 @@ export function teamPackDir(): string {
   return join(packRoot(), "team-pack");
 }
 
-/** team-pack/team.yaml with the values of this repository filled in; the comments of the example stay. */
-function teamYaml(src: string, o: { org: string; project: string; repo: string; target: string; language: Language; prTemplate: string; states?: ProjectStates }): string {
-  const doc = parseDocument(src);
-  doc.setIn(["language"], o.language);
-  doc.setIn(["azureDevOps", "organization"], o.org);
-  doc.setIn(["azureDevOps", "project"], o.project);
-  doc.setIn(["repositories", 0, "name"], o.repo);
-  doc.setIn(["repositories", 0, "defaultTarget"], o.target);
-  doc.setIn(["repositories", 0, "aliases"], doc.createNode([]));
-  doc.setIn(["pullRequest", "template"], o.prTemplate);
-  doc.setIn(["pullRequest", "emptySection"], o.language === "nl" ? "n.v.t." : "-");
-  if (o.states) {
-    doc.setIn(["workItems", "states", "active"], o.states.active);
-    doc.setIn(["workItems", "states", "finished"], o.states.finished);
-  }
-  doc.setIn(["branches", "protected", 0], o.target);
-  doc.deleteIn(["pipelines"]);
-  doc.deleteIn(["guidelines"]);
-  doc.deleteIn(["cherryPick"]);
-  return "# Proposed by 'aihub init': check every value and change it through a pull request.\n" + String(doc);
-}
 /** Where Azure DevOps already finds a PR template for the target branch, or undefined. */
 export function existingPrTemplate(root: string, target: string): string | undefined {
   return resolveTemplate(target, { readRef: (b, p) => showFile(root, b, p), localRoot: root })?.path;
 }
 
 /** Everything `aihub init` would like to have in the repository (before skipping what exists). */
-export function planFiles(root: string, o: { org: string; project: string; repo: string; target: string; language: Language; intoRepo?: boolean; states?: ProjectStates; noInstructions?: boolean; noAgentsMd?: boolean }): { plan: Planned[]; skips: Record<string, string> } {
+export function planFiles(root: string, o: { target: string; language: Language; intoRepo?: boolean; teamYaml: string; noInstructions?: boolean; noAgentsMd?: boolean }): { plan: Planned[]; skips: Record<string, string> } {
   const pack = packRoot();
   const dir = teamPackDir();
   const en = o.language === "en";
@@ -96,7 +80,7 @@ export function planFiles(root: string, o: { org: string; project: string; repo:
   };
   const found = existingPrTemplate(root, o.target);
   const plan: Planned[] = [
-    { path: TEAM_FILE, content: teamYaml(readPackFile(join(dir, TEAM_FILE)), { ...o, prTemplate: found && !found.includes("/branches/") ? found : PR_TEMPLATE }) },
+    { path: TEAM_FILE, content: o.teamYaml, proposal: true },
     { path: STORY_TEMPLATE, content: read(STORY_TEMPLATE) },
     { path: COMMIT_TEMPLATE, content: read(COMMIT_TEMPLATE) },
   ];
@@ -128,12 +112,12 @@ export function writePlanned(root: string, plan: Planned[], skipExtra: Record<st
   for (const [path, reason] of Object.entries(skipExtra)) res.skipped.push({ path, reason });
   for (const p of plan) {
     const abs = join(root, p.path);
-    if (existsSync(abs) && !p.append) {
+    if (existsSync(abs) && !p.append && !p.proposal) {
       res.skipped.push({ path: p.path, reason: "exists" });
       continue;
     }
     if (trace.dryRun) trace.plan(`would write ${abs}`);
-    else {
+    else if (!(p.proposal && existsSync(abs))) {
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, p.content, "utf8");
     }
@@ -162,38 +146,31 @@ function prBody(language: Language, r: InitResult): string {
   ].join("\n");
 }
 
-export interface ProjectStates {
-  active: string;
-  finished: string;
-}
-
-/**
- * The states of the story work item type of this project: the first InProgress and the first Completed one
- * (Basic: Doing/Done, Agile: Active/Closed, Scrum: Committed/Done). undefined when Azure DevOps cannot be asked.
- */
-export async function projectStates(ctx: Ctx, root: string, type = "User Story"): Promise<ProjectStates | undefined> {
-  try {
-    const client = repoClient({ ...ctx, cwd: root }).client;
-    const r = await client.get<{ value?: { name: string; category?: string }[] }>(`wit/workitemtypes/${encodeURIComponent(type)}/states`);
-    const list = r.value ?? [];
-    const active = list.find((x) => x.category === "InProgress")?.name;
-    const finished = list.find((x) => x.category === "Completed")?.name;
-    return active && finished ? { active, finished } : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export async function runInit(ctx: Ctx, o: InitOpts): Promise<InitResult> {
-  const language = parseLanguage(o.language);
+  parseLanguage(o.language);
   const root = repoRoot(resolve(ctx.cwd, o.repo ?? "."));
-  const remote = parseRemote(remoteUrl(root));
   const target = originDefaultBranch(root) || "main";
-  const states = existsSync(join(root, TEAM_FILE)) ? undefined : await projectStates(ctx, root); // only needed for a new team.yaml
-  const info = { org: remote.org, project: remote.project, repo: remote.repo, target, language, intoRepo: !!o.intoRepo, states, noInstructions: !!o.noInstructions, noAgentsMd: !!o.noAgentsMd };
+  const teamPath = join(root, TEAM_FILE);
+  if (!existsSync(teamPath)) {
+    // no team.yaml: the guided setup first; the pack follows once nothing is left to ask
+    const lines = await setup({ ...ctx, cwd: root }, { answered: o.language ? { language: o.language } : undefined });
+    if (lines.some((l) => /^\d+\. /.test(l))) return { created: [], updated: [], skipped: [], questions: lines };
+  }
+  const text = existsSync(teamPath) ? readUtf8(teamPath) : "";
+  // an untracked proposal of `aihub team setup` goes into the pack as it is; any other existing team.yaml is never touched
+  const proposal = text.startsWith(PROPOSAL_MARK) && !git(root, ["ls-files", "--", TEAM_FILE], { allowFail: true }).trim() ? text : "";
+  const teamLang = (parse(text || "{}") as { language?: string } | null)?.language;
+  const language = parseLanguage(o.language ?? (teamLang === "nl" ? "nl" : undefined));
+  return writeOrPr(ctx, root, o, { target, language, teamYaml: proposal });
+}
+
+async function writeOrPr(ctx: Ctx, root: string, o: InitOpts, base: { target: string; language: Language; teamYaml: string }): Promise<InitResult> {
+  const { target, language } = base;
+  const info = { ...base, intoRepo: !!o.intoRepo, noInstructions: !!o.noInstructions, noAgentsMd: !!o.noAgentsMd };
+  const filter = (p: { plan: Planned[]; skips: Record<string, string> }) => (base.teamYaml ? p : { ...p, plan: p.plan.map((x) => (x.path === TEAM_FILE ? { ...x, proposal: false } : x)) });
 
   if (o.noPr) {
-    const p = planFiles(root, info);
+    const p = filter(planFiles(root, info));
     return writePlanned(root, p.plan, p.skips);
   }
 
@@ -206,7 +183,7 @@ export async function runInit(ctx: Ctx, o: InitOpts): Promise<InitResult> {
     if (original !== "HEAD") git(root, ["switch", original], { allowFail: true });
   };
   try {
-    const p = planFiles(root, info);
+    const p = filter(planFiles(root, info));
     const result = writePlanned(root, p.plan, p.skips);
     result.branch = PACK_BRANCH;
     const touched = [...result.created, ...result.updated];
@@ -231,6 +208,7 @@ export async function runInit(ctx: Ctx, o: InitOpts): Promise<InitResult> {
 }
 
 export function reportInit(r: InitResult): string[] {
+  if (r.questions) return [...r.questions.filter((l) => !l.startsWith("then:")), "then run 'aihub init' again: it proposes the team pack as a pull request"];
   const lines = [
     ...r.created.map((p) => `created  ${p}`),
     ...r.updated.map((p) => `updated  ${p} (aihub block appended)`),
