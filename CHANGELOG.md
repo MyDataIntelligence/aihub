@@ -2,6 +2,10 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.2.0
+- `aihub doctor --perf [--json] [--paths a,b]`: the Performance Advisor engine (read-only measurements: node and git start, a scan probe, the performance log, Defender/Windows Search/drive facts without admin, per repository OneDrive, network drive, indexing, file count and git config) with one finding per cause, each with evidence, change, risk and undo; `--apply <id>` / `--undo <id>` for your own settings, admin changes only with `--elevate` (one UAC prompt), `--dry-run`.
+- `aihub worktree open --story <id>`: a set for a story also when the story number is not in the branch name; the worktrees go to the story folder and the branches are linked locally with the star (used by New Worktree Set in the VS Code extension 3.3.0). Skills unchanged since 1.1.0. Release notes: docs/releases/1.2.0.md.
+
 ## 1.1.0
 - `aihub story branches`: the branches of a story per repository with Development links in Azure DevOps, one star per repository, labels, old/parked, the story folder layout and the story title in `story-worktrees.json`; safe remove and move of a worktree (folder links removed first, never `--force` over local work).
 - `aihub status` starts three git processes instead of six: `rev-parse --show-toplevel --git-common-dir` and one `status --porcelain=v2 --branch` (branch, upstream, ahead, changes) plus the remote; `rev-list` only for a branch without an upstream (about 0.95 s became about 0.49 s without a sign-in).
