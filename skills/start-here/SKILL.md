@@ -5,7 +5,7 @@ description: "Use when the user starts an Azure DevOps team task and it is uncle
 # Start here
 
 ## When
-Any Azure DevOps team request. Route it at once; do not explain the pack.
+Any Azure DevOps team request. Route it at once.
 
 ## Steps
 A direct command needs no routing: "maak een PR" -> run `aihub pr create --summary-text "..."`; "voeg onder <sectie> toe" with a PR link -> `aihub pr update --pr <url> --section "<heading>" --append-text "..."`. No exploring first. Otherwise map the intent:
@@ -27,7 +27,7 @@ A direct command needs no routing: "maak een PR" -> run `aihub pr create --summa
 | worktree set, several repos | worktrees |
 | "run story 123" | story-run |
 | review someone else's PR | pr-review |
-| "leg de PR uit", explain a PR | pr-explain, learn |
+| "leg de PR uit" | pr-explain, learn |
 | "kan dit?" | feasibility |
 | wiki, other repo, Terraform | wiki, devops-repos, terraform |
 | policies, groups, search, PR admin | devops-admin |
@@ -39,9 +39,9 @@ A direct command needs no routing: "maak een PR" -> run `aihub pr create --summa
 New chat: `aihub status`. A pullrequest link means pr-watch.
 
 ## What the CLI fills
-Templates, target branch, story links, repository: the CLI applies `team.yaml`; never read it or ask for them. On `missing team setting`: ask that one question, run its `aihub team set`, repeat. Read the `guidelines:` files first.
+The CLI applies `team.yaml` (templates, target, links); never read it or ask for these. On `missing team setting`: ask that one question, run its `aihub team set`, repeat. Read the `guidelines:` files first.
 
 ## If it fails
-Run `aihub doctor`, show its output. No `team.yaml`: `aihub team setup`.
+Show `aihub doctor`. No `team.yaml`: `aihub team setup`.
 
-Rules: a direct command runs at once, 0 questions. Local git uses your own tools. Content follows the team template language. Never invent ids.
+Rules: a direct command runs at once, 0 questions. Unreadable skill file: `aihub <command> --help`. Done is done: no closing question. Local git uses your own tools. Content follows the team template language. Never invent ids.
