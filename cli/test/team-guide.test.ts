@@ -102,6 +102,17 @@ describe("aihub team setup", () => {
   });
 });
 
+describe("aihub team setup: the PR target", () => {
+  it("asks when the last completed pull requests mostly went to another branch than origin/HEAD", async () => {
+    const { dir } = repo();
+    const prs = { value: [...Array(4).fill({ targetRefName: "refs/heads/develop" }), { targetRefName: "refs/heads/main" }] };
+    const { ctx, lines } = cx(dir, fakeFetch([...basic(), { match: /\/pullrequests\?.*searchCriteria.status=completed/, respond: () => ({ body: prs }) }]).fn);
+    await main(["team", "setup"], ctx);
+    expect(lines.join("\n")).toContain("Branch a new pull request targets? develop | main -> aihub team set repositories[0].defaultTarget develop");
+    expect(parse(readFileSync(join(dir, TEAM), "utf8")).repositories[0].defaultTarget).toBe("develop");
+  });
+});
+
 describe("aihub team set / show", () => {
   it("sets nested and list keys, refuses secrets and changes that break the schema", async () => {
     const { dir } = repo();

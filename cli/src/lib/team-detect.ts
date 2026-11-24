@@ -178,6 +178,14 @@ export async function detectPolicies(ctx: Ctx, root: string): Promise<Detection[
   }
   const out: Detection[] = [];
   if (protectedSet.size) out.push({ key: "branches.protected", value: [...protectedSet], confidence: "sure", source: "branch policies" });
+  // where the team really merges: the most common target of the last completed pull requests
+  const prs = await client
+    .get<{ value?: { targetRefName?: string }[] }>(`${client.repoPath()}/pullrequests`, { "searchCriteria.status": "completed", $top: 50 })
+    .then((r) => r.value ?? [], () => []);
+  const targets = new Map<string, number>();
+  for (const pr of prs) if (pr.targetRefName?.startsWith("refs/heads/")) targets.set(pr.targetRefName.slice(11), (targets.get(pr.targetRefName.slice(11)) ?? 0) + 1);
+  const ranked = [...targets.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  if (ranked.length && ranked[0][1] >= 3) out.push({ key: "pullRequests.target", value: ranked[0][0], confidence: "guess", source: `${ranked[0][1]} of the last ${prs.length} completed PRs`, choices: ranked.slice(0, 3).map((x) => x[0]) });
   if (pipelines.size) out.push({ key: "pipelines", value: [...pipelines].map((name) => ({ repository: client.remote.repo, name, required: true })), confidence: "guess", source: "build validation policies" });
   return out;
 }
@@ -268,5 +276,11 @@ export async function detectAll(ctx: Ctx, root: string, opts: { storyType?: stri
   const all = [...gitFound, ...rest.flat()].map((d) =>
     d.key === "branches.protected" && target && !(d.value as string[]).includes(target) ? { ...d, value: [target, ...(d.value as string[])], source: `default branch and ${d.source}` } : d,
   );
-  return all;
+  // pull requests that mostly go to another branch than origin/HEAD: the PR target is a question, not a fact
+  const pr = all.find((d) => d.key === "pullRequests.target");
+  const rest2 = all.filter((d) => d.key !== "pullRequests.target");
+  if (!pr || !target || pr.value === target) return rest2;
+  return rest2.map((d) =>
+    d.key === "repositories[0].defaultTarget" ? { ...d, value: pr.value, confidence: "guess" as const, source: `${pr.source}; origin/HEAD is ${target}`, choices: [...new Set([String(pr.value), target, ...(pr.choices ?? [])])].slice(0, 3) } : d,
+  );
 }
