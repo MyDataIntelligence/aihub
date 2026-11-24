@@ -16,7 +16,6 @@ import {
   diffSummary,
   currentBranch,
   mergeBase,
-  originDefaultBranch,
   pushIfNeeded,
   listRefFiles,
   showFile,
@@ -25,7 +24,8 @@ import {
 } from "./git.js";
 import { compose, DEFAULT_EMPTY, editSection, mergeSections, parseSections, resolveTemplate, templateSourceText, type CodeValues } from "./templates.js";
 import { CONTEXT_RE, notesText, readNotes, unwovenNotes, weaveNotes } from "./notes.js";
-import { defaultTargetFor, loadTeam, readUtf8 } from "./team.js";
+import { loadTeam, readUtf8 } from "./team.js";
+import { derivedNote, targetFor } from "./baseBranch.js";
 
 export interface CreateOpts {
   title?: string;
@@ -63,12 +63,9 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
   const branch = currentBranch(root);
   const team = loadTeam(root);
 
-  const target =
-    o.target ??
-    defaultTargetFor(team, client.remote.repo) ??
-    (originDefaultBranch(root) || undefined) ??
-    (await repoDefaultBranch(client)) ??
-    "main";
+  // --target, else team.yaml, else the branch this one was cut from (local git; unsure = one question before anything is made)
+  const derived = o.target ? undefined : targetFor(ctx, root, branch, team, client.remote.repo);
+  const target = o.target ?? derived?.target ?? (await repoDefaultBranch(client)) ?? "main";
   if (target === branch) throw new AihubError(`you are on the target branch '${branch}'; check out a feature branch first`);
 
   const wi = o.workItem ?? workItemFromBranch(branch);
@@ -120,6 +117,8 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
     description = [body.trim(), extra].filter(Boolean).join("\n\n") + "\n";
     summary = tplSource;
   }
+  const note = derivedNote(derived);
+  if (note) summary = [summary, note].filter(Boolean).join("; ");
 
   if (o.dryRun) {
     return o.json

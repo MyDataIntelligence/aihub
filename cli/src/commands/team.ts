@@ -56,6 +56,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     if (!key || !value.length) throw new AihubError("usage: aihub team set <key> <value>   (e.g. aihub team set workItems.states.active Doing)");
     const root = repoRoot(ctx.cwd);
     const v = parseValue(key, value);
+    if (!existsSync(join(root, TEAM_FILE))) await setup(ctx); // the answer to a "missing team setting" also works before any team.yaml
     const r = setKey(root, key, v);
     return void ctx.out(`${key}: ${short(r.before)} -> ${short(v)} (${TEAM_FILE}; propose it with 'aihub init' or a pull request)`);
   }
