@@ -282,32 +282,72 @@ export interface RepoStatus {
   unpushed?: number;
 }
 
+/** `git status --porcelain=v2 --branch`: branch, upstream, ahead/behind and the number of changed paths. */
+export function parseStatusV2(out: string): Pick<RepoStatus, "currentBranch" | "upstream" | "ahead" | "behind" | "dirty"> {
+  const r: Pick<RepoStatus, "currentBranch" | "upstream" | "ahead" | "behind" | "dirty"> = { dirty: 0 };
+  for (const l of out.split(/\r?\n/)) {
+    if (!l) continue;
+    if (l.startsWith("# branch.head ")) r.currentBranch = l.slice(14).trim() === "(detached)" ? "HEAD" : l.slice(14).trim();
+    else if (l.startsWith("# branch.upstream ")) r.upstream = l.slice(18).trim();
+    else if (l.startsWith("# branch.ab ")) {
+      const m = /\+(\d+) -(\d+)/.exec(l);
+      if (m) (r.ahead = Number(m[1])), (r.behind = Number(m[2]));
+    } else if (!l.startsWith("#")) r.dirty++;
+  }
+  return r;
+}
+
+/** The git common dir of a checkout or linked worktree, read from `.git` (no process). */
+export async function commonDirOf(dir: string): Promise<string | undefined> {
+  const dotgit = path.join(dir, ".git");
+  const st = await fs.promises.stat(dotgit).catch(() => undefined);
+  if (!st) return undefined;
+  if (st.isDirectory()) return dotgit;
+  const m = /^gitdir:\s*(.+)$/m.exec(await fs.promises.readFile(dotgit, "utf8").catch(() => ""));
+  if (!m) return undefined;
+  const gitdir = path.resolve(dir, m[1].trim());
+  const common = (await fs.promises.readFile(path.join(gitdir, "commondir"), "utf8").catch(() => "")).trim();
+  return common ? path.resolve(gitdir, common) : gitdir;
+}
+
+/**
+ * Changes when git changes something in the checkout: the index, HEAD, the reflog, the remote refs. A cached status
+ * stays valid while this is the same (fs.stat only, no process).
+ */
+export async function statusSignature(dir: string, remote: string): Promise<string> {
+  const dotgit = path.join(dir, ".git");
+  const st = await fs.promises.stat(dotgit).catch(() => undefined);
+  if (!st) return "missing";
+  let gitdir = dotgit;
+  if (!st.isDirectory()) {
+    const m = /^gitdir:\s*(.+)$/m.exec(await fs.promises.readFile(dotgit, "utf8").catch(() => ""));
+    if (m) gitdir = path.resolve(dir, m[1].trim());
+  }
+  const common = (await commonDirOf(dir)) ?? gitdir;
+  const files = [path.join(gitdir, "index"), path.join(gitdir, "HEAD"), path.join(gitdir, "logs", "HEAD"), path.join(common, "packed-refs"), path.join(common, "refs", "remotes", remote)];
+  const times = await Promise.all(files.map((f) => fs.promises.stat(f).then((s) => String(s.mtimeMs), () => "-")));
+  return times.join("|");
+}
+
+/** Whether a ref exists, from the loose ref file or packed-refs (what `show-ref --verify` answers, without a process). */
+export async function hasRemoteRef(dir: string, ref: string): Promise<boolean> {
+  const common = await commonDirOf(dir);
+  if (!common) return false;
+  if (await pathExists(path.join(common, ...ref.split("/")))) return true;
+  const packed = await fs.promises.readFile(path.join(common, "packed-refs"), "utf8").catch(() => "");
+  return packed.split(/\r?\n/).some((l) => l.endsWith(` ${ref}`));
+}
+
 export async function repoStatus(git: Git, remote: string, set: WorktreeSet, repo: SetRepo): Promise<RepoStatus> {
   const status: RepoStatus = { name: repo.name, path: repo.path, exists: false, dirty: 0, remoteBranch: false };
   if (!(await pathExists(repo.path))) return status;
   status.exists = true;
 
-  const head = await git(["rev-parse", "--abbrev-ref", "HEAD"], repo.path);
-  if (head.code === 0) status.currentBranch = head.stdout.trim();
-
-  const porcelain = await git(["status", "--porcelain"], repo.path);
-  if (porcelain.code === 0) status.dirty = porcelain.stdout.split(/\r?\n/).filter((l) => l.trim().length > 0).length;
-
-  const up = await git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], repo.path);
-  if (up.code === 0 && up.stdout.trim()) {
-    status.upstream = up.stdout.trim();
-    const counts = await git(["rev-list", "--left-right", "--count", "HEAD...@{u}"], repo.path);
-    if (counts.code === 0) {
-      const [a, b] = counts.stdout.trim().split(/\s+/).map((n) => parseInt(n, 10));
-      if (Number.isFinite(a) && Number.isFinite(b)) {
-        status.ahead = a;
-        status.behind = b;
-      }
-    }
-  }
-
-  const rb = await git(["show-ref", "--verify", "--quiet", `refs/remotes/${remote}/${repo.branch ?? set.branch}`], repo.path);
-  status.remoteBranch = rb.code === 0;
+  // one process for branch, upstream, ahead/behind and changes (it was four: rev-parse, status, rev-parse @{u}, rev-list)
+  const s = await git(["status", "--porcelain=v2", "--branch"], repo.path);
+  if (s.code === 0) Object.assign(status, parseStatusV2(s.stdout));
+  // the remote branch from the files in .git, not with show-ref
+  status.remoteBranch = await hasRemoteRef(repo.path, `refs/remotes/${remote}/${repo.branch ?? set.branch}`);
 
   if (status.upstream) {
     status.unpushed = status.ahead;

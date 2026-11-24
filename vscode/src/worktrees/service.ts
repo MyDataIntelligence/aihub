@@ -3,7 +3,7 @@ import { cleanupCandidates, deleteLocalBranch, fetchAll, type CleanupCandidate }
 import { createWorktree, listWorktrees, pathKey, removeWorktree, type Outcome, type Repo } from "./core";
 import { pushRepo, syncRepo, type StepResult } from "./extras";
 import type { Git } from "./git";
-import { repoStatus, repoWorktreePath, removeRepoFromSet, setFolder, upsertSet, readSet, deleteSetFolderIfEmpty, type RepoStatus, type SetRepo, type WorktreeSet } from "./sets";
+import { repoStatus, statusSignature, repoWorktreePath, removeRepoFromSet, setFolder, upsertSet, readSet, deleteSetFolderIfEmpty, type RepoStatus, type SetRepo, type WorktreeSet } from "./sets";
 
 /** The worktree-set operations as plain git, without vscode: the glue asks the questions and shows the results. */
 
@@ -60,24 +60,55 @@ export async function setStatuses(git: Git, remote: string, set: WorktreeSet): P
   return Promise.all(set.repos.map((r) => repoStatus(git, remote, set, r)));
 }
 
-/** Shares one `setStatuses` read per set (keyed by remote and folder) between the rows of a tree refresh; `clear()` before a refresh. Failed reads are not kept. */
-export function createStatusCache(git: Git): { get(remote: string, set: WorktreeSet): Promise<RepoStatus[]>; clear(): void } {
-  const cache = new Map<string, Promise<RepoStatus[]>>();
-  return {
-    get(remote, set) {
-      const key = `${remote}\n${set.folder}`;
-      let p = cache.get(key);
-      if (!p) {
-        p = setStatuses(git, remote, set);
-        cache.set(key, p);
-        p.catch(() => {
-          if (cache.get(key) === p) cache.delete(key);
-        });
-      }
+export interface StatusCache {
+  /** The statuses of a set: per repository from the cache while its git files did not change, else one `git status`. */
+  get(remote: string, set: WorktreeSet): Promise<RepoStatus[]>;
+  /** Forget one repository (a file in it was saved) or everything (manual refresh). */
+  invalidate(path?: string): void;
+  clear(): void;
+}
+
+/**
+ * Status per repository, kept until git changes something in it (index, HEAD, reflog, remote refs: statusSignature)
+ * or a file in it is saved, at most `ttlMs`. A refresh of the view reads only what changed; failed reads are not kept.
+ */
+export function createStatusCache(git: Git, o: { ttlMs?: number; now?: () => number } = {}): StatusCache {
+  const ttl = o.ttlMs ?? 5 * 60_000;
+  const now = o.now ?? Date.now;
+  const repos = new Map<string, { sig: string; at: number; p: Promise<RepoStatus> }>();
+  // rows of one set ask at the same moment: they share the check that is running
+  const checking = new Map<string, Promise<RepoStatus>>();
+  const one = (remote: string, set: WorktreeSet, r: SetRepo): Promise<RepoStatus> => {
+    const key = `${remote}\n${r.path}`;
+    const running = checking.get(key);
+    if (running) return running;
+    const check = (async () => {
+      const sig = await statusSignature(r.path, remote);
+      const hit = repos.get(key);
+      if (hit && hit.sig === sig && now() - hit.at < ttl) return hit.p;
+      const p = repoStatus(git, remote, set, r);
+      repos.set(key, { sig, at: now(), p });
+      p.catch(() => {
+        if (repos.get(key)?.p === p) repos.delete(key);
+      });
       return p;
+    })();
+    checking.set(key, check);
+    void check.finally(() => checking.delete(key)).catch(() => undefined);
+    return check;
+  };
+  return {
+    get: (remote, set) => Promise.all(set.repos.map((r) => one(remote, set, r))),
+    invalidate(p) {
+      if (!p) return repos.clear();
+      const low = p.toLowerCase();
+      for (const k of [...repos.keys()]) {
+        const repo = k.split("\n")[1].toLowerCase();
+        if (low === repo || low.startsWith(repo + "\\") || low.startsWith(repo + "/")) repos.delete(k);
+      }
     },
     clear() {
-      cache.clear();
+      repos.clear();
     },
   };
 }

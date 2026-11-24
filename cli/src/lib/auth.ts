@@ -1,5 +1,5 @@
-import { spawnSync } from "./proc.js";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "./proc.js";
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { AihubError } from "./errors.js";
@@ -46,6 +46,37 @@ export function azLoginLikely(env: NodeJS.ProcessEnv): boolean {
 function azSignature(env: NodeJS.ProcessEnv): string {
   const dir = azConfigDir(env);
   return ["azureProfile.json", "msal_token_cache.bin", "msal_token_cache.json"].map((f) => (existsSync(join(dir, f)) ? String(statSync(join(dir, f)).mtimeMs) : "-")).join(",");
+}
+
+/** A cached az token this close to its end is renewed in the background (it is still used meanwhile). */
+export const REFRESH_AHEAD_MS = 15 * 60_000;
+
+/**
+ * Renews an az token in a detached `aihub token refresh` process: the command that noticed keeps the valid token and
+ * does not wait the 3-12 s az needs on a slow machine. One renewal per cache file at a time (a lock file of 2 minutes).
+ */
+export function refreshTokenInBackground(resource: string, cacheFile: string): void {
+  const cli = process.argv[1];
+  if (!cli || !/aihub|cli\.js$/i.test(cli)) return;
+  const lock = `${cacheFile}.refreshing`;
+  try {
+    if (existsSync(lock) && Date.now() - statSync(lock).mtimeMs < 120_000) return;
+    writeFileSync(lock, String(process.pid));
+    spawn(process.execPath, [cli, "token", "refresh", "--resource", resource, "--cache", cacheFile], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+  } catch {
+    /* renewing early is optional: the token is asked for when it expires */
+  }
+}
+
+/** `aihub token refresh`: asks az for a token and writes the cache file (run detached by refreshTokenInBackground). */
+export function refreshTokenNow(env: NodeJS.ProcessEnv, resource: string, cacheFile: string, now = Date.now): void {
+  try {
+    const j = azToken(defaultExec, true, env, resource, now);
+    const expiresAt = j.expires_on ? Number(j.expires_on) * 1000 : Date.parse(j.expiresOn ?? "") || now() + 30 * 60_000;
+    writeFileSync(cacheFile, JSON.stringify({ token: j.accessToken, expiresAt }), { mode: 0o600 });
+  } finally {
+    rmSync(`${cacheFile}.refreshing`, { force: true });
+  }
 }
 
 const AZ_NONE_TTL_MS = 10 * 60_000;
@@ -115,7 +146,11 @@ export function makeAuth(deps: AuthDeps = {}): AuthProvider {
     try {
       if (existsSync(cacheFile)) {
         const c = JSON.parse(readFileSync(cacheFile, "utf8")) as { token: string; expiresAt: number };
-        if (c.token && c.expiresAt - 120_000 > now()) return (cached = `Bearer ${c.token}`);
+        if (c.token && c.expiresAt - 120_000 > now()) {
+          // still valid but expiring soon: renew it in a detached process, so no command waits for az
+          if (!deps.exec && c.expiresAt - REFRESH_AHEAD_MS < now()) refreshTokenInBackground(ADO_RESOURCE, cacheFile);
+          return (cached = `Bearer ${c.token}`);
+        }
       }
     } catch {
       /* ignore a broken cache */
