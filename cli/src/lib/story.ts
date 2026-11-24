@@ -5,6 +5,7 @@ import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { compose, DEFAULT_EMPTY, headingsMatch, normHeading, parseSections, renderSections, type Section } from "./templates.js";
 import { loadTeam, readUtf8, type TeamConfig } from "./team.js";
+import { findWorkItemTemplate, localTemplate, type FoundTemplate } from "./workItemTemplate.js";
 
 export const DEFAULT_STORY_TEMPLATE = `## Description
 As a <role>, I want <goal>, so that <benefit>.
@@ -135,13 +136,17 @@ export function currentText(team: TeamConfig, fields: Record<string, any>, templ
   return parseSections(htmlToMd(String(fields[DESCRIPTION] ?? ""))).preamble.trim();
 }
 
+const STORY_TEMPLATE_FILE = "story-template.md";
+const storyTypeOf = (team: TeamConfig) => team.workItems?.storyType ?? "User Story";
+
+/** The story template from the repository (team.yaml path, then the standard files), else the built-in one. No network. */
 export function loadStoryTemplate(root: string, team: TeamConfig): string {
-  const candidates = [team.workItems?.storyTemplate, "skills/_shared/assets/story-template.md"].filter(Boolean) as string[];
-  for (const c of candidates) {
-    const p = join(root, c);
-    if (existsSync(p)) return readUtf8(p);
-  }
-  return DEFAULT_STORY_TEMPLATE;
+  return localTemplate(root, team.workItems?.storyTemplate, STORY_TEMPLATE_FILE)?.text ?? DEFAULT_STORY_TEMPLATE;
+}
+
+/** The story template in the fixed order, with its source: team.yaml path, repository files, the team's Azure DevOps template, built-in. */
+export function findStoryTemplate(root: string, client: AdoClient | undefined, team: TeamConfig): Promise<FoundTemplate> {
+  return findWorkItemTemplate({ root, client, team, type: storyTypeOf(team), configured: team.workItems?.storyTemplate, fileName: STORY_TEMPLATE_FILE, builtIn: DEFAULT_STORY_TEMPLATE });
 }
 
 const emptyOf = (team: TeamConfig) => team.workItems?.emptySection || team.pullRequest?.emptySection || DEFAULT_EMPTY;
@@ -187,7 +192,7 @@ export async function storyShow(ctx: Ctx, o: { id: number; json?: boolean }): Pr
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
   const s = await getStory(client, o.id);
-  const heads = templateHeadings(loadStoryTemplate(root, team));
+  const heads = templateHeadings((await findStoryTemplate(root, client, team)).text);
   const sections = fieldsToSections(team, s.fields, heads);
   const current = currentText(team, s.fields, heads);
   if (o.json) return JSON.stringify({ id: s.id, type: s.type, state: s.state, title: s.title, parent: s.parent, url: s.url, sections, ...(current ? { currentText: current } : {}) });
@@ -202,10 +207,10 @@ export async function storyCreate(ctx: Ctx, o: { title?: string; bodyFile?: stri
   if (!o.bodyFile) throw new AihubError("aihub story create needs --body-file <file.md>");
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
-  const tpl = loadStoryTemplate(root, team);
-  const composed = compose({ template: tpl, body: readUtf8(o.bodyFile), code: {}, emptyText: emptyOf(team) });
+  const found = await findStoryTemplate(root, client, team);
+  const composed = compose({ template: found.text, body: readUtf8(o.bodyFile), code: {}, emptyText: emptyOf(team) });
   const fields = sectionsToFields(team, parseSections(composed.text).sections);
-  const type = o.type ?? team.workItems?.storyType ?? "User Story";
+  const type = o.type ?? storyTypeOf(team);
   const wi = team.workItems ?? {};
   const ops: unknown[] = [{ op: "add", path: "/fields/System.Title", value: o.title }];
   for (const [f, v] of Object.entries(fields)) ops.push({ op: "add", path: `/fields/${f}`, value: v });
@@ -224,24 +229,25 @@ export async function storyCreate(ctx: Ctx, o: { title?: string; bodyFile?: stri
   const by = (k: string) => composed.filled.filter((f) => f.by === k).map((f) => f.heading);
   const empties = by("empty");
   return o.json
-    ? JSON.stringify({ id: created.id, url, type, emptySections: empties })
-    : `Story ${created.id} created: ${url}${empties.length ? ` (${emptyOf(team)}: ${empties.join(", ")})` : ""}`;
+    ? JSON.stringify({ id: created.id, url, type, emptySections: empties, template: found.source })
+    : `Story ${created.id} created: ${url}${empties.length ? ` (${emptyOf(team)}: ${empties.join(", ")})` : ""}; template: ${found.source}`;
 }
 
 export async function storyRefine(ctx: Ctx, o: { id: number; bodyFile?: string; json?: boolean }): Promise<string> {
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
   const empty = emptyOf(team);
-  const heads = templateHeadings(loadStoryTemplate(root, team));
+  const found = await findStoryTemplate(root, client, team);
+  const heads = templateHeadings(found.text);
   const s = await getStory(client, o.id);
   const current = fieldsToSections(team, s.fields, heads);
 
   if (!o.bodyFile) {
     const gaps = current.filter((x) => isGap(x.body, empty)).map((x) => x.heading);
-    if (o.json) return JSON.stringify({ id: s.id, title: s.title, gaps });
+    if (o.json) return JSON.stringify({ id: s.id, title: s.title, gaps, template: found.source });
     return gaps.length
-      ? `Story ${s.id} '${s.title}': ${gaps.length} gap(s): ${gaps.join(", ")}\n(no changes written; pass --body-file with the missing sections to update)`
-      : `Story ${s.id} '${s.title}': no gaps; all template sections are filled`;
+      ? `Story ${s.id} '${s.title}': ${gaps.length} gap(s): ${gaps.join(", ")}; template: ${found.source}\n(no changes written; pass --body-file with the missing sections to update)`
+      : `Story ${s.id} '${s.title}': no gaps; all template sections are filled; template: ${found.source}`;
   }
 
   const patch = parseSections(readUtf8(o.bodyFile));
@@ -260,5 +266,5 @@ export async function storyRefine(ctx: Ctx, o: { id: number; bodyFile?: string; 
     .map(([f, v]) => ({ op: "add", path: `/fields/${f}`, value: v }));
   ops.push({ op: "add", path: "/fields/System.History", value: `Refined with aihub: ${changed.join(", ")}` });
   await client.jsonPatch("PATCH", `wit/workitems/${o.id}`, ops);
-  return o.json ? JSON.stringify({ id: o.id, url: s.url, changed }) : `Story ${o.id} refined: ${s.url} (${changed.join(", ")})`;
+  return o.json ? JSON.stringify({ id: o.id, url: s.url, changed, template: found.source }) : `Story ${o.id} refined: ${s.url} (${changed.join(", ")}); template: ${found.source}`;
 }
