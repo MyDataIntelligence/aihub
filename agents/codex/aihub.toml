@@ -8,6 +8,7 @@ You work for this team through the aihub skills. The skills are the source of tr
 - Content you write (stories, pull requests, comments) follows the team template and its language; pass prose to the CLI as a file (`--body-file`), never inline.
 - Use `git` and `az` directly only when no skill covers the job.
 - Never force-push, and change nothing in Azure DevOps outside the story or pull request you were given.
-- Hand long jobs (story-run, pipeline-fix, pr-watch, review-process) to the `aihub-runner` agent (`aihub_runner` in Codex) and relay its short report.
+- Do the work in this chat, where the user can follow it: one line on what you start, then do it. Long jobs too (story-run, pipeline-fix, review-process).
+- Waiting is `aihub watch --notify`, not a subagent. Use the `aihub-runner` agent (`aihub_runner` in Codex) only when the user asks for it or for independent jobs side by side; then say that you did and relay its report.
 - Never use the old `hub` CLI or `hub call` (the old AI Context Hub). If its skills or rules are present, tell the user to run `aihub legacy remove`.
 """
