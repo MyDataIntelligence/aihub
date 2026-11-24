@@ -2,6 +2,7 @@ import { readLocalSet, RepoSetController } from "./repoSetUi";
 import { reposetStatus } from "./repoSetModel";
 import { windowSet } from "./storyModel";
 import { registerStories } from "./storyUi";
+import { RecentStore, registerRecents, rememberStory } from "./recentsUi";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
 import { checkCli, CLI_VERSION_KEY, cliVersionStillKnown, CliError, INSTALL_COMMAND, makeRunner, type CachedCliVersion, type Runner } from "./cli";
@@ -175,7 +176,8 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
       it.text = v.text;
       it.tooltip = new vscode.MarkdownString(v.tooltip);
     };
-    it.command = "aihub.reposet.open";
+    // a menu like PyCharm's Open / Recent Projects: open a repo set, a new set, a story, or a recent one
+    it.command = "aihub.reposet.menu";
     // the set of the status read; else what the workspace file says (also for switched checkouts, which have no set file)
     show((this.last?.ok ? this.last.model.set : null) ?? windowSet(cfg().get("set")));
     it.show();
@@ -423,7 +425,9 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   const reposet = new RepoSetController(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l), refresh: () => (refreshSets(), void bar.refresh()) });
   reposet.register();
   phase("my stories");
-  registerStories(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l) });
+  const recents = new RecentStore(ctx.globalState);
+  registerRecents(ctx, recents, reposet, (l) => bar.logLine(l));
+  registerStories(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l), opened: (s) => rememberStory(recents, s) });
   phase("worktree sets view");
   const refreshSets = registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id), () => reposet.groups());
   phase("status bar");

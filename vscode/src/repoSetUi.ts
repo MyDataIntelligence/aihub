@@ -111,6 +111,12 @@ const BRANCH_CACHE_MS = 60_000;
  * After `aihub worktree open|story open --window none`: report the repositories that need attention, then open the
  * workspace file in this window or a new one (vscode.openFolder; the CLI never starts VS Code itself).
  */
+let openRecorder: ((res: OpenResultJson) => Promise<void>) | undefined;
+/** Called with every set that is about to open (the recent list), awaited: "this window" reloads right after. */
+export function setOpenRecorder(f: (res: OpenResultJson) => Promise<void>): void {
+  openRecorder = f;
+}
+
 export async function showOpened(res: OpenResultJson, window: "new" | "this", log: (l: string) => void): Promise<boolean> {
   const sum = summarizeOpen(res);
   const detail = sum.lines.join("\n");
@@ -126,6 +132,7 @@ export async function showOpened(res: OpenResultJson, window: "new" | "this", lo
     if (go !== "Open the others") return false;
   }
   log(`open ${to.file} ${window === "this" ? "in this window" : "in a new window"}`);
+  await openRecorder?.(res).catch((e: Error) => log(`recent list not updated: ${e.message}`));
   try {
     await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(to.file), to.options);
   } catch (e) {
@@ -241,11 +248,22 @@ export class RepoSetController {
     return p ? { branch: p.source, from: p.target } : undefined;
   }
 
+  private async newBranchName(label: string): Promise<{ branch: string; from?: string } | undefined> {
+    const branch = await vscode.window.showInputBox({
+      title: stepTitle(2, [label]),
+      prompt: "Name of the new branch, for example feature/1234-search (created in every repository from its target branch)",
+      value: "feature/",
+      ignoreFocusOut: true,
+      validateInput: (v) => (v.trim().length < 3 || /\s/.test(v) ? "Enter a branch name without spaces" : undefined),
+    });
+    return branch ? { branch: branch.trim() } : undefined;
+  }
+
   /**
    * The whole flow: 1 group or repositories, 2 branch, 3 how and where. `group` skips step 1 (the Worktree Sets
    * view's "Open on branch..." button); `branch` (a story or a set that already knows its branch) skips step 2.
    */
-  async open(group?: string, branch?: string): Promise<void> {
+  async open(group?: string, branch?: string, o: { newBranch?: boolean } = {}): Promise<void> {
     let target: { group?: string; repos?: string[] };
     let total = 0;
     let label: string;
@@ -268,9 +286,10 @@ export class RepoSetController {
         total = t.repos.length;
       }
     }
-    const b = branch ? { branch } : await this.chooseBranch(target, total, [label]);
+    // "New Worktree Set...": step 2 is the name of the new branch, step 3 only the worktree ways
+    const b = branch ? { branch } : o.newBranch ? await this.newBranchName(label) : await this.chooseBranch(target, total, [label]);
     if (!b) return;
-    const way = await pick<OpenWay>(openWays(), stepTitle(3, [label, b.branch]), `How should ${b.branch} be opened?`);
+    const way = await pick<OpenWay>(o.newBranch ? openWays().filter((w) => w.value?.mode === "worktree") : openWays(), stepTitle(3, [label, b.branch]), `How should ${b.branch} be opened?`);
     if (!way) return;
     const args = openArgs({ ...target, branch: b.branch, from: b.from, mode: way.mode });
     this.deps.log(`aihub ${args.join(" ")}`);

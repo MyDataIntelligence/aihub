@@ -27,7 +27,16 @@ const VOTE: Record<number, string> = { 10: "approved", 5: "approved with suggest
 export function popupFor(chip: string, m: BarModel, now: number = Date.now()): Popup {
   switch (chip) {
     case "reposet":
-      return { title: "Open Repo Set", items: [cmd("aihub.reposet.open", "Open repositories on a branch...", "pick a group or repositories, then a branch")] };
+      return {
+        title: "Open Repo Set",
+        items: [
+          cmd("aihub.reposet.open", "Open repositories on a branch...", "pick a group or repositories, then a branch"),
+          cmd("aihub.newWorktreeSet", "New Worktree Set...", "a new branch in several repositories, as worktrees"),
+          cmd("aihub.openStory", "Open Story...", "the ★ branches of a story"),
+          cmd("aihub.recentSets", "Recent Worktree Sets..."),
+          cmd("aihub.recentStories", "Recent Stories..."),
+        ],
+      };
     case "set": {
       const s = m.set;
       if (!s) return { title: "Worktree set", items: [info("This window is not a worktree set")] };
