@@ -1,4 +1,10 @@
-import { basename, isAbsolute, normalize, sep } from "node:path";
+import { posix, win32 } from "node:path";
+
+/** Windows paths are judged as Windows paths on every platform (the rules run in tests on Linux too). */
+const pathOf = (p: string) => (/^[A-Za-z]:|^\\\\/.test(p) ? win32 : posix);
+const basename = (p: string) => pathOf(p).basename(p);
+const isAbsolute = (p: string) => pathOf(p).isAbsolute(p);
+const normalize = (p: string) => pathOf(p).normalize(p);
 
 /**
  * The performance advisor's rules (`aihub doctor --perf`): measured facts in, findings out. Every finding carries its
@@ -71,7 +77,7 @@ export function safeExclusionPath(p: string, home: string): boolean {
   const h = normalize(home).replace(/[\\/]+$/, "").toLowerCase();
   const parts = n.split(/[\\/]+/).filter(Boolean);
   if (parts.length < 3) return false; // C:\ and C:\Users, C:\git
-  if (n === h || h.startsWith(n + sep.toLowerCase()) || h.startsWith(n + "/")) return false; // the home folder or a parent of it
+  if (n === h || h.startsWith(n + "\\") || h.startsWith(n + "/")) return false; // the home folder or a parent of it
   if (/^[a-z]:[\\/](windows|program files|program files \(x86\)|programdata)([\\/]|$)/.test(n)) return false;
   if (/[*?]/.test(n)) return false;
   return true;
