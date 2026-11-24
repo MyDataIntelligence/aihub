@@ -36,7 +36,7 @@ A direct command needs no routing: "maak een PR" -> run `aihub pr create --summa
 | release, release train | release |
 | "ga verder", "waar was ik", new chat | resume |
 
-New chat: `aihub status --resume`. A pullrequest link means pr-watch.
+New chat: `aihub status`. A pullrequest link means pr-watch.
 
 ## What the CLI fills
 Templates, target branch, story links, repository: the CLI applies `team.yaml`; never read it or ask for them. On `missing team setting`: ask that one question, run its `aihub team set`, repeat. Read the `guidelines:` files first.
