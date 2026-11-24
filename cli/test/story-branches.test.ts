@@ -107,6 +107,19 @@ describe("aihub story branches (the list)", () => {
   });
 });
 
+describe("aihub story branches without --id", () => {
+  it("lists the stories you have branches for here first, also when they are not assigned to you", async () => {
+    const { a } = world();
+    sh(a.dir, ["branch", "feature/9-export"]);
+    await run(a.dir, [], ["story", "branches", "mark", "--branch", "feature/9-export", "--status", "current"]);
+    const { routes } = ado([ref("repo-a", "feature/9-export")]);
+    routes.push({ method: "POST", match: /_apis\/wit\/wiql/, respond: () => ({ body: { workItems: [] } }) });
+    const r = await run(a.dir, routes, ["story", "branches", "--json"]);
+    expect(r.err).toBe("");
+    expect(JSON.parse(r.out).stories.map((s: { id: number }) => s.id)).toEqual([9]);
+  });
+});
+
 describe("aihub story branches remove (never throws away local work)", () => {
   it("keeps a worktree with uncommitted work, removes a clean one after taking out its folder links", async () => {
     const { parent, a } = world();

@@ -1,5 +1,7 @@
 import { readLocalSet, RepoSetController } from "./repoSetUi";
 import { reposetStatus } from "./repoSetModel";
+import { windowSet } from "./storyModel";
+import { registerStories } from "./storyUi";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
 import { checkCli, CLI_VERSION_KEY, cliVersionStillKnown, CliError, INSTALL_COMMAND, makeRunner, type CachedCliVersion, type Runner } from "./cli";
@@ -166,7 +168,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private renderReposetItem() {
     const it = (this.reposetItem ??= vscode.window.createStatusBarItem("aihub.reposet", vscode.StatusBarAlignment.Left, 10999));
-    it.name = "AI Context Hub: Repos op branch openen";
+    it.name = "AI Context Hub: Open Repo Set";
     // a set is local: also without an `aihub status` answer (no Azure DevOps remote, offline) it shows its branch
     const show = (set: Parameters<typeof reposetStatus>[0]) => {
       const v = reposetStatus(set);
@@ -174,7 +176,8 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
       it.tooltip = new vscode.MarkdownString(v.tooltip);
     };
     it.command = "aihub.reposet.open";
-    show(this.last?.ok ? this.last.model.set : null);
+    // the set of the status read; else what the workspace file says (also for switched checkouts, which have no set file)
+    show((this.last?.ok ? this.last.model.set : null) ?? windowSet(cfg().get("set")));
     it.show();
     // only after a failed status read (never at activation): the set file next to the folder, read once per folder
     if (this.last && !this.last.ok) {
@@ -419,6 +422,8 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   phase("repos on branch");
   const reposet = new RepoSetController(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l), refresh: () => (refreshSets(), void bar.refresh()) });
   reposet.register();
+  phase("my stories");
+  registerStories(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l) });
   phase("worktree sets view");
   const refreshSets = registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id), () => reposet.groups());
   phase("status bar");

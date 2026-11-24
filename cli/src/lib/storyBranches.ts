@@ -119,11 +119,13 @@ function localFacts(dir: string, branch: string, worktrees: { path: string; bran
 export async function listStoryBranches(ctx: Ctx, o: { id?: number; mine?: boolean }): Promise<StoryRow[]> {
   const { client } = repoClient(ctx);
   const { root, team: t } = team(ctx);
-  const ids = o.id ? [o.id] : await myActiveStories(client, t);
-  if (!ids.length) return [];
   const repos = await projectRepos(client, root, t);
   const files = new Map<string, Record<string, StoryBranch>>();
   for (const r of repos) if (r.dir) files.set(r.name, readStoryWorktrees(storyWorktreesFileFor(r.dir) ?? "").branches);
+  // the stories you have branches for here come first (also when they are not assigned to you), then your active ones
+  const local = [...files.values()].flatMap((b) => Object.values(b)).sort((a, b) => (b.lastActive ?? b.created).localeCompare(a.lastActive ?? a.created)).map((b) => b.storyId);
+  const ids = o.id ? [o.id] : [...new Set([...local, ...(await myActiveStories(client, t))])].slice(0, 20);
+  if (!ids.length) return [];
   const prsOf = new Map<string, Promise<PullRequest[]>>();
   const prs = (repo: string) => {
     if (!prsOf.has(repo)) prsOf.set(repo, client.forRepo(repo).list<PullRequest>(`${client.forRepo(repo).repoPath()}/pullrequests`, { "searchCriteria.status": "active" }).catch(() => []));
@@ -136,7 +138,14 @@ export async function listStoryBranches(ctx: Ctx, o: { id?: number; mine?: boole
   };
   const out: StoryRow[] = [];
   for (const id of ids) {
-    const wi = await getWorkItem(client, id);
+    let wi: WorkItem;
+    try {
+      wi = await getWorkItem(client, id);
+    } catch (e) {
+      // a story that was deleted or moved: one unreadable story never hides the others
+      if (o.id) throw e;
+      continue;
+    }
     const rows = new Map<string, BranchRow>();
     const key = (repo: string, b: string) => `${repo}\u0000${b}`;
     for (const l of branchLinks(wi)) {
