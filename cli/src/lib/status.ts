@@ -7,6 +7,7 @@ import { rememberCommonDir } from "./aihubDir.js";
 import { workItemFromBranch } from "./git.js";
 import { repoState } from "./gitx.js";
 import { readNotes } from "./notes.js";
+import { ago, lastStep } from "./resume.js";
 import { latestPerDefinition, selectBuilds, type Build } from "./pipeline.js";
 import { findSet } from "./setInfo.js";
 import { loadTeam } from "./team.js";
@@ -27,6 +28,9 @@ export interface Status {
   dirty: boolean;
   unpushed: number;
   notes: number;
+  /** The last aihub step on this branch from the local journal (what status --resume shows), and the latest private note. */
+  last?: { command: string; status: "ok" | "failed"; result: string; at: string; ago: string };
+  note?: string;
   done: string[];
   next: string;
   warnings: string[];
@@ -142,7 +146,11 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
   const threads = active ? await remote("threads", () => getThreads(client, active.pullRequestId, undefined, false)) : undefined;
   const openThreads = threads?.length ?? 0;
   const { dirty, unpushed } = git;
-  const notes = readNotes(root, branch).length;
+  const branchNotes = readNotes(root, branch);
+  const notes = branchNotes.length;
+  const note = branchNotes[branchNotes.length - 1]?.text.replace(/\s+/g, " ").slice(0, 200);
+  const step0 = lastStep(root, branch, storyId);
+  const last = step0 ? { command: step0.command, status: step0.status, result: step0.result, at: step0.at, ago: ago(step0.at, (ctx.now ?? Date.now)(), false) } : undefined;
   const prCompleted = !!done;
 
   const step = nextStep({
@@ -169,6 +177,8 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
     dirty,
     unpushed,
     notes,
+    ...(last ? { last } : {}),
+    ...(note ? { note } : {}),
     done: step.done,
     next: signedIn ? step.next : "sign in to Azure DevOps (az login, or set AIHUB_ADO_PAT), then run aihub status again",
     warnings,
@@ -185,6 +195,8 @@ export function formatStatus(s: Status): string {
   if (s.pipeline.length) L.push(`Pipeline: ${s.pipeline.map((p) => `${p.name} ${p.state}`).join("; ")}`);
   if (s.pr) L.push(`Open threads: ${s.openThreads}`);
   L.push(`Working tree: ${s.dirty ? "uncommitted changes" : "clean"}${s.unpushed ? `, ${s.unpushed} unpushed commit(s)` : ""}${s.notes ? `, ${s.notes} private note(s)` : ""}`);
+  if (s.last) L.push(`Last time: ${s.last.command} -> ${s.last.status === "ok" ? "" : "FAILED: "}${s.last.result} (${s.last.ago})`);
+  if (s.note) L.push(`Note: ${s.note}`);
   if (s.done.length) L.push(`Done: ${s.done.join("; ")}`);
   L.push(`Next step: ${s.next}`);
   for (const w of s.warnings) L.push(`(could not read ${w})`);
