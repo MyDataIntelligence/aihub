@@ -10,12 +10,12 @@ import { fx, here } from "./helpers";
 describe("the first chip of the bar", () => {
   const m = buildModel({ status: fx("status") });
 
-  it("is the visible 'Open Repo Set' chip, before the main chat button, and it is not a chat action", () => {
+  it("is the visible 'Worktree Sets' chip, before the main chat button, and it is not a chat action", () => {
     const h = renderBody(m, 2000);
     const chip = h.indexOf('data-id="reposet"');
     expect(chip).toBeGreaterThan(-1);
     expect(chip).toBeLessThan(h.indexOf('data-act="chat"'));
-    expect(h).toContain("Open Repo Set");
+    expect(h).toContain("Worktree Sets");
     expect(h).toContain("codicon-repo-forked");
   });
 
@@ -131,7 +131,7 @@ describe("package.json", () => {
 describe("the status bar item and the other entries", () => {
   it("shows the entry, or the set's branch and repo count with a per-repo tooltip", async () => {
     const { reposetStatus } = await import("../src/repoSetModel");
-    expect(reposetStatus(null).text).toBe("$(repo-forked) Open Repo Set");
+    expect(reposetStatus(null).text).toBe("$(repo-forked) Worktree Sets");
     const s = reposetStatus({ story: 0, group: "pipeline", branch: "feature/x", total: 3, repos: ["a", "b", "c"] });
     expect(s.text).toBe("$(repo-forked) feature/x · 3 repos");
     expect(s.tooltip).toContain("- b: feature/x");

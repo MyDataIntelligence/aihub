@@ -53,7 +53,7 @@ export function addSet(r: Recents, s: RecentSet): Recents {
 
 export function addStory(r: Recents, s: { id: number; title: string }, now: number): Recents {
   const had = r.stories.find((x) => x.id === s.id);
-  const entry: RecentStory = { id: s.id, title: s.title || had?.title || `Story ${s.id}`, lastOpened: new Date(now).toISOString() };
+  const entry: RecentStory = { id: s.id, title: s.title || had?.title || "", lastOpened: new Date(now).toISOString() };
   return { ...r, stories: [entry, ...r.stories.filter((x) => x.id !== s.id)].slice(0, MAX_RECENTS) };
 }
 
@@ -89,7 +89,7 @@ export function recentSetItems(r: Recents, now: number): PickItem<MenuValue>[] {
 }
 
 export function recentStoryItems(r: Recents, now: number): PickItem<MenuValue>[] {
-  return r.stories.map((s) => ({ label: `$(book) #${s.id} ${s.title}`, description: when(s.lastOpened, now), value: { command: "aihub.openRecentStory", args: { id: s.id } } }));
+  return r.stories.map((s) => ({ label: `$(book) #${s.id}${s.title ? ` ${s.title}` : ""}`, description: when(s.lastOpened, now), value: { command: "aihub.openRecentStory", args: { id: s.id } } }));
 }
 
 /** `aihub.getRecents` for other extensions (the PyCharm-style File menu): plain data, newest first. */
@@ -99,3 +99,60 @@ export function publicRecents(r: Recents): { sets: Omit<RecentSet, "story">[]; s
 
 /** A command argument `{id}` or the bare id. */
 export const idArg = <T extends string | number>(a: unknown): T | undefined => (a && typeof a === "object" && "id" in a ? ((a as { id: T }).id as T) : (a as T | undefined));
+
+// ---- one list: a story set is a worktree set with a story link ------------------------------------------------
+
+export interface RecentItem {
+  kind: "story" | "set";
+  /** story: its number; set: its .code-workspace file */
+  id: number | string;
+  label: string;
+  detail: string;
+  lastOpened: string;
+}
+
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+/**
+ * Stories and sets in one list, newest first. A set opened for a story is that story (its row says how many
+ * repositories), so it is not listed twice.
+ */
+export function mergedRecents(r: Recents, max = 20): RecentItem[] {
+  const items: RecentItem[] = [];
+  const storyIds = new Set(r.stories.map((s) => s.id));
+  for (const s of r.stories) {
+    const sets = r.sets.filter((x) => x.story === s.id);
+    const last = [s.lastOpened, ...sets.map((x) => x.lastOpened)].sort().pop()!;
+    const repos = sets[0]?.repos.length;
+    items.push({ kind: "story", id: s.id, label: `#${s.id}${s.title ? ` ${s.title}` : ""}`, detail: repos ? plural(repos, "repo") : "story", lastOpened: last });
+  }
+  for (const x of r.sets) {
+    if (x.story && storyIds.has(x.story)) continue;
+    if (x.story) items.push({ kind: "story", id: x.story, label: `#${x.story} ${x.label === `Story ${x.story}` ? "" : x.label}`.trim(), detail: plural(x.repos.length, "repo"), lastOpened: x.lastOpened });
+    else items.push({ kind: "set", id: x.id, label: x.branch, detail: x.repos.join(", "), lastOpened: x.lastOpened });
+  }
+  return items.sort((a, b) => b.lastOpened.localeCompare(a.lastOpened)).slice(0, max);
+}
+
+/** The command and argument that open a merged recent item. */
+export const openRecentValue = (i: RecentItem): MenuValue => ({ command: "aihub.openRecent", args: { kind: i.kind, id: i.id } });
+
+export function recentItemRows(items: RecentItem[], now: number): PickItem<MenuValue>[] {
+  return items.map((i) => ({ label: `${i.kind === "story" ? "$(book)" : "$(folder-library)"} ${i.label}`, description: `${i.detail} · ${when(i.lastOpened, now)}`, value: openRecentValue(i) }));
+}
+
+export const RECENT_IN_MENU = 8;
+
+/** The status bar button: the two ways in, then Recent (at most 8) and "More..." (Open Worktree Set). */
+export function mergedMenu(r: Recents, now: number): PickItem<MenuValue>[] {
+  const items: PickItem<MenuValue>[] = [
+    { label: "$(add) New Worktree Set...", description: "a new branch in several repositories, optionally for a story", value: { command: "aihub.newWorktreeSet" } },
+    { label: "$(folder-opened) Open Worktree Set...", description: "a story or a set, recent ones first", value: { command: "aihub.openRepoSet" } },
+  ];
+  const recent = mergedRecents(r, RECENT_IN_MENU + 1);
+  if (recent.length) {
+    items.push({ label: "Recent", separator: true }, ...recentItemRows(recent.slice(0, RECENT_IN_MENU), now));
+    if (recent.length > RECENT_IN_MENU) items.push({ label: "$(ellipsis) More...", value: { command: "aihub.openRepoSet" } });
+  }
+  return items;
+}

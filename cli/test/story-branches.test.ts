@@ -173,6 +173,15 @@ describe("the story folder layout", () => {
     expect(ws.settings["aihub.set"]).toMatchObject({ story: 9, branch: "feature/9-export-v2", mode: "worktree", repos: [{ name: "repo-a", branch: "feature/9-export-v2" }] });
   });
 
+  it("worktree open --story puts a branch without the number in its name into the story folder and links it", async () => {
+    const { parent, a } = world();
+    const r = JSON.parse((await run(a.dir, [], ["worktree", "open", "--repos", "repo-a", "--branch", "feature/plain-name", "--from", "main", "--story", "42", "--window", "none", "--json"])).out);
+    const fwd = (p: string) => p.split("\\").join("/");
+    expect(r.story).toBe(42);
+    expect(fwd(r.repos[0].path)).toBe(fwd(join(parent, "worktrees", "42-plain-name", "repo-a")));
+    expect(state(a.dir)["feature/plain-name"]).toMatchObject({ storyId: 42, status: "current" });
+  });
+
   it("story open opens the star of every repository as one set", async () => {
     const { parent, a, b } = world();
     sh(a.dir, ["branch", "feature/9-export"]);

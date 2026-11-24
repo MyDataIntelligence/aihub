@@ -73,7 +73,7 @@
       },
       {
         "command": "aihub.reposet.open",
-        "title": "Open Repo Set...",
+        "title": "Open Repositories on a Branch...",
         "category": "AI Context Hub",
         "icon": "$(repo-forked)",
         "shortTitle": "Open Repo Set"
@@ -155,7 +155,7 @@
       },
       {
         "command": "aihub.worktrees.openInNewWindow",
-        "title": "Open Worktree Set in New Window",
+        "title": "Open This Set in New Window",
         "category": "AI Context Hub"
       },
       {
@@ -454,8 +454,9 @@
       },
       {
         "command": "aihub.openRepoSet",
-        "title": "Open Repo Set...",
-        "category": "AI Context Hub"
+        "title": "Open Worktree Set...",
+        "category": "AI Context Hub",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "aihub.openStory",
@@ -480,6 +481,17 @@
       {
         "command": "aihub.reposet.menu",
         "title": "Open Repo Set Menu",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.recent",
+        "title": "Recent Worktree Sets and Stories...",
+        "category": "AI Context Hub",
+        "icon": "$(history)"
+      },
+      {
+        "command": "aihub.openRecent",
+        "title": "Open Recent Worktree Set or Story",
         "category": "AI Context Hub"
       }
     ],
@@ -1096,10 +1108,6 @@
           "when": "false"
         },
         {
-          "command": "aihub.openRepoSet",
-          "when": "false"
-        },
-        {
           "command": "aihub.openStory",
           "when": "false"
         },
@@ -1117,6 +1125,18 @@
         },
         {
           "command": "aihub.reposet.menu",
+          "when": "false"
+        },
+        {
+          "command": "aihub.openRecent",
+          "when": "false"
+        },
+        {
+          "command": "aihub.recentSets",
+          "when": "false"
+        },
+        {
+          "command": "aihub.recentStories",
           "when": "false"
         }
       ],
