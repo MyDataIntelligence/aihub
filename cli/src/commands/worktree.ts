@@ -6,7 +6,7 @@ import { currentBranches, formatOpenSet, listBranches, openSet, type OpenMode, t
 import { createSet, listSets, removeSet } from "../lib/worktree.js";
 
 const USAGE =
-  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b>";
+  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b>";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -36,7 +36,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const window = (v.window as string | undefined) ?? "new";
     if (mode !== "worktree" && mode !== "switch") throw new AihubError("--mode must be worktree or switch");
     if (window !== "new" && window !== "this" && window !== "none") throw new AihubError("--window must be new, this or none");
-    const r = openSet(ctx, { group: v.group as string | undefined, repos: list(v.repos), branch: String(v.branch ?? ""), from: (v.from ?? v.base) as string | undefined, mode: mode as OpenMode, window: window as OpenWindow, root });
+    const r = openSet(ctx, { group: v.group as string | undefined, repos: list(v.repos), branch: String(v.branch ?? ""), from: (v.from ?? v.base) as string | undefined, mode: mode as OpenMode, window: window as OpenWindow, root, storyId: optInt(v.story, "--story") });
     ctx.out(json ? JSON.stringify(r) : formatOpenSet(r));
     const bad = r.repos.filter((x) => !x.ok).length;
     // --json is for programs (the VS Code extension): the table says which repositories failed, so the exit code stays 0

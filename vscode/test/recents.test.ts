@@ -2,7 +2,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { addSet, addStory, emptyRecents, idArg, MAX_RECENTS, openMenu, publicRecents, readRecents, removeSet, setFromOpen, when } from "../src/recents";
+import { addSet, addStory, emptyRecents, idArg, MAX_RECENTS, mergedMenu, mergedRecents, openMenu, publicRecents, readRecents, removeSet, setFromOpen, when } from "../src/recents";
+import { storyBranchSuggestion } from "../src/repoSetModel";
 import type { OpenResultJson } from "../src/repoSetModel";
 
 const NOW = Date.parse("2026-11-24T10:00:00Z");
@@ -53,16 +54,87 @@ describe("the recent list (pure)", () => {
   });
 });
 
+describe("stories and sets as one list", () => {
+  const H = 3_600_000;
+  const build = () => {
+    let r = emptyRecents();
+    r = addSet(r, setFromOpen(res("/s/plain.code-workspace"), NOW - 5 * H)!);
+    r = addSet(r, setFromOpen(res("/s/7.code-workspace", { story: 7 }), NOW - 2 * H)!);
+    r = addStory(r, { id: 7, title: "Export bouwen" }, NOW - 3 * H);
+    r = addSet(r, setFromOpen(res("/s/9.code-workspace", { story: 9 }), NOW - 1 * H)!);
+    return r;
+  };
+
+  it("a set of a story is that story; rows say '#id title Â· N repos' or 'branch Â· repos'; newest first", () => {
+    const m = mergedRecents(build());
+    expect(m.map((i) => [i.kind, i.id, i.label, i.detail])).toEqual([
+      ["story", 9, "#9", "1 repo"],
+      ["story", 7, "#7 Export bouwen", "1 repo"],
+      ["set", "/s/plain.code-workspace", "feature/7-x", "a"],
+    ]);
+    expect(m[1].lastOpened).toBe(new Date(NOW - 2 * H).toISOString());
+  });
+
+  it("the menu: New, Open, then Recent with at most 8 and More...", () => {
+    let r = build();
+    for (let i = 0; i < 10; i++) r = addStory(r, { id: 100 + i, title: `S${i}` }, NOW - (10 + i) * H);
+    const m = mergedMenu(r, NOW);
+    expect(m.slice(0, 2).map((i) => i.value?.command)).toEqual(["aihub.newWorktreeSet", "aihub.openRepoSet"]);
+    const recent = m.filter((i) => i.value?.command === "aihub.openRecent");
+    expect(recent).toHaveLength(8);
+    expect(recent[0].value?.args).toEqual({ kind: "story", id: 9 });
+    expect(m.at(-1)).toMatchObject({ label: "$(ellipsis) More...", value: { command: "aihub.openRepoSet" } });
+    expect(mergedMenu(emptyRecents(), NOW)).toHaveLength(2);
+  });
+
+  it("a new set for a story gets feature/<id>-<slug>", () => {
+    expect(storyBranchSuggestion({ id: 1234, title: "Zoekfunctie bouwen!" })).toBe("feature/1234-zoekfunctie-bouwen");
+    expect(storyBranchSuggestion({ id: 5, title: "" })).toBe("feature/5-");
+    expect(storyBranchSuggestion(undefined)).toBe("feature/");
+  });
+});
+
 // ---- the public commands against a fake vscode ----
 
-const h = vi.hoisted(() => ({ cmds: new Map<string, (...a: any[]) => any>(), executed: [] as unknown[][], warnings: [] as string[], folders: [] as unknown[], state: new Map<string, unknown>() }));
+const h = vi.hoisted(() => ({ cmds: new Map<string, (...a: any[]) => any>(), executed: [] as unknown[][], warnings: [] as string[], folders: [] as unknown[], state: new Map<string, unknown>(), choose: (_labels: string[]) => undefined as string | undefined, seen: [] as string[][], input: undefined as string | undefined }));
 
 vi.mock("vscode", () => ({
   commands: {
     registerCommand: (id: string, f: (...a: any[]) => any) => (h.cmds.set(id, f), { dispose() {} }),
     executeCommand: vi.fn(async (...a: unknown[]) => void h.executed.push(a)),
   },
-  window: { showWarningMessage: vi.fn(async (m: string) => void h.warnings.push(m)), showErrorMessage: vi.fn(async (m: string) => void h.warnings.push(m)) },
+  window: {
+    showWarningMessage: vi.fn(async (m: string) => void h.warnings.push(m)),
+    showErrorMessage: vi.fn(async (m: string) => void h.warnings.push(m)),
+    showInputBox: vi.fn(async () => h.input),
+    createQuickPick: () => {
+      const accept: (() => void)[] = [];
+      const qp: any = {
+        items: [],
+        activeItems: [],
+        selectedItems: [],
+        onDidAccept: (f: () => void) => accept.push(f),
+        onDidHide: () => {},
+        show() {
+          // wait until the stories are appended (busy false), then answer
+          const tick = () => {
+            if (qp.busy) return void setTimeout(tick, 1);
+            const labels = qp.items.filter((i: any) => i.kind !== -1).map((i: any) => i.label);
+            h.seen.push(labels);
+            const want = h.choose(labels);
+            const it = qp.items.find((i: any) => i.label === want);
+            if (it) qp.selectedItems = [it];
+            accept.forEach((f) => f());
+          };
+          setTimeout(tick, 1);
+        },
+        hide() {},
+        dispose() {},
+      };
+      return qp;
+    },
+  },
+  QuickPickItemKind: { Separator: -1 },
   workspace: {
     get workspaceFolders() {
       return h.folders;
@@ -84,11 +156,13 @@ describe("the public commands (for the PyCharm-style File menu)", () => {
     h.folders = [{}];
     h.state.clear();
     store = new RecentStore({ get: (k: string) => h.state.get(k), update: async (k: string, v: unknown) => void h.state.set(k, v), keys: () => [] } as never);
-    registerRecents({ subscriptions: [] } as never, store, reposet as never, () => {});
+    h.seen = [];
+    h.input = undefined;
+    registerRecents({ subscriptions: [] } as never, store, reposet as never, () => {}, async () => [{ id: 7, title: "Export bouwen", repos: 2 }, { id: 8, title: "Andere", repos: 1 }]);
   });
 
   it("registers the ids the other extension calls", () => {
-    for (const id of ["aihub.newWorktreeSet", "aihub.openRepoSet", "aihub.openStory", "aihub.openRecentSet", "aihub.openRecentStory", "aihub.getRecents", "aihub.recentSets", "aihub.recentStories", "aihub.reposet.menu"]) expect(h.cmds.has(id), id).toBe(true);
+    for (const id of ["aihub.newWorktreeSet", "aihub.openRepoSet", "aihub.openStory", "aihub.openRecent", "aihub.openRecentSet", "aihub.openRecentStory", "aihub.getRecents", "aihub.recent", "aihub.recentSets", "aihub.recentStories", "aihub.reposet.menu"]) expect(h.cmds.has(id), id).toBe(true);
   });
 
   it("an opened set and story land in the list that getRecents returns", async () => {
@@ -120,7 +194,44 @@ describe("the public commands (for the PyCharm-style File menu)", () => {
     await rememberStory(store, { id: 7, title: "Export bouwen" });
     await h.cmds.get("aihub.openRecentStory")!({ id: 7 });
     expect(h.executed[0]).toEqual(["aihub.stories.open", { kind: "story", story: { id: 7, title: "Export bouwen", state: "", branches: [] } }]);
+  });
+
+  it("New Worktree Set asks 'for which story?': none, one of mine (appended when read), or a number", async () => {
+    h.choose = (l) => l.find((x) => x.includes("No story"));
     await h.cmds.get("aihub.newWorktreeSet")!();
-    expect(reposet.open).toHaveBeenCalledWith(undefined, undefined, { newBranch: true });
+    expect(reposet.open).toHaveBeenLastCalledWith(undefined, undefined, { newBranch: true, story: undefined });
+    expect(h.seen[0]).toEqual(["$(circle-slash) No story", "$(search) Story by number...", "$(book) #7 Export bouwen", "$(book) #8 Andere"]);
+    h.choose = (l) => l.find((x) => x.includes("#7"));
+    await h.cmds.get("aihub.newWorktreeSet")!();
+    expect(reposet.open).toHaveBeenLastCalledWith(undefined, undefined, { newBranch: true, story: { id: 7, title: "Export bouwen", repos: 2 } });
+    h.choose = (l) => l.find((x) => x.includes("by number"));
+    h.input = "1234";
+    await h.cmds.get("aihub.newWorktreeSet")!();
+    expect(reposet.open).toHaveBeenLastCalledWith(undefined, undefined, { newBranch: true, story: { id: 1234, title: "" } });
+  });
+
+  it("Open Worktree Set: recent first, then my other stories; a story opens its stars", async () => {
+    await rememberStory(store, { id: 7, title: "Export bouwen" });
+    h.choose = (l) => l.find((x) => x.includes("#8"));
+    await h.cmds.get("aihub.openRepoSet")!();
+    expect(h.seen[0][0]).toContain("Repositories on a branch");
+    expect(h.seen[0].filter((x) => x.includes("#7"))).toHaveLength(1);
+    expect(h.executed.at(-1)).toEqual(["aihub.stories.open", { kind: "story", story: { id: 8, title: "Andere", state: "", branches: [] } }]);
+  });
+
+  it("getRecents({merged:true}) is one sorted list; openRecent opens by kind", async () => {
+    const ws = join(mkdtempSync(join(tmpdir(), "recents-")), "p.code-workspace");
+    writeFileSync(ws, "{}");
+    await (h as any).recorder(res(ws, { group: "pipeline" }));
+    await (h as any).recorder(res(join(ws, "..", "s7.code-workspace"), { story: 7 }), { storyTitle: "Export bouwen" });
+    const m = await h.cmds.get("aihub.getRecents")!({ merged: true });
+    expect(m.map((i: { kind: string; label: string }) => [i.kind, i.label])).toEqual([
+      ["story", "#7 Export bouwen"],
+      ["set", "feature/7-x"],
+    ]);
+    await h.cmds.get("aihub.openRecent")!({ kind: "story", id: 7 });
+    expect(h.executed.at(-1)).toEqual(["aihub.openRecentStory", { id: 7 }]);
+    await h.cmds.get("aihub.openRecent")!({ kind: "set", id: ws });
+    expect(h.executed.at(-1)).toEqual(["aihub.openRecentSet", { id: ws }]);
   });
 });

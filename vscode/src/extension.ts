@@ -169,7 +169,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private renderReposetItem() {
     const it = (this.reposetItem ??= vscode.window.createStatusBarItem("aihub.reposet", vscode.StatusBarAlignment.Left, 10999));
-    it.name = "AI Context Hub: Open Repo Set";
+    it.name = "AI Context Hub: Worktree Sets";
     // a set is local: also without an `aihub status` answer (no Azure DevOps remote, offline) it shows its branch
     const show = (set: Parameters<typeof reposetStatus>[0]) => {
       const v = reposetStatus(set);
@@ -426,8 +426,11 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   reposet.register();
   phase("my stories");
   const recents = new RecentStore(ctx.globalState);
-  registerRecents(ctx, recents, reposet, (l) => bar.logLine(l));
-  registerStories(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l), opened: (s) => rememberStory(recents, s) });
+  // "My Stories" read lazily: only when a picker of New / Open Worktree Set is shown
+  let stories: ReturnType<typeof registerStories> | undefined;
+  const myStories = async () => (stories ? (await stories.view.stories(true)).map((s) => ({ id: s.id, title: s.title, repos: new Set(s.branches.map((b) => b.repo)).size })) : []);
+  registerRecents(ctx, recents, reposet, (l) => bar.logLine(l), myStories);
+  stories = registerStories(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l), opened: (s) => rememberStory(recents, s) });
   phase("worktree sets view");
   const refreshSets = registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id), () => reposet.groups());
   phase("status bar");

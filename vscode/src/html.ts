@@ -31,7 +31,7 @@ const sep = `<span class="bar-separator"></span>`;
 
 /** The first chip: a local action, so it is there even when the status cannot be read (no Azure DevOps remote, not a repository). */
 const reposetChip = () =>
-  chip({ tone: "run", icon: "repo-forked", label: "Open Repo Set", title: "Open several repositories on the same branch in one window (worktrees or switch)", id: "reposet" }) +
+  chip({ tone: "run", icon: "repo-forked", label: "Worktree Sets", title: "New or open a worktree set (optionally for a story), or a recent one", id: "reposet" }) +
   `<span class="bar-zone" tabindex="0" role="button" data-act="chip" data-id="reposet" title="Open repositories on a branch"><i class="codicon codicon-chevron-down"></i></span>`;
 
 const CSS = `

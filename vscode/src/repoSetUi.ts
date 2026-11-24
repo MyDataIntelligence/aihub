@@ -12,6 +12,7 @@ import {
   openArgs,
   openTarget,
   openWays,
+  storyBranchSuggestion,
   preferredBranch,
   prItems,
   setFromMeta,
@@ -111,13 +112,14 @@ const BRANCH_CACHE_MS = 60_000;
  * After `aihub worktree open|story open --window none`: report the repositories that need attention, then open the
  * workspace file in this window or a new one (vscode.openFolder; the CLI never starts VS Code itself).
  */
-let openRecorder: ((res: OpenResultJson) => Promise<void>) | undefined;
+type OpenMeta = { storyTitle?: string };
+let openRecorder: ((res: OpenResultJson, meta?: OpenMeta) => Promise<void>) | undefined;
 /** Called with every set that is about to open (the recent list), awaited: "this window" reloads right after. */
-export function setOpenRecorder(f: (res: OpenResultJson) => Promise<void>): void {
+export function setOpenRecorder(f: (res: OpenResultJson, meta?: OpenMeta) => Promise<void>): void {
   openRecorder = f;
 }
 
-export async function showOpened(res: OpenResultJson, window: "new" | "this", log: (l: string) => void): Promise<boolean> {
+export async function showOpened(res: OpenResultJson, window: "new" | "this", log: (l: string) => void, meta?: OpenMeta): Promise<boolean> {
   const sum = summarizeOpen(res);
   const detail = sum.lines.join("\n");
   log(`${sum.title}\n${detail}`);
@@ -132,7 +134,7 @@ export async function showOpened(res: OpenResultJson, window: "new" | "this", lo
     if (go !== "Open the others") return false;
   }
   log(`open ${to.file} ${window === "this" ? "in this window" : "in a new window"}`);
-  await openRecorder?.(res).catch((e: Error) => log(`recent list not updated: ${e.message}`));
+  await openRecorder?.(res, meta).catch((e: Error) => log(`recent list not updated: ${e.message}`));
   try {
     await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(to.file), to.options);
   } catch (e) {
@@ -190,7 +192,7 @@ export class RepoSetController {
     if (!found.length) return void vscode.window.showWarningMessage(`No git repositories found in ${search.join(", ")}.`);
     const picks = await vscode.window.showQuickPick(
       found.map((r) => ({ label: r.name, description: r.path, repo: r })),
-      { canPickMany: true, title: stepTitle(1, []), placeHolder: "Tick the repositories" },
+      { canPickMany: true, title: stepTitle(1, [], this.flow), placeHolder: "Tick the repositories" },
     );
     if (!picks?.length) return;
     const repos = picks.map((p) => p.repo);
@@ -223,7 +225,7 @@ export class RepoSetController {
         return branchItems([], total);
       },
     );
-    const choice = await pick<BranchChoice>(items, stepTitle(2, chosen), "Choose the branch (Enter takes the first one)");
+    const choice = await pick<BranchChoice>(items, stepTitle(2, chosen, this.flow), "Choose the branch (Enter takes the first one)");
     if (!choice) return;
     if (choice.kind === "existing") return { branch: choice.branch };
     if (choice.kind === "new-story" || choice.kind === "typed") {
@@ -248,11 +250,20 @@ export class RepoSetController {
     return p ? { branch: p.source, from: p.target } : undefined;
   }
 
-  private async newBranchName(label: string): Promise<{ branch: string; from?: string } | undefined> {
+  private async linkToStory(id: number, res: OpenResultJson): Promise<void> {
+    const ok = res.repos.filter((r) => r.ok);
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Linking the branches to story ${id}...` }, () =>
+      Promise.all(ok.map((r) => slowRunner()(["story", "branches", "link", "--id", String(id), "--branch", r.branch, "--repo", r.repo, "--json"], this.cwd()).catch((e: Error) => this.deps.log(`story ${id}: ${r.repo} not linked in Azure DevOps: ${e.message}`)))),
+    );
+  }
+
+  private async newBranchName(label: string, story?: { id: number; title?: string }): Promise<{ branch: string; from?: string } | undefined> {
     const branch = await vscode.window.showInputBox({
-      title: stepTitle(2, [label]),
+      title: stepTitle(2, [label], this.flow),
       prompt: "Name of the new branch, for example feature/1234-search (created in every repository from its target branch)",
-      value: "feature/",
+      value: storyBranchSuggestion(story),
+      // the cursor after the suggestion: typing adds to feature/<id>- instead of replacing it
+      valueSelection: [storyBranchSuggestion(story).length, storyBranchSuggestion(story).length],
       ignoreFocusOut: true,
       validateInput: (v) => (v.trim().length < 3 || /\s/.test(v) ? "Enter a branch name without spaces" : undefined),
     });
@@ -263,7 +274,11 @@ export class RepoSetController {
    * The whole flow: 1 group or repositories, 2 branch, 3 how and where. `group` skips step 1 (the Worktree Sets
    * view's "Open on branch..." button); `branch` (a story or a set that already knows its branch) skips step 2.
    */
-  async open(group?: string, branch?: string, o: { newBranch?: boolean } = {}): Promise<void> {
+  /** the name in the step titles: "Open Repo Set" or "New Worktree Set" */
+  private flow = "Open Repo Set";
+
+  async open(group?: string, branch?: string, o: { newBranch?: boolean; story?: { id: number; title: string } } = {}): Promise<void> {
+    this.flow = o.newBranch ? (o.story ? `New Worktree Set · #${o.story.id}` : "New Worktree Set") : "Open Repo Set";
     let target: { group?: string; repos?: string[] };
     let total = 0;
     let label: string;
@@ -272,7 +287,7 @@ export class RepoSetController {
       label = group;
       if (!branch) total = (await this.groups()).find((g) => g.name === group)?.repos.length ?? 0;
     } else {
-      const choice = await pick(this.groups().then(groupItems), stepTitle(1, []), "Choose a group, or tick repositories");
+      const choice = await pick(this.groups().then(groupItems), stepTitle(1, [], this.flow), "Choose a group, or tick repositories");
       if (!choice) return;
       if ("group" in choice) {
         target = { group: choice.group.name };
@@ -287,11 +302,11 @@ export class RepoSetController {
       }
     }
     // "New Worktree Set...": step 2 is the name of the new branch, step 3 only the worktree ways
-    const b = branch ? { branch } : o.newBranch ? await this.newBranchName(label) : await this.chooseBranch(target, total, [label]);
+    const b = branch ? { branch } : o.newBranch ? await this.newBranchName(label, o.story) : await this.chooseBranch(target, total, [label]);
     if (!b) return;
-    const way = await pick<OpenWay>(o.newBranch ? openWays().filter((w) => w.value?.mode === "worktree") : openWays(), stepTitle(3, [label, b.branch]), `How should ${b.branch} be opened?`);
+    const way = await pick<OpenWay>(o.newBranch ? openWays().filter((w) => w.value?.mode === "worktree") : openWays(), stepTitle(3, [label, b.branch], this.flow), `How should ${b.branch} be opened?`);
     if (!way) return;
-    const args = openArgs({ ...target, branch: b.branch, from: b.from, mode: way.mode });
+    const args = openArgs({ ...target, branch: b.branch, from: b.from, mode: way.mode, story: o.story?.id });
     this.deps.log(`aihub ${args.join(" ")}`);
     let out: string;
     try {
@@ -307,7 +322,9 @@ export class RepoSetController {
       return void vscode.window.showErrorMessage("AI Context Hub: aihub worktree open did not print JSON. Update the CLI: npm i -g @ferronhooi/aihub");
     }
     this.branchCache.clear();
-    await showOpened(res, way.window, this.deps.log);
+    // a set for a story: its branches get the Development link in Azure DevOps (the CLI linked them locally already)
+    if (o.story) await this.linkToStory(o.story.id, res);
+    await showOpened(res, way.window, this.deps.log, { storyTitle: o.story?.title });
     this.deps.refresh();
   }
 

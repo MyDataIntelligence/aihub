@@ -83,14 +83,15 @@ export class StoriesView implements vscode.TreeDataProvider<StoryNode> {
     this.emitter.fire(undefined);
   }
 
-  stories(): Promise<StoryJson[]> {
+  /** `quiet`: a picker that only adds the stories when they come (no warning when Azure DevOps cannot be read) */
+  stories(quiet = false): Promise<StoryJson[]> {
     const cwd = this.deps.cwd();
     if (!cwd) return Promise.resolve([]);
     this.data ??= readJson<{ stories: StoryJson[] }>(slowRunner(), ["story", "branches"], cwd).then(
       (r) => r.stories,
       (e: Error) => {
         this.deps.log(`story branches: ${e.message}`);
-        void vscode.window.showWarningMessage(`AI Context Hub: could not read your stories: ${e.message}`);
+        if (!quiet) void vscode.window.showWarningMessage(`AI Context Hub: could not read your stories: ${e.message}`);
         this.data = undefined;
         return [];
       },
