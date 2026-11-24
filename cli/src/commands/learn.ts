@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { parse } from "../lib/args.js";
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
@@ -7,7 +6,7 @@ import { validateExplanation } from "../lib/learnSchema.js";
 import { pushBoard, pushToIDiagram, storyFor } from "../lib/idiagram.js";
 import { diagramFor, glossary, itemFacts, onboarding, teamFlow, week } from "../lib/learnMore.js";
 import { profile, setAfterPr, setLevel } from "../lib/learnProfile.js";
-import { learnConcepts, learnForget, learnHome, learnList, learnMark, learnQuiz, learnSave, learnScore, learnShow } from "../lib/learnStore.js";
+import { learnConcepts, learnForget, learnHome, learnList, learnMark, learnQuiz, learnSave, readJsonFile, learnScore, learnShow } from "../lib/learnStore.js";
 
 const NL = String.fromCharCode(10);
 const o_kind = (k: string | undefined) => k;
@@ -55,13 +54,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const v = parsed.values;
   const out = (data: unknown, text: string) => ctx.out(v.json ? JSON.stringify(data) : text);
   if (sub === "diagram" && v.board) {
-    const read = (f: string) => {
-      try {
-        return JSON.parse(readFileSync(f, "utf8"));
-      } catch (e) {
-        throw new AihubError(`${f} is not valid JSON: ${(e as Error).message}`);
-      }
-    };
+    const read = (f: string) => readJsonFile<any>(f);
     const board = read(v.board);
     const r = await pushBoard(ctx, { board, story: v.story ? read(v.story) : undefined });
     const title = String((board as { title?: string }).title ?? "board");
@@ -116,13 +109,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   }
   if (sub === "validate") {
     if (!v.file) throw new AihubError("aihub learn validate needs --file <explanation.json>");
-    let json: unknown;
-    try {
-      json = JSON.parse(readFileSync(v.file, "utf8"));
-    } catch (e) {
-      throw new AihubError(`${v.file} is not valid JSON: ${(e as Error).message}`);
-    }
-    const facts = v.facts ? (JSON.parse(readFileSync(v.facts, "utf8")) as ChangeFacts) : undefined;
+    const json = readJsonFile(v.file);
+    const facts = v.facts ? readJsonFile<ChangeFacts>(v.facts) : undefined;
     const r = validateExplanation(json, facts);
     ctx.out(v.json ? JSON.stringify(r) : r.ok ? `OK${r.warnings.map((w) => `${NL}  warning: ${w}`).join("")}` : `INVALID${NL}${r.errors.map((x) => `  ${x}`).join(NL)}${r.warnings.map((w) => `${NL}  warning: ${w}`).join("")}`);
     if (!r.ok) throw new AihubError("the explanation is not valid; fix the lines above and validate again");
