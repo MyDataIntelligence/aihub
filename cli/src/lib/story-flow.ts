@@ -17,6 +17,8 @@ import {
   setWorkItemState,
   storyBranchName,
   storyStates,
+  workItemTypeStates,
+  type StoryStates,
   type WorkItem,
 } from "./workitems.js";
 
@@ -31,6 +33,33 @@ function targets(ctx: Ctx, repos: string[] | undefined, root: string, team: Team
 }
 
 const stateIs = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/**
+ * The active and finished state for this work item, checked before anything is created.
+ * Named in team.yaml (workItems.states): must exist for the type. Not named: the first state of the
+ * category InProgress (active) and Completed (finished) of the work item type (Basic: Doing/Done, Agile: Active/Closed).
+ * When Azure DevOps does not list the states the configured or default names are used as they are.
+ */
+export async function resolveStoryStates(client: AdoClient, team: TeamConfig, wi: WorkItem): Promise<StoryStates> {
+  const named = ((team.workItems as { states?: Partial<StoryStates> } | undefined)?.states ?? {}) as Partial<StoryStates>;
+  const fallback = storyStates(team);
+  const list = wi.type ? await workItemTypeStates(client, wi.type) : undefined;
+  if (!list) return fallback;
+  const pick = (key: "active" | "finished", category: string): string => {
+    const want = named[key];
+    if (want) {
+      const hit = list.find((x) => stateIs(x.name, want));
+      if (!hit) {
+        throw new AihubError(
+          `workItems.states.${key} '${want}' in team.yaml does not exist for ${wi.type} (this project uses: ${list.map((x) => x.name).join(", ")}); nothing was created`,
+        );
+      }
+      return hit.name;
+    }
+    return list.find((x) => x.category === category)?.name ?? fallback[key];
+  };
+  return { active: pick("active", "InProgress"), finished: pick("finished", "Completed") };
+}
 
 export interface StartOpts {
   id: number;
@@ -47,7 +76,9 @@ export async function startStory(ctx: Ctx, o: StartOpts): Promise<string> {
   const team = loadTeam(root);
   const wi = await getWorkItem(mainClient, o.id);
   if (!wi.title) throw new AihubError(`work item ${o.id} not found or has no title`);
-  const states = storyStates(team);
+  // states first: a wrong state name must fail before a branch is created, pushed or linked
+  const needsState = !stateIs(wi.state, storyStates(team).active) && !stateIs(wi.state, storyStates(team).finished);
+  const states = needsState ? await resolveStoryStates(mainClient, team, wi) : storyStates(team);
   const single = !o.repos?.length;
   const lines: string[] = [];
   const results: Record<string, unknown>[] = [];
@@ -80,6 +111,8 @@ export async function startStory(ctx: Ctx, o: StartOpts): Promise<string> {
     stateText = `state ${wi.state} -> ${states.active}`;
   }
   lines.push(`story ${o.id} '${wi.title}': ${stateText}`);
+  // "start" is only the start: implementing is a separate request of the user
+  if (!o.json) lines.push("Started only. Implementing is a separate request: wait for the user.");
   return o.json ? JSON.stringify({ story: o.id, title: wi.title, state: stateText, repos: results }) : lines.join("\n");
 }
 
@@ -131,8 +164,8 @@ function containedIn(dir: string, tip: string, mergedSha: string | undefined, ba
 export async function finishStory(ctx: Ctx, o: FinishOpts): Promise<string> {
   const { root, client: mainClient } = repoClient(ctx);
   const team = loadTeam(root);
-  const states = storyStates(team);
   const wi = await getWorkItem(mainClient, o.id);
+  const states = stateIs(wi.state, storyStates(team).finished) ? storyStates(team) : await resolveStoryStates(mainClient, team, wi);
   const lines: string[] = [];
   let allMerged = true;
   let anyBranch = false;

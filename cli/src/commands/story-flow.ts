@@ -8,7 +8,9 @@ export const STORY_FLOW_SUBS = ["start", "link", "finish"];
 
 /** aihub story start|link|finish (create|refine|show live in the story command of the stories flow). */
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
-  const [sub, ...rest] = argv;
+  const [sub, ...args] = argv;
+  // `story start 123` works like `story start --id 123`, the same as show and refine
+  const rest = args.length && /^(AB#|!)?\d+$/i.test(args[0]) ? ["--id", ...args] : args;
   const v = parseFlags(rest, {
     id: { type: "string" },
     repos: { type: "string" },
