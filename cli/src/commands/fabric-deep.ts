@@ -7,7 +7,8 @@ import { causeOfChain, classifyError, codeRefusals, errorsOnly, failedCell, MAX_
 import { COMMANDS, findProfiles, findProjects, jobDefinition, projectFiles, readRunResults, logTail, safeProjectDir, scaffoldFiles, setHash, writeScaffold, routeOf, MAX_FILES } from "../lib/fabric-dbt.js";
 import { durationText, extractStack, oneLine, parseUtc, toTable } from "../lib/fabric-ops.js";
 import { redact } from "../lib/fabric-redact.js";
-import { clampLines, WINDOW_BYTES } from "../lib/fabric-digest.js";
+import { clampLines, errorExcerpt, WINDOW_BYTES } from "../lib/fabric-digest.js";
+import { driverLog } from "../lib/fabric-logs.js";
 import { isDroppedConnection, powershellSqlQuery } from "../lib/fabric-sql-fallback.js";
 import { readKeyVaultSecret } from "../lib/fabric-auth.js";
 import { dryRun, emit, itemArg, makeClient, need, target, where, type Setup, type Target } from "./fabric.js";
@@ -331,24 +332,30 @@ async function sparkLinks(client: FabricClient, wsId: string, item: FabricItem, 
     }
     const base = `/workspaces/${wsId}/${segOf(item)}/${item.id}/livySessions/${sess.livyId}/applications`;
     let text = "";
+    const missing: string[] = [];
     if (sess.sparkApplicationId) {
-      for (const f of ["stderr", "stdout"]) {
+      for (const f of ["stdout", "stderr"]) {
         try {
-          text += `\n${(await client.request("GET", `${base}/${sess.sparkApplicationId}/logs?type=driver&fileName=${f}`, undefined, { accept: "*/*" })).text}`;
-        } catch {
-          /* the other file may still answer */
+          text += `\n${await driverLog(client, `${base}/${sess.sparkApplicationId}/logs?type=driver&fileName=${f}`)}`;
+          // the notebook traceback is in stdout: the large stderr (often close to a megabyte) is read only when stdout has no failed cell
+          if (f === "stdout" && failedCell(text)) break;
+        } catch (e) {
+          if (e instanceof FabricHttpError && e.status === 401) throw e;
+          missing.push(`${f} ${e instanceof FabricHttpError ? `HTTP ${e.status}` : "error"}`);
         }
       }
     }
     text = redact(text);
     const cell = failedCell(text);
-    const stack = extractStack(text.split("\n"), 8).join(" | ");
+    const stack = errorExcerpt(text.split("\n"), 8).map((l) => l.trim()).join(" | ");
     const cause = classifyError(`${cell?.exception ?? ""} ${stack}`);
+    // nothing to show: say why in one line instead of an empty link (a 404 on both files: Fabric did not return the driver log)
+    const none = !cell && !stack ? (missing.length === 2 ? `no exception found: Fabric did not return the driver log (${missing.join(", ")}); open the run in the Fabric Monitoring hub, or run it again with --wait` : "no exception found in the driver log") : "";
     links.push({
       level,
       kind: "spark session",
       name: `${item.displayName} (${sess.livyId}, ${sess.state ?? "?"})`,
-      error: cell ? `cell ${cell.cell} line ${cell.line}: ${cell.code ?? ""} -> ${cell.exception ?? ""}` : oneLine(stack, 300),
+      error: cell ? `cell ${cell.cell} line ${cell.line}: ${cell.code ?? ""} -> ${cell.exception ?? ""}` : stack ? oneLine(stack, 300) : none,
       detail: cause.kind === "unknown" ? undefined : `likely cause ${cause.kind}: ${cause.hint}`,
     });
   } catch (e) {
@@ -359,10 +366,9 @@ async function sparkLinks(client: FabricClient, wsId: string, item: FabricItem, 
 /** The chain as indented lines (`from` drops the first links, e.g. the job a caller printed already), then the likely cause. */
 export function formatChain(chain: Link[], from = 0): string[] {
   const lines = chain.slice(from).map((l) => `${"  ".repeat(Math.max(0, l.level - from))}${l.kind} ${l.name}${l.status ? ` [${l.status}]` : ""}${l.error ? `: ${l.error}` : ""}${l.detail && l.level > 0 ? ` (${l.detail})` : ""}`);
-  if (chain.some((l) => l.error)) {
-    const c = causeOfChain(chain);
-    lines.push(`likely cause: ${c.kind}: ${c.hint}`);
-  }
+  // "unknown" says nothing the chain does not say already
+  const c = causeOfChain(chain);
+  if (chain.some((l) => l.error) && c.kind !== "unknown") lines.push(`likely cause: ${c.kind}: ${c.hint}`);
   return lines;
 }
 

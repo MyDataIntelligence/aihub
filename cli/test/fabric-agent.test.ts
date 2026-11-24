@@ -108,6 +108,52 @@ describe("F03 why did the run fail: fabric logs --job is a small digest", () => 
     expect(a.calls.some((c) => /nb-ok\/jobs/.test(c.url))).toBe(false);
   });
 
+  // live bench rounds: the driver log of an ended session answered 404, the digest then showed ten lines of YARN chatter from the Livy log
+  const gone = (): Route[] => {
+    const r = logRoutes();
+    r.splice(4, 2, { match: /logs\?type=driver&fileName=std(err|out)$/, respond: () => ({ status: 404, body: { errorCode: "NotFound" } }) });
+    r[3] = text(/applications\/none\/logs\?type=livy$/, "26/11/24 21:27:58 WARN AzureBlobFileSystemStore: checkDnsEntry: x not found\n\t client token: N/A\n\t diagnostics: N/A\n\t ApplicationMaster host: N/A\n\t queue: root.default\n\t final status: UNDEFINED");
+    return r;
+  };
+
+  it("a driver log that Fabric does not return (404): one retry, then one line that says so, no Livy chatter", async () => {
+    const a = await go(gone(), args);
+    expect(a.code).toBe(0);
+    expect(a.out).toContain("no exception found: Fabric did not return the driver log (HTTP 404)");
+    expect(a.out).toContain("--wait");
+    expect(a.out).not.toContain("client token");
+    expect(a.out).not.toContain("last lines");
+    expect(a.out).not.toContain("== driver");
+    expect(a.out).toContain("logs: Livy log 6 lines; driver stderr not available; driver stdout not available");
+    expect(a.calls.filter((c) => /type=driver&fileName=stderr$/.test(c.url))).toHaveLength(2);
+    expect(a.calls.some((c) => /meta=true&fileName=stderr$/.test(c.url))).toBe(true);
+    const f = await go([...gone(), get(/items\/nb-fail\/jobs\/instances$/, { value: [failedJob] })], ["failures", "--workspace", "aihub-test-dev-bench", "--item", "nb_bench_fail"]);
+    expect(f.out).toContain("no exception found: Fabric did not return the driver log (stdout HTTP 404, stderr HTTP 404)");
+    expect(f.out).not.toContain("likely cause: unknown");
+  });
+
+  it("a 404 that clears on the retry still gives the failed cell", async () => {
+    const r = logRoutes();
+    let n = 0;
+    r[5] = { match: /fileName=stdout$/, respond: () => (n++ === 0 ? { status: 404, body: {} } : { text: STDOUT }) };
+    const a = await go(r, args);
+    expect(a.out).toContain("failed cell 12, line 6");
+    expect(n).toBe(2);
+  });
+
+  it("a lasting 404 on the whole file falls back to the log's metadata and a partial read of its end", async () => {
+    const r = logRoutes();
+    r[5] = { match: /type=driver&fileName=stdout$/, respond: () => ({ status: 404, body: {} }) };
+    r.push(get(/type=driver&meta=true&fileName=stdout$/, { containerId: "c1", containerLogMeta: { fileName: "stdout", length: Buffer.byteLength(STDOUT) } }));
+    r.push(text(/fileName=stdout&isDownload=false&isPartial=true&offset=0&size=\d+$/, STDOUT));
+    const a = await go(r, args);
+    expect(a.out).toContain("-> ValueError: BENCH-abc123-ERR");
+    const f = await go([...r, get(/items\/nb-fail\/jobs\/instances$/, { value: [failedJob] })], ["failures", "--workspace", "aihub-test-dev-bench", "--item", "nb_bench_fail"]);
+    expect(f.out).toContain("ValueError: BENCH-abc123-ERR");
+    // stdout had the failed cell: the large stderr was not downloaded
+    expect(f.calls.some((c) => /fileName=stderr/.test(c.url))).toBe(false);
+  });
+
   it("--json is one compact line with the digest and without the raw log lines", async () => {
     const a = await go(logRoutes(), [...args, "--json"]);
     expect(a.lines).toHaveLength(1);
@@ -327,5 +373,21 @@ describe("F01 and the noise", () => {
     expect(b.errs[0]).toContain("Unknown option '--nope'");
     expect(b.errs[0]).toContain("usage: aihub fabric items --workspace W");
     expect(bytes(b.errs[0])).toBeLessThan(300);
+  });
+});
+
+describe("no workspace to choose", () => {
+  it("without --workspace and without a team.yaml workspace: one question for the user (exit 3), no Fabric call", async () => {
+    const { dir } = makeRepo();
+    write(dir, ".agents/skills/_shared/references/team.yaml", "version: 1\nrepositories:\n  - name: test-repo\n    defaultTarget: main\n");
+    sh(dir, ["add", "."]);
+    sh(dir, ["commit", "-m", "team"]);
+    for (const args of [["items"], ["run", "--item", "nb"]]) {
+      const a = await go([items], args, dir);
+      expect(a.code).toBe(3);
+      expect(a.errs[0]).toContain("missing team setting fabric.workspaces");
+      expect(a.errs[0]).toContain("--workspace <name|id>");
+      expect(a.calls).toHaveLength(0);
+    }
   });
 });

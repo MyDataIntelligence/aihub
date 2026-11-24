@@ -38,6 +38,7 @@ import { FabricIdentity, identityJson } from "../lib/fabric-auth.js";
 import { redact } from "../lib/fabric-redact.js";
 import { buildTestPlan, testStrategy } from "../lib/fabric-testplan.js";
 import { loadTeam } from "../lib/team.js";
+import { missingSetting } from "../lib/team-guide.js";
 
 const OPTIONS = {
   branch: { type: "string" },
@@ -360,7 +361,7 @@ export async function target(s: Setup, client: FabricClient, write: boolean): Pr
     adhoc = !chooseWorkspace(s.list, { workspace: given });
   } else {
     ws = selectWorkspaces(s.list, s.groups, { branch: s.branch })[0];
-    if (!ws) throw new AihubError("no workspace chosen: pass --workspace <name|id> (or list workspaces in team.yaml fabric.workspaces with branch rules)");
+    if (!ws) throw noWorkspace(s);
   }
   // refuse ACC/PRD by name before any Fabric call; a bare id is classified after its name is read
   const byId = adhoc && isGuidLike(ws.name);
@@ -374,6 +375,13 @@ export async function target(s: Setup, client: FabricClient, write: boolean): Pr
   }
   if (write && byId) guardEnv(ws, s.v["allow-env"] as string | undefined);
   return { ws, id, adhoc };
+}
+
+/** No --workspace and team.yaml names none for this branch: one question for the user (exit 3), before any Fabric call. */
+function noWorkspace(s: Setup): AihubError {
+  const e = missingSetting("fabric.workspaces", s.list.map((w) => w.name));
+  e.message += "; or pass --workspace <name|id> when the user named one";
+  return e;
 }
 
 const isGuidLike = (x: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
@@ -443,7 +451,7 @@ async function runStatus(s: Setup, sub: "run" | "status"): Promise<void> {
   const { ctx, v } = s;
   if (sub === "run" && v.cancel) return cancelCmd(s, v.cancel as string);
   const chosen = selectWorkspaces(s.list, s.groups, { workspaces: v.workspace as string[] | undefined, group: v.workspaces as string | undefined, branch: s.branch });
-  if (!chosen.length) throw new AihubError("no dev/feature workspace in team.yaml fabric.workspaces; pass --workspace <name|id>");
+  if (!chosen.length) throw noWorkspace(s);
   // refuse before any Fabric call when one of them is not allowed
   if (sub === "run") for (const w of chosen) guardEnv(w, v["allow-env"] as string | undefined);
   const ws = chosen[0];

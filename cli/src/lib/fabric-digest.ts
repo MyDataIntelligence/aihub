@@ -55,6 +55,8 @@ export interface Digest {
   excerpt: string[];
   /** Raw log sections with their size: where the full text is. */
   logs: { title: string; lines: number }[];
+  /** A failed run without a cell, exception or excerpt: why not, and what to do. */
+  missing?: string;
 }
 
 const cut = (l: string) => (l.length > LINE_CHARS ? `${l.slice(0, LINE_CHARS - 1)}…` : l);
@@ -86,7 +88,8 @@ export function digestJob(job: JobInstance, sections: LogSection[]): Digest {
   const livy = logs.filter((s) => /Livy/.test(s.title)).flatMap((s) => s.lines);
   let excerpt = errorExcerpt(stdout);
   if (!excerpt.length) excerpt = errorExcerpt(stderr);
-  if (!excerpt.length && job.status === "Failed") excerpt = [...stdout, ...(stdout.length ? [] : livy)].filter(meaningful).slice(-10);
+  // the Livy log only counts when it holds a real error (its tail is YARN client chatter: "client token", "queue: root.default")
+  if (!excerpt.length) excerpt = errorExcerpt(livy);
   const failure = job.failureReason ? `${job.failureReason.errorCode ?? "unknown"}: ${(job.failureReason.message ?? "no details").replace(/\s+/g, " ").trim()}` : undefined;
   const basis = `${cell?.exception ?? ""} ${excerpt.join(" ")} ${failure ?? ""}`;
   const cause = job.status === "Failed" ? classifyError(basis) : undefined;
@@ -97,7 +100,16 @@ export function digestJob(job: JobInstance, sections: LogSection[]): Digest {
     cause: cause && cause.kind !== "unknown" ? cause : undefined,
     excerpt: excerpt.map(cut),
     logs: logs.map((s) => ({ title: s.title, lines: s.lines.length })),
+    missing: job.status === "Failed" && !cell && !excerpt.length ? noCause(sections) : undefined,
   };
+}
+
+/** One line for a failed run whose exception is nowhere in what Fabric returned. */
+export function noCause(sections: LogSection[]): string {
+  const driver = sections.filter((s) => s.raw && /driver/.test(s.title));
+  const gone = driver.length > 0 && driver.every((s) => !s.available);
+  const why = gone ? `Fabric did not return the driver log (${/HTTP \d+/.exec(driver[0].note ?? "")?.[0] ?? "not available"})` : driver.length ? "the driver log holds no exception" : "Fabric returned no Spark driver log for this run";
+  return `no exception found: ${why}. Open the run in the Fabric Monitoring hub, or run it again with --wait (the log is read right after the run)`;
 }
 
 /** Text of the default `fabric logs --job` view; the non-log sections (job instance, sessions, activity runs) stay as they are, capped. */
@@ -106,6 +118,7 @@ export function formatDigest(job: JobInstance, itemLabel: string, sections: LogS
   if (d.failure) head.push(`failure: ${d.failure}`);
   if (d.cell) head.push(`failed cell ${d.cell.cell}, line ${d.cell.line}${d.cell.code ? `: ${oneLine(d.cell.code, 200)}` : ""}${d.cell.exception ? `\n  -> ${oneLine(d.cell.exception, 400)}` : ""}`);
   if (d.cause) head.push(`likely cause: ${d.cause.kind}: ${d.cause.hint}`);
+  if (d.missing) head.push(d.missing);
   if (d.excerpt.length) head.push(d.cell || /Traceback|Error|Exception/.test(d.excerpt[0]) ? "error excerpt:" : "last lines of the run:", ...d.excerpt.map((l) => `  ${l}`));
   const other = sections.filter((s) => !s.raw && s.title !== "job instance");
   const body = other.length ? formatSections(other.map((s) => ({ ...s, lines: s.lines.slice(0, 30).map(cut) })), {}).split("\n") : [];
