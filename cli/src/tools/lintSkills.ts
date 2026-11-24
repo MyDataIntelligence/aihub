@@ -119,7 +119,8 @@ export function lintSkills(skillsDir: string, opts: LintOptions = {}): string[] 
       continue;
     }
     skillNames.push(e.name);
-    const text = fs.readFileSync(file, "utf8");
+    // a Windows checkout (CRLF) must not count more tokens than the LF file in the repository
+    const text = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
     // `npx skills add` copies each skill folder on its own: a link into _shared (or any underscore folder) would not exist there
     if (/\]\(\.\.\/_/.test(text)) errors.push(`${file}: links into an underscore folder (_shared); a skill must be self-contained`);
     // a strict YAML reader (Codex) refuses a skill whose front matter is not valid YAML, e.g. unescaped quotes inside a quoted description

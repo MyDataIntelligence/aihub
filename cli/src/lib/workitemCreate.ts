@@ -5,6 +5,8 @@ import { AihubError } from "./errors.js";
 import { sectionsToFields } from "./story.js";
 import { compose, DEFAULT_EMPTY, parseSections } from "./templates.js";
 import { loadTeam, readUtf8, type TeamConfig } from "./team.js";
+import type { AdoClient } from "./ado.js";
+import { findWorkItemTemplate, type FoundTemplate } from "./workItemTemplate.js";
 
 export const DEFAULT_TEMPLATES: Record<string, string> = {
   Bug: `## Description
@@ -39,15 +41,11 @@ export function resolveType(team: TeamConfig, type: string | undefined): string 
   return hit;
 }
 
-export function loadWorkItemTemplate(root: string, team: TeamConfig, type: string): string {
+/** The template of a Bug or Task in the fixed order (team.yaml path, repository files, the team's Azure DevOps template, built-in). */
+export async function findTypeTemplate(root: string, client: AdoClient | undefined, team: TeamConfig, type: string): Promise<FoundTemplate> {
   const configured = team.workItems?.templates?.[type];
-  const candidates = [configured, `skills/_shared/assets/${type.toLowerCase()}-template.md`].filter(Boolean) as string[];
-  for (const c of candidates) {
-    const p = join(root, c);
-    if (existsSync(p)) return readUtf8(p);
-  }
-  if (configured) throw new AihubError(`template for ${type} not found: ${configured} (workItems.templates.${type})`);
-  return DEFAULT_TEMPLATES[type] ?? "## Description\n";
+  if (configured && !existsSync(join(root, configured))) throw new AihubError(`template for ${type} not found: ${configured} (workItems.templates.${type})`);
+  return findWorkItemTemplate({ root, client, team, type, configured, fileName: `${type.toLowerCase()}-template.md`, builtIn: DEFAULT_TEMPLATES[type] ?? "## Description\n" });
 }
 
 export interface CreateWorkItemOpts {
@@ -66,7 +64,8 @@ export async function createWorkItem(ctx: Ctx, o: CreateWorkItemOpts): Promise<s
   const type = resolveType(team, o.type);
   const wi = team.workItems ?? {};
   const empty = wi.emptySection || team.pullRequest?.emptySection || DEFAULT_EMPTY;
-  const composed = compose({ template: loadWorkItemTemplate(root, team, type), body: readUtf8(o.bodyFile), code: {}, emptyText: empty });
+  const found = await findTypeTemplate(root, client, team, type);
+  const composed = compose({ template: found.text, body: readUtf8(o.bodyFile), code: {}, emptyText: empty });
   // A Bug keeps its repro steps in the repro field unless the team maps the heading elsewhere.
   const mapped: TeamConfig = {
     ...team,
@@ -85,6 +84,6 @@ export async function createWorkItem(ctx: Ctx, o: CreateWorkItemOpts): Promise<s
   const url = client.workItemUrl(created.id);
   const empties = composed.filled.filter((f) => f.by === "empty").map((f) => f.heading);
   return o.json
-    ? JSON.stringify({ id: created.id, type, url, parent: o.parent, emptySections: empties })
-    : `${type} ${created.id} created: ${url}${o.parent ? ` (child of ${o.parent})` : ""}${empties.length ? ` (${empty}: ${empties.join(", ")})` : ""}`;
+    ? JSON.stringify({ id: created.id, type, url, parent: o.parent, emptySections: empties, template: found.source })
+    : `${type} ${created.id} created: ${url}${o.parent ? ` (child of ${o.parent})` : ""}${empties.length ? ` (${empty}: ${empties.join(", ")})` : ""}; template: ${found.source}`;
 }

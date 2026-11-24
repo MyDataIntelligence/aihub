@@ -62,6 +62,22 @@ describe("aihub story start", () => {
     expect(r.lines.join("\n")).toContain("Implementing is a separate request");
   });
 
+  it("two in-progress states and none in team.yaml: asks with exit 3 before anything is created", async () => {
+    const parent = newParent();
+    const { dir, bare } = makeNamedRepo(parent, "test-repo");
+    const patches: { ops: any[]; contentType: string }[] = [];
+    const states: Route = {
+      match: /wit\/workitemtypes\/User%20Story\/states/,
+      respond: () => ({ body: { value: [{ name: "New", category: "Proposed" }, { name: "Doing", category: "InProgress" }, { name: "Review", category: "InProgress" }, { name: "Done", category: "Completed" }] } }),
+    };
+    const r = await run(dir, [states, ...storyRoutes(43, { title: "Twee states" }, patches)], ["story", "start", "--id", "43"]);
+    expect(r.code).toBe(3);
+    expect(r.errs.join("\n")).toContain("missing team setting workItems.states.active (found: Doing, Review)");
+    expect(r.errs.join("\n")).toContain('aihub team set workItems.states.active "<value>"');
+    expect(patches).toEqual([]);
+    expect(sh(bare, ["branch", "--list"])).not.toContain("feature/43");
+  });
+
   it("fails on an unknown team.yaml state before a branch is created, pushed or linked", async () => {
     const parent = newParent();
     const { dir, bare } = makeNamedRepo(parent, "test-repo");

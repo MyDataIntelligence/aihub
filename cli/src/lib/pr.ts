@@ -18,11 +18,12 @@ import {
   mergeBase,
   originDefaultBranch,
   pushIfNeeded,
+  listRefFiles,
   showFile,
   workItemFromBranch,
   git,
 } from "./git.js";
-import { compose, DEFAULT_EMPTY, editSection, mergeSections, parseSections, resolveTemplate, type CodeValues } from "./templates.js";
+import { compose, DEFAULT_EMPTY, editSection, mergeSections, parseSections, resolveTemplate, templateSourceText, type CodeValues } from "./templates.js";
 import { CONTEXT_RE, notesText, readNotes, unwovenNotes, weaveNotes } from "./notes.js";
 import { defaultTargetFor, loadTeam, readUtf8 } from "./team.js";
 
@@ -83,7 +84,8 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
     linked: linkedIds.length ? linkedIds.map((i) => `- !${i}`).join("\n") : undefined,
   };
 
-  const tpl = resolveTemplate(target, { readRef: (b, p) => showFile(root, b, p), localRoot: root });
+  const tpl = resolveTemplate(target, { readRef: (b, p) => showFile(root, b, p), listRef: (b) => listRefFiles(root, b), localRoot: root });
+  const tplSource = templateSourceText(tpl, target);
   // Private branch notes (aihub note add) are woven into the context section as plain prose.
   const notes = o.noNotes ? [] : readNotes(root, branch);
   const tplHeadings = tpl ? parseSections(tpl.content).sections.map((s) => s.heading) : [];
@@ -111,11 +113,12 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
       by("extra").length ? `extra: ${by("extra").join(", ")}` : "",
     ]
       .filter(Boolean)
+      .concat(tplSource)
       .join("; ");
   } else {
     const extra = [code.story, code.commits && `## Commits\n\n${code.commits}`].filter(Boolean).join("\n\n");
     description = [body.trim(), extra].filter(Boolean).join("\n\n") + "\n";
-    summary = "no PR template found: body used as is";
+    summary = tplSource;
   }
 
   if (o.dryRun) {
