@@ -77,6 +77,23 @@ describe("aihub pipeline logs --failed", () => {
     expect(out).not.toContain("STOP");
   });
 
+  it("puts the real error line of the log right under line 1, without the generic 'exited with code'", async () => {
+    const { dir } = makeRepo();
+    const log = "2026-01-01T10:01:02.0000000Z ##[error]BENCH-abc123-PIPE: tabel klanten mist de kolom klantnummer\n2026-01-01T10:01:03.0000000Z ##[error]Bash exited with code '1'.\n";
+    const routes: Route[] = [
+      { match: /build\/builds\/12\/timeline/, respond: () => ({ body: TIMELINE }) },
+      { match: /build\/builds\/12\/logs\/2/, respond: () => ({ text: log }) },
+      { match: /build\/builds\/12\?/, respond: () => ({ body: build(12, "feature/12-export") }) },
+      { match: /build\/builds\?/, respond: () => ({ body: { value: [build(12, "feature/12-export")] } }) },
+    ];
+    const { ctx, lines } = ctxFor(dir, fakeFetch(routes).fn);
+    expect(await main(["pipeline", "logs", "--failed", "--run", "12"], ctx)).toBe(0);
+    expect(lines.join("\n").split("\n")[1]).toBe("error (quote it as is): BENCH-abc123-PIPE: tabel klanten mist de kolom klantnummer");
+    const j = ctxFor(dir, fakeFetch(routes).fn);
+    await main(["pipeline", "logs", "--failed", "--run", "12", "--json"], j.ctx);
+    expect(JSON.parse(j.lines.join("")).errors).toEqual(["BENCH-abc123-PIPE: tabel klanten mist de kolom klantnummer"]);
+  });
+
   it("says STOP after three red rounds and on a protected branch", async () => {
     const three = world("feature/x", [build(12, "feature/x"), build(11, "feature/x"), build(10, "feature/x")]);
     expect(await main(["pipeline", "logs", "--failed", "--run", "12"], three.ctx)).toBe(0);
