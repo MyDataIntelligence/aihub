@@ -1,27 +1,30 @@
 ---
 name: pipeline-fix
-description: "Use when a build or pipeline failed: '/fix <run url>', 'pipeline is rood', 'fix the build', 'de build faalt', 'tests falen in CI', a failed check on a pull request, a Fabric run that failed on your branch."
+description: "Use when a build or pipeline failed: 'waarom is de pipeline rood', 'waarom faalt de build', '/fix <run url>', 'pipeline is rood', 'fix the build', 'de build faalt', 'tests falen in CI', a failed check on a pull request."
 ---
-# Fix a failing run
+# Explain or fix a failing run
 
 ## When
-`/fix <run url or id>` (the Fix button of a watch toast), or the user says a build or Fabric run is red. Works without a story.
+A build is red. First decide what the user asked; do not read `team.yaml` (the CLI applies it).
+- **Why is it red?** ("waarom", "wat is de oorzaak", "what broke"): read only, answer, stop.
+- **Fix it** ("fix", "repareer", "maak groen", `/fix`): the full loop below.
 
-## Steps
-1. Facts: `aihub pipeline logs --failed --run <url|id>` (no run: the newest failed run of this branch). Line 1 names the branch, whether it is protected and the red rounds in a row. Where it failed: `aihub pipeline timeline --run <id> --failed`; failing tests with message and a flaky marker: `aihub pipeline tests --run <id>`. Fabric run: `aihub fabric failures`.
-2. The team may know it: `aihub fix known --run <id>`. A match is the fix to try first.
-3. STOP and report, no fix, when line 1 says so (protected branch such as main, staging, release/*; or 3 red rounds).
-4. Name the root cause in one sentence. Flaky or infrastructure (agent offline, quota, timeout): report it, `aihub pipeline retry --run <id>` once at most, change no code.
-5. Otherwise fix the cause on the own branch, never weaken a test; check with `aihub test changed --run`, never the whole suite.
-6. `aihub commit --type fix --subject "<what>" --push`, then `aihub watch --run <new run id> --notify` (`aihub pipeline runs --top 1` gives the id). Say "ik volg het op de achtergrond" and end your turn; `aihub pipeline follow` only when the user asks to wait.
-7. Red again: back to step 1. After the third red round stop and report what you tried.
-8. Green after a non-obvious fix: ask once, then `aihub fix remember --error "<line>" --fix "<1-3 lines>"` (a PR, only after a yes).
+## Steps: why is it red (one call)
+1. `aihub pipeline logs --failed` (add `--run <url|id>`; no run: the newest failed run of this branch). It names the run, the branch, the failing step and the error lines.
+2. Answer in 2-3 sentences: root cause, file or test, and whether it looks flaky. Offer the fix in one line ("Zal ik het repareren?") and STOP: no code change, no commit, no new run.
+
+## Steps: fix it
+1. Facts as above. Where exactly: `aihub pipeline timeline --run <id> --failed`; failing tests: `aihub pipeline tests --run <id>`; team knowledge: `aihub fix known --run <id>`.
+2. STOP and report, no fix, when line 1 says so (protected branch such as main, staging, release/*; or 3 red rounds). Flaky or infrastructure: `aihub pipeline retry --run <id>` once at most, change no code.
+3. Fix the cause on the own branch, never weaken a test; check with `aihub test changed --run`.
+4. `aihub commit --type fix --subject "<what>" --push`, then `aihub watch --run <new id> --notify` (`aihub pipeline runs --top 1` gives the id) and end your turn.
+5. Red again: back to 1; after the third red round stop and report. Green after a non-obvious fix: ask once, then `aihub fix remember --error "<line>" --fix "<1-3 lines>"`.
 
 ```sh
-aihub pipeline logs --failed --run "https://dev.azure.com/org/proj/_build/results?buildId=123"
-aihub commit --type fix --subject "handle empty export" --push
-aihub watch --run 124 --notify
+aihub pipeline logs --failed --run 123
 ```
+
+Example: "waarom is de pipeline rood?" is that one command and a short answer. A Fabric notebook run is the fabric skill.
 
 ## What the CLI fills
 Branch, protected flag, red rounds, failing step, log tail.
