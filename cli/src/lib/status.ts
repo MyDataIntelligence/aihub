@@ -2,9 +2,10 @@ import { findActivePr, type AdoClient, type PullRequest } from "./ado.js";
 import { NOT_SIGNED_IN } from "./auth.js";
 import { reviewersOf, type Reviewer } from "./prList.js";
 import { getThreads } from "./comments.js";
-import { repoClient, type Ctx } from "./context.js";
-import { currentBranch, workItemFromBranch } from "./git.js";
-import { hasWorkToCommit, unpushedCount } from "./gitx.js";
+import { repoClientAt, type Ctx } from "./context.js";
+import { rememberCommonDir } from "./aihubDir.js";
+import { workItemFromBranch } from "./git.js";
+import { repoState } from "./gitx.js";
 import { readNotes } from "./notes.js";
 import { latestPerDefinition, selectBuilds, type Build } from "./pipeline.js";
 import { findSet } from "./setInfo.js";
@@ -93,8 +94,11 @@ async function completedPr(client: AdoClient, branch: string): Promise<PullReque
 }
 
 export async function getStatus(ctx: Ctx): Promise<Status> {
-  const { root, client } = repoClient(ctx);
-  const branch = currentBranch(root);
+  // root, branch, changes and unpushed commits in two git calls (status --porcelain=v2 --branch)
+  const git = repoState(ctx.cwd);
+  const { root, branch } = git;
+  rememberCommonDir(root, git.commonDir);
+  const { client } = repoClientAt(ctx, root);
   const team = loadTeam(root);
   const warnings: string[] = [];
   const guard = async <T>(what: string, fn: () => Promise<T>): Promise<T | undefined> => {
@@ -137,8 +141,7 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
 
   const threads = active ? await remote("threads", () => getThreads(client, active.pullRequestId, undefined, false)) : undefined;
   const openThreads = threads?.length ?? 0;
-  const dirty = hasWorkToCommit(root);
-  const unpushed = unpushedCount(root);
+  const { dirty, unpushed } = git;
   const notes = readNotes(root, branch).length;
   const prCompleted = !!done;
 

@@ -2,7 +2,7 @@ import { readLocalSet, RepoSetController } from "./repoSetUi";
 import { reposetStatus } from "./repoSetModel";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
-import { checkCli, CliError, INSTALL_COMMAND, makeRunner, type Runner } from "./cli";
+import { checkCli, CLI_VERSION_KEY, cliVersionStillKnown, CliError, INSTALL_COMMAND, makeRunner, type CachedCliVersion, type Runner } from "./cli";
 import { chatOpenArgs, copilotAgentInstalled } from "./agents";
 import { BarLoader } from "./data";
 import { renderBody, renderError, renderPage } from "./html";
@@ -49,11 +49,14 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     this.refresher = new Refresher(
       async () => {
         if (!this.cwd) throw new CliError("failed", "Open a folder with a git repository to see its story, pull request and pipeline.");
-        if (!this.cliChecked) {
-          await checkCli(this.runner, this.cwd);
-          this.cliChecked = true;
+        if (!this.cliChecked) await this.checkCliOnce(this.cwd);
+        try {
+          return await this.loader.load();
+        } catch (e) {
+          // gone or replaced: ask for the version again next time
+          if (e instanceof CliError && e.kind === "missing") (this.cliChecked = false), void this.ctx.globalState.update(CLI_VERSION_KEY, undefined);
+          throw e;
         }
-        return this.loader.load();
       },
       (r) => this.publish(r),
       { minGapMs: () => this.intervalMs() },
@@ -83,6 +86,23 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     );
   }
 
+  /** `aihub --version` at most once a day per CLI command: a known good version is remembered (one process less per window and settings change). */
+  private async checkCliOnce(cwd: string) {
+    const command = this.cliCommand();
+    const known = this.ctx.globalState.get<CachedCliVersion>(CLI_VERSION_KEY);
+    if (cliVersionStillKnown(known, command, Date.now())) {
+      count("cli.versionCached");
+    } else {
+      const version = await checkCli(this.runner, cwd);
+      void this.ctx.globalState.update(CLI_VERSION_KEY, { command, version, at: Date.now() } satisfies CachedCliVersion);
+    }
+    this.cliChecked = true;
+  }
+
+  private cliCommand() {
+    return String(cfg().get("cliPath", "aihub")) || "aihub";
+  }
+
   private intervalMs() {
     return Math.max(15, Number(cfg().get("refreshIntervalSeconds", 60))) * 1000;
   }
@@ -92,7 +112,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     this.cwd = repoFolder();
     // background reads never wait for a sign-in window: without a credential they fail at once and the bar says so
     const quiet = { GCM_INTERACTIVE: "never", GIT_TERMINAL_PROMPT: "0" };
-    this.runner = makeRunner({ command: String(cfg().get("cliPath", "aihub")) || "aihub", timeoutMs: Math.max(5, Number(cfg().get("timeoutSeconds", 30))) * 1000, env: quiet });
+    this.runner = makeRunner({ command: this.cliCommand(), timeoutMs: Math.max(5, Number(cfg().get("timeoutSeconds", 30))) * 1000, env: quiet });
     this.cliChecked = false;
     this.loader = new BarLoader(this.runner, { cwd: this.cwd ?? "", fabric: !!cfg().get("fabric.enabled", true), fabricTtlMs: Math.max(180_000, this.intervalMs() * 3), combined: "auto" });
     clearTrackedInterval(this.timer);

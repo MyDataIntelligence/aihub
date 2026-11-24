@@ -1,57 +1,9 @@
 import type { Ctx } from "./lib/context.js";
 import { AihubError } from "./lib/errors.js";
 import { cliVersion } from "./lib/pack.js";
-import * as comments from "./commands/comments.js";
-import * as doctor from "./commands/doctor.js";
-import * as init from "./commands/init.js";
-import * as pr from "./commands/pr.js";
-import * as skills from "./commands/skills.js";
-import * as fabric from "./commands/fabric.js";
-import * as robot from "./commands/robot.js";
-import * as branch from "./commands/branch.js";
-import * as story from "./commands/story.js";
-import * as pipeline from "./commands/pipeline.js";
-import * as batch from "./commands/batch.js";
-import * as work from "./commands/work.js";
-import * as storyFlow from "./commands/story-flow.js";
-import * as storyBranches from "./commands/story-branches.js";
-import * as worktree from "./commands/worktree.js";
-import * as review from "./commands/review.js";
-import * as wiki from "./commands/wiki.js";
-import * as release from "./commands/release.js";
-import * as workitem from "./commands/workitem.js";
-import * as evidence from "./commands/evidence.js";
-import * as port from "./commands/port.js";
-import * as crossrepo from "./commands/crossrepo.js";
-import * as note from "./commands/note.js";
-import * as status from "./commands/status.js";
-import * as bar from "./commands/bar.js";
-import * as watch from "./commands/watch.js";
-import * as update from "./commands/update.js";
-import * as explain from "./commands/explain.js";
 import { setTrace } from "./lib/trace.js";
-import * as prPolicy from "./commands/pr-policy.js";
-import * as storyContext from "./commands/story-context.js";
-import * as storyMemory from "./commands/story-memory.js";
 import { runAllRepos, wantsAllRepos } from "./lib/allRepos.js";
 import { appendJournal, isJournaled } from "./lib/journal.js";
-import * as repos from "./commands/repos.js";
-import * as open from "./commands/open.js";
-import * as commit from "./commands/commit.js";
-import * as boards from "./commands/boards.js";
-import * as devops from "./commands/devops.js";
-import * as search from "./commands/search.js";
-import * as repo from "./commands/repo.js";
-import * as policy from "./commands/policy.js";
-import * as library from "./commands/library.js";
-import * as testCmd from "./commands/test.js";
-import * as probe from "./commands/probe.js";
-import * as research from "./commands/research.js";
-import * as learn from "./commands/learn.js";
-import * as legacy from "./commands/legacy.js";
-import * as prList from "./commands/pr-list.js";
-import * as prAdmin from "./commands/pr-admin.js";
-import * as dbt from "./commands/dbt.js";
 
 export type CommandFn = (argv: string[], ctx: Ctx) => Promise<void>;
 
@@ -67,62 +19,74 @@ const lazy =
  * throw AihubError for user-facing failures.
  */
 export const commands: Record<string, CommandFn> = {
-  pr: (argv, ctx) =>
-    prAdmin.PR_ADMIN_SUBS.includes(argv[0]) ? prAdmin.run(argv, ctx) : prList.PR_LIST_SUBS.includes(argv[0]) ? prList.run(argv, ctx) : prPolicy.PR_POLICY_SUBS.includes(argv[0]) ? prPolicy.run(argv, ctx) : review.PR_EXTRA_SUBS.includes(argv[0]) ? review.runPrExtra(argv, ctx) : pr.run(argv, ctx),
-  comments: comments.run,
-  init: init.run,
-  skills: skills.run,
-  doctor: doctor.run,
-  fabric: fabric.run,
-  dbt: dbt.run,
-  robot: robot.run,
+  pr: async (argv, ctx) => {
+    const sub = argv[0];
+    const prAdmin = await import("./commands/pr-admin.js");
+    if (prAdmin.PR_ADMIN_SUBS.includes(sub)) return prAdmin.run(argv, ctx);
+    const prList = await import("./commands/pr-list.js");
+    if (prList.PR_LIST_SUBS.includes(sub)) return prList.run(argv, ctx);
+    const prPolicy = await import("./commands/pr-policy.js");
+    if (prPolicy.PR_POLICY_SUBS.includes(sub)) return prPolicy.run(argv, ctx);
+    const review = await import("./commands/review.js");
+    if (review.PR_EXTRA_SUBS.includes(sub)) return review.runPrExtra(argv, ctx);
+    return (await import("./commands/pr.js")).run(argv, ctx);
+  },
+  comments: lazy(() => import("./commands/comments.js")),
+  init: lazy(() => import("./commands/init.js")),
+  skills: lazy(() => import("./commands/skills.js")),
+  doctor: lazy(() => import("./commands/doctor.js")),
+  fabric: lazy(() => import("./commands/fabric.js")),
+  dbt: lazy(() => import("./commands/dbt.js")),
+  robot: lazy(() => import("./commands/robot.js")),
   "cherry-pick": lazy(() => import("./commands/cherry-pick.js")),
-  branch: branch.run,
-  pipeline: pipeline.run,
-  batch: batch.run,
-  work: work.run,
-  story: (argv, ctx) =>
-    storyContext.STORY_CONTEXT_SUBS.includes(argv[0])
-      ? storyContext.run(argv, ctx)
-      : storyBranches.STORY_BRANCHES_SUBS.includes(argv[0])
-        ? storyBranches.run(argv, ctx)
-        : storyMemory.STORY_MEMORY_SUBS.includes(argv[0])
-        ? storyMemory.run(argv, ctx)
-        : storyFlow.STORY_FLOW_SUBS.includes(argv[0])
-          ? storyFlow.run(argv, ctx)
-          : story.run(argv, ctx),
-  worktree: worktree.run,
-  review: review.run,
-  wiki: wiki.run,
-  release: release.run,
-  workitem: workitem.run,
-  evidence: evidence.run,
-  port: port.run,
-  crossrepo: crossrepo.run,
-  note: note.run,
-  status: status.run,
-  bar: bar.run,
-  watch: watch.run,
-  update: update.run,
-  explain: explain.run,
-  repos: repos.run,
-  open: open.run,
-  commit: commit.run,
-  boards: boards.run,
+  branch: lazy(() => import("./commands/branch.js")),
+  pipeline: lazy(() => import("./commands/pipeline.js")),
+  batch: lazy(() => import("./commands/batch.js")),
+  work: lazy(() => import("./commands/work.js")),
+  story: async (argv, ctx) => {
+    const sub = argv[0];
+    const storyContext = await import("./commands/story-context.js");
+    if (storyContext.STORY_CONTEXT_SUBS.includes(sub)) return storyContext.run(argv, ctx);
+    const storyMemory = await import("./commands/story-memory.js");
+    if (storyMemory.STORY_MEMORY_SUBS.includes(sub)) return storyMemory.run(argv, ctx);
+    const storyBranches = await import("./commands/story-branches.js");
+    if (storyBranches.STORY_BRANCHES_SUBS.includes(sub)) return storyBranches.run(argv, ctx);
+    const storyFlow = await import("./commands/story-flow.js");
+    if (storyFlow.STORY_FLOW_SUBS.includes(sub)) return storyFlow.run(argv, ctx);
+    return (await import("./commands/story.js")).run(argv, ctx);
+  },
+  worktree: lazy(() => import("./commands/worktree.js")),
+  review: lazy(() => import("./commands/review.js")),
+  wiki: lazy(() => import("./commands/wiki.js")),
+  release: lazy(() => import("./commands/release.js")),
+  workitem: lazy(() => import("./commands/workitem.js")),
+  evidence: lazy(() => import("./commands/evidence.js")),
+  port: lazy(() => import("./commands/port.js")),
+  crossrepo: lazy(() => import("./commands/crossrepo.js")),
+  note: lazy(() => import("./commands/note.js")),
+  status: lazy(() => import("./commands/status.js")),
+  bar: lazy(() => import("./commands/bar.js")),
+  watch: lazy(() => import("./commands/watch.js")),
+  update: lazy(() => import("./commands/update.js")),
+  explain: lazy(() => import("./commands/explain.js")),
+  repos: lazy(() => import("./commands/repos.js")),
+  open: lazy(() => import("./commands/open.js")),
+  commit: lazy(() => import("./commands/commit.js")),
+  boards: lazy(() => import("./commands/boards.js")),
   testplan: lazy(() => import("./commands/testplan.js")),
   artifacts: lazy(() => import("./commands/artifacts.js")),
-  devops: devops.run,
-  search: search.run,
-  repo: repo.run,
-  policy: policy.run,
-  library: library.run,
-  test: testCmd.run,
-  legacy: legacy.run,
+  devops: lazy(() => import("./commands/devops.js")),
+  search: lazy(() => import("./commands/search.js")),
+  repo: lazy(() => import("./commands/repo.js")),
+  policy: lazy(() => import("./commands/policy.js")),
+  library: lazy(() => import("./commands/library.js")),
+  test: lazy(() => import("./commands/test.js")),
+  legacy: lazy(() => import("./commands/legacy.js")),
   fix: lazy(() => import("./commands/fix.js")),
   team: lazy(() => import("./commands/team.js")),
-  probe: probe.run,
-  research: research.run,
-  learn: learn.run,
+  probe: lazy(() => import("./commands/probe.js")),
+  research: lazy(() => import("./commands/research.js")),
+  learn: lazy(() => import("./commands/learn.js")),
   standup: lazy(() => import("./commands/standup.js")),
   handoff: lazy(() => import("./commands/handoff.js")),
 };
@@ -136,10 +100,14 @@ export const HELP: Record<string, string> = {
   comments: "aihub comments get [--pr <url|N>]\naihub comments reply [--pr <url|N>] --reply \"<threadId>:<status>:<text>\" [--reply ...]   (no file needed)\naihub comments reply [--pr <url|N>] --replies-file replies.yaml\n    replies.yaml: a list of {threadId, text, status} with status fixed|wontFix|closed|active (thread: and resolve: true also work).",
   story: "aihub story branches [--id <story>]   (repo -> branches/worktrees of your stories; ★ = the one you work on)\naihub story branches link|unlink|mark|remove|place ...   (see aihub story branches --help)\naihub story open --id <story> [--mode worktree|switch] [--window new|this|none]   (the ★ of every repository as one set)\naihub story template   (prints the team story template: the headings to use)\naihub story create --title \"<title>\" --body-file story.md   (one ## <heading> section per template heading, all filled)",
   branch: "aihub branch update [--branch B] [--target T] [--rebase]",
-  test: testCmd.TEST_USAGE,
-  probe: probe.PROBE_USAGE,
-  research: research.RESEARCH_USAGE,
-  learn: learn.LEARN_USAGE,
+};
+
+/** The usage texts that live in their command module: loaded only for --help. */
+export const LAZY_HELP: Record<string, () => Promise<string>> = {
+  test: async () => (await import("./commands/test.js")).TEST_USAGE,
+  probe: async () => (await import("./commands/probe.js")).PROBE_USAGE,
+  research: async () => (await import("./commands/research.js")).RESEARCH_USAGE,
+  learn: async () => (await import("./commands/learn.js")).LEARN_USAGE,
 };
 
 /**
@@ -170,8 +138,8 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
     ctx.out(VERSION);
     return 0;
   }
-  if (HELP[name] && rest.includes("--help")) {
-    ctx.out(HELP[name]);
+  if ((HELP[name] || LAZY_HELP[name]) && rest.includes("--help")) {
+    ctx.out(HELP[name] ?? (await LAZY_HELP[name]()));
     return 0;
   }
   const fn = registry[name];
@@ -180,7 +148,7 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
     return 2;
   }
   // global flags: --verbose logs the real git/REST calls; --dry-run prints the writes it would do and skips them
-  const ownDryRun = name === "fabric" || name === "dbt" || name === "legacy" || (name === "pr" && rest[0] === "create") || (name === "story" && storyFlow.STORY_FLOW_SUBS.includes(rest[0]));
+  const ownDryRun = name === "fabric" || name === "dbt" || name === "legacy" || (name === "pr" && rest[0] === "create") || (name === "story" && (await import("./commands/story-flow.js")).STORY_FLOW_SUBS.includes(rest[0]));
   const verbose = rest.includes("--verbose");
   const dryRun = rest.includes("--dry-run");
   const args = mergeDashValues(rest.filter((a) => a !== "--verbose" && (ownDryRun || a !== "--dry-run")));

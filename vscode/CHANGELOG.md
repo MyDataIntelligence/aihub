@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `aihub --version` runs at most once a day per CLI command: a known good version is remembered in the global state (asked again when the CLI is missing). With aihub 1.0.10, `aihub status` starts three git processes instead of six and every aihub run loads only the command it runs.
+
 ## 3.1.2
 
 - Fewer git processes: the Worktree Sets view reads the status of a set once per refresh and shares it between the rows (it read the whole set once per repository row: repos x repos x 6 git processes).
