@@ -49,6 +49,8 @@ export const commands: Record<string, CommandFn> = {
     if (storyContext.STORY_CONTEXT_SUBS.includes(sub)) return storyContext.run(argv, ctx);
     const storyMemory = await import("./commands/story-memory.js");
     if (storyMemory.STORY_MEMORY_SUBS.includes(sub)) return storyMemory.run(argv, ctx);
+    const storyBranches = await import("./commands/story-branches.js");
+    if (storyBranches.STORY_BRANCHES_SUBS.includes(sub)) return storyBranches.run(argv, ctx);
     const storyFlow = await import("./commands/story-flow.js");
     if (storyFlow.STORY_FLOW_SUBS.includes(sub)) return storyFlow.run(argv, ctx);
     return (await import("./commands/story.js")).run(argv, ctx);
@@ -96,7 +98,7 @@ export const HELP: Record<string, string> = {
   bar: "aihub bar --json [--fabric] [--events N]\n    Everything the VS Code status bar shows in one process: status, checks of the active PR, Fabric failures and logs (--fabric), watching, the newest events.",
   "cherry-pick": 'aihub cherry-pick --from <pr N|url|commit sha|story id> --to <branch> [--to <branch>...|--to-group <name>] [--summary-text "<1-2 sentences>"] [--no-pr|--direct]\n    Cherry-picks in a temp worktree, pushes a cherry-pick/... branch per target and opens a PR per target (template, story link) unless --no-pr.',
   comments: "aihub comments get [--pr <url|N>]\naihub comments reply [--pr <url|N>] --reply \"<threadId>:<status>:<text>\" [--reply ...]   (no file needed)\naihub comments reply [--pr <url|N>] --replies-file replies.yaml\n    replies.yaml: a list of {threadId, text, status} with status fixed|wontFix|closed|active (thread: and resolve: true also work).",
-  story: "aihub story template   (prints the team story template: the headings to use)\naihub story create --title \"<title>\" --body-file story.md   (one ## <heading> section per template heading, all filled)",
+  story: "aihub story branches [--id <story>]   (repo -> branches/worktrees of your stories; ★ = the one you work on)\naihub story branches link|unlink|mark|remove|place ...   (see aihub story branches --help)\naihub story open --id <story> [--mode worktree|switch] [--window new|this|none]   (the ★ of every repository as one set)\naihub story template   (prints the team story template: the headings to use)\naihub story create --title \"<title>\" --body-file story.md   (one ## <heading> section per template heading, all filled)",
   branch: "aihub branch update [--branch B] [--target T] [--rebase]",
 };
 

@@ -6,6 +6,7 @@ import { currentBranch, originDefaultBranch } from "./git.js";
 import { hasTrackedChanges, isAncestor, isDirty, listWorktrees, mustGit, refSha, samePath, tryGit, unpushedCount } from "./gitx.js";
 import { clientForDir, fetchOrigin, resolveRepoDirs, type RepoDir } from "./repos.js";
 import { defaultTargetFor, loadTeam, type TeamConfig } from "./team.js";
+import { linkBranch, storyWorktreesFileFor, updateStoryWorktrees } from "./storyWorktrees.js";
 import {
   addArtifactLink,
   branchArtifact,
@@ -59,6 +60,8 @@ export async function startStory(ctx: Ctx, o: StartOpts): Promise<string> {
     const e = ensureBranch(r.dir, branch, base);
     const info = await repoInfo(client);
     const linked = await addArtifactLink(mainClient, wi, branchArtifact(info, branch), "Branch");
+    // the branch you start a story on is its star in this repository (story-worktrees.json, shared with the extensions)
+    markStarted(r.dir, o.id, branch);
     let checkedOut = false;
     if ((o.checkout ?? (single && !o.noCheckout)) && currentBranch(r.dir) !== branch) {
       if (hasTrackedChanges(r.dir)) lines.push(`${r.name}: kept branch '${currentBranch(r.dir)}' checked out (uncommitted changes)`);
@@ -234,3 +237,12 @@ export async function finishStory(ctx: Ctx, o: FinishOpts): Promise<string> {
 
 export type { WorkItem };
 export { samePath };
+
+function markStarted(dir: string, storyId: number, branch: string): void {
+  try {
+    const file = storyWorktreesFileFor(dir);
+    if (file) updateStoryWorktrees(file, (d) => linkBranch(d, { storyId, branch, current: true }, Date.now()));
+  } catch {
+    /* a newer or broken file is reported by `aihub story branches`; starting the story goes on */
+  }
+}
