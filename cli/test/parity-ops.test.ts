@@ -28,32 +28,32 @@ describe("aihub worktree", () => {
     const root = join(parent, "sets");
     const c = await run(a.dir, [], ["worktree", "create", "--story", "9", "--repos", "repo-a,repo-b", "--root", root, "--branch", "feature/9-x"]);
     expect(c.errs).toEqual([]);
-    expect(existsSync(join(root, "story-9", "repo-a", "README.md"))).toBe(true);
-    expect(sh(join(root, "story-9", "repo-b"), ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("feature/9-x");
-    expect(sh(b.dir, ["worktree", "list"])).toContain("story-9");
+    expect(existsSync(join(root, "9-x", "repo-a", "README.md"))).toBe(true);
+    expect(sh(join(root, "9-x", "repo-b"), ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("feature/9-x");
+    expect(sh(b.dir, ["worktree", "list"])).toContain("9-x");
 
     const l = await run(a.dir, [], ["worktree", "list", "--root", root]);
     expect(l.out).toContain("story 9 'feature/9-x'");
     expect(l.out).toContain("repo-a: clean");
 
     // dirty worktree is kept, clean one removed
-    write(join(root, "story-9", "repo-a"), "wip.txt", "unsaved\n");
+    write(join(root, "9-x", "repo-a"), "wip.txt", "unsaved\n");
     const r1 = await run(a.dir, [], ["worktree", "remove", "--story", "9", "--root", root]);
     expect(r1.out).toContain("repo-a: kept, uncommitted changes");
     expect(r1.out).toContain("repo-b: worktree removed");
-    expect(existsSync(join(root, "story-9", "repo-a", "wip.txt"))).toBe(true);
-    expect(existsSync(join(root, "story-9", "repo-b"))).toBe(false);
+    expect(existsSync(join(root, "9-x", "repo-a", "wip.txt"))).toBe(true);
+    expect(existsSync(join(root, "9-x", "repo-b"))).toBe(false);
     expect(sh(b.dir, ["branch", "--list"])).toContain("feature/9-x");
 
     // unpushed commits are kept too
-    sh(join(root, "story-9", "repo-a"), ["add", "."]);
-    sh(join(root, "story-9", "repo-a"), ["commit", "-m", "local only"]);
+    sh(join(root, "9-x", "repo-a"), ["add", "."]);
+    sh(join(root, "9-x", "repo-a"), ["commit", "-m", "local only"]);
     const r2 = await run(a.dir, [], ["worktree", "remove", "--story", "9", "--root", root]);
     expect(r2.out).toContain("1 unpushed commit");
-    sh(join(root, "story-9", "repo-a"), ["push", "origin", "feature/9-x"]);
+    sh(join(root, "9-x", "repo-a"), ["push", "origin", "feature/9-x"]);
     const r3 = await run(a.dir, [], ["worktree", "remove", "--story", "9", "--root", root]);
     expect(r3.out).toContain("set for story 9 removed");
-    expect(existsSync(join(root, "story-9"))).toBe(false);
+    expect(existsSync(join(root, "9-x"))).toBe(false);
   });
 
   it("refuses when the story branch is checked out in the source repository", async () => {
@@ -70,7 +70,7 @@ describe("aihub worktree", () => {
     const a = makeNamedRepo(parent, "repo-a");
     const r = await run(a.dir, storyRoutes(11, { title: "Nieuwe zaak" }), ["worktree", "create", "--story", "11", "--repos", "repo-a", "--root", join(parent, "sets")]);
     expect(r.errs).toEqual([]);
-    expect(sh(join(parent, "sets", "story-11", "repo-a"), ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("feature/11-nieuwe-zaak");
+    expect(sh(join(parent, "sets", "11-nieuwe-zaak", "repo-a"), ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("feature/11-nieuwe-zaak");
   });
 });
 
