@@ -5,6 +5,7 @@ import { registerStories } from "./storyUi";
 import { RecentStore, registerRecents, rememberStory } from "./recentsUi";
 import { AdvisorController } from "./advisorUi";
 import { CleanupController } from "./cleanupUi";
+import { RobotController } from "./robotUi";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
 import { checkCli, CLI_VERSION_KEY, cliVersionStillKnown, CliError, INSTALL_COMMAND, makeRunner, type CachedCliVersion, type Runner } from "./cli";
@@ -438,6 +439,8 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   const refreshSets = registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id), () => reposet.groups(), () => cleanupCtl?.show() ?? Promise.resolve(false));
   cleanupCtl = new CleanupController(ctx, () => bar.cwdNow(), () => refreshSets());
   cleanupCtl.register();
+  phase("robot");
+  new RobotController(ctx, () => bar.cwdNow()).register();
   phase("performance advisor");
   new AdvisorController(ctx, () => bar.cwdNow()).register();
   phase("status bar");

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Run Robot Test...** (palette, the Robot tests menu, the play button on a .robot file, Explorer right-click on a .robot file, the AI Context Hub panel title) and **Run this test** above every test case of a .robot file: pick suite, test and (team.yaml `robot.environments`) test environment; runs the team's runner (`robot.runner` or an `rf-run.py`) from its folder with the repository's virtual environment, or `python -m robot`, in a terminal; then PASS/FAIL with the failing tests and Open log.html / Open report.html. Engine: `aihub robot local` and `aihub robot result`.
 - **Clean Up Worktrees...** (Worktree Sets view, palette): every worktree of this repository and your repo groups with size, last activity, local work (uncommitted, unpushed), merged, the pull request and the story of its branch (aihub worktree cleanup). Finished worktrees without local work are ticked, worktrees with local work never; removal takes folder links (a linked node_modules) out first, never uses --force, can delete merged local branches and says how much space was freed. A reminder at most once a day, normally once a week, sooner when three or more can go (`aihub.worktrees.cleanupReminder`).
 
 ## 3.3.0
