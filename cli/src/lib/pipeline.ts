@@ -128,7 +128,7 @@ export function excerpt(lines: string[], n: number): string[] {
   return tail.map((l) => (ERROR_RE.test(l) ? `>> ${l}` : `   ${l}`));
 }
 
-async function stepLog(client: AdoClient, buildId: number, logId: number): Promise<string[]> {
+export async function stepLog(client: AdoClient, buildId: number, logId: number): Promise<string[]> {
   return cleanLog(await client.getText(`build/builds/${buildId}/logs/${logId}`));
 }
 
@@ -264,6 +264,22 @@ const PROTECTED_DEFAULT = ["main", "master", "develop", "staging", "release/*"];
 const isProtectedBranch = (patterns: string[], branch: string) =>
   patterns.some((p) => new RegExp("^" + p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$").test(branch));
 
+/** Generic lines that only say a step ended badly; the line before them names the cause. */
+export const GENERIC_ERROR = /exited with code|Process completed with exit code|exit code \d+ returned|The process '.*' failed|Error: The operation was canceled/i;
+
+/** The real error lines of a log ("##[error] ..."), the generic "exited with code 1" left out, at most `max`. */
+export function errorLines(log: string, max = 3): string[] {
+  const out: string[] = [];
+  for (const raw of log.split("\n")) {
+    const m = /##\[error\]\s*(.*)$/.exec(raw);
+    const text = (m ? m[1] : "").trim();
+    if (!text || GENERIC_ERROR.test(text) || out.includes(text)) continue;
+    out.push(text.length > 300 ? `${text.slice(0, 297)}...` : text);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 /**
  * `aihub pipeline logs --failed`: the failing steps of a run (a link, an id, or the newest failed run of this branch), led by
  * the branch, whether it is protected and how many runs in a row are red: the facts the /fix loop stops on
@@ -291,8 +307,11 @@ export async function pipelineFailed(ctx: Ctx, o: { run?: string; tail?: number;
   const head = `run ${build.id} ${stateOf(build)} on ${branch || "(unknown branch)"}; protected: ${isProt ? "yes" : "no"}; red runs in a row: ${rounds}`;
   const stop = isProt ? "STOP: protected branch, do not fix; report it." : rounds >= 3 ? "STOP after 3 red rounds: report what you tried." : "";
   const logs = await pipelineLogs(ctx, { run: build.id, tail: o.tail });
-  if (o.json) return JSON.stringify({ run: build.id, branch, protected: isProt, red: rounds, stop: stop || undefined, logs });
-  return [head, stop, logs].filter(Boolean).join("\n");
+  // the cause in the words of the log, first: quote it, do not paraphrase it
+  const errors = errorLines(logs);
+  if (o.json) return JSON.stringify({ run: build.id, branch, protected: isProt, red: rounds, stop: stop || undefined, errors, logs });
+  const cause = errors.length ? `error (quote it as is): ${errors.join(" | ")}` : "";
+  return [head, cause, stop, logs].filter(Boolean).join("\n");
 }
 
 export async function pipelineRun(ctx: Ctx, o: { name?: string; branch?: string; paramsFile?: string; json?: boolean }): Promise<string> {
