@@ -1,6 +1,7 @@
 import { spawnSync } from "./proc.js";
 import { AihubError } from "./errors.js";
 import { gitGate } from "./trace.js";
+import { isAbsolute, resolve } from "node:path";
 
 export interface GitResult {
   ok: boolean;
@@ -36,6 +37,41 @@ export const ARTIFACT_EXCLUDES = [
 
 /** Is there anything to commit? Like isDirty, but ignores untracked build output (__pycache__, node_modules, ...). */
 export const hasWorkToCommit = (dir: string): boolean => mustGit(dir, ["status", "--porcelain", "--", ".", ...ARTIFACT_EXCLUDES]) !== "";
+
+export interface RepoState {
+  root: string;
+  /** The common .git folder (shared by all worktrees). */
+  commonDir: string;
+  branch: string;
+  /** Work to commit, like hasWorkToCommit. */
+  dirty: boolean;
+  /** Commits not on the remote: ahead of the upstream, or (no upstream yet) not on any remote branch, like unpushedCount. */
+  unpushed: number;
+}
+
+/**
+ * What `aihub status` needs from git in two calls instead of six: `rev-parse --show-toplevel --git-common-dir` and one
+ * `status --porcelain=v2 --branch` (branch, upstream, ahead, changes). Only a branch without an upstream needs a third
+ * call (`rev-list`) for its unpushed commits.
+ */
+export function repoState(cwd: string): RepoState {
+  const [root, common] = mustGit(cwd, ["rev-parse", "--show-toplevel", "--git-common-dir"]).split(/\r?\n/).map((s) => s.trim());
+  const out = mustGit(root, ["status", "--porcelain=v2", "--branch", "--", ".", ...ARTIFACT_EXCLUDES]);
+  let branch = "";
+  let upstream = "";
+  let ahead: number | undefined;
+  let dirty = false;
+  for (const line of out.split(/\r?\n/)) {
+    if (!line) continue;
+    if (line.startsWith("# branch.head ")) branch = line.slice(14).trim();
+    else if (line.startsWith("# branch.upstream ")) upstream = line.slice(18).trim();
+    else if (line.startsWith("# branch.ab ")) ahead = Number(/\+(\d+)/.exec(line)?.[1] ?? 0);
+    else if (!line.startsWith("#")) dirty = true;
+  }
+  if (!branch || branch === "(detached)") throw new AihubError("detached HEAD; check out a branch first");
+  const unpushed = upstream && ahead !== undefined ? ahead : unpushedCount(root);
+  return { root, commonDir: isAbsolute(common) ? common : resolve(cwd, common), branch, dirty, unpushed };
+}
 
 /** Changes to tracked files only: untracked files (build output, scratch files) never stop `git switch`, which refuses by itself when one would be overwritten. */
 export const hasTrackedChanges = (dir: string): boolean => mustGit(dir, ["status", "--porcelain", "--untracked-files=no"]) !== "";

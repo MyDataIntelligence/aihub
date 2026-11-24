@@ -42,3 +42,15 @@ describe("runner", () => {
     await expect(readJson(stubRunner(), ["nope"], process.cwd())).rejects.toBeInstanceOf(CliError);
   });
 });
+
+describe("the CLI version check", () => {
+  it("is skipped for a day once the same command was new enough", async () => {
+    const { cliVersionStillKnown } = await import("../src/cli");
+    const known = { command: "aihub", version: "1.0.9", at: 1_000_000 };
+    expect(cliVersionStillKnown(known, "aihub", 1_000_000 + 3_600_000)).toBe(true);
+    expect(cliVersionStillKnown(known, "aihub", 1_000_000 + 25 * 3_600_000)).toBe(false);
+    expect(cliVersionStillKnown(known, "C:/tools/aihub.cmd", 1_000_001)).toBe(false);
+    expect(cliVersionStillKnown({ ...known, version: "0.9.0" }, "aihub", 1_000_001)).toBe(false);
+    expect(cliVersionStillKnown(undefined, "aihub", 1)).toBe(false);
+  });
+});
