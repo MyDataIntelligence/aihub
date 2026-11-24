@@ -20,7 +20,7 @@ describe("aihub init --no-pr", () => {
   it("writes the team pack, prefilled from the remote", async () => {
     const { dir } = repo();
     const { ctx, lines, errs } = ctxFor(dir, fakeFetch([]).fn);
-    expect(await main(["init", "--no-pr"], ctx)).toBe(0);
+    expect(await main(["init", "--no-pr", "--language", "en"], ctx)).toBe(0);
     expect(errs).toEqual([]);
     const team = parse(readFileSync(join(dir, TEAM), "utf8"));
     expect(team.azureDevOps).toEqual({ organization: "ferron-org", project: "test-project" });
@@ -45,7 +45,7 @@ describe("aihub init --no-pr", () => {
       },
     ]);
     const { ctx } = ctxFor(dir, f.fn);
-    expect(await main(["init", "--no-pr"], ctx)).toBe(0);
+    expect(await main(["init", "--no-pr", "--language", "en"], ctx)).toBe(0);
     const team = parse(readFileSync(join(dir, TEAM), "utf8"));
     expect(team.workItems.states).toEqual({ active: "Doing", finished: "Done" });
   });
@@ -53,7 +53,7 @@ describe("aihub init --no-pr", () => {
   it("keeps the default states when Azure DevOps cannot be asked", async () => {
     const { dir } = repo();
     const { ctx } = ctxFor(dir, fakeFetch([]).fn);
-    expect(await main(["init", "--no-pr"], ctx)).toBe(0);
+    expect(await main(["init", "--no-pr", "--language", "en"], ctx)).toBe(0);
     const team = parse(readFileSync(join(dir, TEAM), "utf8"));
     expect(team.workItems.states).toEqual({ active: "Active", finished: "Done" });
   });
@@ -64,7 +64,7 @@ describe("aihub init --no-pr", () => {
     write(dir, "docs/pull_request_template.md", "## Eigen\n");
     write(dir, ".opencode/command/pr.md", "eigen\n");
     const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
-    await main(["init", "--no-pr", "--into-repo"], ctx);
+    await main(["init", "--no-pr", "--into-repo", "--language", "en"], ctx);
     expect(existsSync(join(dir, ".github/prompts/story.prompt.md"))).toBe(true);
     expect(readFileSync(join(dir, TEAM), "utf8")).toBe("mine: true\n");
     expect(readFileSync(join(dir, ".opencode/command/pr.md"), "utf8")).toBe("eigen\n");
@@ -117,7 +117,7 @@ describe("aihub init (pull request)", () => {
   it("does nothing when everything exists", async () => {
     const { dir } = repo();
     const a = ctxFor(dir, fakeFetch([]).fn);
-    await main(["init", "--no-pr"], a.ctx);
+    await main(["init", "--no-pr", "--language", "en"], a.ctx);
     sh(dir, ["add", "."]);
     sh(dir, ["commit", "-m", "pack"]);
     sh(dir, ["push", "origin", "main"]);

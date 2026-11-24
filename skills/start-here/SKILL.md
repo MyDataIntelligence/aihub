@@ -32,16 +32,16 @@ A direct command needs no routing: "maak een PR" -> run `aihub pr create --summa
 | wiki, other repo, Terraform | wiki, devops-repos, terraform |
 | policies, groups, search, PR admin | devops-admin |
 | screenshot, voice notes | evidence, voice-notes |
-| change team.yaml or a template | team-settings |
+| team.yaml, a template | team-settings |
 | release, release train | release |
-| "ga verder", "waar was ik", new chat, after compaction | resume |
+| "ga verder", "waar was ik", new chat | resume |
 
 New chat: `aihub status --resume`. A pullrequest link means pr-watch.
 
 ## What the CLI fills
-Templates, target branch, story links and repository come from `team.yaml`; never ask the user for them. Read the `guidelines:` files first.
+Templates, target branch, story links, repository: the CLI applies `team.yaml`; never read it or ask for them. On `missing team setting`: ask that one question, run its `aihub team set`, repeat. Read the `guidelines:` files first.
 
 ## If it fails
-Run `aihub doctor` and show its output. No `team.yaml`: the user runs `aihub init` in the team repo.
+Run `aihub doctor`, show its output. No `team.yaml`: `aihub team setup`.
 
 Rules: a direct command runs at once, 0 questions. Local git uses your own tools. Content follows the team template language. Never invent ids.

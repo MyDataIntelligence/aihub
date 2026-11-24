@@ -44,7 +44,7 @@ describe("aihub doctor", () => {
     const h = tmp("aihub-home-");
     const env = { HOME: h, USERPROFILE: h, AIHUB_ADO_PAT: "x" };
     const init = ctxFor(dir, fakeFetch([]).fn);
-    await main(["init", "--no-pr"], init.ctx);
+    await main(["init", "--no-pr", "--language", "en"], init.ctx);
     const inst = ctxFor(dir, fakeFetch([]).fn);
     inst.ctx.env = env;
     await main(["skills", "install", "--global", "--client", "opencode"], inst.ctx);

@@ -182,7 +182,7 @@ describe("--dry-run and --verbose", () => {
     sh(dir, ["config", "user.name", "T"]);
     sh(dir, ["config", "user.email", "t@example.com"]);
     const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
-    const code = await main(["init", "--dry-run"], ctx);
+    const code = await main(["init", "--dry-run", "--language", "en"], ctx);
     expect(code).toBe(0);
     const out = lines.join("\n");
     expect(out).toContain("dry-run: would run: git switch -c chore/aihub-team-pack");

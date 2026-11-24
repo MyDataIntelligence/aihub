@@ -109,6 +109,7 @@ export const LAZY_HELP: Record<string, () => Promise<string>> = {
   probe: async () => (await import("./commands/probe.js")).PROBE_USAGE,
   research: async () => (await import("./commands/research.js")).RESEARCH_USAGE,
   learn: async () => (await import("./commands/learn.js")).LEARN_USAGE,
+  team: async () => (await import("./commands/team.js")).TEAM_USAGE,
 };
 
 /**
@@ -184,7 +185,8 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
     keep(false, (e as Error).message);
     if (e instanceof AihubError) ctx.err(`aihub: ${e.message}`);
     else ctx.err(`aihub: unexpected error: ${(e as Error).message}`);
-    return 1;
+    // 3: one team setting is unclear (MissingTeamSetting); the agent asks the user and runs the `aihub team set` it names
+    return (e as { exitCode?: number }).exitCode ?? 1;
   } finally {
     setTrace({});
   }
