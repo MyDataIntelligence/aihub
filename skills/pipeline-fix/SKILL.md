@@ -11,7 +11,7 @@ A build is red. First decide what the user asked; do not read `team.yaml` (the C
 
 ## Steps: why is it red (one call)
 1. `aihub pipeline logs --failed` (add `--run <url|id>`; no run: the newest failed run of this branch). It names the run, the branch, the failing step and the error lines.
-2. Answer in 2-3 sentences: root cause, file or test, and whether it looks flaky. Offer the fix in one line ("Zal ik het repareren?") and STOP: no code change, no commit, no new run.
+2. Answer in 2-3 sentences: quote the `error (quote it as is):` line of the output word for word (never only "exited with code 1"), then the file or test and whether it looks flaky. Do not run `pipeline timeline` for this. Offer the fix in one line ("Zal ik het repareren?") and STOP: no code change, no commit, no new run.
 
 ## Steps: fix it
 1. Facts as above. Where exactly: `aihub pipeline timeline --run <id> --failed`; failing tests: `aihub pipeline tests --run <id>`; team knowledge: `aihub fix known --run <id>`.
