@@ -99,7 +99,7 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 | delete_schedule | write | DELETE workspaces/{ws}/items/{item}/jobs/{jobType}/schedules/{scheduleId} | `aihub fabric api delete_schedule` | ported (generic) |
 | list_runs | read | custom handler | `aihub fabric jobs` | ported |
 | get_run | read | custom handler | `aihub fabric status / job show` | ported |
-| get_logs | read | custom handler | `aihub fabric logs --item I --job ID` (a digest by default, `--out file` for the full log); `spark logs` (driver, executor, Livy; --tail --search --errors --cell --out; capped on stdout) | ported, live |
+| get_logs | read | custom handler | `aihub fabric logs --item I --job ID` (a digest by default, `--out file` for the full log); `spark logs` (driver, executor, Livy; --tail --search --errors --cell --out; capped on stdout). A driver log can answer 404 for a session that ended (two benchmark rounds on 2026-11-24, both files, ~9 min after the run; not reproduced in a fresh workspace, where it stayed readable for 30 min): one retry after 4 s, then the log's metadata (`meta=true`, its length) and a partial read of the last 256 KB (`isPartial=true&offset&size`, both answered 200 live); when nothing answers, one line says so instead of an empty cause | ported, live |
 | get_failure | read | custom handler | `aihub fabric failures` | ported, live |
 | link_pipeline_run | read | custom handler | `aihub fabric failures (follows pipeline -> child pipeline -> notebook -> Spark)` | ported |
 | prepare_repair | read | custom handler | - | dropped: IDE-only repair chat; the agent reads `failures` and edits the files itself |

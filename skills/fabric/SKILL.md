@@ -1,6 +1,6 @@
 ---
 name: fabric
-description: "Use when a question or task is about Microsoft Fabric (workspace, notebook, pipeline, lakehouse, run): 'wat staat er in mijn workspace', 'draai notebook X', 'draai hem en wacht', 'waarom faalde de run', 'mijn notebook is rood', 'zet de parameter op ...', 'commit de workspace naar git', 'what is in my workspace', 'run notebook X and wait', 'why did the run fail', 'change the notebook and rerun'. No Fabric connector is needed: the aihub CLI talks to Fabric."
+description: "Use when a question or task is about Microsoft Fabric (workspace, notebook, pipeline, lakehouse, run): 'wat staat er in mijn workspace', 'draai notebook X', 'draai hem en wacht', 'waarom faalde de run', 'mijn notebook is rood', 'zet de parameter op ...', 'commit de workspace naar git', 'what is in my workspace', 'run notebook X and wait', 'why did the run fail', 'change the notebook and rerun'. No Fabric connector or tool is needed: run `aihub fabric ...` in the shell (aihub is on the PATH; `aihub fabric --help` lists the commands), also when this skill file cannot be read."
 ---
 # Fabric: one command per task
 

@@ -466,7 +466,7 @@ describe("logs", () => {
     expect(a.out).toContain("session L1: dead, application app_1");
     expect(a.out).not.toContain("L2");
     // deliberately changed: the raw driver logs are digested (excerpt + where the full log is), not printed whole
-    expect(a.out).toContain("logs: driver stderr 5 lines; driver stdout 2 lines");
+    expect(a.out).toContain("logs: Livy log not available; driver stderr 5 lines; driver stdout 2 lines");
     expect(a.out).toContain("--out <file>");
     expect(a.out).toContain("error excerpt:");
     expect(a.out).toContain("ValueError: bad row");
@@ -522,7 +522,9 @@ describe("logs", () => {
       ],
       ["logs", "--workspace", "DEV-test-project", "--item", "sjd_clean", "--job", "sj9"],
     );
-    expect(b.out).toContain("driver line");
+    // deliberately changed: log lines without an error are not shown in the digest (they were YARN chatter in live runs); the sizes are
+    expect(b.out).toContain("driver stderr 1 lines; driver stdout 1 lines");
+    expect(b.out).not.toContain("driver line");
     const c = await go([get(new RegExp(`/workspaces/${WS}/items$`), { value: [{ id: "wh-1", displayName: "wh_test", type: "Warehouse" }] }), get(/items\/wh-1\/jobs\/instances\/x$/, { id: "x", status: "Completed" })], ["logs", "--workspace", "DEV-test-project", "--item", "wh_test", "--job", "x"]);
     expect(c.out).toContain("no job or run-history REST API");
   });
