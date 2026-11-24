@@ -145,9 +145,21 @@ export function defaultSetsRootFor(cwd: string, root: string | undefined, firstR
   return defaultSetsRoot(main);
 }
 
-export function openSet(ctx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = launchCode): OpenSetResult {
+/** Run from inside a set, repository names resolve next to the normal checkout it came from, not to the set's worktrees. */
+function outsideSet(ctx: Ctx): Ctx {
+  const here = findSet(ctx.cwd);
+  const meta = here && readSetMeta(here.folder);
+  if (!meta?.repos?.length) return ctx;
+  const mine = meta.repos.find((r) => samePath(r.path, ctx.cwd) || resolve(ctx.cwd).toLowerCase().startsWith(resolve(r.path).toLowerCase())) ?? meta.repos[0];
+  return mine.source && existsSync(mine.source) ? { ...ctx, cwd: mine.source } : ctx;
+}
+
+export function openSet(setCtx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = launchCode): OpenSetResult {
   const branch = o.branch?.trim();
   if (!branch) throw new AihubError("--branch <name> is required");
+  // the sets root is still found from where this runs (next to the set, never inside it)
+  const setsBase = setCtx.cwd;
+  const ctx = outsideSet(setCtx);
   const mode = o.mode ?? "worktree";
   let dirs: RepoDir[];
   let missing: string[] = [];
@@ -164,7 +176,7 @@ export function openSet(ctx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = launc
     root = undefined;
   }
   const team = root ? loadTeam(root) : {};
-  const setsRoot = resolve(o.root ?? defaultSetsRootFor(ctx.cwd, root, dirs[0].dir));
+  const setsRoot = resolve(o.root ?? defaultSetsRootFor(setsBase, root, dirs[0].dir));
   const folder = join(setsRoot, slug(branch));
   const repos = dirs.map((d) => openRepo(d, { branch, from: o.from, mode, folder, team }));
   for (const m of missing) repos.push({ repo: m, ok: false, state: "failed", branch, note: "folder not found on this PC" });

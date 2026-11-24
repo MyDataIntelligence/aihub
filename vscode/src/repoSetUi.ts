@@ -37,14 +37,29 @@ const cfg = () => vscode.workspace.getConfiguration("aihub");
 /**
  * The set this folder belongs to, read from `.aihub-set.json` above it. Only for the status bar item when
  * `aihub status` has no answer (no Azure DevOps remote, offline): a set is local and stays visible then.
+ * Asynchronous, and read once per folder (the cache lives as long as the window: a window becomes a set by reopening).
  */
-export function readLocalSet(cwd: string | undefined): SetModel | null {
-  let dir = cwd ? path.resolve(cwd) : "";
-  for (let i = 0; dir && i < 6; i++) {
+const localSets = new Map<string, Promise<SetModel | null>>();
+export function readLocalSet(cwd: string | undefined): Promise<SetModel | null> {
+  if (!cwd) return Promise.resolve(null);
+  const key = path.resolve(cwd);
+  let hit = localSets.get(key);
+  if (!hit) localSets.set(key, (hit = findLocalSet(key)));
+  return hit;
+}
+
+const exists = (p: string) => fs.promises.access(p).then(() => true, () => false);
+
+async function findLocalSet(start: string): Promise<SetModel | null> {
+  let dir = start;
+  for (let i = 0; i < 6; i++) {
     const meta = path.join(dir, ".aihub-set.json");
-    if (fs.existsSync(meta)) {
+    if (await exists(meta)) {
       try {
-        return setFromMeta(JSON.parse(fs.readFileSync(meta, "utf8")), fs.existsSync);
+        const m = JSON.parse(await fs.promises.readFile(meta, "utf8")) as { repos?: { path: string }[] };
+        const there = new Set<string>();
+        for (const r of m.repos ?? []) if (await exists(r.path)) there.add(r.path);
+        return setFromMeta(m, (p) => there.has(p));
       } catch {
         return null;
       }
@@ -152,7 +167,7 @@ export class RepoSetController {
     return { repos };
   }
 
-  /** The branches of a group or repository list: read once, kept a minute; started for every group while step 1 is shown. */
+  /** The branches of a group or repository list: read only when that group is chosen, then kept a minute. */
   private branches(target: { group?: string; repos?: string[] }): Promise<BranchesJson> {
     const key = JSON.stringify(target);
     const hit = this.branchCache.get(key);
@@ -210,10 +225,7 @@ export class RepoSetController {
       label = group;
       if (!branch) total = (await this.groups()).find((g) => g.name === group)?.repos.length ?? 0;
     } else {
-      const groups = this.groups();
-      // the branches of every group are read while the user looks at step 1
-      void groups.then((gs) => gs.slice(0, 8).forEach((g) => void this.branches({ group: g.name }).catch(() => undefined)));
-      const choice = await pick(groups.then(groupItems), stepTitle(1, []), "Choose a group, or tick repositories");
+      const choice = await pick(this.groups().then(groupItems), stepTitle(1, []), "Choose a group, or tick repositories");
       if (!choice) return;
       if ("group" in choice) {
         target = { group: choice.group.name };

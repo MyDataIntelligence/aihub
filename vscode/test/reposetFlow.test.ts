@@ -191,8 +191,8 @@ describe("the status bar after opening", () => {
     const set = mkdtempSync(join(tmpdir(), "reposet-"));
     for (const n of ["repo-a", "repo-b"]) mkdirSync(join(set, n, "src"), { recursive: true });
     writeFileSync(join(set, ".aihub-set.json"), JSON.stringify({ story: 0, group: "pipeline", branch: "feature/story-7", repos: ["repo-a", "repo-b", "repo-c"].map((n) => ({ name: n, path: join(set, n) })) }));
-    expect(readLocalSet(join(set, "repo-b", "src"))).toEqual({ story: 0, group: "pipeline", branch: "feature/story-7", total: 3, repos: ["repo-a", "repo-b"] });
-    expect(readLocalSet(tmpdir())).toBeNull();
-    expect(readLocalSet(undefined)).toBeNull();
+    expect(await readLocalSet(join(set, "repo-b", "src"))).toEqual({ story: 0, group: "pipeline", branch: "feature/story-7", total: 3, repos: ["repo-a", "repo-b"] });
+    expect(await readLocalSet(tmpdir())).toBeNull();
+    expect(await readLocalSet(undefined)).toBeNull();
   });
 });

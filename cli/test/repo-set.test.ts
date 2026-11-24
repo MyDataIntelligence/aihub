@@ -159,6 +159,18 @@ describe("aihub worktree open", () => {
     expect(fwd(second.folder)).toBe(fwd(join(parent, "worktrees", "feature-other")));
   });
 
+  it("switch mode run from inside a set switches the normal checkouts, never the set's worktrees", async () => {
+    const { parent, repos } = world();
+    const first = JSON.parse((await run(repos[0].dir, ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/shared", "--window", "none", "--json"])).out);
+    const inside = join(first.folder, "repo-a");
+    const r = JSON.parse((await run(inside, ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/other", "--from", "main", "--mode", "switch", "--window", "none", "--json"])).out);
+    expect(r.repos.map((x: { state: string }) => x.state)).toEqual(["switched", "switched"]);
+    for (const n of ["repo-a", "repo-b"]) {
+      expect(sh(join(parent, n), ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("feature/other");
+      expect(sh(join(first.folder, n), ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("feature/shared");
+    }
+  });
+
   it("removes a group set by branch and keeps the branch", async () => {
     const { repos } = world();
     const o = JSON.parse((await run(repos[0].dir, ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/shared", "--window", "none", "--json"])).out);

@@ -148,11 +148,19 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     const it = (this.reposetItem ??= vscode.window.createStatusBarItem("aihub.reposet", vscode.StatusBarAlignment.Left, 10999));
     it.name = "AI Context Hub: Repos op branch openen";
     // a set is local: also without an `aihub status` answer (no Azure DevOps remote, offline) it shows its branch
-    const v = reposetStatus(this.last?.ok ? this.last.model.set : readLocalSet(this.cwd));
-    it.text = v.text;
-    it.tooltip = new vscode.MarkdownString(v.tooltip);
+    const show = (set: Parameters<typeof reposetStatus>[0]) => {
+      const v = reposetStatus(set);
+      it.text = v.text;
+      it.tooltip = new vscode.MarkdownString(v.tooltip);
+    };
     it.command = "aihub.reposet.open";
+    show(this.last?.ok ? this.last.model.set : null);
     it.show();
+    // only after a failed status read (never at activation): the set file next to the folder, read once per folder
+    if (this.last && !this.last.ok) {
+      const last = this.last;
+      void readLocalSet(this.cwd).then((set) => set && this.last === last && show(set));
+    }
   }
 
   private renderStatusBar() {
