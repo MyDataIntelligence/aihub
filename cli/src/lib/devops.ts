@@ -30,7 +30,7 @@ export function devopsClient(ctx: Ctx, v: Flags): { client: AdoClient; root: str
 }
 
 export function emit(ctx: Ctx, v: Flags, data: unknown, text: string): void {
-  ctx.out(v.json ? JSON.stringify(data, null, 2) : text);
+  ctx.out(v.json ? JSON.stringify(data) : text);
 }
 
 export function requireFlag(v: Flags, name: string, hint = ""): string {

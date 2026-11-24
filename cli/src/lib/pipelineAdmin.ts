@@ -112,7 +112,7 @@ export async function validate(c: AdoClient, ctx: Ctx, v: Flags, ref: string, co
   } catch (e) {
     if (!(e instanceof AihubError) || !/failed \(400\)|\(400\)/.test(e.message)) throw e;
     const why = e.message.replace(/^Azure DevOps POST [^:]*: ?/, "");
-    if (v.json) ctx.out(JSON.stringify({ pipeline: d.name, valid: false, errors: [why] }, null, 2));
+    if (v.json) ctx.out(JSON.stringify({ pipeline: d.name, valid: false, errors: [why] }));
     throw new AihubError(`pipeline '${d.name}': the YAML is NOT valid: ${why}`);
   }
 }
