@@ -216,6 +216,27 @@ export async function probeDevops(ctx: Ctx, name: string): Promise<ProbeResult> 
   return { probe: `devops ${name} (${f.what}) in ${r.project}`, answer: i.answer, status, meaning: i.meaning, ...(data !== undefined && name !== "identity" ? { shape: shapeOf(data) } : {}), ...(Object.keys(facts).length ? { facts } : {}), readOnly: true };
 }
 
+/**
+ * The readable content of a documentation page: the <main> (else <article>, else <body>) element without scripts,
+ * navigation, headers, footers and asides, as plain text cut at `max` characters.
+ */
+export function mainText(html: string, max: number): string {
+  const pick = (tag: string) => new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*)</${tag}>`, "i").exec(html)?.[1];
+  const part = pick("main") ?? pick("article") ?? pick("body") ?? html;
+  const text = part
+    .replace(/<(script|style|nav|header|footer|aside|noscript|svg|form|button)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+}
+
 // ---- any allowed URL -----------------------------------------------------------------------------
 
 /**
@@ -249,7 +270,7 @@ export async function probeApi(ctx: Ctx, rawUrl: string): Promise<ProbeResult> {
   if (GET_HOSTS_PUBLIC.includes(host)) {
     const res = await getText(ctx, u.toString(), { Accept: "text/html,application/json" });
     const i = interpret(res.status);
-    const excerpt = redact(res.text.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 600));
+    const excerpt = redact(mainText(res.text, 1500));
     return { probe: `GET ${u.origin}${u.pathname}`, answer: i.answer, status: res.status, meaning: i.meaning, facts: { excerpt }, readOnly: true };
   }
   throw new AihubError(`host ${host} is not allowed. Allowed: api.fabric.microsoft.com, dev.azure.com, ${GET_HOSTS_PUBLIC.join(", ")}`);
