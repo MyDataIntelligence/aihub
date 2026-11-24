@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Performance Advisor** (AI Context Hub: Performance Advisor): one card per cause of slowness with the measured evidence, the exact change, the risk and the undo. Defender scanning the repositories (slow node/git starts plus a scan probe; narrow exclusions for the repository folders and node.exe/git.exe only, after an explicit click through one UAC prompt, or a ready IT request text when Defender is managed by policy), OneDrive and network drives, Windows Search indexing (`attrib +I`), git settings for large repositories (`core.fsmonitor`, `core.untrackedCache`, `feature.manyFiles`), long paths, and large folders missing from `files.watcherExclude` / `search.exclude`. Your own settings apply directly with Undo; nothing changes without a click. Once a day it may offer one finding as a notification (Add / Show command / Not now / Never for this), each finding at most once (`aihub.performanceAdvisor.notify`). Engine: `aihub doctor --perf`.
+- The performance report opens in a panel with a period choice (last hour, today, 24 hours, 7 days) and **Export…** (one zip: report.md, the extension's and the CLI's logs of the period, system.txt with versions, OS and whether it is a virtual machine; scrubbed, no paths outside the workspace), **Copy summary** and **Open folder**.
+
 ## 3.2.0
 
 - My Stories (Explorer): story -> repository -> branches with a star for the branch you work on, old branches dimmed, labels, local work, pushed and PR per branch; Open Story..., Link Branches..., Mark as Current / Old / Parked, Change Label..., Unlink, Remove Branch and Worktree..., Open Worktree in New Window. The star follows where you work (saves, edits, focus minutes, commits and checkouts; at most one write per minute, no polling timer), setting `aihub.storyWorktrees.autoMarkCurrent` ask/auto/off. "Repos op branch openen" is now "Open Repo Set"; the status bar shows the set also after switching checkouts.

@@ -21,6 +21,8 @@ export interface Ctx {
   sql?: (endpoint: { host: string; port: number; database: string }, query: string, maxRows: number, timeoutSeconds: number, accessToken: string) => Promise<{ columns: string[]; rows: unknown[][] }>;
   /** Test hook: runs a local program without a shell (dbt). */
   spawn?: (cmd: string, args: string[], cwd: string, timeoutMs: number) => { status: number; stdout: string; stderr: string };
+  /** Test hook: the measured facts of `aihub doctor --perf` (default: real probes). */
+  perfFacts?: (repoRoots: string[]) => import("./perfAdvisor.js").Facts;
   out: (line: string) => void;
   err: (line: string) => void;
 }

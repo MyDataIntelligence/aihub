@@ -113,6 +113,10 @@
         "title": "AI Context Hub: Export Performance Log"
       },
       {
+        "command": "aihub.performance.advisor",
+        "title": "AI Context Hub: Performance Advisor"
+      },
+      {
         "command": "aihub.git.resetToRef",
         "title": "Reset to Branch or Commit...",
         "category": "AI Context Hub"
@@ -575,6 +579,16 @@
           "type": "boolean",
           "default": true,
           "description": "Keep a local performance log of what the extension costs: activation per phase, commands, status reads, every child process (git, aihub, az), timers, watchers, notifications, and every 30-60 s the event-loop delay, CPU and memory of the extension host. JSON lines under the extension's global storage (perf/), at most 10 MB per day, 7 days kept, never sent anywhere. No tokens, e-mail addresses or file contents. See AI Context Hub: Show Performance Report."
+        },
+        "aihub.performanceAdvisor.notify": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check once a day (first 10 minutes after the start) what makes git, node and VS Code slow here (aihub doctor --perf) and offer one finding as a notification: at most one notification a day, each finding at most once. All findings are in AI Context Hub: Performance Advisor."
+        },
+        "aihub.performanceAdvisor.adminDryRun": {
+          "type": "boolean",
+          "default": false,
+          "description": "Administrator changes of the Performance Advisor (Defender exclusions) only show what would run, without the UAC prompt. For trying it out."
         },
         "aihub.performanceLog.level": {
           "type": "string",

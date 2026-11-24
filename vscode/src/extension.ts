@@ -3,6 +3,7 @@ import { reposetStatus } from "./repoSetModel";
 import { windowSet } from "./storyModel";
 import { registerStories } from "./storyUi";
 import { RecentStore, registerRecents, rememberStory } from "./recentsUi";
+import { AdvisorController } from "./advisorUi";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
 import { checkCli, CLI_VERSION_KEY, cliVersionStillKnown, CliError, INSTALL_COMMAND, makeRunner, type CachedCliVersion, type Runner } from "./cli";
@@ -433,6 +434,8 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   stories = registerStories(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l), opened: (s) => rememberStory(recents, s) });
   phase("worktree sets view");
   const refreshSets = registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id), () => reposet.groups());
+  phase("performance advisor");
+  new AdvisorController(ctx, () => bar.cwdNow()).register();
   phase("status bar");
   bar.start();
   // the groups come from the CLI: ask again once the first status read is behind us
