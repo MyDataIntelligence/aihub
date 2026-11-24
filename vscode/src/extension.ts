@@ -6,6 +6,8 @@ import { RecentStore, registerRecents, rememberStory } from "./recentsUi";
 import { AdvisorController } from "./advisorUi";
 import { CleanupController } from "./cleanupUi";
 import { RobotController } from "./robotUi";
+import { promises as fs } from "node:fs";
+import { join, resolve } from "node:path";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
 import { checkCli, CLI_VERSION_KEY, cliVersionStillKnown, CliError, INSTALL_COMMAND, makeRunner, type CachedCliVersion, type Runner } from "./cli";
@@ -149,8 +151,22 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
 
   start() {
     this.renderReposetItem();
+    void this.renderEarly();
     // Silent by default: no popup, no panel opening. The status bar is the entry; the first read is delayed so startup stays fast.
     trackedTimeout("bar.firstRead", () => void this.refresher.request("start"), 2000);
+  }
+
+  /** The branch at once, from .git/HEAD (a file, no process): the full status follows when aihub answers. */
+  private async renderEarly() {
+    if (!this.cwd || this.last) return;
+    const branch = await readHeadBranch(this.cwd);
+    if (!branch || this.last) return;
+    const item = (this.items.get("story") ?? this.items.set("story", vscode.window.createStatusBarItem("aihub.story", vscode.StatusBarAlignment.Left, 100)).get("story"))!;
+    item.name = "AI Context Hub: story";
+    item.text = `$(git-branch) ${branch.length > 36 ? `${branch.slice(0, 35)}…` : branch}`;
+    item.tooltip = "AI Context Hub: reading story, pull request and pipeline...";
+    item.command = "aihub.showBar";
+    item.show();
   }
 
   refresh(): Promise<void> {
@@ -366,7 +382,18 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 }
 
-const toneColor = (t: Tone): vscode.ThemeColor | undefined => (t === "ok" ? new vscode.ThemeColor("charts.green") : t === "run" ? new vscode.ThemeColor("charts.blue") : undefined);
+/** The checked-out branch from .git/HEAD of a checkout or linked worktree; undefined when detached or unreadable. */
+export async function readHeadBranch(dir: string): Promise<string | undefined> {
+  try {
+    let gitdir = join(dir, ".git");
+    if (!(await fs.stat(gitdir)).isDirectory()) gitdir = resolve(dir, /^gitdir:\s*(.+)$/m.exec(await fs.readFile(gitdir, "utf8"))?.[1].trim() ?? "");
+    return /^ref: refs\/heads\/(.+)$/m.exec(await fs.readFile(join(gitdir, "HEAD"), "utf8"))?.[1].trim();
+  } catch {
+    return undefined;
+  }
+}
+
+const toneColor =(t: Tone): vscode.ThemeColor | undefined => (t === "ok" ? new vscode.ThemeColor("charts.green") : t === "run" ? new vscode.ThemeColor("charts.blue") : undefined);
 
 export function activate(ctx: vscode.ExtensionContext) {
   // first, so every command, notification and process after this is measured

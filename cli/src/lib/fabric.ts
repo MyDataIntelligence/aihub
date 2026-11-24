@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { azToken, defaultExec, type Exec } from "./auth.js";
+import { azToken, defaultExec, REFRESH_AHEAD_MS, refreshTokenInBackground, type Exec } from "./auth.js";
 import { AihubError } from "./errors.js";
 import { redact } from "./fabric-redact.js";
 import { anyGlob } from "./glob.js";
@@ -229,7 +229,11 @@ export function makeFabricAuth(deps: FabricAuthDeps): AuthFn {
     try {
       if (existsSync(cacheFile)) {
         const c = JSON.parse(readFileSync(cacheFile, "utf8")) as { token: string; expiresAt: number };
-        if (c.token && c.expiresAt - 120_000 > now()) return (cached = `Bearer ${c.token}`);
+        if (c.token && c.expiresAt - 120_000 > now()) {
+          // still valid but expiring soon: renew it in a detached process, so no command waits for az
+          if (!deps.exec && c.expiresAt - REFRESH_AHEAD_MS < now()) refreshTokenInBackground(resource, cacheFile);
+          return (cached = `Bearer ${c.token}`);
+        }
       }
     } catch {
       /* ignore a broken cache */
