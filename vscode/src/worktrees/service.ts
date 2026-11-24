@@ -85,9 +85,12 @@ export function createStatusCache(git: Git, o: { ttlMs?: number; now?: () => num
     const check = (async () => {
       const sig = await statusSignature(r.path, remote);
       const hit = repos.get(key);
-      if (hit && hit.sig === sig && now() - hit.at < ttl) return hit.p;
-      const p = repoStatus(git, remote, set, r);
-      repos.set(key, { sig, at: now(), p });
+      if (hit && (hit.sig === sig || hit.sig === "") && now() - hit.at < ttl) return hit.p;
+      const entry = { sig: "", at: now(), p: Promise.resolve() as unknown as Promise<RepoStatus> };
+      // the signature after the read: git status may refresh the index itself, which is not a change
+      entry.p = repoStatus(git, remote, set, r).then(async (s) => ((entry.sig = await statusSignature(r.path, remote)), s));
+      const p = entry.p;
+      repos.set(key, entry);
       p.catch(() => {
         if (repos.get(key)?.p === p) repos.delete(key);
       });
