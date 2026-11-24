@@ -75,6 +75,22 @@ describe("story show and refine", () => {
     expect(out).toContain("## Technical notes\n\nGebruik index.");
   });
 
+  it("shows a hand-written description that is not in template form instead of hiding it behind (empty) sections", async () => {
+    const dir = setup();
+    write(dir, "skills/_shared/assets/story-template.md", "## Context\n<why>\n\n## Gebruikersverhaal\n<als ...>\n\n## Acceptatiecriteria\n- [ ] <resultaat>\n");
+    const vague = { ...WI, fields: { ...WI.fields, "System.Description": "<div>Export naar CSV. Zie gesprek met de planning.</div>" } };
+    const f = fakeFetch([{ match: /wit\/workitems\/55\?/, respond: () => ({ body: vague }) }]);
+    const { ctx, lines } = ctxFor(dir, f.fn);
+    expect(await main(["story", "show", "55"], ctx, commands)).toBe(0);
+    const out = lines.join("\n");
+    expect(out).toContain("Current text (not in template form");
+    expect(out).toContain("Export naar CSV. Zie gesprek met de planning.");
+    expect(out).toContain("## Context\n\n(empty)");
+    const j = ctxFor(dir, f.fn);
+    await main(["story", "show", "--id", "55", "--json"], j.ctx, commands);
+    expect(JSON.parse(j.lines[0]).currentText).toBe("Export naar CSV. Zie gesprek met de planning.");
+  });
+
   it("refine without a body reports gaps and writes nothing; positional id works", async () => {
     const dir = setup();
     const f = fakeFetch([{ match: /wit\/workitems\/55\?/, respond: () => ({ body: WI }) }]);
