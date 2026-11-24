@@ -2,7 +2,7 @@
   "name": "ai-context-hub",
   "displayName": "AI Context Hub",
   "description": "A thin status bar and panel over the aihub CLI: story, branch, pull request, pipeline, review threads, Fabric runs and watch events. Actions open in your chat (Copilot Chat or opencode).",
-  "version": "3.1.2",
+  "version": "3.2.0",
   "publisher": "FerronHooi",
   "license": "MIT",
   "private": true,
@@ -42,6 +42,11 @@
           "visibility": "collapsed"
         },
         {
+          "id": "aihub.myStories",
+          "name": "My Stories",
+          "visibility": "collapsed"
+        },
+        {
           "id": "aihub.learn",
           "name": "Learn",
           "visibility": "collapsed"
@@ -68,10 +73,10 @@
       },
       {
         "command": "aihub.reposet.open",
-        "title": "Repos op branch openen...",
+        "title": "Open Repo Set...",
         "category": "AI Context Hub",
         "icon": "$(repo-forked)",
-        "shortTitle": "Repos op branch openen"
+        "shortTitle": "Open Repo Set"
       },
       {
         "command": "aihub.reposet.openGroup",
@@ -368,6 +373,66 @@
         "command": "aihub.learn.markConcept",
         "title": "Learn: Mark concept as learned / open",
         "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.stories.refresh",
+        "title": "Refresh My Stories",
+        "category": "AI Context Hub",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "aihub.stories.open",
+        "title": "Open Story...",
+        "category": "AI Context Hub",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "aihub.stories.link",
+        "title": "Link Branches...",
+        "category": "AI Context Hub",
+        "icon": "$(link)"
+      },
+      {
+        "command": "aihub.stories.markCurrent",
+        "title": "Mark as Current ★",
+        "category": "AI Context Hub",
+        "icon": "$(star-full)"
+      },
+      {
+        "command": "aihub.stories.markOld",
+        "title": "Mark as Old",
+        "category": "AI Context Hub",
+        "icon": "$(history)"
+      },
+      {
+        "command": "aihub.stories.markParked",
+        "title": "Mark as Parked",
+        "category": "AI Context Hub",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "aihub.stories.label",
+        "title": "Change Label...",
+        "category": "AI Context Hub",
+        "icon": "$(tag)"
+      },
+      {
+        "command": "aihub.stories.unlink",
+        "title": "Unlink from Story",
+        "category": "AI Context Hub",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "aihub.stories.remove",
+        "title": "Remove Branch and Worktree...",
+        "category": "AI Context Hub",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "aihub.stories.openWorktree",
+        "title": "Open Worktree in New Window",
+        "category": "AI Context Hub",
+        "icon": "$(empty-window)"
       }
     ],
     "configuration": {
@@ -468,6 +533,27 @@
           "type": "string",
           "default": "origin",
           "description": "Remote used to fetch, sync and push sets."
+        },
+        "aihub.storyWorktrees.autoMarkCurrent": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "auto",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Ask once when you clearly work in another branch of the story than its ★",
+            "Move the ★ yourself, with an Undo button",
+            "Never"
+          ],
+          "default": "ask",
+          "description": "The ★ of a story follows the branch you really work in (saves, edits, focus time, commits; counted locally in story-worktrees.json)."
+        },
+        "aihub.set": {
+          "type": "object",
+          "scope": "window",
+          "default": null,
+          "description": "Written by aihub into the .code-workspace of a repo set (story, group, branch, mode, repositories); the status bar shows it. Not meant to be edited."
         }
       }
     },
@@ -642,6 +728,21 @@
           "command": "aihub.learn.refresh",
           "when": "view == aihub.learn",
           "group": "navigation@1"
+        },
+        {
+          "command": "aihub.stories.open",
+          "when": "view == aihub.myStories",
+          "group": "navigation@0"
+        },
+        {
+          "command": "aihub.stories.link",
+          "when": "view == aihub.myStories",
+          "group": "navigation@1"
+        },
+        {
+          "command": "aihub.stories.refresh",
+          "when": "view == aihub.myStories",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -714,6 +815,61 @@
           "command": "aihub.learn.markConcept",
           "when": "view == aihub.learn && viewItem == aihubLearnConcept",
           "group": "1_learn@1"
+        },
+        {
+          "command": "aihub.stories.open",
+          "when": "view == aihub.myStories && viewItem == aihubStory",
+          "group": "inline@0"
+        },
+        {
+          "command": "aihub.stories.link",
+          "when": "view == aihub.myStories && viewItem == aihubStory",
+          "group": "inline@1"
+        },
+        {
+          "command": "aihub.stories.markCurrent",
+          "when": "view == aihub.myStories && viewItem =~ /^aihubStoryBranch-(old|parked)/",
+          "group": "inline@0"
+        },
+        {
+          "command": "aihub.stories.markOld",
+          "when": "view == aihub.myStories && viewItem =~ /^aihubStoryBranch-(current|parked)/",
+          "group": "inline@1"
+        },
+        {
+          "command": "aihub.stories.markCurrent",
+          "when": "view == aihub.myStories && viewItem =~ /^aihubStoryBranch-(old|parked)/",
+          "group": "1_star@0"
+        },
+        {
+          "command": "aihub.stories.markOld",
+          "when": "view == aihub.myStories && viewItem =~ /^aihubStoryBranch-(current|parked)/",
+          "group": "1_star@1"
+        },
+        {
+          "command": "aihub.stories.markParked",
+          "when": "view == aihub.myStories && viewItem =~ /^aihubStoryBranch-(current|old)/",
+          "group": "1_star@2"
+        },
+        {
+          "command": "aihub.stories.label",
+          "when": "view == aihub.myStories && viewItem =~ /^aihubStoryBranch-/",
+          "group": "1_star@3"
+        },
+        {
+          "command": "aihub.stories.openWorktree",
+          "when": "view == aihub.myStories && viewItem =~ /^aihubStoryBranch-.*-wt$/",
+          "group": "2_open@0"
+        },
+        {
+          "command": "aihub.stories.unlink",
+          "when": "view == aihub.myStories && viewItem =~ /^aihubStoryBranch-/",
+          "group": "3_remove@0"
+        },
+        {
+          "command": "aihub.stories.remove",
+          "when": "view == aihub.myStories && viewItem =~ /^aihubStoryBranch-/",
+          "group": "3_remove@1"
         }
       ],
       "aihub.cm.DevOps": [
@@ -861,6 +1017,34 @@
         },
         {
           "command": "aihub.thread.reply",
+          "when": "false"
+        },
+        {
+          "command": "aihub.stories.markCurrent",
+          "when": "false"
+        },
+        {
+          "command": "aihub.stories.markOld",
+          "when": "false"
+        },
+        {
+          "command": "aihub.stories.markParked",
+          "when": "false"
+        },
+        {
+          "command": "aihub.stories.label",
+          "when": "false"
+        },
+        {
+          "command": "aihub.stories.unlink",
+          "when": "false"
+        },
+        {
+          "command": "aihub.stories.remove",
+          "when": "false"
+        },
+        {
+          "command": "aihub.stories.openWorktree",
           "when": "false"
         }
       ],

@@ -1,8 +1,10 @@
-import { RepoSetController } from "./repoSetUi";
+import { readLocalSet, RepoSetController } from "./repoSetUi";
 import { reposetStatus } from "./repoSetModel";
+import { windowSet } from "./storyModel";
+import { registerStories } from "./storyUi";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
-import { checkCli, CliError, INSTALL_COMMAND, makeRunner, type Runner } from "./cli";
+import { checkCli, CLI_VERSION_KEY, cliVersionStillKnown, CliError, INSTALL_COMMAND, makeRunner, type CachedCliVersion, type Runner } from "./cli";
 import { chatOpenArgs, copilotAgentInstalled } from "./agents";
 import { BarLoader } from "./data";
 import { renderBody, renderError, renderPage } from "./html";
@@ -49,11 +51,14 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     this.refresher = new Refresher(
       async () => {
         if (!this.cwd) throw new CliError("failed", "Open a folder with a git repository to see its story, pull request and pipeline.");
-        if (!this.cliChecked) {
-          await checkCli(this.runner, this.cwd);
-          this.cliChecked = true;
+        if (!this.cliChecked) await this.checkCliOnce(this.cwd);
+        try {
+          return await this.loader.load();
+        } catch (e) {
+          // gone or replaced: ask for the version again next time
+          if (e instanceof CliError && e.kind === "missing") (this.cliChecked = false), void this.ctx.globalState.update(CLI_VERSION_KEY, undefined);
+          throw e;
         }
-        return this.loader.load();
       },
       (r) => this.publish(r),
       { minGapMs: () => this.intervalMs() },
@@ -83,6 +88,23 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     );
   }
 
+  /** `aihub --version` at most once a day per CLI command: a known good version is remembered (one process less per window and settings change). */
+  private async checkCliOnce(cwd: string) {
+    const command = this.cliCommand();
+    const known = this.ctx.globalState.get<CachedCliVersion>(CLI_VERSION_KEY);
+    if (cliVersionStillKnown(known, command, Date.now())) {
+      count("cli.versionCached");
+    } else {
+      const version = await checkCli(this.runner, cwd);
+      void this.ctx.globalState.update(CLI_VERSION_KEY, { command, version, at: Date.now() } satisfies CachedCliVersion);
+    }
+    this.cliChecked = true;
+  }
+
+  private cliCommand() {
+    return String(cfg().get("cliPath", "aihub")) || "aihub";
+  }
+
   private intervalMs() {
     return Math.max(15, Number(cfg().get("refreshIntervalSeconds", 60))) * 1000;
   }
@@ -92,7 +114,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     this.cwd = repoFolder();
     // background reads never wait for a sign-in window: without a credential they fail at once and the bar says so
     const quiet = { GCM_INTERACTIVE: "never", GIT_TERMINAL_PROMPT: "0" };
-    this.runner = makeRunner({ command: String(cfg().get("cliPath", "aihub")) || "aihub", timeoutMs: Math.max(5, Number(cfg().get("timeoutSeconds", 30))) * 1000, env: quiet });
+    this.runner = makeRunner({ command: this.cliCommand(), timeoutMs: Math.max(5, Number(cfg().get("timeoutSeconds", 30))) * 1000, env: quiet });
     this.cliChecked = false;
     this.loader = new BarLoader(this.runner, { cwd: this.cwd ?? "", fabric: !!cfg().get("fabric.enabled", true), fabricTtlMs: Math.max(180_000, this.intervalMs() * 3), combined: "auto" });
     clearTrackedInterval(this.timer);
@@ -146,12 +168,22 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private renderReposetItem() {
     const it = (this.reposetItem ??= vscode.window.createStatusBarItem("aihub.reposet", vscode.StatusBarAlignment.Left, 10999));
-    it.name = "AI Context Hub: Repos op branch openen";
-    const v = reposetStatus(this.last?.ok ? this.last.model.set : null);
-    it.text = v.text;
-    it.tooltip = new vscode.MarkdownString(v.tooltip);
+    it.name = "AI Context Hub: Open Repo Set";
+    // a set is local: also without an `aihub status` answer (no Azure DevOps remote, offline) it shows its branch
+    const show = (set: Parameters<typeof reposetStatus>[0]) => {
+      const v = reposetStatus(set);
+      it.text = v.text;
+      it.tooltip = new vscode.MarkdownString(v.tooltip);
+    };
     it.command = "aihub.reposet.open";
+    // the set of the status read; else what the workspace file says (also for switched checkouts, which have no set file)
+    show((this.last?.ok ? this.last.model.set : null) ?? windowSet(cfg().get("set")));
     it.show();
+    // only after a failed status read (never at activation): the set file next to the folder, read once per folder
+    if (this.last && !this.last.ok) {
+      const last = this.last;
+      void readLocalSet(this.cwd).then((set) => set && this.last === last && show(set));
+    }
   }
 
   private renderStatusBar() {
@@ -390,6 +422,8 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   phase("repos on branch");
   const reposet = new RepoSetController(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l), refresh: () => (refreshSets(), void bar.refresh()) });
   reposet.register();
+  phase("my stories");
+  registerStories(ctx, { cwd: () => bar.cwdNow(), log: (l) => bar.logLine(l) });
   phase("worktree sets view");
   const refreshSets = registerWorktreeCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id), () => reposet.groups());
   phase("status bar");

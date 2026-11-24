@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { ensureBranch, findStoryBranchName } from "./branches.js";
 import { repoClient, type Ctx } from "./context.js";
 import { repoRoot } from "./git.js";
@@ -10,6 +10,8 @@ import { findSet } from "./setInfo.js";
 import { baseFor } from "./story-flow.js";
 import { loadTeam } from "./team.js";
 import { getWorkItem, storyBranchName } from "./workitems.js";
+import { storyFolderFor, storyIdFromBranch, worktreePathFor } from "./storyWorktrees.js";
+import { findDirLinks, removeDirLink } from "./safeWorktree.js";
 
 const META = ".aihub-set.json";
 
@@ -21,6 +23,23 @@ export interface SetMeta {
   workspace?: string;
   branch: string;
   repos: { name: string; source: string; path: string }[];
+  /** the other sets in the same folder (a story folder holds one set per branch); newest is the top one */
+  others?: SetMeta[];
+}
+
+/** Writes `meta` as the newest set of `folder`, keeping the other sets there (one per story and branch). */
+export function writeSetMeta(folder: string, meta: SetMeta): void {
+  const p = join(folder, META);
+  let old: SetMeta[] = [];
+  try {
+    const top = JSON.parse(readFileSync(p, "utf8")) as SetMeta;
+    old = [{ ...top, others: undefined }, ...(top.others ?? [])];
+  } catch {
+    /* no set file yet, or a broken one: start fresh */
+  }
+  const same = (a: SetMeta) => a.story === meta.story && a.branch === meta.branch && (a.group ?? "") === (meta.group ?? "");
+  const others = old.filter((s) => !same(s)).map(({ others: _o, ...s }) => s);
+  writeFileSync(p, JSON.stringify({ ...meta, ...(others.length ? { others } : {}) }, null, 2), "utf8");
 }
 
 export function defaultSetsRoot(repoRoot: string): string {
@@ -29,7 +48,13 @@ export function defaultSetsRoot(repoRoot: string): string {
 
 export const slugOfBranch = (branch: string) => branch.replace(/[\\/:*?"<>|\s]+/g, "-").replace(/^-+|-+$/g, "") || "branch";
 
-export const setFolder = (root: string, story: number) => join(root, `story-${story}`);
+/** The folder of a story under the sets root: an older `story-<id>` folder, else `<id>-<slug>` (story-worktrees layout). */
+export function setFolder(root: string, story: number, branch = ""): string {
+  const legacy = join(root, `story-${story}`);
+  if (existsSync(legacy)) return legacy;
+  const folders = existsSync(root) ? readdirSync(root) : [];
+  return storyFolderFor({ root, storyId: story, branch, storyFolders: folders });
+}
 
 export interface CreateSetOpts {
   story: number;
@@ -45,9 +70,9 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
   const setsRoot = resolve(o.root ?? defaultSetsRoot(root));
-  const folder = setFolder(setsRoot, o.story);
   const dirs = resolveRepoDirs(o.repos, root, team);
-  const metaPath = join(folder, META);
+  let folder = setFolder(setsRoot, o.story, o.branch ?? "");
+  let metaPath = join(folder, META);
   const meta: SetMeta = existsSync(metaPath)
     ? (JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta)
     : { story: o.story, branch: o.branch ?? "", repos: [] };
@@ -65,6 +90,11 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
     branch = storyBranchName(team, o.story, wi.title);
   }
   meta.branch = branch;
+  if (!existsSync(metaPath)) {
+    // the folder name takes the slug of the branch now that it is known
+    folder = setFolder(setsRoot, o.story, branch);
+    metaPath = join(folder, META);
+  }
 
   mkdirSync(folder, { recursive: true });
   const lines: string[] = [];
@@ -73,8 +103,7 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
       lines.push(`${d.name}: already in the set`);
       continue;
     }
-    const path = join(folder, d.name);
-    if (existsSync(path)) throw new AihubError(`${path} already exists and is not part of this set`);
+    const path = worktreePathFor({ root: setsRoot, storyId: o.story, repo: d.name, branch, storyFolders: [basename(folder)], exists: existsSync });
     fetchOrigin(d.dir);
     const base = await baseFor(d.dir, clientForDir(ctx, d.dir), team, o.base);
     const e = ensureBranch(d.dir, branch, base);
@@ -131,10 +160,16 @@ export function listSets(ctx: Ctx, o: { root?: string; json?: boolean }): string
 export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?: string; json?: boolean }): string {
   const root = repoRoot(ctx.cwd);
   const setsRoot = resolve(o.root ?? defaultSetsRoot(root));
-  const folder = o.story ? setFolder(setsRoot, o.story) : join(setsRoot, slugOfBranch(o.branch ?? ""));
+  // a story branch opened with `worktree open` lives in its story folder, next to the other sets of that story
+  const storyId = o.story ?? (o.branch ? storyIdFromBranch(o.branch) : undefined);
+  const byBranch = join(setsRoot, slugOfBranch(o.branch ?? ""));
+  const folder = o.story ? setFolder(setsRoot, o.story) : storyId && !existsSync(join(byBranch, META)) ? setFolder(setsRoot, storyId, o.branch) : byBranch;
   const metaPath = join(folder, META);
   if (!existsSync(metaPath)) throw new AihubError(`no worktree set for ${o.story ? `story ${o.story}` : `branch '${o.branch}'`} under ${setsRoot}`);
-  const meta = JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta;
+  const top = JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta;
+  const all = [{ ...top, others: undefined }, ...(top.others ?? [])];
+  const meta = all.find((s) => (o.branch ? s.branch === o.branch : s.story === o.story)) ?? all[0];
+  const rest = all.filter((s) => s !== meta);
   const lines: string[] = [];
   const left: SetMeta["repos"] = [];
   for (const r of meta.repos) {
@@ -144,27 +179,34 @@ export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?:
       continue;
     }
     const known = listWorktrees(r.source).some((w) => samePath(w.path, r.path));
-    const dirty = isDirty(r.path);
+    const links = known ? findDirLinks(r.path) : [];
+    const linkSet = new Set(links.map((l) => l.rel.replace(/\\/g, "/")));
+    const dirty = known && tryGit(r.path, ["status", "--porcelain"]).out.split("\n").filter(Boolean).some((l) => !linkSet.has(l.slice(3).replace(/\/$/, "")));
     const unpushed = unpushedCount(r.path);
     if (!known || dirty || unpushed) {
       left.push(r);
       lines.push(`${r.name}: kept, ${!known ? "not a worktree of its source repository" : dirty ? "uncommitted changes" : `${unpushed} unpushed commit(s)`}`);
       continue;
     }
+    // folder links (a node_modules junction) go first: git would empty the folder they point to
+    for (const l of links) removeDirLink(join(r.path, l.rel));
     mustGit(r.source, ["worktree", "remove", r.path]);
     lines.push(`${r.name}: worktree removed (branch '${meta.branch}' kept)`);
   }
+  const write = (sets: SetMeta[]) => writeFileSync(metaPath, JSON.stringify({ ...sets[0], ...(sets.length > 1 ? { others: sets.slice(1) } : {}) }, null, 2));
   if (left.length) {
-    meta.repos = left;
-    writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+    write([{ ...meta, repos: left }, ...rest]);
     lines.push(`set kept: ${left.length} worktree(s) need attention`);
   } else {
-    rmSync(metaPath);
     if (meta.workspace) rmSync(meta.workspace, { force: true });
-    try {
-      rmdirSync(folder);
-    } catch {
-      lines.push(`folder ${folder} not removed: it holds other files`);
+    if (rest.length) write(rest);
+    else {
+      rmSync(metaPath);
+      try {
+        rmdirSync(folder);
+      } catch {
+        lines.push(`folder ${folder} not removed: it holds other files`);
+      }
     }
     lines.push(`set ${o.story ? `for story ${o.story}` : `'${meta.branch}'`} removed`);
   }

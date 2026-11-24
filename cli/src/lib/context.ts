@@ -31,7 +31,11 @@ export interface RepoClient {
 }
 
 export function repoClient(ctx: Ctx): RepoClient {
-  const root = repoRoot(ctx.cwd);
+  return repoClientAt(ctx, repoRoot(ctx.cwd));
+}
+
+/** The client for a repository root the caller already knows. */
+export function repoClientAt(ctx: Ctx, root: string): RepoClient {
   const remote = parseRemote(remoteUrl(root));
   const auth = makeAuth({ env: ctx.env, exec: ctx.exec, cacheFile: ctx.tokenCache });
   return { root, client: new AdoClient(remote, auth, ctx.fetch) };

@@ -85,6 +85,21 @@ export function versionAtLeast(version: string, min: string): boolean {
   return true;
 }
 
+export const CLI_VERSION_KEY = "aihub.cliVersion";
+const CLI_VERSION_TTL_MS = 24 * 3_600_000;
+
+/** The version `checkCli` found, per CLI command, kept in the extension's global state. */
+export interface CachedCliVersion {
+  command: string;
+  version: string;
+  at: number;
+}
+
+/** True when the same command was checked less than a day ago and was new enough: no `aihub --version` needed. */
+export function cliVersionStillKnown(known: CachedCliVersion | undefined, command: string, now: number): boolean {
+  return !!known && known.command === command && now - known.at < CLI_VERSION_TTL_MS && now >= known.at && versionAtLeast(known.version, MIN_CLI_VERSION);
+}
+
 /** Throws a CliError of kind missing or old with the one clear message. */
 export async function checkCli(run: Runner, cwd: string): Promise<string> {
   const out = (await run(["--version"], cwd)).trim();
