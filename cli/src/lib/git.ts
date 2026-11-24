@@ -109,6 +109,16 @@ export function showFile(cwd: string, branch: string, path: string): string | un
   return undefined;
 }
 
+/** All file paths at origin/<branch> (falls back to the local branch), or undefined when neither exists. One git process. */
+export function listRefFiles(cwd: string, branch: string): string[] | undefined {
+  for (const ref of [`origin/${branch}`, branch]) {
+    if (!hasRef(cwd, ref)) continue;
+    const r = spawnSync("git", ["ls-tree", "-r", "--name-only", ref], { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    if (r.status === 0) return r.stdout.split("\n").filter(Boolean);
+  }
+  return undefined;
+}
+
 /** Push the branch when origin does not have it or is behind. Returns true if a push happened. */
 export function pushIfNeeded(cwd: string, branch: string, noVerify = false): boolean {
   const remoteSha = git(cwd, ["ls-remote", "--heads", "origin", branch], { allowFail: true }).split(/\s+/)[0];

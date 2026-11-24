@@ -35,8 +35,8 @@ describe("story create", () => {
     const { ctx, lines } = ctxFor(dir, f.fn);
     const code = await main(["story", "create", "--title", "CSV-export", "--body-file", `${dir}/body.md`, "--parent", "90"], ctx, commands);
     expect(code).toBe(0);
-    expect(lines[0]).toBe("Story 501 created: https://dev.azure.com/ferron-org/test-project/_workitems/edit/501 (Niet van toepassing: Technical notes, Out of scope)");
-    const call = f.calls[0];
+    expect(lines[0]).toBe("Story 501 created: https://dev.azure.com/ferron-org/test-project/_workitems/edit/501 (Niet van toepassing: Technical notes, Out of scope); template: built-in (no team template found; add .agents/skills/_shared/assets/story-template.md to use your own)");
+    const call = f.calls.find((c) => c.method === "POST")!;
     expect(String(call.headers["Content-Type"])).toContain("application/json-patch+json");
     const ops = call.body as { op: string; path: string; value: any }[];
     const val = (p: string) => ops.find((o) => o.path === p)?.value;

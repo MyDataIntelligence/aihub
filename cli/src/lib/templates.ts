@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { readUtf8 } from "./team.js";
 
@@ -11,12 +11,47 @@ export interface TemplateSource {
   readRef?: (branch: string, path: string) => string | undefined;
   /** Working-tree root for the local fallback. */
   localRoot?: string;
+  /** All file paths at origin/<target>: only asked when no candidate matches exactly, to find a case variant of the name. */
+  listRef?: (branch: string) => string[] | undefined;
 }
 
 export interface ResolvedTemplate {
   path: string;
   content: string;
   from: "ref" | "local";
+}
+
+/** "template: <path> (origin/<target>)" for a result line; says so when there is none. */
+export function templateSourceText(t: ResolvedTemplate | undefined, target: string): string {
+  if (!t) return "template: none (no pull_request_template.md in .azuredevops, .vsts, docs or the root; the body is used as is)";
+  return `template: ${t.path} (${t.from === "ref" ? `origin/${target}` : "working tree"})`;
+}
+
+/** The same path in another case, from a list of existing paths. */
+function caseVariant(paths: string[], candidate: string): string | undefined {
+  const want = candidate.toLowerCase();
+  return paths.find((p) => p.toLowerCase() === want);
+}
+
+/** Files under the template folders of a working tree (two levels: the folder and pull_request_template/branches). */
+function localPaths(root: string): string[] {
+  const out: string[] = [];
+  const list = (rel: string) => {
+    try {
+      return readdirSync(join(root, rel), { withFileTypes: true });
+    } catch {
+      return [];
+    }
+  };
+  const walk = (rel: string, depth: number) => {
+    for (const e of list(rel)) {
+      const p = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isFile()) out.push(p);
+      else if (e.isDirectory() && depth > 0 && (rel !== "" || TEMPLATE_DIRS.some((d) => d && d.toLowerCase() === e.name.toLowerCase()) || e.name.toLowerCase() === "pull_request_template")) walk(p, depth - 1);
+    }
+  };
+  walk("", 3);
+  return out;
 }
 
 /** Candidate paths in Azure DevOps order: branch-specific first, then the default template. */
@@ -36,10 +71,23 @@ export function resolveTemplate(target: string, src: TemplateSource): ResolvedTe
       if (c !== undefined) return { path: p, content: c.replace(/\r\n/g, "\n"), from: "ref" };
     }
   }
+  if (src.readRef && src.listRef) {
+    const paths = src.listRef(target);
+    for (const p of paths ? cands : []) {
+      const hit = caseVariant(paths!, p);
+      const c = hit ? src.readRef(target, hit) : undefined;
+      if (hit && c !== undefined) return { path: hit, content: c.replace(/\r\n/g, "\n"), from: "ref" };
+    }
+  }
   if (src.localRoot) {
     for (const p of cands) {
       const full = join(src.localRoot, p);
       if (existsSync(full)) return { path: p, content: readUtf8(full), from: "local" };
+    }
+    const paths = localPaths(src.localRoot);
+    for (const p of cands) {
+      const hit = caseVariant(paths, p);
+      if (hit) return { path: hit, content: readUtf8(join(src.localRoot, hit)), from: "local" };
     }
   }
   return undefined;
