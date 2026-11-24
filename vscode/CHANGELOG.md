@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Clean Up Worktrees...** (Worktree Sets view, palette): every worktree of this repository and your repo groups with size, last activity, local work (uncommitted, unpushed), merged, the pull request and the story of its branch (aihub worktree cleanup). Finished worktrees without local work are ticked, worktrees with local work never; removal takes folder links (a linked node_modules) out first, never uses --force, can delete merged local branches and says how much space was freed. A reminder at most once a day, normally once a week, sooner when three or more can go (`aihub.worktrees.cleanupReminder`).
+
 ## 3.3.0
 
 - Worktree sets and stories are one thing (a story set is a worktree set with a story link). New Worktree Set... first asks "for which story?" (none, one of mine, or a number); with a story the branch is feature/<id>-..., the set goes to the story folder, the branches are linked and get the star. Open Worktree Set... is one list: recent stories and sets first, then my other stories; a story opens its star branches. The status bar button opens a menu: New, Open, Recent (8) and More...; palette "Recent Worktree Sets and Stories...".
