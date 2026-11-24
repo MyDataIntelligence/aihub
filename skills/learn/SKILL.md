@@ -23,3 +23,5 @@ Files, hunks, changed names, who uses them, tests and dbt lineage, from git in a
 
 ## If it fails
 No target branch: pass `--range origin/main..HEAD`. PR not found locally: `git fetch origin`, then retry.
+
+Done is done: end with the result and at most one statement about the next step, never with a question.

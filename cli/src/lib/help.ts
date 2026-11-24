@@ -153,7 +153,7 @@ export const USAGES: Record<string, Load> = {
   "cherry-pick": async () => 'aihub cherry-pick --from <pr N|url|commit sha,...|story id> --to <branch> [--to <branch>...|--to-group <name>] [--summary-text "<1-2 sentences>"] [--no-pr|--direct]',
   branch: async () => "aihub branch update [--branch B] [--target T] [--rebase]",
   pipeline: async () =>
-    join("aihub pipeline follow|status|runs [--name P] [--branch B] [--run N] [--json] | logs --run N [--failed] [--tail N] | run --name P [--branch B] [--params-file f] | retry --run N", (await import("../commands/pipeline-admin.js")).USAGE),
+    join("aihub pipeline follow|status|runs [--name P] [--branch B] [--run N] [--json] | logs --run N [--failed] [--tail N] | run --name P [--branch B] [--params-file f] | rerun [--run N] (after a pushed fix: the new run, followed in the background) | retry --run N", (await import("../commands/pipeline-admin.js")).USAGE),
   batch: async () => 'aihub batch --select "<query>" --run "<aihub subcommand with {target}>" [--parallel N] [--json] | --retry-failed <id>',
   work: async () => "aihub work [--json]   (my open stories, PRs and runs in one view)",
   story: async () =>

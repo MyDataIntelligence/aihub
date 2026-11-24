@@ -44,3 +44,5 @@ Branch, PR id, build id, log excerpt of the failing step. Do not ask the user fo
 Not signed in or no PR found: run `aihub doctor`. Report what the CLI printed; never guess a status.
 
 Rules: direct command, 0 questions. Local git uses your own tools. Never invent ids or links.
+
+Done is done: never end with a question.

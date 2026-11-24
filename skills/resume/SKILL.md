@@ -28,3 +28,5 @@ Every aihub action is logged as one line (time, branch, command, result, next st
 Nothing recorded yet on this branch: the live state of `aihub status` is the answer. Unknown story id: `aihub doctor`. Never invent what was done before.
 
 Rules: 0 questions, one command.
+
+Done is done: end with the result and at most one statement about the next step, never with a question.
