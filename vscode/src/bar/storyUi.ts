@@ -14,7 +14,7 @@ import type { OpenResultJson } from "../repoSetModel";
 import { answerExisting, showOpened } from "../repoSetUi";
 import type { StoryJson } from "../storyModel";
 import { BarEngine, openFacts, storyBranchesOf, titleFromFiles } from "./engine";
-import { nextStoryBranch, openStoryArgs, storyNumberOf, storyPickRows, storyRepoRows, type StoryRef, type StoryRepoRow } from "./storyModel";
+import { nextStoryBranch, openStoryArgs, rowDescription, storyNumberOf, storyPickRows, storyRepoRows, type StoryRef, type StoryRepoRow } from "./storyModel";
 import { windowChoice } from "./window";
 
 /**
@@ -119,7 +119,7 @@ async function storyRows(story: StoryRef, picked: Picked, cwd: string): Promise<
 /** Tick the repositories: the story's linked branches ticked, the others (all on this PC) unticked with "new branch". */
 async function pickRepos(story: StoryRef, rows: StoryRepoRow[], notOnThisPc: string[]): Promise<StoryRepoRow[] | undefined> {
   type Item = vscode.QuickPickItem & { row: StoryRepoRow };
-  const items: Item[] = rows.map((r) => ({ label: r.repo, description: r.branch ?? "new branch from the target", detail: r.branch ? "linked to the story in Azure DevOps" : undefined, picked: r.picked, row: r }));
+  const items: Item[] = rows.map((r) => ({ label: r.repo, description: rowDescription(r), detail: r.branch ? (r.linked === false ? "exists, not linked to the story yet: it is linked after opening" : "linked to the story in Azure DevOps") : undefined, picked: r.picked, row: r }));
   const qp = vscode.window.createQuickPick<Item>();
   return new Promise((resolve) => {
     let done = false;
@@ -170,7 +170,7 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
   if (out === undefined) return;
   const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
   // the branches made new for the story are linked to it in Azure DevOps (the ones that were linked already are left alone)
-  for (const r of ticked.filter((t) => !t.branch)) {
+  for (const r of ticked.filter((t) => !t.branch || t.linked === false)) {
     const made = res.repos.find((x) => x.repo === r.repo && x.ok);
     if (made) void cli(["story", "branches", "link", "--id", String(story.id), "--branch", made.branch, "--repo", r.repo], r.path).catch((e: Error) => h.log(`story ${story.id}: Azure DevOps link for ${made.branch} not made: ${e.message}`));
   }
