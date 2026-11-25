@@ -171,7 +171,7 @@ export const USAGES: Record<string, Load> = {
       "aihub story open --id <story> [--mode worktree|switch] [--window new|this|none] [--json]",
     ),
   worktree: async () =>
-    "aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | open --group <name>|--repos a,b --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--new-set] | branches --group <name>|--repos a,b | groups list|save <name> --repos a,b|remove <name> | cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]",
+    "aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | open --group <name>|--repos a,b --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--new-set] | add --repos d [--branch <b>] | drop --repos d | repair | branches --group <name>|--repos a,b | groups list|save <name> --repos a,b|remove <name> | cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]",
   review: async () => "aihub review show|prepare --pr <n|url> [--json] | post --pr <n> [--pick 1,3,5] [--findings-file f] | post --pr <n> --comments-file <file.yaml>",
   wiki: async () => (await import("../commands/wiki.js")).USAGE,
   release: async () => "aihub release plan --stories a,b|--prs a,b --target <branch> | plan --from DEV --to ACC [--target <branch>] [--out plan.yaml] [--notes-out notes.md] [--json] | run --plan-file <file>",

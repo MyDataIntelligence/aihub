@@ -189,7 +189,7 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
 export function formatStatus(s: Status): string {
   const L: string[] = [];
   L.push(`${s.repo} @ ${s.branch}`);
-  if (s.set) L.push(`Set: ${s.set.story ? `story-${s.set.story}` : (s.set.group ?? s.set.branch)} with ${s.set.repos.map((n) => (s.set!.branches?.[n] ? `${n} (${s.set!.branches[n]})` : n)).join(", ")}: use --all-repos with commit, pr create, pr update, pipeline follow and status to do every repository at once`);
+  if (s.set) L.push(`Set: ${s.set.story ? `story-${s.set.story}` : (s.set.group ?? s.set.branch)} with ${s.set.repos.map((n) => (s.set!.branches?.[n] ? `${n} (${s.set!.branches[n]})` : n)).join(", ")}: use --all-repos with commit, pr create, pr update, pipeline follow and status to do every repository at once${s.set.total > s.set.repos.length ? `; ${s.set.total - s.set.repos.length} repository(ies) in the set file have no worktree: aihub worktree repair` : ""}`);
   L.push(s.story ? `Story: ${s.story.id} ${s.story.title} [${s.story.state}]` : "Story: none linked");
   L.push(s.pr ? `PR: !${s.pr.id} ${s.pr.title} [${s.pr.status}${s.pr.draft ? ", draft" : ""}] ${s.pr.url}` : "PR: none");
   if (s.pipeline.length) L.push(`Pipeline: ${s.pipeline.map((p) => `${p.name} ${p.state}`).join("; ")}`);

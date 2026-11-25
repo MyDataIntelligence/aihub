@@ -131,6 +131,27 @@ export function listSets(ctx: Ctx, o: { root?: string; json?: boolean }): string
     .join("\n");
 }
 
+/**
+ * One worktree of a set removed, never with work in it: uncommitted changes, unpushed commits or a folder that is not
+ * a worktree of its source keep it (removed false, the reason in the line). Folder links (a node_modules junction) go
+ * first: git would empty the folder they point to. The branch stays.
+ */
+export function removeWorktreeSafely(r: { name: string; source: string; path: string }, branch: string): { removed: boolean; line: string } {
+  if (!existsSync(r.path)) {
+    tryGit(r.source, ["worktree", "prune"]);
+    return { removed: true, line: `${r.name}: worktree already gone` };
+  }
+  const known = listWorktrees(r.source).some((w) => samePath(w.path, r.path));
+  const links = known ? findDirLinks(r.path) : [];
+  const linkSet = new Set(links.map((l) => l.rel.replace(/\\/g, "/")));
+  const dirty = known && tryGit(r.path, ["status", "--porcelain"]).out.split("\n").filter(Boolean).some((l) => !linkSet.has(l.slice(3).replace(/\/$/, "")));
+  const unpushed = unpushedCount(r.path);
+  if (!known || dirty || unpushed) return { removed: false, line: `${r.name}: kept, ${!known ? "not a worktree of its source repository" : dirty ? "uncommitted changes" : `${unpushed} unpushed commit(s)`}` };
+  for (const l of links) removeDirLink(join(r.path, l.rel));
+  mustGit(r.source, ["worktree", "remove", r.path]);
+  return { removed: true, line: `${r.name}: worktree removed (branch '${branch}' kept)` };
+}
+
 export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?: string; json?: boolean }): string {
   const root = repoRoot(ctx.cwd);
   const setsRoot = resolve(o.root ?? defaultSetsRoot(root));
@@ -147,25 +168,9 @@ export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?:
   const lines: string[] = [];
   const left: SetMeta["repos"] = [];
   for (const r of meta.repos) {
-    if (!existsSync(r.path)) {
-      tryGit(r.source, ["worktree", "prune"]);
-      lines.push(`${r.name}: worktree already gone`);
-      continue;
-    }
-    const known = listWorktrees(r.source).some((w) => samePath(w.path, r.path));
-    const links = known ? findDirLinks(r.path) : [];
-    const linkSet = new Set(links.map((l) => l.rel.replace(/\\/g, "/")));
-    const dirty = known && tryGit(r.path, ["status", "--porcelain"]).out.split("\n").filter(Boolean).some((l) => !linkSet.has(l.slice(3).replace(/\/$/, "")));
-    const unpushed = unpushedCount(r.path);
-    if (!known || dirty || unpushed) {
-      left.push(r);
-      lines.push(`${r.name}: kept, ${!known ? "not a worktree of its source repository" : dirty ? "uncommitted changes" : `${unpushed} unpushed commit(s)`}`);
-      continue;
-    }
-    // folder links (a node_modules junction) go first: git would empty the folder they point to
-    for (const l of links) removeDirLink(join(r.path, l.rel));
-    mustGit(r.source, ["worktree", "remove", r.path]);
-    lines.push(`${r.name}: worktree removed (branch '${repoBranch(meta, r)}' kept)`);
+    const x = removeWorktreeSafely(r, repoBranch(meta, r));
+    if (!x.removed) left.push(r);
+    lines.push(x.line);
   }
   const write = (sets: SetMeta[]) => writeFileSync(metaPath, JSON.stringify({ ...sets[0], ...(sets.length > 1 ? { others: sets.slice(1) } : {}) }, null, 2));
   if (left.length) {
