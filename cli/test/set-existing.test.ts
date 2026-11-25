@@ -73,7 +73,7 @@ describe("a branch whose worktree already exists elsewhere", { timeout: 30_000 }
     expect(existsSync(w.old)).toBe(false);
     expect(worktrees(w.a)).toContain(`worktree ${fwd(to)}`);
     expect(worktrees(w.a)).not.toContain(fwd(w.old));
-    expect(JSON.parse(readFileSync(j.workspace, "utf8")).folders).toContainEqual({ name: "repo-a", path: "repo-a" });
+    expect(JSON.parse(readFileSync(j.workspace, "utf8")).folders).toContainEqual({ name: "repo-a (feature/x)", path: "repo-a" });
   });
 
   it("move when the target folder already exists: nothing is moved, reuse and recreate are offered", async () => {

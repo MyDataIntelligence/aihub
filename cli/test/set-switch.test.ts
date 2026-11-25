@@ -55,7 +55,7 @@ describe("one repository of a set on another branch", { timeout: 30_000 }, () =>
     expect(head(join(set.folder, "repo-a"))).toBe("feature/123-search");
     expect(head(join(set.folder, "repo-c"))).toBe("feature/123-search");
     const ws = wsOf(set.workspace);
-    expect(ws.folders.map((f) => f.name)).toEqual(["repo-a", "repo-b", "repo-c"]);
+    expect(ws.folders.map((f) => f.name)).toEqual(["repo-a (feature/123-search)", "repo-b (feature/other)", "repo-c (feature/123-search)"]);
     expect(ws.settings["aihub.set"].repos.find((x) => x.name === "repo-b")?.branch).toBe("feature/other");
     expect(before).not.toBe(readFileSync(set.workspace, "utf8"));
   });
@@ -127,7 +127,7 @@ describe("one repository of a set on another branch", { timeout: 30_000 }, () =>
     expect(fwd(w.repos[0].path)).toBe(fwd(join(parent, "repo-b")));
     expect(w.stays).toBe("the window stays as it is: 4 repositories, repo-b--other added on feature/other");
     const ws = wsOf(set.workspace);
-    expect(ws.folders.map((f) => f.name)).toEqual(["repo-a", "repo-b", "repo-c", "repo-b--other"]);
+    expect(ws.folders.map((f) => f.name)).toEqual(["repo-a (feature/123-search)", "repo-b (feature/123-search)", "repo-c (feature/123-search)", "repo-b--other (feature/other)"]);
     const meta = JSON.parse(readFileSync(join(set.folder, ".aihub-set.json"), "utf8"));
     expect(meta.repos.map((x: { name: string }) => x.name)).toEqual(["repo-a", "repo-b", "repo-c", "repo-b--other"]);
   });
@@ -138,7 +138,7 @@ describe("one repository of a set on another branch", { timeout: 30_000 }, () =>
     expect(j.repos).toMatchObject([{ repo: "repo-a--other", state: "existing", ok: true }]);
     expect(head(join(set.folder, "repo-a--other"))).toBe("feature/other");
     expect(head(join(set.folder, "repo-a"))).toBe("feature/123-search");
-    expect(wsOf(set.workspace).folders).toContainEqual({ name: "repo-a--other", path: "repo-a--other" });
+    expect(wsOf(set.workspace).folders).toContainEqual({ name: "repo-a--other (feature/other)", path: "repo-a--other" });
     expect(j.opened).toBe(false);
   });
 
