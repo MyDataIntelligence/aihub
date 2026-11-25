@@ -8,7 +8,8 @@ import type { OpenResultJson } from "../repoSetModel";
 import { answerExisting, showOpened } from "../repoSetUi";
 import { openFacts } from "./engine";
 import { cli, jsonOf } from "./runner";
-import { checkMeta, parseSetFile, planSetFile, summarizePlan } from "./setFilePlan";
+import { syncRepoName } from "../../../cli/src/lib/workspaceNames";
+import { checkMeta, parseSetFile, planSetFile, snapshotOf, summarizePlan } from "./setFilePlan";
 import type { StoryHooks } from "./storyUi";
 
 /**
@@ -68,6 +69,8 @@ export class SetFileWatcher implements vscode.Disposable {
   private busy = false;
   private key = "";
   private lastSaid = "";
+  /** what the file said at the last read: only a change against it is an order */
+  private previous?: Map<string, string>;
 
   constructor(private h: { log: (line: string) => void; changed: () => void }) {}
 
@@ -78,6 +81,12 @@ export class SetFileWatcher implements vscode.Disposable {
     if (!folder && this.key && [AIHUB_SET, MAKER_SET].some((n) => existsSync(join(this.key, n)))) return;
     if ((folder ?? "") === this.key) return;
     this.key = folder ?? "";
+    this.previous = undefined;
+    if (folder) {
+      const f = readSetFile(folder);
+      const m = f && [f.top, ...(f.top.others ?? [])].find((x) => x.branch === openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.branch);
+      if (f) this.previous = snapshotOf(m ?? f.top);
+    }
     this.watcher?.dispose();
     this.watcher = undefined;
     if (!folder) return;
@@ -120,7 +129,7 @@ export class SetFileWatcher implements vscode.Disposable {
       if (problem || !meta) return this.say(`Set file: ${problem ?? "the set file holds no set"}; nothing was applied.`, true);
       const actual = meta.repos.map((r) => ({ name: r.name, exists: existsSync(join(r.path, ".git")), branch: headBranchOf(r.path) }));
       // repositories that left the file but are still on disk are told about too
-      const plan = planSetFile(meta, [...actual, ...here.repos.filter((r) => !meta.repos.some((m) => m.name === r.name)).map((r) => ({ name: r.name, exists: true, branch: r.branch }))]);
+      const plan = planSetFile(meta, [...actual, ...here.repos.filter((r) => !meta.repos.some((m) => m.name === r.name)).map((r) => ({ name: r.name, exists: true, branch: r.branch }))], this.previous);
       if (plan.problem) return this.say(`Set file: ${plan.problem}; nothing was applied.`, true);
       const done: string[] = [];
       const inside = here.repos[0]?.path ?? here.folder;
@@ -142,6 +151,15 @@ export class SetFileWatcher implements vscode.Disposable {
           done.push(`${a.repo} switched to ${a.branch}`);
         }
       }
+      // HEAD moved outside aihub in a repository the file did not change: HEAD wins, the file and the folder name follow (one write each, only when they differ)
+      const wsFile = vscode.workspace.workspaceFile;
+      for (const name of plan.follow ?? []) {
+        const p = meta.repos.find((r) => r.name === name)?.path;
+        if (p) syncRepoName({ setFolder: here.folder, workspaceFile: wsFile?.scheme === "file" ? wsFile.fsPath : undefined, repoPath: p });
+      }
+      const after = readSetFile(here.folder);
+      const now = after && [after.top, ...(after.top.others ?? [])].find((m) => m.branch === meta.branch || (metas.length === 1 && m === after.top));
+      this.previous = now ? snapshotOf(now) : this.previous;
       forgetScan(process.env);
       this.h.changed();
       // a file that already matches the folders (our own write) is silent
