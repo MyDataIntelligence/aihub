@@ -11,6 +11,7 @@ import { cli, jsonOf } from "./runner";
 import { syncRepoName } from "../../../cli/src/lib/workspaceNames";
 import { checkMeta, parseSetFile, planSetFile, snapshotOf, summarizePlan } from "./setFilePlan";
 import type { StoryHooks } from "./storyUi";
+import { withUndo } from "./undoUi";
 
 /**
  * Remove a set, and the set file of this window changed by hand. Both do what the CLI does (`worktree remove --folder`,
@@ -46,7 +47,7 @@ async function removeSet(h: StoryHooks, arg: unknown): Promise<void> {
   const meta = file && [file.top, ...(file.top.others ?? [])].find((m) => m.branch === set.branch);
   // run in a source clone: never in a worktree that is about to go (Windows cannot remove a folder a process runs in)
   const cwd = meta?.repos.map((r) => r.source).find((s) => existsSync(s)) ?? set.folder;
-  const out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Removing the set of ${label}...` }, () => cli(["worktree", "remove", "--folder", set.folder, "--branch", set.branch, ...(set.story ? ["--story", String(set.story)] : []), "--json"], cwd));
+  const out = await withUndo(h, `Remove the set of ${label}`, set.folder, async () => vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Removing the set of ${label}...` }, () => cli(["worktree", "remove", "--folder", set.folder, "--branch", set.branch, ...(set.story ? ["--story", String(set.story)] : []), "--json"], cwd)), { backup: true });
   const res = jsonOf<{ lines: string[]; kept: string[] }>(out);
   h.log(`remove set ${set.id}: ${res.lines.join(" | ")}`);
   forgetScan(process.env);

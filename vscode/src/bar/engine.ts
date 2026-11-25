@@ -27,6 +27,8 @@ export interface EngineDeps {
   dirtyOf?: (path: string) => Promise<number | undefined>;
   /** changes and ahead (the git extension of VS Code) and behind the target (remembered), of a worktree; undefined when it cannot say */
   statusOf?: (path: string, name: string) => Promise<{ changes?: number; ahead?: number; behindTarget?: number } | undefined>;
+  /** the label of the last action that can be undone (BarState.undo) */
+  undoLabel?: () => string | undefined;
   /** commits of a worktree that are on no remote; undefined when it cannot say */
   unpushedOf?: (path: string) => Promise<number | undefined>;
   /** sizes of the sets, measured in the background */
@@ -165,6 +167,7 @@ export class BarEngine {
     }
     return buildState({
       open: facts,
+      undo: this.deps.undoLabel?.(),
       size: (s) => this.deps.sizes?.get(s.id, setKey(s)),
       allMerged: (s) => merged.get(s.id) ?? (this.deps.prOf ? false : undefined),
       scan,

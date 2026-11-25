@@ -45,6 +45,8 @@ export interface StateInput {
   pr?: (repo: string, branch: string) => BarPr | undefined;
   /** the branch belongs to the story */
   storyBranch?: (repoPath: string, branch: string) => boolean;
+  /** the last action that can be undone */
+  undo?: string;
   /** the remembered size of a set (bytes) */
   size?: (s: ScanSet) => number | undefined;
   /** every pull request merged and nothing to lose (worked out by the engine for the sets that can be offered) */
@@ -93,7 +95,7 @@ export function buildState(i: StateInput): BarState {
     .filter((r) => i.exists(r.id))
     .map((r) => ({ kind: r.kind, id: r.id, label: r.label, ...(r.detail ? { detail: r.detail } : {}), lastUsed: r.lastUsed }));
 
-  const base = { recents, sets, repositories, lookIn, ...(sized.length ? { totalSizeBytes: sized.reduce((n, s) => n + s.sizeBytes!, 0) } : {}), ...(i.scan.truncated ? { scanTruncated: true } : {}), ...(i.scan.skippedRemote?.length ? { scanSkipped: i.scan.skippedRemote } : {}) };
+  const base = { recents, sets, repositories, lookIn, ...(i.undo ? { undo: { label: i.undo } } : {}), ...(sized.length ? { totalSizeBytes: sized.reduce((n, s) => n + s.sizeBytes!, 0) } : {}), ...(i.scan.truncated ? { scanTruncated: true } : {}), ...(i.scan.skippedRemote?.length ? { scanSkipped: i.scan.skippedRemote } : {}) };
   if (open.set) {
     const story = open.set.story ? { id: open.set.story, title: i.stories[open.set.story]?.title ?? "", ...(i.stories[open.set.story]?.state ? { state: i.stories[open.set.story].state } : {}) } : undefined;
     const repos: BarRepo[] = open.set.repos.map((r) => {

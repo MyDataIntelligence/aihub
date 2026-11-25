@@ -24,6 +24,8 @@ export const gitRun: GitRun = (cwd, args) =>
 export interface WorktreeAt {
   path: string;
   branch?: string;
+  /** the commit HEAD is at */
+  head?: string;
   main: boolean;
 }
 
@@ -33,11 +35,13 @@ export async function worktreesOf(git: GitRun, dir: string): Promise<WorktreeAt[
   for (const block of out.split(/\n\n+/)) {
     let path = "";
     let branch: string | undefined;
+    let head: string | undefined;
     for (const l of block.split("\n")) {
       if (l.startsWith("worktree ")) path = l.slice(9);
+      else if (l.startsWith("HEAD ")) head = l.slice(5);
       else if (l.startsWith("branch ")) branch = l.slice(7).replace(/^refs\/heads\//, "");
     }
-    if (path) list.push({ path: resolve(path), branch, main: list.length === 0 });
+    if (path) list.push({ path: resolve(path), branch, head, main: list.length === 0 });
   }
   return list;
 }

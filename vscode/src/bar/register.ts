@@ -14,6 +14,7 @@ import { BehindMemo, gitStatusOf, prOfBranch, PrMemo, type GitRepoLike, type PrR
 import { linkedOf, registerStoryCommands } from "./storyUi";
 import { registerSetOps, SetFileWatcher } from "./setOps";
 import { registerBatchCommands, registerPullRequestCommand } from "./batchUi";
+import { registerUndoCommand, undoLabel } from "./undoUi";
 import { openPath, windowIsEmpty } from "./window";
 import { BAR_COMMANDS, type BarApi, type BarState } from "./types";
 
@@ -80,6 +81,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   const engine = new BarEngine({
     unpushedOf,
     sizes,
+    undoLabel,
     env: process.env,
     dir: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
     dirtyOf,
@@ -295,6 +297,7 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   registerStoryCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerBatchCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerPullRequestCommand({ engine, log: deps.log, changed, reg });
+  registerUndoCommand({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerSetOps({ engine, log: deps.log, changed, reg });
 }
 

@@ -84,6 +84,8 @@ export interface BarState {
   lookIn: string[];
   /** the scan stopped early (too many folders): the menu says "Not everything was scanned: narrow Folders to Look In..." */
   scanTruncated?: boolean;
+  /** the last action that changed a set and can still be undone: the menu shows "Undo: <label>" until the next action */
+  undo?: { label: string };
   /** the sizes of all sets whose size is known, added up */
   totalSizeBytes?: number;
   /** OneDrive / network folders that were left out because they are not in "Folders to Look In" */
@@ -117,6 +119,8 @@ export const BAR_COMMANDS = {
   refreshStatus: "aihub.bar.refreshStatus",
   /** start measuring the sets in the background (the left menu calls it when it opens); the state gets sizeBytes as they come in */
   measureSets: "aihub.bar.measureSets",
+  /** puts the set back as it was before the last action (branches, folders, set file, workspace file), or says in one sentence why not and does nothing */
+  undoLast: "aihub.bar.undoLast",
   /** pull (fast-forward) in every repository of the set; one result line per repository */
   updateAll: "aihub.bar.updateAll",
   /** push every repository of the set (a branch without a remote branch gets one) */
