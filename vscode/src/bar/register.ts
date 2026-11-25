@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import { forgetScan, writeLookIn } from "../../../cli/src/lib/machineScan";
 import { forgetUse, pathKey, readRecentUse, ago } from "../../../cli/src/lib/recentUse";
 import { BarEngine, openFacts } from "./engine";
+import { linkedOf, registerStoryCommands } from "./storyUi";
 import { openPath, windowIsEmpty } from "./window";
 import { BAR_COMMANDS, type BarApi, type BarState } from "./types";
 
@@ -42,7 +43,7 @@ export interface BarHandle {
 
 export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHandle {
   const dirtyOf = dirtyCounter();
-  const engine = new BarEngine({ env: process.env, dir: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, dirtyOf });
+  const engine = new BarEngine({ env: process.env, dir: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, dirtyOf, linkedOf });
   const emitter = new vscode.EventEmitter<void>();
   let debounce: NodeJS.Timeout | undefined;
   const changed = () => {
@@ -195,8 +196,9 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
     }
   });
 
-  // built in the next steps of this work; the commands exist so the buttons can already call them
-  for (const key of ["openStory", "removeSet", "switchBranch", "newStoryBranch", "otherBranch", "linkBranch", "addRepository", "removeRepository"] as const) reg(BAR_COMMANDS[key], notBuilt(key));
+  registerStoryCommands({ engine, log: deps.log, changed, reg });
+  // built in the next step of this work; the command exists so the buttons can already call it
+  reg(BAR_COMMANDS.removeSet, notBuilt("removeSet"));
 }
 
 async function pickRepository(engine: BarEngine): Promise<string | undefined> {
