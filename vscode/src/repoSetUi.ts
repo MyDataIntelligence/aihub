@@ -4,6 +4,7 @@ import { plainWorkspace } from "./repoPickerModel";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import { openPath } from "./bar/window";
 import { makeRunner, readJson, type Runner } from "./cli";
 import { findRepos, type Repo } from "./worktrees/core";
 import { cloneItem, readPreferredClones, uniqueRepos } from "./worktrees/clones";
@@ -31,6 +32,7 @@ import {
   type PickItem,
   type PrJson,
   type SetModel,
+  existingOptions,
 } from "./repoSetModel";
 
 /**
@@ -128,16 +130,21 @@ export function setOpenRecorder(f: (res: OpenResultJson, meta?: OpenMeta) => Pro
  * The CLI stopped because a branch already has a worktree elsewhere: the same three choices as a dialog (move first),
  * then the command runs again with the chosen one. Undefined when the user cancels; else the final output.
  */
-export async function answerExisting(text: string, rerun: (extra: string[]) => Promise<string>): Promise<string | undefined> {
+export async function answerExisting(text: string, rerun: (extra: string[]) => Promise<string>, o: { ownWindow?: boolean } = {}): Promise<string | undefined> {
   for (let i = 0; i < 3; i++) {
     const q = needsChoiceOf(text);
     if (!q) return text;
-    const labels = q.choices.map((c) => c.label.charAt(0).toUpperCase() + c.label.slice(1));
-    const detail = q.existing.map((e) => `${e.repo}: ${e.branch} is in ${e.path} (${e.state})`).join("\n");
-    const go = await vscode.window.showWarningMessage("AI Context Hub: this branch already has a worktree elsewhere.", { modal: true, detail }, ...labels);
-    const c = go ? q.choices[labels.indexOf(go)] : undefined;
-    if (!c) return undefined;
-    text = await rerun(choiceArgs(c));
+    const options = existingOptions(q, !!o.ownWindow);
+    const detail = [...q.existing.map((e) => `${e.repo}: ${e.branch} is in ${e.path} (${e.state})`), "", ...options.map((x) => x.line)].join("\n");
+    const go = await vscode.window.showWarningMessage("AI Context Hub: this branch already has a worktree elsewhere.", { modal: true, detail }, ...options.map((x) => x.button));
+    const picked = options.find((x) => x.button === go);
+    if (!picked) return undefined;
+    if (picked.key === "own") {
+      // nothing changes: no CLI call, the set file and this window stay; that worktree opens in a window of its own
+      await openPath(q.existing[0].path, "new");
+      return undefined;
+    }
+    text = await rerun(choiceArgs(picked.choice!));
   }
   return text;
 }

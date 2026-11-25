@@ -70,6 +70,39 @@ export function choiceArgs(c: NeedsChoiceJson["choices"][number]): string[] {
   return ["--existing", c.choice, ...(/--discard-local-work/.test(c.command) ? ["--discard-local-work"] : [])];
 }
 
+export interface ExistingOption {
+  key: "move" | "reuse" | "recreate" | "own";
+  /** the button */
+  button: string;
+  /** one line in the dialog: what happens, and where */
+  line: string;
+  /** the CLI's choice behind it; absent for "own" (no CLI call at all) */
+  choice?: NeedsChoiceJson["choices"][number];
+}
+
+/**
+ * The buttons of the question "this branch already has a worktree elsewhere": Move (first), Reuse, Recreate and, when the
+ * question is about exactly one repository and the caller allows it, "Open in Its Own Window": that worktree opens in
+ * a window of its own and nothing changes in the set (no CLI call).
+ */
+export function existingOptions(q: NeedsChoiceJson, ownWindow: boolean): ExistingOption[] {
+  const one = q.existing.length === 1 ? q.existing[0] : undefined;
+  const saved = q.existing.some((e) => e.dirty || (e as { ignored?: number }).ignored) ? "; uncommitted work and local files are saved first" : "";
+  const lines = {
+    move: `Move: ${one ? `${one.path} goes to ${one.target} in this set` : "each worktree goes into this set"}; its work and branch go along`,
+    reuse: `Reuse: ${one ? `${one.path} stays where it is and is used by this set` : "each worktree stays where it is and is used by this set"}`,
+    recreate: `Recreate: ${one ? `${one.path} is removed and a new worktree is made at ${one.target}` : "each old worktree is removed and a new one is made in this set"}${saved}`,
+    own: `Open in Its Own Window: ${one?.path ?? ""} opens in a new window; this set stays exactly as it is`,
+  };
+  const out: ExistingOption[] = [];
+  for (const key of ["move", "reuse", "recreate"] as const) {
+    const choice = q.choices.find((c) => c.choice === key);
+    if (choice) out.push({ key, button: key.charAt(0).toUpperCase() + key.slice(1), line: lines[key], choice });
+  }
+  if (ownWindow && one) out.push({ key: "own", button: "Open in Its Own Window", line: lines.own });
+  return out;
+}
+
 export interface PrJson {
   id: number;
   title: string;

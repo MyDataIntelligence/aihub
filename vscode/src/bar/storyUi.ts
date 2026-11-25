@@ -166,7 +166,7 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
   if (!ticked) return;
   const args = [...openStoryArgs(story, ticked), "--json"];
   const first = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Opening story ${story.id}...` }, () => cli(args, ticked[0].path));
-  const out = await answerExisting(first, (extra) => cli([...args, ...extra], ticked[0].path));
+  const out = await answerExisting(first, (extra) => cli([...args, ...extra], ticked[0].path), { ownWindow: true });
   if (out === undefined) return;
   const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
   // the branches made new for the story are linked to it in Azure DevOps (the ones that were linked already are left alone)
@@ -233,7 +233,7 @@ async function switchAll(h: StoryHooks, d: Divergence[], repos: { name: string; 
 async function switchIn(h: StoryHooks, repo: string, branch: string, path: string, from?: string): Promise<boolean> {
   const args = ["branch", "switch", "--repo", repo, "--branch", branch, ...(from ? ["--from", from] : []), "--json"];
   const first = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `${repo}: switching to ${branch}...` }, () => cli(args, path));
-  const out = await answerExisting(first, (extra) => cli([...args, ...extra], path));
+  const out = await answerExisting(first, (extra) => cli([...args, ...extra], path), { ownWindow: true });
   if (out === undefined) return false;
   const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
   const ok = await showOpened(res, "this", h.log);
