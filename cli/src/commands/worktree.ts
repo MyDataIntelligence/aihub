@@ -4,14 +4,22 @@ import { branchFor, list, optInt, parseFlags, posInt } from "../lib/cliargs.js";
 import { findGroup, groupDirs, listGroups, removeGroup, resolveRepos, saveGroup, saveTeamGroup } from "../lib/repoGroups.js";
 import { addToSet, currentBranches, dropFromSet, formatOpenSet, listBranches, openSet, repairSet, type OpenMode, type OpenSetResult, type OpenWindow } from "../lib/repoSet.js";
 import { createSet, listSets, removeSet } from "../lib/worktree.js";
+import { existingFlag, orChoice, orChoiceAsync, readWhenExists, WHEN_EXISTS, writeWhenExists } from "../lib/existingWorktree.js";
+import { againOf } from "../lib/repoSet.js";
 import { formatCleanup, formatRemoved, listCleanup, removeCleanup } from "../lib/worktreeCleanup.js";
 
 const USAGE =
-  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--branch-for b=<branch>] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--branch-for b=<branch>,c=<branch>] [--new-set] | worktree add --repos d [--branch <b>] [--from <target>] | worktree drop --repos d | worktree repair | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
+  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--branch-for b=<branch>] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--branch-for b=<branch>,c=<branch>] [--new-set] [--existing move|reuse|recreate [--discard-local-work]] | worktree when-exists [ask|move|reuse|recreate] | worktree add --repos d [--branch <b>] [--from <target>] | worktree drop --repos d | worktree repair | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
   if (sub === "groups") return groups(rest, ctx);
+  if (sub === "when-exists") {
+    // a personal preference (not team.yaml): what to do when the branch already has a worktree elsewhere
+    const value = rest.find((a) => !a.startsWith("-"));
+    const now = value ? writeWhenExists(ctx.env, value) : readWhenExists(ctx.env);
+    return void ctx.out(`when a worktree already exists: ${now}${value ? " (saved for you, not for the team)" : ""} (choices: ${WHEN_EXISTS.join(", ")})`);
+  }
   const v = parseFlags(rest, {
     story: { type: "string" },
     repos: { type: "string" },
@@ -24,6 +32,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     mode: { type: "string" },
     window: { type: "string" },
     "new-set": { type: "boolean" },
+    existing: { type: "string" },
+    "discard-local-work": { type: "boolean" },
     json: { type: "boolean" },
     remove: { type: "string" },
     "delete-branch": { type: "boolean" },
@@ -32,8 +42,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   });
   const root = v.root as string | undefined;
   const json = !!v.json;
+  // the answer to "worktree already exists", and the command the question repeats
+  const ex = { existing: existingFlag(v.existing), discardLocalWork: !!v["discard-local-work"], again: againOf(["worktree", ...argv]) };
   if (sub === "create") {
-    ctx.out(await createSet(ctx, { story: posInt(v.story, "--story"), repos: list(v.repos), root, branch: v.branch as string | undefined, branches: branchFor(v["branch-for"]), base: v.base as string | undefined, json }));
+    const r = await orChoiceAsync(json, ctx.out, () => createSet(ctx, { story: posInt(v.story, "--story"), repos: list(v.repos), root, branch: v.branch as string | undefined, branches: branchFor(v["branch-for"]), base: v.base as string | undefined, json, ...ex }));
+    if (r !== undefined) ctx.out(r);
   } else if (sub === "list") {
     ctx.out(listSets(ctx, { root, json }));
   } else if (sub === "remove") {
@@ -44,15 +57,18 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const window = (v.window as string | undefined) ?? "new";
     if (mode !== undefined && mode !== "worktree" && mode !== "switch") throw new AihubError("--mode must be worktree or switch");
     if (window !== "new" && window !== "this" && window !== "none") throw new AihubError("--window must be new, this or none");
-    const r = openSet(ctx, { group: v.group as string | undefined, repos: list(v.repos), branch: String(v.branch ?? ""), from: (v.from ?? v.base) as string | undefined, mode: mode as OpenMode | undefined, window: window as OpenWindow, root, storyId: optInt(v.story, "--story"), newSet: !!v["new-set"], branches: branchFor(v["branch-for"]) });
+    const r = orChoice(json, ctx.out, () => openSet(ctx, { group: v.group as string | undefined, repos: list(v.repos), branch: String(v.branch ?? ""), from: (v.from ?? v.base) as string | undefined, mode: mode as OpenMode | undefined, window: window as OpenWindow, root, storyId: optInt(v.story, "--story"), newSet: !!v["new-set"], branches: branchFor(v["branch-for"]), ...ex }));
+    if (!r) return;
     ctx.out(json ? JSON.stringify(r) : formatOpenSet(r));
     const bad = r.repos.filter((x) => !x.ok).length;
     // --json is for programs (the VS Code extension): the table says which repositories failed, so the exit code stays 0
     if (bad && !json) throw new AihubError(`${bad} of ${r.repos.length} repositories need attention (the others are open)`);
   } else if (sub === "add" || sub === "drop" || sub === "repair") {
     // inside a set: a repository in or out, or the worktrees the set file lacks; the window stays
-    const r: OpenSetResult =
-      sub === "add" ? addToSet(ctx, { repos: list(v.repos), branch: v.branch as string | undefined, from: (v.from ?? v.base) as string | undefined }) : sub === "drop" ? dropFromSet(ctx, { repos: list(v.repos) }) : repairSet(ctx);
+    const r: OpenSetResult | undefined = orChoice(json, ctx.out, () =>
+      sub === "add" ? addToSet(ctx, { repos: list(v.repos), branch: v.branch as string | undefined, from: (v.from ?? v.base) as string | undefined, ...ex }) : sub === "drop" ? dropFromSet(ctx, { repos: list(v.repos) }) : repairSet(ctx, ex),
+    );
+    if (!r) return;
     ctx.out(json ? JSON.stringify(r) : formatOpenSet(r));
     const bad = r.repos.filter((x) => !x.ok).length;
     if (bad && !json) throw new AihubError(`${bad} of ${r.repos.length} repositories need attention`);

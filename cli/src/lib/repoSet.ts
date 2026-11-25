@@ -5,7 +5,8 @@ import { ensureBranch } from "./branches.js";
 import type { Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { originDefaultBranch, repoRoot } from "./git.js";
-import { hasTrackedChanges, listWorktrees, mustGit, refSha, samePath, tryGit } from "./gitx.js";
+import { hasTrackedChanges, listWorktrees, mustGit, refSha, samePath, tryGit, type Worktree } from "./gitx.js";
+import { checkExisting, moveAside, moveExisting, readWhenExists, recreateExisting, type WhenExists } from "./existingWorktree.js";
 import { findGroup, groupDirs, resolveRepos } from "./repoGroups.js";
 import { fetchOrigin, type RepoDir } from "./repos.js";
 import { defaultTargetFor, loadTeam, type TeamConfig } from "./team.js";
@@ -35,11 +36,17 @@ export interface OpenSetOpts {
   window?: OpenWindow;
   root?: string;
   json?: boolean;
+  /** a branch whose worktree is elsewhere: move it here, reuse it there, or recreate it (else the personal preference, else ask) */
+  existing?: Exclude<WhenExists, "ask">;
+  /** with existing recreate: also when the old worktree has uncommitted work (a patch backup is kept) */
+  discardLocalWork?: boolean;
+  /** the command line to repeat with --existing in the question (default: the `worktree open` of these options) */
+  again?: string;
   /** run from inside a set: still make a new set (else naming only some repositories of the set switches them in place) */
   newSet?: boolean;
 }
 
-export type RepoState = "existing" | "created" | "reused-worktree" | "switched" | "already-on" | "skipped" | "failed" | "removed" | "kept";
+export type RepoState = "existing" | "created" | "reused-worktree" | "moved" | "recreated" | "switched" | "already-on" | "skipped" | "failed" | "removed" | "kept";
 
 export interface RepoResult {
   repo: string;
@@ -78,7 +85,23 @@ function baseOf(dir: string, name: string, from: string | undefined, team: TeamC
 }
 
 /** One repository on the branch. Never throws: a failure is one row, the others continue. */
-export function openRepo(r: RepoDir, o: { branch: string; from?: string; mode: OpenMode; folder: string; team: TeamConfig; path?: (dir: RepoDir) => string }): RepoResult {
+export function openRepo(
+  r: RepoDir,
+  o: {
+    branch: string;
+    from?: string;
+    mode: OpenMode;
+    folder: string;
+    team: TeamConfig;
+    path?: (dir: RepoDir) => string;
+    /** the branch's worktree elsewhere: move or recreate it (checkExisting asked first); else it is reused there */
+    existing?: Exclude<WhenExists, "ask">;
+    discardLocalWork?: boolean;
+    again?: string;
+    /** `git worktree list` of r.dir, when the caller read it already (checkExisting) */
+    worktrees?: Worktree[];
+  },
+): RepoResult {
   const out = (state: RepoState, ok: boolean, note: string, extra: Partial<RepoResult> = {}): RepoResult => ({ repo: r.name, ok, state, branch: o.branch, note, ...extra });
   try {
     fetchOrigin(r.dir);
@@ -92,7 +115,7 @@ export function openRepo(r: RepoDir, o: { branch: string; from?: string; mode: O
       created = e.created;
       from = e.from;
     }
-    const where = listWorktrees(r.dir).find((w) => w.branch === o.branch);
+    const where = (o.worktrees ?? listWorktrees(r.dir)).find((w) => w.branch === o.branch);
     const made = created ? `created from ${from} (local; pushed with your first push)` : "existing branch";
     if (o.mode === "switch") {
       if (where && samePath(where.path, r.dir)) return out("already-on", true, "already on the branch", { path: r.dir });
@@ -103,20 +126,39 @@ export function openRepo(r: RepoDir, o: { branch: string; from?: string; mode: O
     }
     // mode worktree: one worktree per repository inside the set folder (a story folder: <repo> or <repo>--<variant>)
     const path = o.path ? o.path(r) : join(o.folder, r.name);
+    const again = o.again ?? "the same command";
     if (where) {
-      const inSet = samePath(where.path, path);
-      return out("reused-worktree", true, inSet ? "worktree of this set reused" : `branch already checked out in ${where.path}; that folder is opened`, { path: where.path });
+      const inSet = samePath(where.path, path) || isInside(o.folder, where.path);
+      if (inSet || where.main || !o.existing || o.existing === "reuse") return out("reused-worktree", true, inSet ? "worktree of this set reused" : `branch already checked out in ${where.path}; that folder is opened`, { path: where.path });
+      const p = o.existing === "move" ? moveExisting(r.dir, o.branch, where.path, path, again) : recreateExisting(r.dir, o.branch, where.path, path, { discard: o.discardLocalWork, again });
+      return p.ok ? out(p.state, true, p.note, { path }) : out("failed", false, p.note);
     }
-    if (existsSync(path)) return out("failed", false, `${path} exists and is not a worktree on this branch`);
+    // a leftover folder that is not a worktree: renamed aside with --existing recreate, never deleted
+    let aside = "";
+    if (existsSync(path)) {
+      if (o.existing !== "recreate") return out("failed", false, `${path} exists and is not a worktree on this branch; move it away, or run again with --existing recreate (it is renamed to ${basename(path)}.old-<time>, nothing is deleted): ${again} --existing recreate`);
+      aside = moveAside(path);
+    }
     mkdirSync(dirname(path), { recursive: true });
     mustGit(r.dir, ["worktree", "add", path, o.branch]);
-    return out(created ? "created" : "existing", true, `worktree, ${made}`, { path, from: from || undefined });
+    return out(created ? "created" : "existing", true, `worktree, ${made}${aside ? `; the folder that was there is now ${aside}` : ""}`, { path, from: from || undefined });
   } catch (e) {
     return out("failed", false, (e as Error).message.split("\n")[0]);
   }
 }
 
 const norm = (p: string) => p.replace(/\\/g, "/");
+const isInside = (folder: string, p: string) => ((rel) => !!rel && !rel.startsWith("..") && !isAbsolute(rel))(relative(folder, p));
+const quoteArg = (a: string) => (/^[\w@%+=:,./\\-]+$/.test(a) ? a : `"${a.replace(/"/g, '\\"')}"`);
+/** The command line to repeat with --existing: `aihub <words>` without --existing, --discard-local-work and --json. */
+export function againOf(words: string[]): string {
+  const out: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    if (words[i] === "--existing") i++;
+    else if (words[i] !== "--discard-local-work" && words[i] !== "--json" && !words[i].startsWith("--existing=")) out.push(quoteArg(words[i]));
+  }
+  return `aihub ${out.join(" ")}`;
+}
 
 /** The folder that holds all of them (the set folder for worktrees, the clones' parent for switch), else the set folder. */
 function commonRoot(folder: string, paths: string[]): string {
@@ -185,7 +227,7 @@ export function openSet(setCtx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = la
   // inside a set, naming some of its repositories changes those in this set: no new set, no new window
   if (!o.newSet && !o.group && !o.branches && o.repos?.length) {
     const here = setHere(setCtx.cwd);
-    if (here && someOfSet(here, o.repos)) return switchInSet(here, { repos: o.repos, branch, from: o.from, mode: o.mode });
+    if (here && someOfSet(here, o.repos)) return switchInSet(here, { repos: o.repos, branch, from: o.from, mode: o.mode, existing: o.existing, discardLocalWork: o.discardLocalWork, again: o.again, env: setCtx.env });
   }
   // the sets root is still found from where this runs (next to the set, never inside it)
   const setsBase = setCtx.cwd;
@@ -216,7 +258,12 @@ export function openSet(setCtx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = la
   const storyFolders = storyId && existsSync(setsRoot) ? readdirSync(setsRoot) : [];
   const folder = storyId ? storyFolderFor({ root: setsRoot, storyId, branch, storyFolders }) : join(setsRoot, slug(branch));
   const pathFor = storyId ? (d: RepoDir) => worktreePathFor({ root: setsRoot, storyId, repo: d.name, branch: branchOf(d.name), storyFolders: [basename(folder), ...storyFolders], exists: existsSync }) : undefined;
-  const repos = dirs.map((d) => openRepo(d, { branch: branchOf(d.name), from: o.from, mode, folder, team, path: pathFor }));
+  // a branch with a worktree elsewhere: the question comes before anything is created
+  const again = o.again ?? againOf(["worktree", "open", ...(o.group ? ["--group", o.group] : ["--repos", dirs.map((d) => d.name).join(",")]), "--branch", branch, ...(o.from ? ["--from", o.from] : [])]);
+  const policy = o.existing ?? readWhenExists(setCtx.env);
+  const lists = mode === "worktree" ? checkExisting(dirs.map((d) => ({ repo: d.name, source: d.dir, branch: branchOf(d.name), target: pathFor ? pathFor(d) : join(folder, d.name) })), { folder, policy, again }) : new Map<string, Worktree[]>();
+  const how = policy === "ask" ? undefined : policy;
+  const repos = dirs.map((d) => openRepo(d, { branch: branchOf(d.name), from: o.from, mode, folder, team, path: pathFor, existing: how, discardLocalWork: o.discardLocalWork, again, worktrees: lists.get(d.dir) }));
   for (const m of missing) repos.push({ repo: m, ok: false, state: "failed", branch, note: "folder not found on this PC" });
   let workspace: string | undefined;
   const okRepos = repos.filter((r) => r.ok && r.path);
@@ -314,11 +361,15 @@ export { repoBranch };
  * `<repo>--<variant>` (or the folder that already has the branch) is added to this set and its workspace file.
  * Never opens a window.
  */
-export function switchInSet(here: HereSet, o: { repos: string[]; branch: string; from?: string; mode?: OpenMode }): OpenSetResult {
+export function switchInSet(
+  here: HereSet,
+  o: { repos: string[]; branch: string; from?: string; mode?: OpenMode; existing?: Exclude<WhenExists, "ask">; discardLocalWork?: boolean; again?: string; env?: NodeJS.ProcessEnv },
+): OpenSetResult {
   const { folder, meta, kind } = here;
   const branch = o.branch.trim();
   if (!branch) throw new AihubError("--branch <name> is required");
-  const mode = o.mode ?? "switch";
+  // --existing answers the question about a worktree elsewhere: that worktree comes into this set
+  const mode = o.mode ?? (o.existing ? "worktree" : "switch");
   const unknown = o.repos.filter((n) => !entryOf(here, n));
   if (unknown.length) throw new AihubError(`${unknown.join(", ")} not in this set (${meta.repos.map((r) => r.name).join(", ")}); add --new-set to open a new set instead`);
   const entries = [...new Set(o.repos.map((n) => entryOf(here, n)!))];
@@ -336,22 +387,29 @@ export function switchInSet(here: HereSet, o: { repos: string[]; branch: string;
         keep,
       );
   }
+  // the branch has a worktree outside this set: ask before anything changes (or follow --existing / the preference)
+  const again = o.again ?? againOf(["branch", "switch", "--repo", entries.map((e) => e.name).join(","), "--branch", branch, ...(o.from ? ["--from", o.from] : [])]);
+  const policy = o.existing ?? (o.env ? readWhenExists(o.env) : "ask");
+  const targets = new Map(entries.map((e) => [e.name, variantPath(folder, e.name, branch, storyId)]));
+  const lists = checkExisting(entries.map((e) => ({ repo: e.name, source: e.source, branch, target: targets.get(e.name)! })), { folder, policy, again });
+  const how = policy === "ask" ? undefined : policy;
+  const elsewhere = (e: SetRepo) => (lists.get(e.source) ?? []).find((w) => w.branch === branch && !w.main && !isInside(folder, w.path));
   const added: SetRepo[] = [];
   const switched = new Set<string>();
   const repos = entries.map((e): RepoResult => {
-    if (mode === "switch") {
+    if (mode === "switch" && !(how && elsewhere(e))) {
       if (!hasWorktree(e.path)) return { repo: e.name, ok: false, state: "failed", branch, note: `in the set file without a worktree; make it first: aihub worktree repair` };
-      const r = openRepo({ name: e.name, dir: e.path }, { branch, from: o.from, mode: "switch", folder, team });
+      const r = openRepo({ name: e.name, dir: e.path }, { branch, from: o.from, mode: "switch", folder, team, worktrees: lists.get(e.source) });
       if (r.state === "skipped") return { ...r, note: dirtyNote(e) };
-      if (r.checkedOutIn) return { ...r, note: `${branch} is already checked out in ${r.checkedOutIn}; nothing was changed. Add --mode worktree to put that folder in this set next to ${e.name}` };
+      if (r.checkedOutIn) return { ...r, note: `${branch} is already checked out in ${r.checkedOutIn}; nothing was changed. Switch that checkout to another branch first, or put it in this set: ${again} --existing reuse` };
       if (r.ok) {
         relinkWorktree(e.path, branch, storyId);
         switched.add(e.name);
       }
       return r;
     }
-    const target = variantPath(folder, e.name, branch, storyId);
-    const r = openRepo({ name: e.name, dir: e.source }, { branch, from: o.from, mode: "worktree", folder, team, path: () => target });
+    const target = targets.get(e.name)!;
+    const r = openRepo({ name: e.name, dir: e.source }, { branch, from: o.from, mode: "worktree", folder, team, path: () => target, existing: how, discardLocalWork: o.discardLocalWork, again, worktrees: lists.get(e.source) });
     if (!r.ok || !r.path) return r;
     const inSet = meta.repos.find((x) => samePath(x.path, r.path!));
     if (inSet) return { ...r, repo: inSet.name, state: "already-on", note: `already in this set as ${inSet.name}` };
@@ -374,7 +432,7 @@ export function switchInSet(here: HereSet, o: { repos: string[]; branch: string;
  * `aihub branch switch --repo r --branch X`: inside a set, that repository's worktree in this set (see switchInSet);
  * outside a set, the checkout itself (`git switch`, never over uncommitted work). Never opens a window.
  */
-export function branchSwitch(ctx: Ctx, o: { repos: string[]; branch: string; from?: string; mode?: OpenMode }): OpenSetResult {
+export function branchSwitch(ctx: Ctx, o: { repos: string[]; branch: string; from?: string; mode?: OpenMode; existing?: Exclude<WhenExists, "ask">; discardLocalWork?: boolean; again?: string }): OpenSetResult {
   const branch = o.branch?.trim();
   if (!branch) throw new AihubError("--branch <name> is required");
   const here = setHere(ctx.cwd);
@@ -383,7 +441,7 @@ export function branchSwitch(ctx: Ctx, o: { repos: string[]; branch: string; fro
     const mine = here.meta.repos.find((r) => inside(r.path));
     const names = o.repos.length ? o.repos : mine ? [mine.name] : [];
     if (!names.length) throw new AihubError(`name the repository: --repo <name> (this set: ${here.meta.repos.map((r) => r.name).join(", ")})`);
-    return switchInSet(here, { repos: names, branch, from: o.from, mode: o.mode });
+    return switchInSet(here, { repos: names, branch, from: o.from, mode: o.mode, existing: o.existing, discardLocalWork: o.discardLocalWork, again: o.again, env: ctx.env });
   }
   if (o.mode === "worktree") throw new AihubError(`not inside a worktree set; for a worktree use: aihub worktree open --repos ${o.repos.join(",") || "<repo>"} --branch ${branch}`);
   let dirs: RepoDir[];
@@ -408,7 +466,7 @@ const hasWorktree = (p: string) => existsSync(join(p, ".git"));
  * --from or the team target when it does not exist yet), then the set file and the workspace file. A repository that is
  * in the set file without a worktree (added by hand) gets its worktree at the folder the set file names. No window.
  */
-export function addToSet(ctx: Ctx, o: { repos: string[]; branch?: string; from?: string }): OpenSetResult {
+export function addToSet(ctx: Ctx, o: { repos: string[]; branch?: string; from?: string; existing?: Exclude<WhenExists, "ask">; discardLocalWork?: boolean; again?: string }): OpenSetResult {
   const here = setHere(ctx.cwd);
   if (!here) throw notInSet("aihub worktree add");
   if (!o.repos.length) throw new AihubError("usage: aihub worktree add --repos a,b [--branch <b>] [--from <target>]");
@@ -417,26 +475,32 @@ export function addToSet(ctx: Ctx, o: { repos: string[]; branch?: string; from?:
   const src = outsideSet(ctx);
   const repos: RepoResult[] = [];
   const entries = [...meta.repos];
-  for (const name of o.repos) {
+  // what each name becomes (an entry without worktree, or a clone next to the set's sources), and the question first
+  type Plan = { name: string; had?: SetRepo; dir?: RepoDir; branch: string; target?: string; error?: string };
+  const plans: Plan[] = o.repos.map((name) => {
     const had = entryOf(here, name);
-    if (had && hasWorktree(had.path)) {
-      repos.push({ repo: had.name, ok: true, state: "already-on", branch: repoBranch(meta, had), path: had.path, note: "already in this set" });
-      continue;
-    }
     const branch = o.branch?.trim() || (had ? repoBranch(meta, had) : meta.branch);
-    let dir: RepoDir;
+    if (had && hasWorktree(had.path)) return { name, had, branch };
     try {
-      dir = had ? { name: had.name, dir: had.source } : resolveRepos(src, [name])[0];
+      const dir = had ? { name: had.name, dir: had.source } : resolveRepos(src, [name])[0];
+      if (!dir) return { name, branch, error: "folder not found on this PC" };
+      const target = had ? had.path : existsSync(join(folder, dir.name)) ? variantPath(folder, dir.name, branch, storyIdFromBranch(branch, storyPatternOf(team))) : join(folder, dir.name);
+      return { name, had, dir, branch, target };
     } catch (e) {
-      repos.push({ repo: name, ok: false, state: "failed", branch, note: (e as Error).message.split("\n")[0] });
+      return { name, branch, error: (e as Error).message.split("\n")[0] };
+    }
+  });
+  const again = o.again ?? againOf(["worktree", "add", "--repos", o.repos.join(","), ...(o.branch ? ["--branch", o.branch] : []), ...(o.from ? ["--from", o.from] : [])]);
+  const policy = o.existing ?? readWhenExists(ctx.env);
+  const lists = checkExisting(plans.filter((p) => p.dir && p.target).map((p) => ({ repo: p.dir!.name, source: p.dir!.dir, branch: p.branch, target: p.target! })), { folder, policy, again });
+  const how = policy === "ask" ? undefined : policy;
+  for (const { name, had, dir, branch, target, error } of plans) {
+    if (error || !dir || !target) {
+      if (error) repos.push({ repo: name, ok: false, state: "failed", branch, note: error });
+      else if (had) repos.push({ repo: had.name, ok: true, state: "already-on", branch, path: had.path, note: "already in this set" });
       continue;
     }
-    if (!dir) {
-      repos.push({ repo: name, ok: false, state: "failed", branch, note: "folder not found on this PC" });
-      continue;
-    }
-    const target = had ? had.path : existsSync(join(folder, dir.name)) ? variantPath(folder, dir.name, branch, storyIdFromBranch(branch, storyPatternOf(team))) : join(folder, dir.name);
-    const r = openRepo(dir, { branch, from: o.from, mode: "worktree", folder, team, path: () => target });
+    const r = openRepo(dir, { branch, from: o.from, mode: "worktree", folder, team, path: () => target, existing: how, discardLocalWork: o.discardLocalWork, again, worktrees: lists.get(dir.dir) });
     const label = had ? had.name : basename(target);
     repos.push({ ...r, repo: label, ...(had && r.ok ? { note: `${r.note} (it was in the set file without a worktree)` } : {}) });
     if (!r.ok || !r.path) continue;
@@ -455,12 +519,12 @@ export function addToSet(ctx: Ctx, o: { repos: string[]; branch?: string; from?:
 }
 
 /** `aihub worktree repair`: every repository in the set file without a worktree gets one (see addToSet). */
-export function repairSet(ctx: Ctx): OpenSetResult {
+export function repairSet(ctx: Ctx, ex: { existing?: Exclude<WhenExists, "ask">; discardLocalWork?: boolean; again?: string } = {}): OpenSetResult {
   const here = setHere(ctx.cwd);
   if (!here) throw notInSet("aihub worktree repair");
   const broken = here.meta.repos.filter((r) => !hasWorktree(r.path)).map((r) => r.name);
   if (!broken.length) return { story: here.meta.story || undefined, branch: here.meta.branch, mode: "worktree", folder: here.folder, workspace: here.meta.workspace, repos: [], opened: false, stays: "every repository of this set has its worktree; nothing to repair" };
-  return addToSet(ctx, { repos: broken });
+  return addToSet(ctx, { repos: broken, ...ex });
 }
 
 /**

@@ -48,6 +48,28 @@ export interface OpenResultJson {
   stays?: string;
 }
 
+/** aihub 1.5.1+: `--json` output when a branch already has a worktree elsewhere; nothing was changed yet. */
+export interface NeedsChoiceJson {
+  question: string;
+  existing: { repo: string; branch: string; path: string; target: string; state: string; dirty: number; unpushed: number }[];
+  choices: { choice: "move" | "reuse" | "recreate"; label: string; command: string }[];
+}
+
+/** The question in a CLI answer, if the CLI stopped on an existing worktree. */
+export function needsChoiceOf(text: string): NeedsChoiceJson | undefined {
+  try {
+    const j = JSON.parse(text.slice(Math.max(0, text.search(/[{]/)))) as { needsChoice?: NeedsChoiceJson };
+    return j?.needsChoice && Array.isArray(j.needsChoice.choices) && j.needsChoice.choices.length ? j.needsChoice : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The arguments that answer the question with one choice (the same as its ready command). */
+export function choiceArgs(c: NeedsChoiceJson["choices"][number]): string[] {
+  return ["--existing", c.choice, ...(/--discard-local-work/.test(c.command) ? ["--discard-local-work"] : [])];
+}
+
 export interface PrJson {
   id: number;
   title: string;

@@ -13,6 +13,7 @@ import { getWorkItem, storyBranchName } from "./workitems.js";
 import { storyFolderFor, storyIdFromBranch, worktreePathFor } from "./storyWorktrees.js";
 import { findDirLinks, removeDirLink } from "./safeWorktree.js";
 import { readSetFile, repoBranch, type SetMeta } from "./setFile.js";
+import { checkExisting, moveExisting, readWhenExists, recreateExisting, type WhenExists } from "./existingWorktree.js";
 
 const META = ".aihub-set.json";
 
@@ -41,6 +42,11 @@ export interface CreateSetOpts {
   branches?: Record<string, string>;
   base?: string;
   json?: boolean;
+  /** a branch whose worktree is elsewhere: move, reuse or recreate it (else the personal preference, else ask) */
+  existing?: Exclude<WhenExists, "ask">;
+  discardLocalWork?: boolean;
+  /** the command to repeat with --existing in the question */
+  again?: string;
 }
 
 export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
@@ -74,22 +80,42 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
     metaPath = join(folder, META);
   }
 
+  // what each repository becomes; a branch with a worktree elsewhere is asked about before anything is created
+  const todo = dirs.filter((d) => !meta.repos.some((r) => r.name === d.name)).map((d) => {
+    const own = o.branches?.[d.name] ?? branch;
+    return { d, own, path: worktreePathFor({ root: setsRoot, storyId: o.story, repo: d.name, branch: own, storyFolders: [basename(folder)], exists: existsSync }) };
+  });
+  const again = o.again ?? `aihub worktree create --story ${o.story} --repos ${o.repos.join(",")} --branch ${branch}`;
+  const policy = o.existing ?? readWhenExists(ctx.env);
+  const lists = checkExisting(todo.map((t) => ({ repo: t.d.name, source: t.d.dir, branch: t.own, target: t.path })), { folder, policy, again });
   mkdirSync(folder, { recursive: true });
   const lines: string[] = [];
-  for (const d of dirs) {
-    if (meta.repos.some((r) => r.name === d.name)) {
-      lines.push(`${d.name}: already in the set`);
+  for (const d of dirs) if (meta.repos.some((r) => r.name === d.name)) lines.push(`${d.name}: already in the set`);
+  for (const { d, own, path } of todo) {
+    const busy = (lists.get(d.dir) ?? listWorktrees(d.dir)).find((w) => w.branch === own);
+    if (busy?.main) {
+      throw new AihubError(`branch '${own}' is already checked out in ${busy.path}; switch that checkout to another branch first (nothing was changed)`);
+    }
+    if (busy) {
+      // the question was asked (checkExisting); here the answer: reuse it there, move it here, or recreate it here
+      const how = policy === "ask" ? "reuse" : policy;
+      const inside = samePath(dirname(busy.path), folder);
+      if (inside || how === "reuse") {
+        meta.repos.push({ name: d.name, source: d.dir, path: busy.path, ...(own !== branch ? { branch: own } : {}) });
+        lines.push(`${d.name}: worktree ${busy.path} on '${own}' reused`);
+        writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+        continue;
+      }
+      const p = how === "move" ? moveExisting(d.dir, own, busy.path, path, again) : recreateExisting(d.dir, own, busy.path, path, { discard: o.discardLocalWork, again });
+      if (!p.ok) throw new AihubError(`${d.name}: ${p.note}`);
+      meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== branch ? { branch: own } : {}) });
+      lines.push(`${d.name}: ${p.note}`);
+      writeFileSync(metaPath, JSON.stringify(meta, null, 2));
       continue;
     }
-    const own = o.branches?.[d.name] ?? branch;
-    const path = worktreePathFor({ root: setsRoot, storyId: o.story, repo: d.name, branch: own, storyFolders: [basename(folder)], exists: existsSync });
     fetchOrigin(d.dir);
     const base = await baseFor(d.dir, clientForDir(ctx, d.dir), team, o.base);
     const e = ensureBranch(d.dir, own, base);
-    const busy = listWorktrees(d.dir).find((w) => w.branch === own);
-    if (busy) {
-      throw new AihubError(`branch '${own}' is already checked out in ${busy.path}; switch that checkout to another branch first (nothing was changed)`);
-    }
     mustGit(d.dir, ["worktree", "add", path, own]);
     meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== branch ? { branch: own } : {}) });
     lines.push(`${d.name}: worktree ${path} on '${own}'${e.created ? ` (new, from ${base})` : ""}`);

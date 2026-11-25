@@ -22,6 +22,7 @@ import {
 } from "./storyWorktrees.js";
 import { loadTeam, type TeamConfig } from "./team.js";
 import { addArtifactLink, branchArtifact, getWorkItem, repoInfo, type WorkItem } from "./workitems.js";
+import type { WhenExists } from "./existingWorktree.js";
 
 /**
  * `aihub story branches`: which branches and worktrees belong to a story, in every repository. The Azure DevOps
@@ -281,7 +282,7 @@ export function removeStoryBranch(ctx: Ctx, o: { branch: string; repo?: string; 
 }
 
 /** The star of each repository of the story (else its only branch, else the newest), opened as one set. */
-export async function openStory(ctx: Ctx, o: { id: number; mode?: OpenMode; window?: OpenWindow; root?: string }): Promise<OpenSetResult> {
+export async function openStory(ctx: Ctx, o: { id: number; mode?: OpenMode; window?: OpenWindow; root?: string; existing?: Exclude<WhenExists, "ask">; discardLocalWork?: boolean; again?: string }): Promise<OpenSetResult> {
   const stories = await listStoryBranches(ctx, { id: o.id });
   const rows = stories[0]?.branches.filter((b) => b.local || b.pushed) ?? [];
   if (!rows.length) throw new AihubError(`story ${o.id} has no branches yet; link one with: aihub story branches link --id ${o.id}`);
@@ -292,7 +293,7 @@ export async function openStory(ctx: Ctx, o: { id: number; mode?: OpenMode; wind
     if (better) pick.set(b.repo, b);
   }
   const chosen = [...pick.values()];
-  return openSet(ctx, { repos: chosen.map((b) => b.repo), branch: chosen[0].branch, branches: Object.fromEntries(chosen.map((b) => [b.repo, b.branch])), storyId: o.id, mode: o.mode ?? "worktree", window: o.window ?? "new", root: o.root });
+  return openSet(ctx, { repos: chosen.map((b) => b.repo), branch: chosen[0].branch, branches: Object.fromEntries(chosen.map((b) => [b.repo, b.branch])), storyId: o.id, mode: o.mode ?? "worktree", window: o.window ?? "new", root: o.root, existing: o.existing, discardLocalWork: o.discardLocalWork, again: o.again });
 }
 
 /** Worktrees of stories that are not in `<root>/<id>-<slug>/`: listed, and moved with `move`. */
