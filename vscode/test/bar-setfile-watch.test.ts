@@ -116,4 +116,35 @@ describe("the set file watcher acts only on what changed in the file", () => {
     expect(w.read().repos.find((r) => r.name === "repo-b")?.branch).toBe("feature/5-y");
     watcher.dispose();
   });
+  it("the window was closed while repo-b was switched: the first change in the file afterwards does not switch it back", async () => {
+    const w = world();
+    // closed window: nobody watched; git switch in a terminal
+    sh(w.repos[1].path, "switch", "feature/5-y");
+    const watcher = new SetFileWatcher({ log: () => undefined, changed: () => undefined });
+    watcher.aim();
+    sh(w.repos[0].path, "switch", "feature/5-x-2");
+    w.write2([{ name: "repo-a", branch: "feature/5-x-2" }]);
+    await watcher.apply();
+    expect(h.cliCalls).toEqual([]);
+    expect(sh(w.repos[1].path, "branch", "--show-current").trim()).toBe("feature/5-y");
+    expect(w.read().repos.find((r) => r.name === "repo-b")?.branch).toBe("feature/5-y");
+    watcher.dispose();
+  });
+
+  it("the other order: repo-a through aihub first, then repo-b outside aihub, then any other change of the file", async () => {
+    const w = world();
+    const watcher = new SetFileWatcher({ log: () => undefined, changed: () => undefined });
+    watcher.aim();
+    sh(w.repos[0].path, "switch", "feature/5-x-2");
+    w.write2([{ name: "repo-a", branch: "feature/5-x-2" }]);
+    await watcher.apply();
+    sh(w.repos[1].path, "switch", "feature/5-y");
+    // the story title is stamped into the file: a change of the file that is no order for anybody
+    const j = JSON.parse(readFileSync(join(w.folder, ".aihub-set.json"), "utf8"));
+    writeFileSync(join(w.folder, ".aihub-set.json"), JSON.stringify({ ...j, storyTitle: "Export" }, null, 2));
+    await watcher.apply();
+    expect(h.cliCalls).toEqual([]);
+    expect(sh(w.repos[1].path, "branch", "--show-current").trim()).toBe("feature/5-y");
+    watcher.dispose();
+  });
 });

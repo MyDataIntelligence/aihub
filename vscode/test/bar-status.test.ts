@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -154,5 +154,34 @@ describe("the target branch from team.yaml without a yaml parser", () => {
     expect(teamTargetOf(yaml, "repo with spaces")).toBe("develop");
     expect(teamTargetOf(yaml, "unknown")).toBeUndefined();
     expect(teamTargetOf("repositories:\n  - defaultTarget: main\n", "anything")).toBe("main");
+  });
+});
+
+describe("one function for the target branch: team.yaml, else staging if origin has it, else origin/HEAD, else main", () => {
+  const clone = (o: { team?: string; refs?: string[]; packed?: string; head?: string }) => {
+    const root = mkdtempSync(join(tmpdir(), "aihub-target-"));
+    mkdirSync(join(root, ".git", "refs", "remotes", "origin"), { recursive: true });
+    for (const r of o.refs ?? []) {
+      mkdirSync(join(root, ".git", "refs", "remotes", "origin", ...r.split("/").slice(0, -1)), { recursive: true });
+      writeFileSync(join(root, ".git", "refs", "remotes", "origin", ...r.split("/")), "0".repeat(40) + "\n");
+    }
+    if (o.packed) writeFileSync(join(root, ".git", "packed-refs"), o.packed);
+    if (o.head) writeFileSync(join(root, ".git", "refs", "remotes", "origin", "HEAD"), `ref: refs/remotes/origin/${o.head}\n`);
+    if (o.team) {
+      mkdirSync(join(root, ".agents", "skills", "_shared", "references"), { recursive: true });
+      writeFileSync(join(root, ".agents", "skills", "_shared", "references", "team.yaml"), o.team);
+    }
+    return root;
+  };
+  it("the four cases", async () => {
+    const { targetOf, originHas } = await import("../src/bar/repoStatus");
+    const name = "repo-a";
+    expect(targetOf(clone({ team: "repositories:\n  - name: repo-a\n    defaultTarget: develop\n", refs: ["staging", "main"], head: "main" }), name)).toBe("develop");
+    expect(targetOf(clone({ refs: ["staging", "main"], head: "main" }), name)).toBe("staging");
+    expect(targetOf(clone({ packed: "# pack-refs\n" + "a".repeat(40) + " refs/remotes/origin/staging\n", head: "main" }), name)).toBe("staging");
+    expect(targetOf(clone({ refs: ["main", "trunk"], head: "trunk" }), name)).toBe("trunk");
+    expect(targetOf(clone({ refs: ["main"] }), name)).toBe("main");
+    expect(originHas(clone({ refs: ["feature/x"] }), "feature/x")).toBe(true);
+    expect(originHas(clone({ refs: ["staging-old"] }), "staging")).toBe(false);
   });
 });

@@ -32,13 +32,13 @@ describe("create the pull requests", () => {
       if (args[0] === "pr") return JSON.stringify({ id: cwd.endsWith("repo-a") ? 901 : 902, url: `https://x/${cwd}`, action: "created" });
       return JSON.stringify({ results: [] });
     };
-    const { results, linked } = await createPullRequests(cli, [{ name: "repo-a", path: "/w/repo-a" }, { name: "repo-b", path: "/w/repo-b" }, { name: "repo-c", path: "/w/repo-c" }], 5);
+    const { results, linked } = await createPullRequests(cli, [{ name: "repo-a", path: "/w/repo-a", target: "staging" }, { name: "repo-b", path: "/w/repo-b" }, { name: "repo-c", path: "/w/repo-c" }], 5);
     expect(results.map((r) => [r.repo, r.ok, r.line, r.id])).toEqual([
       ["repo-a", true, "repo-a: PR !901 created", 901],
       ["repo-b", false, "repo-b: the branch has no commits of its own", undefined],
       ["repo-c", true, "repo-c: PR !902 created", 902],
     ]);
-    expect(calls[0]).toEqual({ args: ["pr", "create", "--work-item", "5", "--json"], cwd: "/w/repo-a" });
+    expect(calls[0]).toEqual({ args: ["pr", "create", "--work-item", "5", "--target", "staging", "--json"], cwd: "/w/repo-a" });
     expect(calls.filter((c) => c.args[0] === "crossrepo")).toEqual([{ args: ["crossrepo", "link-prs", "--story", "5", "--json"], cwd: "/w/repo-a" }]);
     expect(linked).toContain("list each other");
   });

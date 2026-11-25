@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitDirFor } from "../../../cli/src/lib/machineScan";
 import { branchNamedForStory } from "../../../cli/src/lib/storyWorktrees";
@@ -63,7 +63,29 @@ export function teamTargetOf(text: string, name: string): string | undefined {
   return hit?.target || undefined;
 }
 
-/** The target branch of a repository: team.yaml, else what origin/HEAD says, else main. Files only. */
+/** The common git dir of a clone or a worktree (a worktree's own git dir is <clone>/.git/worktrees/<name>). */
+function commonDirOf(path: string): string | undefined {
+  const dir = gitDirFor(path);
+  return dir && /[\\/]worktrees[\\/][^\\/]+$/.test(dir) ? join(dir, "..", "..") : dir;
+}
+
+/** Does origin have this branch, as far as the refs on disk say (loose ref or packed-refs; no git process, no fetch)? */
+export function originHas(path: string, branch: string): boolean {
+  const common = commonDirOf(path);
+  if (!common) return false;
+  if (existsSync(join(common, "refs", "remotes", "origin", ...branch.split("/")))) return true;
+  try {
+    return readFileSync(join(common, "packed-refs"), "utf8").split(/\r?\n/).some((l) => l.endsWith(` refs/remotes/origin/${branch}`));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The branch pull requests go to and a branch is kept up to date with: the repository's entry in team.yaml; else
+ * `staging` when origin has it; else what origin/HEAD says; else `main`. One function for behind-the-target, the update
+ * question and Create Pull Requests. Files only.
+ */
 export function targetOf(path: string, name: string): string {
   try {
     const t = teamTargetOf(readFileSync(join(path, TEAM_YAML), "utf8"), name);
@@ -71,9 +93,8 @@ export function targetOf(path: string, name: string): string {
   } catch {
     /* no team.yaml here */
   }
-  const dir = gitDirFor(path);
-  // a worktree's git dir is <clone>/.git/worktrees/<name>: origin/HEAD lives in the common dir
-  const common = dir && /[\\/]worktrees[\\/][^\\/]+$/.test(dir) ? join(dir, "..", "..") : dir;
+  if (originHas(path, "staging")) return "staging";
+  const common = commonDirOf(path);
   try {
     const head = common ? readFileSync(join(common, "refs", "remotes", "origin", "HEAD"), "utf8") : "";
     return /refs\/remotes\/origin\/(.+)/.exec(head)?.[1].trim() ?? "main";
