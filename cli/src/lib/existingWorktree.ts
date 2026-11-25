@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { AihubError } from "./errors.js";
 import { listWorktrees, pruneIfSafe, samePath, tryGit, unpushedCount, type Worktree } from "./gitx.js";
 import { patchOfWork } from "./workBackup.js";
+import { describeLocal, guardLocalFiles, inventoryIgnored } from "./localFiles.js";
 import { configHome } from "./notifyPolicy.js";
 import { findDirLinks, moveWorktreeSafely, removeDirLink, restoreDirLinks } from "./safeWorktree.js";
 import { gitCommonDir } from "./storyWorktrees.js";
@@ -35,7 +36,14 @@ export function readWhenExists(env: NodeJS.ProcessEnv): WhenExists {
 export function writeWhenExists(env: NodeJS.ProcessEnv, v: string): WhenExists {
   if (!WHEN_EXISTS.includes(v as WhenExists)) throw new AihubError(`when-exists must be one of ${WHEN_EXISTS.join(", ")}`);
   mkdirSync(configHome(env), { recursive: true });
-  writeFileSync(prefFile(env), JSON.stringify({ whenExists: v }, null, 2), "utf8");
+  // the file holds more personal settings (ignoreInBackup): only whenExists changes
+  let old: Record<string, unknown> = {};
+  try {
+    old = JSON.parse(readFileSync(prefFile(env), "utf8")) as Record<string, unknown>;
+  } catch {
+    /* no file yet */
+  }
+  writeFileSync(prefFile(env), JSON.stringify({ ...old, whenExists: v }, null, 2), "utf8");
   return v as WhenExists;
 }
 
@@ -80,6 +88,8 @@ export interface ExistingWorktree {
   target: string;
   /** uncommitted files (folder links not counted) */
   dirty: number;
+  /** ignored local files that are not build output (.env, notes): copied to a backup folder before a recreate */
+  ignored: number;
   /** commits not on the remote; they stay on the branch whatever is chosen */
   unpushed: number;
   /** "clean" | "2 uncommitted files" | "1 commit not pushed" */
@@ -123,8 +133,9 @@ export function describeExisting(repo: string, branch: string, path: string, tar
   } catch {
     /* no upstream information: nothing to say */
   }
-  const parts = [dirty ? `${dirty} uncommitted file${dirty > 1 ? "s" : ""}` : "", unpushed ? `${unpushed} commit${unpushed > 1 ? "s" : ""} not pushed` : ""].filter(Boolean);
-  return { repo, branch, path, target, dirty, unpushed, state: parts.join(", ") || "clean" };
+  const local = inventoryIgnored(path);
+  const parts = [dirty ? `${dirty} uncommitted file${dirty > 1 ? "s" : ""}` : "", unpushed ? `${unpushed} commit${unpushed > 1 ? "s" : ""} not pushed` : "", describeLocal(local)].filter(Boolean);
+  return { repo, branch, path, target, dirty, unpushed, ignored: local.files.length, state: parts.join(", ") || "clean" };
 }
 
 export interface PlannedWorktree {
@@ -170,7 +181,7 @@ export function askExisting(found: ExistingWorktree[], again: string): WorktreeE
   const choices: WorktreeChoice[] = [
     { choice: "move", label: `move it into this set (recommended; work and branch go along)`, command: `${again} --existing move` },
     { choice: "reuse", label: "reuse it where it is", command: `${again} --existing reuse` },
-    { choice: "recreate", label: `recreate it (the old one is removed${dirty ? "; its uncommitted work is saved as a patch first" : ""})`, command: `${again} --existing recreate${dirty ? " --discard-local-work" : ""}` },
+    { choice: "recreate", label: `recreate it (the old one is removed${dirty ? "; its uncommitted work is saved as a patch first" : ""}${found.some((f) => f.ignored) ? "; its ignored local files (.env, notes) are copied to a backup folder first" : ""})`, command: `${again} --existing recreate${dirty ? " --discard-local-work" : ""}` },
   ];
   const what = found.map((f) => `worktree for ${f.branch} already exists: ${f.path} (${f.state})`).join("; ");
   return new WorktreeExists(found, choices, `${what}. choose: ${choices.map((c) => `${c.label}: ${c.command}`).join(" | ")}`);
@@ -214,6 +225,9 @@ export function recreateExisting(source: string, branch: string, from: string, t
     mkdirSync(dirname(backup), { recursive: true });
     writeFileSync(backup, diff.patch);
   }
+  // ignored local files (.env, notes) are copied to a backup folder, or the recreate is refused when they are too big
+  const saved = guardLocalFiles(from, source, { discard: o.discard, now: o.now });
+  if (!saved.ok) return { ok: false, state: "failed", note: saved.note, backup };
   // folder links (a linked node_modules) go first: --force would follow them and empty what they point to
   const links = findDirLinks(from);
   for (const l of links) removeDirLink(join(from, l.rel));
@@ -226,7 +240,7 @@ export function recreateExisting(source: string, branch: string, from: string, t
   mkdirSync(dirname(to), { recursive: true });
   const add = tryGit(source, ["worktree", "add", to, branch]);
   if (!add.ok) return { ok: false, state: "failed", note: `old worktree removed, but the new one could not be made: ${add.err.split("\n")[0]}; run again with --existing reuse after fixing it`, backup };
-  const extra = [backup ? `uncommitted work saved in ${backup}` : "", aside ? `the folder that was there is now ${aside}` : ""].filter(Boolean);
+  const extra = [backup ? `uncommitted work saved in ${backup}` : "", saved.note, aside ? `the folder that was there is now ${aside}` : ""].filter(Boolean);
   return { ok: true, state: "recreated", note: `recreated from ${branch} (old worktree ${from} removed${extra.length ? `; ${extra.join("; ")}` : ""})`, backup };
 }
 

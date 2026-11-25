@@ -532,7 +532,7 @@ export function repairSet(ctx: Ctx, ex: { existing?: Exclude<WhenExists, "ask">;
  * `worktree remove` (uncommitted or unpushed work keeps it, and it stays in the set); a worktree elsewhere (reused)
  * only leaves the set. The branch stays. The set file and the workspace file are updated; no window.
  */
-export function dropFromSet(ctx: Ctx, o: { repos: string[] }): OpenSetResult {
+export function dropFromSet(ctx: Ctx, o: { repos: string[]; discardLocalWork?: boolean }): OpenSetResult {
   const here = setHere(ctx.cwd);
   if (!here) throw notInSet("aihub worktree drop");
   if (!o.repos.length) throw new AihubError("usage: aihub worktree drop --repos a,b");
@@ -550,7 +550,7 @@ export function dropFromSet(ctx: Ctx, o: { repos: string[] }): OpenSetResult {
       return { repo: e.name, ok: true, state: "removed", branch, path: e.path, note: `left the set; the worktree stays where it is: ${e.path}` };
     }
     try {
-      const x = removeWorktreeSafely(e, branch);
+      const x = removeWorktreeSafely(e, branch, { discardLocalWork: o.discardLocalWork, env: ctx.env });
       if (x.removed) gone.add(e.name);
       return { repo: e.name, ok: x.removed, state: x.removed ? "removed" : "kept", branch, path: e.path, note: x.line.replace(`${e.name}: `, "") };
     } catch (err) {
