@@ -170,20 +170,30 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
   if (!repoRows.length) return void vscode.window.showWarningMessage("AI Context Hub: there are no repositories on this PC. Add a folder with Folders to Look In...");
   const ticked = await pickRepos(story, repoRows, notOnThisPc);
   if (!ticked) return;
-  const args = [...openStoryArgs(story, ticked), "--json"];
-  const first = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Opening story ${story.id}...` }, () => cli(args, ticked[0].path));
-  const out = await answerExisting(first, (extra) => cli([...args, ...extra], ticked[0].path), { ownWindow: true });
-  if (out === undefined) return;
-  const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
-  // the branches made new for the story are linked to it in Azure DevOps (the ones that were linked already are left alone)
-  for (const r of ticked.filter((t) => !t.branch || t.linked === false)) {
-    const made = res.repos.find((x) => x.repo === r.repo && x.ok);
-    if (made) void cli(["story", "branches", "link", "--id", String(story.id), "--branch", made.branch, "--repo", r.repo], r.path).catch((e: Error) => h.log(`story ${story.id}: Azure DevOps link for ${made.branch} not made: ${e.message}`));
-  }
-  forgetScan(process.env);
-  if (story.title && res.folder) stampStoryTitle(res.folder, story.id, story.title);
-  await showOpened(res, windowChoice(), h.log, { storyTitle: story.title });
-  h.changed();
+  // the set this makes (worktrees, branches, set file) can be undone while nothing is changed in it
+  await withUndo(
+    h,
+    `Open story #${story.id}`,
+    "",
+    async () => {
+    const args = [...openStoryArgs(story, ticked), "--json"];
+    const first = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Opening story ${story.id}...` }, () => cli(args, ticked[0].path));
+    const out = await answerExisting(first, (extra) => cli([...args, ...extra], ticked[0].path), { ownWindow: true });
+    if (out === undefined) return undefined;
+    const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
+    // the branches made new for the story are linked to it in Azure DevOps (the ones that were linked already are left alone)
+    for (const r of ticked.filter((t) => !t.branch || t.linked === false)) {
+      const made = res.repos.find((x) => x.repo === r.repo && x.ok);
+      if (made) void cli(["story", "branches", "link", "--id", String(story.id), "--branch", made.branch, "--repo", r.repo], r.path).catch((e: Error) => h.log(`story ${story.id}: Azure DevOps link for ${made.branch} not made: ${e.message}`));
+    }
+    forgetScan(process.env);
+    if (story.title && res.folder) stampStoryTitle(res.folder, story.id, story.title);
+    await showOpened(res, windowChoice(), h.log, { storyTitle: story.title });
+    h.changed();
+    return res;
+    },
+    { sources: ticked.map((t) => t.path), created: (r) => r?.folder },
+  );
 }
 
 // ---- the story links another branch ----------------------------------------------------------------------------

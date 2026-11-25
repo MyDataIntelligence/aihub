@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as vscode from "vscode";
 import { forgetScan, headBranchOf, setById } from "../../../cli/src/lib/machineScan";
@@ -72,8 +72,10 @@ export class SetFileWatcher implements vscode.Disposable {
   private lastSaid = "";
   /** what the file said at the last read: only a change against it is an order */
   private previous?: Map<string, string>;
+  /** the set file as it was at the last read: Undo puts a hand edit back too */
+  private prevBytes?: Buffer;
 
-  constructor(private h: { log: (line: string) => void; changed: () => void }) {}
+  constructor(private h: { log: (line: string) => void; changed: () => void; afterGit?: () => void }) {}
 
   /** (Re)aimed at the set this window shows; nothing for a window without a set. */
   aim(): void {
@@ -83,10 +85,13 @@ export class SetFileWatcher implements vscode.Disposable {
     if ((folder ?? "") === this.key) return;
     this.key = folder ?? "";
     this.previous = undefined;
+    this.prevBytes = undefined;
     if (folder) {
       const f = readSetFile(folder);
       const m = f && [f.top, ...(f.top.others ?? [])].find((x) => x.branch === openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.branch);
       if (f) this.previous = snapshotOf(m ?? f.top);
+      const rawNow = [AIHUB_SET, MAKER_SET].map((n) => join(folder, n)).find((q) => existsSync(q));
+      if (rawNow) this.prevBytes = readFileSync(rawNow);
     }
     this.watcher?.dispose();
     this.watcher = undefined;
@@ -134,24 +139,32 @@ export class SetFileWatcher implements vscode.Disposable {
       if (plan.problem) return this.say(`Set file: ${plan.problem}; nothing was applied.`, true);
       const done: string[] = [];
       const inside = here.repos[0]?.path ?? here.folder;
-      for (const a of plan.actions) {
-        if (a.kind === "repair") {
-          const args = ["worktree", "repair", "--json"];
-          const first = await cli(args, inside);
-          const out = await answerExisting(first, (extra) => cli([...args, ...extra], inside));
-          if (out === undefined) return this.say(`Set file: repair of ${a.repos.join(", ")} was cancelled.`, true);
-          await showOpened(jsonOf<OpenResultJson>(out), "this", this.h.log);
-          done.push(`made the worktree of ${a.repos.join(", ")}`);
-        } else {
-          const path = meta.repos.find((r) => r.name === a.repo)?.path ?? inside;
-          const args = ["branch", "switch", "--repo", a.repo, "--branch", a.branch, "--json"];
-          const first = await cli(args, path);
-          const out = await answerExisting(first, (extra) => cli([...args, ...extra], path));
-          if (out === undefined) return this.say(`Set file: the switch of ${a.repo} to ${a.branch} was cancelled.`, true);
-          await showOpened(jsonOf<OpenResultJson>(out), "this", this.h.log);
-          done.push(`${a.repo} switched to ${a.branch}`);
+      // what was asked in the file can be undone: the file as it was at the last read, and the branches (one message with Undo)
+      const runActions = async (): Promise<string | undefined> => {
+        for (const a of plan.actions) {
+          if (a.kind === "repair") {
+            const args = ["worktree", "repair", "--json"];
+            const first = await cli(args, inside);
+            const out = await answerExisting(first, (extra) => cli([...args, ...extra], inside));
+            if (out === undefined) return `Set file: repair of ${a.repos.join(", ")} was cancelled.`;
+            await showOpened(jsonOf<OpenResultJson>(out), "this", this.h.log);
+            done.push(`made the worktree of ${a.repos.join(", ")}`);
+          } else {
+            const path = meta.repos.find((r) => r.name === a.repo)?.path ?? inside;
+            const args = ["branch", "switch", "--repo", a.repo, "--branch", a.branch, "--json"];
+            const first = await cli(args, path);
+            const out = await answerExisting(first, (extra) => cli([...args, ...extra], path));
+            if (out === undefined) return `Set file: the switch of ${a.repo} to ${a.branch} was cancelled.`;
+            await showOpened(jsonOf<OpenResultJson>(out), "this", this.h.log);
+            done.push(`${a.repo} switched to ${a.branch}`);
+          }
         }
-      }
+        return undefined;
+      };
+      const label = `Set file: ${plan.actions.map((x) => (x.kind === "repair" ? `made ${x.repos.join(", ")}` : `${x.repo} to ${x.branch}`)).join("; ")}`;
+      const raw0 = [AIHUB_SET, MAKER_SET].map((n) => join(this.key, n)).find((q) => existsSync(q));
+      const cancelled = plan.actions.length ? await withUndo(this.h, label, here.folder, runActions, { files: raw0 && this.prevBytes ? [{ path: raw0, bytes: this.prevBytes }] : undefined }) : undefined;
+      if (cancelled) return this.say(cancelled, true);
       // HEAD moved outside aihub in a repository the file did not change: HEAD wins, the file and the folder name follow (one write each, only when they differ)
       const wsFile = vscode.workspace.workspaceFile;
       for (const name of plan.follow ?? []) {
@@ -161,6 +174,7 @@ export class SetFileWatcher implements vscode.Disposable {
       const after = readSetFile(here.folder);
       const now = after && [after.top, ...(after.top.others ?? [])].find((m) => m.branch === meta.branch || (metas.length === 1 && m === after.top));
       this.previous = now ? snapshotOf(now) : this.previous;
+      this.prevBytes = raw0 && existsSync(raw0) ? readFileSync(raw0) : this.prevBytes;
       forgetScan(process.env);
       this.h.changed();
       // a file that already matches the folders (our own write) is silent

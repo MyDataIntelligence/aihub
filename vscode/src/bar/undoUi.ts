@@ -25,10 +25,12 @@ function differs(s: Snapshot): boolean {
  * Runs `run` (an action that changes the set) with a snapshot before it. When something changed, one message with Undo
  * (and, after a removal, Show Backup) follows, and the state offers "Undo: <label>" until the next action.
  */
-export async function withUndo<T>(h: StoryHooks, label: string, setFolder: string | undefined, run: () => Promise<T>, o: { backup?: boolean } = {}): Promise<T> {
-  const snap = setFolder ? await takeSnapshot(gitRun, setFolder, label).catch(() => undefined) : undefined;
+export async function withUndo<T>(h: Pick<StoryHooks, "changed" | "log" | "afterGit">, label: string, setFolder: string | undefined, run: () => Promise<T>, o: { backup?: boolean; files?: { path: string; bytes?: Buffer }[]; sources?: string[]; created?: (result: T) => string | undefined } = {}): Promise<T> {
+  const snap = setFolder !== undefined ? await takeSnapshot(gitRun, setFolder, label, { files: o.files, sources: o.sources }).catch(() => undefined) : undefined;
   const result = await run();
-  if (!snap || !differs(snap)) return result;
+  // a set the action made: its folder is known only now
+  if (snap && o.created) snap.setFolder = o.created(result) ?? snap.setFolder;
+  if (!snap || (snap.setFolder ? !differs(snap) && !(o.created && existsSync(snap.setFolder)) : true)) return result;
   last = { label, snap };
   h.changed();
   const undo = "Undo";
@@ -42,7 +44,7 @@ export async function withUndo<T>(h: StoryHooks, label: string, setFolder: strin
 }
 
 /** Puts the set back as it was before the last action, or says in one sentence why it cannot and does nothing. */
-export async function undoLast(h: StoryHooks): Promise<boolean> {
+export async function undoLast(h: Pick<StoryHooks, "changed" | "log" | "afterGit">): Promise<boolean> {
   if (!last) {
     void vscode.window.showInformationMessage("AI Context Hub: nothing to undo.");
     return false;

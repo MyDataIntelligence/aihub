@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { headBranchOf } from "../../../cli/src/lib/machineScan";
 import { AIHUB_SET, MAKER_SET, readSetFile } from "../../../cli/src/lib/setFile";
@@ -30,6 +30,8 @@ export interface Snapshot {
   branches: Map<string, Map<string, string>>;
   /** names in `<git dir>/aihub/backup` per source clone before the action */
   backups: Map<string, string[]>;
+  /** clones noted without a set member (a set that did not exist yet) */
+  sources?: string[];
 }
 
 const key = (p: string) => resolve(p).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
@@ -55,8 +57,13 @@ function setFilesOf(folder: string): { path: string; bytes?: Buffer }[] {
   return [...paths].map((p) => ({ path: p, ...(existsSync(p) ? { bytes: readFileSync(p) } : {}) }));
 }
 
-export async function takeSnapshot(git: GitRun, setFolder: string, label: string): Promise<Snapshot> {
-  const file = readSetFile(setFolder);
+/**
+ * `sources`: clones whose worktrees and branches are noted although no set member lives there yet (Open Story, which makes
+ * the set); `files`: what a file was before something outside this action changed it (a set file edited by hand).
+ * An empty `setFolder` is a set that does not exist yet.
+ */
+export async function takeSnapshot(git: GitRun, setFolder: string, label: string, o: { sources?: string[]; files?: { path: string; bytes?: Buffer }[] } = {}): Promise<Snapshot> {
+  const file = setFolder ? readSetFile(setFolder) : undefined;
   const seen = new Set<string>();
   const repos: SnapRepo[] = [];
   for (const m of file ? [file.top, ...(file.top.others ?? [])] : []) {
@@ -70,7 +77,7 @@ export async function takeSnapshot(git: GitRun, setFolder: string, label: string
   }
   const branches = new Map<string, Map<string, string>>();
   const backups = new Map<string, string[]>();
-  for (const src of new Set(repos.map((r) => r.source).filter((s) => existsSync(s)))) {
+  for (const src of new Set([...repos.map((r) => r.source), ...(o.sources ?? [])].filter((s) => existsSync(s)))) {
     // every other worktree of these clones (one the action may move, recreate or reuse): put back like a member of the set
     for (const w of await worktreesOf(git, src).catch(() => [])) {
       if (w.main || seen.has(key(w.path))) continue;
@@ -81,7 +88,13 @@ export async function takeSnapshot(git: GitRun, setFolder: string, label: string
     branches.set(src, new Map(out.split(/\r?\n/).filter(Boolean).map((l) => l.split("\t") as [string, string])));
     backups.set(src, listDir(backupDir(src)));
   }
-  return { label, setFolder, files: setFilesOf(setFolder), repos, branches, backups };
+  const files = setFolder ? setFilesOf(setFolder) : [];
+  for (const f of o.files ?? []) {
+    const i = files.findIndex((x) => key(x.path) === key(f.path));
+    if (i >= 0) files[i] = f;
+    else files.push(f);
+  }
+  return { label, setFolder, files, repos, branches, backups, sources: [...(o.sources ?? [])] };
 }
 
 export interface UndoPlan {
@@ -118,7 +131,7 @@ export async function planUndo(git: GitRun, s: Snapshot): Promise<UndoPlan> {
   const restores: UndoPlan["steps"] = [];
   const movedFrom = new Set<string>();
   const nothing = (problem: string): UndoPlan => ({ problem, steps: [] });
-  const sources = [...new Set(s.repos.map((r) => r.source))].filter((x) => existsSync(x));
+  const sources = [...new Set([...s.repos.map((r) => r.source), ...(s.sources ?? [])])].filter((x) => existsSync(x));
   const now = new Map<string, Awaited<ReturnType<typeof worktreesOf>>>();
   for (const src of sources) now.set(src, await worktreesOf(git, src).catch(() => []));
   const clean = async (p: string) => (await git(p, ["status", "--porcelain", "--untracked-files=no"]).catch(() => "x")).trim() === "";
@@ -177,13 +190,23 @@ export async function planUndo(git: GitRun, s: Snapshot): Promise<UndoPlan> {
     }
   }
 
+  // a branch the action made that has commits since: nothing is done (said before anything changes)
+  for (const src of sources) {
+    const before = s.branches.get(src) ?? new Map<string, string>();
+    for (const b of (await branchesOf(git, src).catch(() => undefined))?.local ?? []) {
+      if (before.has(b)) continue;
+      const unique = Number((await git(src, ["rev-list", "--count", b, "--not", `--exclude=${b}`, "--branches", "--remotes"]).catch(() => "0")).trim());
+      if (unique > 0) return nothing(`${b} has commits of its own since; they would be lost`);
+    }
+  }
+
   // branches the action made, when nothing was committed on them
   const dropBranches = async () => {
     for (const src of sources) {
       const before = s.branches.get(src) ?? new Map<string, string>();
       for (const b of (await branchesOf(git, src).catch(() => undefined))?.local ?? []) {
         if (before.has(b)) continue;
-        const unique = Number((await git(src, ["rev-list", "--count", b, "--not", `--exclude=refs/heads/${b}`, "--branches", "--remotes"]).catch(() => "1")).trim());
+        const unique = Number((await git(src, ["rev-list", "--count", b, "--not", `--exclude=${b}`, "--branches", "--remotes"]).catch(() => "1")).trim());
         if (unique === 0) await git(src, ["branch", "-D", b]).catch(() => undefined);
       }
     }
@@ -201,6 +224,8 @@ export async function planUndo(git: GitRun, s: Snapshot): Promise<UndoPlan> {
           writeAtomicBytes(f, was.bytes);
         } else if (!was?.bytes && existsSync(f)) rmSync(f, { force: true });
       }
+      // a set that did not exist before: its folder goes too, when nothing else is in it
+      if (s.setFolder && s.files.every((x) => !x.bytes) && existsSync(s.setFolder) && !readdirSync(s.setFolder).length) rmdirSync(s.setFolder);
     },
   });
   return { steps };
