@@ -7,7 +7,7 @@ import { createSet, listSets, removeSet } from "../lib/worktree.js";
 import { formatCleanup, formatRemoved, listCleanup, removeCleanup } from "../lib/worktreeCleanup.js";
 
 const USAGE =
-  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
+  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--new-set] | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -22,6 +22,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     from: { type: "string" },
     mode: { type: "string" },
     window: { type: "string" },
+    "new-set": { type: "boolean" },
     json: { type: "boolean" },
     remove: { type: "string" },
     "delete-branch": { type: "boolean" },
@@ -37,11 +38,12 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   } else if (sub === "remove") {
     ctx.out(removeSet(ctx, { story: optInt(v.story, "--story"), branch: v.branch as string | undefined, root, json }));
   } else if (sub === "open") {
-    const mode = (v.mode as string | undefined) ?? "worktree";
+    // no --mode: worktree for a new set; inside a set, naming some of its repositories switches them in place
+    const mode = v.mode as string | undefined;
     const window = (v.window as string | undefined) ?? "new";
-    if (mode !== "worktree" && mode !== "switch") throw new AihubError("--mode must be worktree or switch");
+    if (mode !== undefined && mode !== "worktree" && mode !== "switch") throw new AihubError("--mode must be worktree or switch");
     if (window !== "new" && window !== "this" && window !== "none") throw new AihubError("--window must be new, this or none");
-    const r = openSet(ctx, { group: v.group as string | undefined, repos: list(v.repos), branch: String(v.branch ?? ""), from: (v.from ?? v.base) as string | undefined, mode: mode as OpenMode, window: window as OpenWindow, root, storyId: optInt(v.story, "--story") });
+    const r = openSet(ctx, { group: v.group as string | undefined, repos: list(v.repos), branch: String(v.branch ?? ""), from: (v.from ?? v.base) as string | undefined, mode: mode as OpenMode | undefined, window: window as OpenWindow, root, storyId: optInt(v.story, "--story"), newSet: !!v["new-set"] });
     ctx.out(json ? JSON.stringify(r) : formatOpenSet(r));
     const bad = r.repos.filter((x) => !x.ok).length;
     // --json is for programs (the VS Code extension): the table says which repositories failed, so the exit code stays 0

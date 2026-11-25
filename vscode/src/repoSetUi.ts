@@ -126,6 +126,11 @@ export async function showOpened(res: OpenResultJson, window: "new" | "this", lo
   const detail = sum.lines.join("\n");
   log(`${sum.title}\n${detail}`);
   const to = openTarget(res, window);
+  // some repositories of the set this window shows switched in place: nothing to open, the window stays
+  if ("stays" in to) {
+    void (sum.ok ? vscode.window.showInformationMessage(`AI Context Hub: ${to.stays}`) : vscode.window.showWarningMessage(`AI Context Hub: ${to.stays}\n${detail}`, { modal: true }));
+    return sum.ok;
+  }
   if ("error" in to) {
     void vscode.window.showErrorMessage(`AI Context Hub: ${to.error}\n${detail}`, { modal: true });
     return false;
