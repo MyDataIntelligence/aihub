@@ -16,6 +16,14 @@ export const gitErrorLine = (stderr: string): string => {
   return lines.find((l) => /^(fatal|error|remote: error):/i.test(l)) ?? lines[0] ?? "";
 };
 
+/** git that answers with its exit code instead of failing (merge-tree exits 1 for "there are conflicts"). */
+export type GitRaw = (cwd: string, args: string[]) => Promise<{ code: number; out: string; err: string }>;
+
+export const gitRaw: GitRaw = (cwd, args) =>
+  new Promise((resolve) =>
+    execFile("git", args, { cwd, timeout: 60_000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, out, stderr) => resolve({ code: err ? (typeof (err as { code?: unknown }).code === "number" ? ((err as { code: number }).code) : 128) : 0, out: String(out), err: String(stderr) })),
+  );
+
 export const gitRun: GitRun = (cwd, args) =>
   new Promise((resolve, reject) =>
     execFile("git", args, { cwd, timeout: 60_000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, out, stderr) => (err ? reject(new Error(gitErrorLine(String(stderr)) || err.message)) : resolve(String(out)))),

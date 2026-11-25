@@ -766,6 +766,21 @@
           "default": false,
           "description": "Show the Worktree Sets and My Stories views in the Explorer sidebar. Off by default: the title bar buttons (Open Story, Open Repository, Recent) do the same."
         },
+        "aiContextHub.behindTarget": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "auto",
+            "off"
+          ],
+          "default": "ask",
+          "enumDescriptions": [
+            "Ask once per new stand when a repository is behind its target branch (team.yaml, else staging, else main).",
+            "Update by itself when there are no conflicts and no uncommitted work in the way; otherwise ask. A line with Undo follows.",
+            "Never look at the target branch."
+          ],
+          "description": "What to do when a repository of the set is behind its target branch. Looking costs one git fetch per repository: when the set opens, after an Update or Push, when the overview menu opens, and when the window gets focus back after 30 minutes."
+        },
         "aiContextHub.openIn": {
           "type": "string",
           "enum": [

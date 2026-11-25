@@ -185,3 +185,16 @@ describe("one function for the target branch: team.yaml, else staging if origin 
     expect(originHas(clone({ refs: ["staging-old"] }), "staging")).toBe(false);
   });
 });
+
+describe("the build of a pull request", () => {
+  it("a failed build is failed, whatever the votes; build is passed on; the plain read has no builds, the forced read has", async () => {
+    expect(prStateOf(row({ build: "failed", reviewers: [{ vote: 10, required: true }] }))).toBe("failed");
+    expect(prStateOf(row({ build: "running", reviewers: [{ vote: 10, required: true }] }))).toBe("approved");
+    expect(prOfBranch([row({ build: "failed" })], "repo-a", "feature/5-x")).toEqual({ id: 812, status: "failed", url: "https://x/pr/812", build: "failed" });
+    const asked: boolean[] = [];
+    const memo = new PrMemo(async (builds) => (asked.push(builds), []));
+    await memo.refresh();
+    await memo.refresh(true);
+    expect(asked).toEqual([false, true]);
+  });
+});

@@ -137,6 +137,7 @@ export interface PrRow {
   draft?: boolean;
   url: string;
   mergeStatus?: string;
+  build?: "succeeded" | "failed" | "running";
   reviewers?: { vote: number; required: boolean }[];
 }
 
@@ -149,7 +150,7 @@ export function prStateOf(r: PrRow): BarPr["status"] | undefined {
   if (r.status === "completed") return "merged";
   if (r.status === "abandoned") return undefined;
   const votes = r.reviewers ?? [];
-  if (votes.some((v) => v.vote <= -5) || r.mergeStatus === "conflicts" || r.mergeStatus === "failure" || r.mergeStatus === "rejectedByPolicy") return "failed";
+  if (r.build === "failed" || votes.some((v) => v.vote <= -5) || r.mergeStatus === "conflicts" || r.mergeStatus === "failure" || r.mergeStatus === "rejectedByPolicy") return "failed";
   const required = votes.filter((v) => v.required);
   if (votes.some((v) => v.vote >= 5) && required.every((v) => v.vote >= 5)) return "approved";
   return "active";
@@ -160,7 +161,7 @@ export function prOfBranch(rows: PrRow[], repo: string, branch: string): BarPr |
   const mine = rows.filter((r) => r.repo.toLowerCase() === repo.toLowerCase() && r.source === branch);
   const best = mine.find((r) => r.status === "active") ?? mine.find((r) => r.status === "completed");
   const status = best && prStateOf(best);
-  return best && status ? { id: best.id, status, url: best.url } : undefined;
+  return best && status ? { id: best.id, status, url: best.url, ...(best.build ? { build: best.build } : {}) } : undefined;
 }
 
 export const PR_TTL_MS = 5 * 60_000;
@@ -170,7 +171,7 @@ export class PrMemo {
   private rows: PrRow[] = [];
   private at = 0;
   private running?: Promise<void>;
-  constructor(private fetch: () => Promise<PrRow[]>, private now: () => number = Date.now) {}
+  constructor(private fetch: (builds: boolean) => Promise<PrRow[]>, private now: () => number = Date.now) {}
 
   get(): PrRow[] {
     return this.rows;
@@ -180,7 +181,8 @@ export class PrMemo {
   refresh(force = false): Promise<void> {
     if (this.running) return this.running;
     if (!force && this.at && this.now() - this.at < PR_TTL_MS) return Promise.resolve();
-    this.running = this.fetch()
+    // the build policies cost one read per active pull request: only when asked for (the overview menu, Create Pull Requests), never when a set opens
+    this.running = this.fetch(force)
       .then((r) => void (this.rows = r))
       .catch(() => undefined)
       .finally(() => {

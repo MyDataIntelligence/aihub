@@ -14,6 +14,8 @@ export interface BarPr {
   id: number;
   status: "active" | "approved" | "failed" | "merged";
   url: string;
+  /** the build policy of an active pull request; only known after the overview menu or Create Pull Requests asked for it (one policy read per active pull request) */
+  build?: "succeeded" | "failed" | "running";
 }
 
 export interface BarRepo {

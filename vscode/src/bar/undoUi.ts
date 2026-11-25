@@ -6,7 +6,13 @@ import { newBackups, planUndo, runUndo, takeSnapshot, type Snapshot } from "./un
 import type { StoryHooks } from "./storyUi";
 
 /** The one thing that can be undone: the last action that changed a set. The next action replaces it. */
-let last: { label: string; snap: Snapshot } | undefined;
+let last: { label: string; snap?: Snapshot; custom?: () => Promise<{ problem?: string }> } | undefined;
+
+/** An undo that is not a snapshot of a set (an update from the target branch): `run` puts it back or says why not. */
+export function setCustomUndo(h: StoryHooks, label: string, run: () => Promise<{ problem?: string }>): void {
+  last = { label, custom: run };
+  h.changed();
+}
 export const undoLabel = (): string | undefined => last?.label;
 
 /** Did the action change what a snapshot holds (set files, branches, worktree folders)? Files only. */
@@ -41,8 +47,21 @@ export async function undoLast(h: StoryHooks): Promise<boolean> {
     void vscode.window.showInformationMessage("AI Context Hub: nothing to undo.");
     return false;
   }
-  const { label, snap } = last;
-  const plan = await planUndo(gitRun, snap);
+  const { label, snap, custom } = last;
+  if (custom) {
+    const r = await custom();
+    if (r.problem) {
+      void vscode.window.showWarningMessage(`AI Context Hub: cannot undo "${label}": ${r.problem}. Nothing was changed.`);
+      return false;
+    }
+    last = undefined;
+    forgetScan(process.env);
+    h.afterGit?.();
+    h.changed();
+    void vscode.window.showInformationMessage(`AI Context Hub: undone: ${label}.`);
+    return true;
+  }
+  const plan = await planUndo(gitRun, snap!);
   if (plan.problem) {
     void vscode.window.showWarningMessage(`AI Context Hub: cannot undo "${label}": ${plan.problem}. Nothing was changed.`);
     return false;

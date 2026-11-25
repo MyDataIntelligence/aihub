@@ -67,6 +67,8 @@ export { parseMessage };
 /** Create Pull Requests: a quick pick with ticks (only repositories on a story branch without a pull request are ticked), then one aihub pr create per repository. */
 export function registerPullRequestCommand(h: StoryHooks): void {
   h.reg("aihub.bar.createPullRequests", async (arg?: { repos?: string[] }) => {
+    // the build of each open pull request is read now (one policy read per open pull request), so the reasons are right
+    await h.refreshPrs?.();
     const state = await h.engine.state({ refresh: false });
     if (state.mode !== "set" || !state.story) return void vscode.window.showInformationMessage("AI Context Hub: this window does not show a story set.");
     const offers = prOffers(state.repos);

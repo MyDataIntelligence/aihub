@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import * as vscode from "vscode";
 import { forgetScan, gitDirFor, writeLookIn } from "../../../cli/src/lib/machineScan";
@@ -14,7 +14,11 @@ import { BehindMemo, gitStatusOf, prOfBranch, PrMemo, type GitRepoLike, type PrR
 import { linkedOf, registerStoryCommands } from "./storyUi";
 import { registerSetOps, SetFileWatcher } from "./setOps";
 import { registerBatchCommands, registerPullRequestCommand } from "./batchUi";
-import { registerUndoCommand, undoLabel } from "./undoUi";
+import { registerUndoCommand, setCustomUndo, undoLabel, undoLast } from "./undoUi";
+import { BehindManager } from "./behindRun";
+import { FETCH_FRESH_MS, Told } from "./behind";
+import { gitRaw } from "./ownWindow";
+import { configHome } from "../../../cli/src/lib/configHome";
 import { openPath, windowIsEmpty } from "./window";
 import { BAR_COMMANDS, type BarApi, type BarState } from "./types";
 
@@ -62,11 +66,11 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     return ext?.isActive ? (ext.exports?.getAPI?.(1)?.repositories as GitRepoLike[] | undefined) : undefined;
   };
   // the pull requests of the set: one aihub call for the whole set, remembered for minutes, never on a timer
-  const prs = new PrMemo(async () => {
+  const prs = new PrMemo(async (builds) => {
     const f = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
     const cwd = f.set?.repos[0]?.path;
     if (!cwd) return [];
-    const out = await cli(["pr", "list", "--mine", "--status", "all", "--json"], cwd);
+    const out = await cli(["pr", "list", "--mine", "--status", "all", ...(builds ? ["--builds"] : []), "--json"], cwd);
     return JSON.parse(out.slice(out.search(/[[{]/))) as PrRow[];
   });
   const unpushed = new Map<string, { at: number; n: Promise<number | undefined> }>();
@@ -78,6 +82,54 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     return n;
   };
   const sizes = new SizeMemo();
+  // behind the target branch: a fetch of the target per repository after each other, the question or the update as aiContextHub.behindTarget says
+  let openedChecked = false;
+  const toldFile = join(configHome(process.env), "behind-told.json");
+  const behindMgr = new BehindManager({
+    git: gitRun,
+    raw: gitRaw,
+    count: (path, name) => behind.behind(path, name),
+    cli: (args, cwd) => cli(args, cwd),
+    told: new Told(
+      () => {
+        try {
+          return (JSON.parse(readFileSync(toldFile, "utf8")) as { keys?: string[] }).keys ?? [];
+        } catch {
+          return [];
+        }
+      },
+      (keys) => {
+        try {
+          mkdirSync(configHome(process.env), { recursive: true });
+          writeFileSync(toldFile, JSON.stringify({ keys }));
+        } catch {
+          /* a note that is not kept only means the same stand is told again */
+        }
+      },
+    ),
+    ui: {
+      mode: () => (cfg().get<string>("behindTarget", "ask") as "ask" | "auto" | "off"),
+      setAuto: async () => void (await cfg().update("behindTarget", "auto", vscode.ConfigurationTarget.Global)),
+      focused: () => vscode.window.state.focused,
+      repos: () => {
+        const f = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+        const changes = (p: string) => gitStatusOf(gitRepos() ?? [], p)?.changes;
+        return f.set ? f.set.repos.map((r) => ({ name: r.name, path: r.path, branch: r.branch, changes: changes(r.path) })) : f.repo ? [{ name: f.repo.name, path: f.repo.path, branch: f.repo.branch, changes: changes(f.repo.path) }] : [];
+      },
+      ask: async (message, buttons) => vscode.window.showInformationMessage(`AI Context Hub: ${message}`, ...buttons),
+      said: (line, undo) => {
+        void vscode.window.showInformationMessage(`AI Context Hub: ${line}`, ...(undo ? ["Undo"] : [])).then((pick) => {
+          if (pick === "Undo" && undo) void undoLast({ engine, log: deps.log, changed, reg: () => undefined, afterGit: () => behind.forget() });
+        });
+        if (undo) setCustomUndo({ engine, log: deps.log, changed, reg: () => undefined }, undo.label, undo.run);
+        deps.log(line);
+      },
+      changed: (p) => {
+        behind.forget(p);
+        changed();
+      },
+    },
+  });
   const engine = new BarEngine({
     unpushedOf,
     sizes,
@@ -87,7 +139,8 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     dirtyOf,
     linkedOf,
     extraPlaces: deps.extraPlaces,
-    statusOf: async (path, name) => ({ ...(gitStatusOf(gitRepos() ?? [], path) ?? {}), ...(await behind.behind(path, name).then((n) => (n === undefined ? {} : { behindTarget: n }))) }),
+    // behind the target is only counted after the target was fetched in this window (no count of a stale ref, no extra process before)
+    statusOf: async (path, name) => ({ ...(gitStatusOf(gitRepos() ?? [], path) ?? {}), ...(behindMgr.gate.has(path) ? await behind.behind(path, name).then((n) => (n === undefined ? {} : { behindTarget: n })) : {}) }),
     prOf: (repo, branch) => prOfBranch(prs.get(), repo, branch),
   });
   const emitter = new vscode.EventEmitter<void>();
@@ -101,7 +154,13 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     getState: () => {
       watchHeads();
       // opening a set (or its overview menu) reads the pull requests once, then they are remembered for minutes
-      if (openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set) void prs.refresh().then(changed);
+      const f = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+      if (f.set) void prs.refresh().then(changed);
+      // the first state of a window with a set or a repository: look at the target branch once (a fetch per repository, never without focus)
+      if ((f.set || f.repo) && !openedChecked) {
+        openedChecked = true;
+        void behindMgr.run("open");
+      }
       return engine.state();
     },
     onDidChangeState: emitter.event,
@@ -167,7 +226,13 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   const askContinue = setTimeout(() => void offerContinue(deps), 6000);
   ctx.subscriptions.push({ dispose: () => clearTimeout(askContinue) });
 
-  registerCommands(ctx, engine, deps, changed, { prs, behind });
+  registerCommands(ctx, engine, deps, changed, { prs, behind, mgr: behindMgr });
+  // the window gets focus back and the last successful fetch is over 30 minutes ago: look again (one fetch per repository)
+  ctx.subscriptions.push(
+    vscode.window.onDidChangeWindowState((s) => {
+      if (s.focused && openedChecked && Date.now() - behindMgr.gate.lastOk() > FETCH_FRESH_MS) void behindMgr.run("focus");
+    }),
+  );
   return { api, engine, changed };
 }
 
@@ -192,8 +257,8 @@ async function offerContinue(deps: BarDeps): Promise<void> {
 
 const idOf = (a: unknown): string | undefined => (typeof a === "string" ? a : a && typeof a === "object" && "id" in a ? String((a as { id: unknown }).id) : undefined);
 
-function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps: BarDeps, changed: () => void, memo: { prs: PrMemo; behind: BehindMemo }): void {
-  const { prs, behind } = memo;
+function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps: BarDeps, changed: () => void, memo: { prs: PrMemo; behind: BehindMemo; mgr: BehindManager }): void {
+  const { prs, behind, mgr } = memo;
   const fail = (e: unknown) => {
     if (e instanceof CliProblem) {
       const copy = "Copy update command";
@@ -217,6 +282,8 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
     await prs.refresh(true);
     behind.forget();
     changed();
+    // the overview menu opens: look at the target branch too
+    void mgr.run("menu");
   });
 
   // the left menu opens: measure the sets in the background, the state gets the sizes as they come in
@@ -295,8 +362,9 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   });
 
   registerStoryCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
-  registerBatchCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
-  registerPullRequestCommand({ engine, log: deps.log, changed, reg });
+  // after an own Update or Push the stand against the target is looked at again
+  registerBatchCommands({ engine, log: deps.log, changed, reg, afterGit: () => (behind.forget(), void mgr.run("own")) });
+  registerPullRequestCommand({ engine, log: deps.log, changed, reg, refreshPrs: () => prs.refresh(true) });
   registerUndoCommand({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerSetOps({ engine, log: deps.log, changed, reg });
 }
