@@ -18,7 +18,7 @@ import {
 } from "../../cli/src/lib/storyWorktrees";
 import { makeRunner, readJson, type Runner } from "./cli";
 import { openWays, type OpenResultJson, type OpenWay } from "./repoSetModel";
-import { pick, showOpened } from "./repoSetUi";
+import { answerExisting, pick, showOpened } from "./repoSetUi";
 import { itemView, lastReflog, overlay, starQuestion, storyChildren, STAR_ANSWERS, type AutoMark, type BranchRowJson, type StoryJson, type StoryNode } from "./storyModel";
 
 /**
@@ -463,7 +463,11 @@ export function registerStories(ctx: vscode.ExtensionContext, deps: StoryDeps): 
     if (!story) return;
     const way = await pick<OpenWay>(openWays(), `Open Story · #${story.id} ${story.title}`, "How should the ★ branches be opened?");
     if (!way) return;
-    const out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Opening story ${story.id}...` }, () => cli(["story", "open", "--id", String(story.id), "--mode", way.mode, "--window", "none"]));
+    const args = ["story", "open", "--id", String(story.id), "--mode", way.mode, "--window", "none"];
+    const first = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Opening story ${story.id}...` }, () => cli(args));
+    // a ★ branch with a worktree elsewhere: move / reuse / recreate, as the CLI asks
+    const out = await answerExisting(first, (extra) => cli([...args, ...extra]));
+    if (out === undefined) return;
     await deps.opened?.({ id: story.id, title: story.title }).catch(() => undefined);
     await showOpened(JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson, way.window, deps.log);
   });

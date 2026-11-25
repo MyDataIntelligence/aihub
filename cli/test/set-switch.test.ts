@@ -115,7 +115,8 @@ describe("one repository of a set on another branch", { timeout: 30_000 }, () =>
     sh(join(parent, "repo-b"), ["switch", "feature/other"]);
     const r = await run(inside, ["branch", "switch", "--repo", "repo-b", "--branch", "feature/other"]);
     expect(r.code).toBe(1);
-    expect(fwd(r.out)).toContain(`feature/other is already checked out in ${fwd(join(parent, "repo-b"))}; nothing was changed. Add --mode worktree`);
+    // the main clone has it: it cannot be moved or recreated, so the line offers switching it, or reuse
+    expect(fwd(r.out)).toContain(`feature/other is already checked out in ${fwd(join(parent, "repo-b"))}; nothing was changed. Switch that checkout to another branch first, or put it in this set: aihub branch switch --repo repo-b --branch feature/other --existing reuse`);
     expect(head(join(set.folder, "repo-b"))).toBe("feature/123-search");
 
     const { ctx } = ctxFor(inside, fakeFetch([]).fn);

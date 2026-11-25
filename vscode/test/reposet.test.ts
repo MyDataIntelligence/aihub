@@ -160,3 +160,23 @@ describe("the status bar item and the other entries", () => {
     expect(pkg.contributes.keybindings.some((k: { command: string; key: string }) => k.command === "aihub.reposet.open" && k.key === "ctrl+alt+b")).toBe(true);
   });
 });
+
+describe("a branch that already has a worktree elsewhere", () => {
+  it("reads the CLI's question and turns a choice into the same arguments as its ready command", async () => {
+    const { needsChoiceOf, choiceArgs } = await import("../src/repoSetModel");
+    const q = {
+      question: "worktree for feature/x already exists: /w/a (2 uncommitted files). choose: ...",
+      existing: [{ repo: "repo-a", branch: "feature/x", path: "/w/a", target: "/s/a", state: "2 uncommitted files", dirty: 2, unpushed: 0 }],
+      choices: [
+        { choice: "move", label: "move it into this set (recommended; work and branch go along)", command: "aihub worktree open --repos repo-a --branch feature/x --existing move" },
+        { choice: "reuse", label: "reuse it where it is", command: "aihub worktree open --repos repo-a --branch feature/x --existing reuse" },
+        { choice: "recreate", label: "recreate it", command: "aihub worktree open --repos repo-a --branch feature/x --existing recreate --discard-local-work" },
+      ],
+    };
+    const parsed = needsChoiceOf(JSON.stringify({ needsChoice: q }));
+    expect(parsed?.choices.map((c) => c.choice)).toEqual(["move", "reuse", "recreate"]);
+    expect(choiceArgs(parsed!.choices[0])).toEqual(["--existing", "move"]);
+    expect(choiceArgs(parsed!.choices[2])).toEqual(["--existing", "recreate", "--discard-local-work"]);
+    expect(needsChoiceOf(JSON.stringify({ branch: "b", repos: [] }))).toBeUndefined();
+  });
+});

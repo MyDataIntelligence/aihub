@@ -1,7 +1,8 @@
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import { list, optInt, parseFlags, posInt } from "../lib/cliargs.js";
-import { formatOpenSet, type OpenMode, type OpenWindow } from "../lib/repoSet.js";
+import { againOf, formatOpenSet, type OpenMode, type OpenWindow } from "../lib/repoSet.js";
+import { existingFlag, orChoiceAsync } from "../lib/existingWorktree.js";
 import { formatStoryBranches, linkStoryBranches, listStoryBranches, markStoryBranch, openStory, placeWorktrees, removeStoryBranch, unlinkStoryBranch } from "../lib/storyBranches.js";
 import type { BranchStatus } from "../lib/storyWorktrees.js";
 
@@ -13,7 +14,7 @@ const USAGE = `usage: aihub story branches [--id <story>] [--json]            (y
        aihub story branches mark --branch <b> --status current|old|parked [--label <text>] [--id <story>] [--repo <name>]
        aihub story branches remove --branch <b> [--repo <name>] [--delete-branch]   (never throws away local work)
        aihub story branches place [--move all|<path>,<repo:branch>] [--json]        (worktrees to <root>/<id>-<slug>/<repo>[--variant])
-       aihub story open --id <story> [--mode worktree|switch] [--window new|this|none] [--json]   (the ★ of every repository as one set)`;
+       aihub story open --id <story> [--mode worktree|switch] [--window new|this|none] [--existing move|reuse|recreate] [--json]   (the ★ of every repository as one set)`;
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -30,6 +31,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     mode: { type: "string" },
     window: { type: "string" },
     root: { type: "string" },
+    existing: { type: "string" },
+    "discard-local-work": { type: "boolean" },
     json: { type: "boolean" },
   });
   const json = !!v.json;
@@ -40,7 +43,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const window = ((v.window as string | undefined) ?? "new") as OpenWindow;
     if (mode !== "worktree" && mode !== "switch") throw new AihubError("--mode must be worktree or switch");
     if (!["new", "this", "none"].includes(window)) throw new AihubError("--window must be new, this or none");
-    const r = await openStory(ctx, { id: posInt(v.id, "--id"), mode, window, root: v.root as string | undefined });
+    const r = await orChoiceAsync(json, ctx.out, () => openStory(ctx, { id: posInt(v.id, "--id"), mode, window, root: v.root as string | undefined, existing: existingFlag(v.existing), discardLocalWork: !!v["discard-local-work"], again: againOf(["story", ...argv]) }));
+    if (!r) return;
     return void ctx.out(json ? JSON.stringify(r) : formatOpenSet(r));
   }
   if (sub !== "branches") throw new AihubError(USAGE);

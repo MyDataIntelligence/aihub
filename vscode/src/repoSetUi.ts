@@ -9,6 +9,8 @@ import { findRepos, type Repo } from "./worktrees/core";
 import { listGroups as listLocalGroups } from "./worktrees/extras";
 import {
   branchItems,
+  choiceArgs,
+  needsChoiceOf,
   branchesArgs,
   groupItems,
   openArgs,
@@ -119,6 +121,24 @@ let openRecorder: ((res: OpenResultJson, meta?: OpenMeta) => Promise<void>) | un
 /** Called with every set that is about to open (the recent list), awaited: "this window" reloads right after. */
 export function setOpenRecorder(f: (res: OpenResultJson, meta?: OpenMeta) => Promise<void>): void {
   openRecorder = f;
+}
+
+/**
+ * The CLI stopped because a branch already has a worktree elsewhere: the same three choices as a dialog (move first),
+ * then the command runs again with the chosen one. Undefined when the user cancels; else the final output.
+ */
+export async function answerExisting(text: string, rerun: (extra: string[]) => Promise<string>): Promise<string | undefined> {
+  for (let i = 0; i < 3; i++) {
+    const q = needsChoiceOf(text);
+    if (!q) return text;
+    const labels = q.choices.map((c) => c.label.charAt(0).toUpperCase() + c.label.slice(1));
+    const detail = q.existing.map((e) => `${e.repo}: ${e.branch} is in ${e.path} (${e.state})`).join("\n");
+    const go = await vscode.window.showWarningMessage("AI Context Hub: this branch already has a worktree elsewhere.", { modal: true, detail }, ...labels);
+    const c = go ? q.choices[labels.indexOf(go)] : undefined;
+    if (!c) return undefined;
+    text = await rerun(choiceArgs(c));
+  }
+  return text;
 }
 
 export async function showOpened(res: OpenResultJson, window: "new" | "this", log: (l: string) => void, meta?: OpenMeta): Promise<boolean> {
@@ -339,7 +359,10 @@ export class RepoSetController {
     } catch (e) {
       return void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
     }
-    const text = out.trim();
+    // a branch with a worktree elsewhere: ask move / reuse / recreate, then run again with the answer
+    const answered = await answerExisting(out, (extra) => slowRunner()([...args, ...extra, "--json"], this.cwd()));
+    if (answered === undefined) return;
+    const text = answered.trim();
     let res: OpenResultJson;
     try {
       res = JSON.parse(text.slice(Math.max(0, text.search(/[{]/)))) as OpenResultJson;
