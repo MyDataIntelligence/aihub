@@ -16,6 +16,7 @@ import type { StoryJson } from "../storyModel";
 import { BarEngine, openFacts, storyBranchesOf, titleFromFiles } from "./engine";
 import { nextStoryBranch, openStoryArgs, rowDescription, storyNumberOf, storyPickRows, storyRepoRows, type StoryRef, type StoryRepoRow } from "./storyModel";
 import { windowChoice, openPath } from "./window";
+import { withUndo } from "./undoUi";
 import { branchesOf, copyName, gitRun, openOwn, ownWindowItems, worktreesOf } from "./ownWindow";
 
 /**
@@ -234,6 +235,11 @@ async function switchAll(h: StoryHooks, d: Divergence[], repos: { name: string; 
 
 /** One repository of the set on another branch; the window stays. A branch with a worktree elsewhere asks move / reuse / recreate. */
 async function switchIn(h: StoryHooks, repo: string, branch: string, path: string, from?: string): Promise<boolean> {
+  const folder = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.folder;
+  return withUndo(h, `Switch ${repo} to ${branch}`, folder, () => switchInRun(h, repo, branch, path, from));
+}
+
+async function switchInRun(h: StoryHooks, repo: string, branch: string, path: string, from?: string): Promise<boolean> {
   const args = ["branch", "switch", "--repo", repo, "--branch", branch, ...(from ? ["--from", from] : []), "--json"];
   const first = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `${repo}: switching to ${branch}...` }, () => cli(args, path));
   const out = await answerExisting(first, (extra) => cli([...args, ...extra], path), { ownWindow: true });
@@ -421,12 +427,14 @@ export function registerStoryCommands(h: StoryHooks): void {
     }
     if (!name) return;
     const args = ["worktree", "add", "--repos", name, "--json"];
-    const first = await cli(args, set.repos[0].path);
-    const out = await answerExisting(first, (extra) => cli([...args, ...extra], set.repos[0].path));
-    if (out === undefined) return;
-    await showOpened(JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson, "this", h.log);
-    forgetScan(process.env);
-    h.changed();
+    await withUndo(h, `Add ${name} to the set`, set.folder, async () => {
+      const first = await cli(args, set.repos[0].path);
+      const out = await answerExisting(first, (extra) => cli([...args, ...extra], set.repos[0].path));
+      if (out === undefined) return;
+      await showOpened(JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson, "this", h.log);
+      forgetScan(process.env);
+      h.changed();
+    });
   });
 
   h.reg("aihub.bar.removeRepository", async (arg?: unknown) => {
@@ -434,11 +442,19 @@ export function registerStoryCommands(h: StoryHooks): void {
     if (!n) return;
     const go = await vscode.window.showWarningMessage(`Remove ${n.repo.name} from the set?`, { modal: true, detail: "Its worktree is removed only when nothing is lost: uncommitted work and commits that are on no remote keep it. The branch stays." }, "Remove from Set");
     if (go !== "Remove from Set") return;
-    const out = await cli(["worktree", "drop", "--repos", n.repo.name, "--json"], n.set.repos.find((r) => r.name !== n.repo.name)?.path ?? n.repo.path);
-    const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
-    await showOpened(res, "this", h.log);
-    forgetScan(process.env);
-    h.changed();
+    await withUndo(
+      h,
+      `Take ${n.repo.name} out of the set`,
+      n.set.folder,
+      async () => {
+        const out = await cli(["worktree", "drop", "--repos", n.repo.name, "--json"], n.set.repos.find((r) => r.name !== n.repo.name)?.path ?? n.repo.path);
+        const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
+        await showOpened(res, "this", h.log);
+        forgetScan(process.env);
+        h.changed();
+      },
+      { backup: true },
+    );
   });
 }
 
