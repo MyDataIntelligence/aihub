@@ -23,3 +23,5 @@ The message format from `team.yaml` (`commits.format`): scope from the changed f
 
 ## If it fails
 Read the error (unknown type, nothing to commit, protected branch). Never invent a story id.
+
+A git hook stopped it (`not committed` or `not pushed: the ... hook stopped it`): the error names the failed check, its lines and the choices. Something you can fix (lint, format, a failing test): fix it and run the same command again, without asking. Otherwise give the user the choices in one line: fix it, `--skip-hooks <id>` or `--no-verify`. Use those two flags only after the user says so ("commit toch", "sla de hook over"). `not pushed`: the commit is there; the same command again only pushes.
