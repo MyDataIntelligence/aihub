@@ -4,16 +4,21 @@ import { branchFor, list, optInt, parseFlags, posInt } from "../lib/cliargs.js";
 import { findGroup, groupDirs, listGroups, removeGroup, resolveRepos, saveGroup, saveTeamGroup } from "../lib/repoGroups.js";
 import { addToSet, currentBranches, dropFromSet, formatOpenSet, listBranches, openSet, repairSet, type OpenMode, type OpenSetResult, type OpenWindow } from "../lib/repoSet.js";
 import { createSet, listSets, removeSet } from "../lib/worktree.js";
+import { listEverything } from "../lib/allSets.js";
+import { machineFolders } from "../lib/machineFolders.js";
+import { readLookIn, resetLookIn, writeLookIn } from "../lib/machineScan.js";
+import { pathKey } from "../lib/recentUse.js";
 import { existingFlag, orChoice, orChoiceAsync, readWhenExists, WHEN_EXISTS, writeWhenExists } from "../lib/existingWorktree.js";
 import { againOf } from "../lib/repoSet.js";
 import { formatCleanup, formatRemoved, listCleanup, removeCleanup } from "../lib/worktreeCleanup.js";
 
 const USAGE =
-  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--branch-for b=<branch>] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--branch-for b=<branch>,c=<branch>] [--new-set] [--existing move|reuse|recreate [--discard-local-work]] | worktree when-exists [ask|move|reuse|recreate] | worktree add --repos d [--branch <b>] [--from <target>] | worktree drop --repos d | worktree repair | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
+  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--branch-for b=<branch>] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--branch-for b=<branch>,c=<branch>] [--new-set] [--existing move|reuse|recreate [--discard-local-work]] | worktree list --all [--refresh] [--json] | worktree look-in [add <folder>|remove <folder>|reset] | worktree when-exists [ask|move|reuse|recreate] | worktree add --repos d [--branch <b>] [--from <target>] | worktree drop --repos d | worktree repair | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
   if (sub === "groups") return groups(rest, ctx);
+  if (sub === "look-in") return lookIn(rest, ctx);
   if (sub === "when-exists") {
     // a personal preference (not team.yaml): what to do when the branch already has a worktree elsewhere
     const value = rest.find((a) => !a.startsWith("-"));
@@ -39,6 +44,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     "delete-branch": { type: "boolean" },
     "no-size": { type: "boolean" },
     offline: { type: "boolean" },
+    all: { type: "boolean" },
+    refresh: { type: "boolean" },
   });
   const root = v.root as string | undefined;
   const json = !!v.json;
@@ -48,7 +55,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const r = await orChoiceAsync(json, ctx.out, () => createSet(ctx, { story: posInt(v.story, "--story"), repos: list(v.repos), root, branch: v.branch as string | undefined, branches: branchFor(v["branch-for"]), base: v.base as string | undefined, json, ...ex }));
     if (r !== undefined) ctx.out(r);
   } else if (sub === "list") {
-    ctx.out(listSets(ctx, { root, json }));
+    // --all: every set and repository on this PC, whichever folder this runs in
+    ctx.out(v.all ? listEverything(ctx, { json, refresh: !!v.refresh }) : listSets(ctx, { root, json }));
   } else if (sub === "remove") {
     ctx.out(removeSet(ctx, { story: optInt(v.story, "--story"), branch: v.branch as string | undefined, root, json }));
   } else if (sub === "open") {
@@ -106,4 +114,19 @@ function groups(argv: string[], ctx: Ctx): void {
     return void ctx.out(v.json ? JSON.stringify(all) : all.length ? all.map((g) => `${g.name} (${g.source}): ${g.repos.map((r) => r.name).join(", ")}${g.missing.length ? `  [not on this PC: ${g.missing.join(", ")}]` : ""}`).join("\n") : "no repo groups; save one: aihub worktree groups save <name> --repos a,b,c");
   }
   throw new AihubError("usage: aihub worktree groups list|save <name> --repos a,b|remove <name>");
+}
+
+/** The folders looked in for repositories and sets (personal, in the config home); without a list the parents of what is known are used. */
+function lookIn(argv: string[], ctx: Ctx): void {
+  const [action, folder] = argv;
+  if (action === "add" || action === "remove") {
+    if (!folder) throw new AihubError(`usage: aihub worktree look-in ${action} <folder>`);
+    const now = machineFolders(ctx.env, ctx.cwd);
+    const same = (a: string, b: string) => pathKey(a) === pathKey(b);
+    writeLookIn(ctx.env, action === "add" ? [...now, folder] : now.filter((f) => !same(f, folder)));
+  } else if (action === "reset") resetLookIn(ctx.env);
+  else if (action) throw new AihubError("usage: aihub worktree look-in [add <folder>|remove <folder>|reset]");
+  const list = machineFolders(ctx.env, ctx.cwd);
+  const head = readLookIn(ctx.env) ? "folders to look in (your list)" : "folders to look in (the parents of what is known; add one to make your own list)";
+  ctx.out([`${head}:`, ...(list.length ? list.map((f) => `  ${f}`) : ["  (none)"])].join("\n"));
 }

@@ -171,7 +171,8 @@ export const USAGES: Record<string, Load> = {
       "aihub story open --id <story> [--mode worktree|switch] [--window new|this|none] [--json]",
     ),
   worktree: async () =>
-    "aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | open --group <name>|--repos a,b --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--new-set] | add --repos d [--branch <b>] | drop --repos d | repair | branches --group <name>|--repos a,b | groups list|save <name> --repos a,b|remove <name> | cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]",
+    "aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | list --all [--refresh] [--json] (every set and repository on this PC) | look-in [add <folder>|remove <folder>|reset] | open --group <name>|--repos a,b --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--new-set] | add --repos d [--branch <b>] | drop --repos d | repair | branches --group <name>|--repos a,b | groups list|save <name> --repos a,b|remove <name> | cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]",
+  recent: async () => "aihub recent [--json] | recent forget <path>",
   review: async () => "aihub review show|prepare --pr <n|url> [--json] | post --pr <n> [--pick 1,3,5] [--findings-file f] | post --pr <n> --comments-file <file.yaml>",
   wiki: async () => (await import("../commands/wiki.js")).USAGE,
   release: async () => "aihub release plan --stories a,b|--prs a,b --target <branch> | plan --from DEV --to ACC [--target <branch>] [--out plan.yaml] [--notes-out notes.md] [--json] | run --plan-file <file>",
@@ -225,6 +226,7 @@ export const EXAMPLES: Record<string, string> = {
   work: "aihub work",
   story: 'aihub story create --title "Export orders to CSV" --body-file story.md',
   worktree: "aihub worktree open --repos a,b --branch feature/123-export",
+  recent: "aihub recent",
   review: "aihub review prepare --pr 42",
   wiki: "aihub wiki read --page Onboarding",
   release: "aihub release plan --from DEV --to ACC",

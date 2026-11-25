@@ -25,6 +25,8 @@ import { LearnController } from "./learnUi";
 import { registerWorktreeCommands } from "./worktreeUi";
 import { clearTrackedInterval, clearTrackedTimeout, count, trackedInterval, trackedTimeout, trackedWatcher } from "./perf/probe";
 import { startPerf, stopPerf } from "./perfUi";
+import { registerBar } from "./bar/register";
+import type { BarApi } from "./bar/types";
 
 const cfg = () => vscode.workspace.getConfiguration("aihub");
 
@@ -420,11 +422,13 @@ export function activate(ctx: vscode.ExtensionContext) {
   bar = new Bar(ctx);
   bar.onPublish = (ok) => act.firstRefresh(ok);
   act.phase("commands");
-  activateRest(ctx, bar, act.phase);
+  const barApi = activateRest(ctx, bar, act.phase);
   act.done();
+  // the buttons in the title bar (another extension) read the state and call the aihub.bar.* commands
+  return { bar: barApi };
 }
 
-function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: string) => void) {
+function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: string) => void): BarApi {
   ctx.subscriptions.push(
     bar,
     vscode.commands.registerCommand("aihub.refresh", () => bar.refresh()),
@@ -491,6 +495,8 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   bar.start();
   // the groups come from the CLI: ask again once the first status read is behind us
   trackedTimeout("worktreeSets.firstRefresh", () => refreshSets(), 4000);
+  phase("bar commands");
+  return registerBar(ctx, { log: (l) => bar.logLine(l) }).api;
 }
 
 export function deactivate(): Promise<void> {

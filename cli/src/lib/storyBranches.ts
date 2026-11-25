@@ -5,7 +5,11 @@ import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { currentBranch, repoRoot } from "./git.js";
 import { listWorktrees, refSha, samePath, tryGit, isDirty } from "./gitx.js";
-import { openSet, storyPatternOf, worktreeRootOf, defaultSetsRootFor, type OpenMode, type OpenSetResult, type OpenWindow } from "./repoSet.js";
+import { launchCode, openSet, storyPatternOf, worktreeRootOf, defaultSetsRootFor, type OpenMode, type OpenSetResult, type OpenWindow } from "./repoSet.js";
+import { scanThisPc } from "./machineFolders.js";
+import { setOfStory, type ScanSet } from "./machineScan.js";
+import { rememberUse } from "./recentUse.js";
+import { rememberStories } from "./storyCache.js";
 import { clientForDir, resolveRepoDirs, type RepoDir } from "./repos.js";
 import { moveWorktreeSafely, removeWorktreeSafely } from "./safeWorktree.js";
 import {
@@ -171,6 +175,12 @@ export async function listStoryBranches(ctx: Ctx, o: { id?: number; mine?: boole
     for (const r of repos) if (r.dir && [...rows.values()].some((x) => x.repo === r.name)) rememberTitle(r.dir, id, wi.title);
     out.push({ id, title: wi.title, state: wi.state, branches: [...rows.values()].sort((a, b) => a.repo.localeCompare(b.repo) || rank(a.status) - rank(b.status) || a.branch.localeCompare(b.branch)) });
   }
+  // the menus name a story and know it is closed from this list, without asking Azure DevOps again
+  try {
+    rememberStories(ctx.env, out, (ctx.now ?? Date.now)());
+  } catch {
+    /* an unwritable config home only costs the next read */
+  }
   return out;
 }
 
@@ -283,6 +293,9 @@ export function removeStoryBranch(ctx: Ctx, o: { branch: string; repo?: string; 
 
 /** The star of each repository of the story (else its only branch, else the newest), opened as one set. */
 export async function openStory(ctx: Ctx, o: { id: number; mode?: OpenMode; window?: OpenWindow; root?: string; existing?: Exclude<WhenExists, "ask">; discardLocalWork?: boolean; again?: string }): Promise<OpenSetResult> {
+  // a story has one set: when it is on this PC it is simply opened (no question, no Azure DevOps read)
+  const have = (o.mode ?? "worktree") === "worktree" ? storySetOnThisPc(ctx, o.id) : undefined;
+  if (have) return reopenSet(ctx, have, o.window ?? "new");
   const stories = await listStoryBranches(ctx, { id: o.id });
   const rows = stories[0]?.branches.filter((b) => b.local || b.pushed) ?? [];
   if (!rows.length) throw new AihubError(`story ${o.id} has no branches yet; link one with: aihub story branches link --id ${o.id}`);
@@ -294,6 +307,32 @@ export async function openStory(ctx: Ctx, o: { id: number; mode?: OpenMode; wind
   }
   const chosen = [...pick.values()];
   return openSet(ctx, { repos: chosen.map((b) => b.repo), branch: chosen[0].branch, branches: Object.fromEntries(chosen.map((b) => [b.repo, b.branch])), storyId: o.id, mode: o.mode ?? "worktree", window: o.window ?? "new", root: o.root, existing: o.existing, discardLocalWork: o.discardLocalWork, again: o.again });
+}
+
+/** The set of a story that is on this PC and still has a folder (the folders to look in, a cached scan). */
+export function storySetOnThisPc(ctx: Ctx, id: number): ScanSet | undefined {
+  const s = setOfStory(scanThisPc(ctx.env, ctx.cwd, { now: (ctx.now ?? Date.now)() }), id);
+  return s && s.repos.some((r) => r.exists) ? s : undefined;
+}
+
+/** The set as it stands, opened in a window: nothing is created, moved or switched. */
+export function reopenSet(ctx: Ctx, s: ScanSet, window: OpenWindow): OpenSetResult {
+  const target = s.id.endsWith(".code-workspace") ? s.id : s.folder;
+  const opened = window !== "none" && launchCode(target, window, ctx.env);
+  try {
+    rememberUse(ctx.env, { kind: "set", id: target, label: `#${s.story}`, detail: s.repos.map((r) => r.name).join(", "), story: s.story }, (ctx.now ?? Date.now)());
+  } catch {
+    /* the recent list is a convenience */
+  }
+  return {
+    story: s.story,
+    branch: s.branch,
+    mode: "worktree",
+    folder: s.folder,
+    workspace: s.id.endsWith(".code-workspace") ? s.id : undefined,
+    repos: s.repos.map((r) => (r.exists ? { repo: r.name, ok: true, state: "existing" as const, branch: r.branch, path: r.path, note: `already in the set of story ${s.story}` } : { repo: r.name, ok: false, state: "failed" as const, branch: r.branch, note: "folder not found; aihub worktree repair makes it again" })),
+    opened,
+  };
 }
 
 /** Worktrees of stories that are not in `<root>/<id>-<slug>/`: listed, and moved with `move`. */
