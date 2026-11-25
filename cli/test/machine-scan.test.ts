@@ -159,7 +159,7 @@ describe("where to look when nothing is known yet", () => {
     writeFileSync(join(env.AIHUB_CONFIG_HOME!, "repos.json"), JSON.stringify({ prefer: { "repo-b": join(root, "g", "deep", "repo-b") } }));
     expect(configuredClones(env)).toEqual([join(root, "g", "repo-a"), join(root, "g", "deep", "repo-b")]);
     expect(machineFolders(env, undefined, [])).toEqual([join(root, "g")]);
-    expect(machineFolders(env, undefined, [join(root, "w", "7-x", "story-7.code-workspace")])).toEqual([join(root, "g"), join(root, "w")]);
+    expect(machineFolders(env, undefined, [join(root, "w", "7-x", "story-7.code-workspace")])).toEqual([join(root, "w"), join(root, "g")]);
     expect(machineFolders(env, undefined, [], [join(root, "usual")])).toEqual([join(root, "g"), join(root, "usual")]);
   });
 });
