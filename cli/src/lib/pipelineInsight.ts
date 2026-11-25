@@ -5,6 +5,7 @@ import type { Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { cut, day, emit, encode, guardStage, table, top, type Flags } from "./devops.js";
 import { findGroup } from "./library.js";
+import { errorLines, GENERIC_ERROR, stepLog } from "./pipeline.js";
 
 interface Build {
   id: number;
@@ -65,6 +66,8 @@ export async function timeline(c: AdoClient, ctx: Ctx, v: Flags, run: number): P
   const shown = (r: Rec) => (r.type === "Task" ? !!v.tasks || /failed|canceled|abandoned/i.test(r.result ?? "") || (r.issues ?? []).length > 0 : ["Stage", "Phase", "Job"].includes(r.type));
   const lines: string[] = [];
   const data: any[] = [];
+  // failed tasks whose only error is "exited with code 1": the cause is in their log (read for at most two tasks, only with --failed)
+  const vague: { at: number; depth: number; log: number }[] = [];
   const walk = (parent: string, depth: number) => {
     for (const r of kids.get(parent) ?? []) {
       if (r.type === "Checkpoint" || r.type.startsWith("Checkpoint.")) continue;
@@ -77,12 +80,18 @@ export async function timeline(c: AdoClient, ctx: Ctx, v: Flags, run: number): P
         lines.push(`${"  ".repeat(depth)}${r.type.toLowerCase()} ${r.name} ${mark}${d ? ` ${d}` : ""}${retry}`);
         const issues = (r.issues ?? []).filter((i) => i.type === "error" || v.warnings);
         for (const i of issues.slice(0, 5)) lines.push(`${"  ".repeat(depth + 1)}${i.type}: ${cut(i.message, 200)}`);
+        const errs = (r.issues ?? []).filter((i) => i.type === "error");
+        if (v.failed && bad && r.type === "Task" && r.log?.id && errs.every((i) => GENERIC_ERROR.test(i.message ?? ""))) vague.push({ at: lines.length, depth: depth + 1, log: r.log.id });
         data.push({ type: r.type, name: r.name, result: r.result ?? r.state, seconds: seconds(r.startTime, r.finishTime), attempt: r.attempt, issues: (r.issues ?? []).map((i) => ({ type: i.type, message: i.message })), log: r.log?.id });
       }
       walk(r.id, shown(r) && r.type !== "Phase" ? next : depth);
     }
   };
   walk("", 0);
+  for (const x of vague.slice(0, 2).reverse()) {
+    const found = errorLines((await stepLog(c, run, x.log)).join("\n"));
+    if (found.length) lines.splice(x.at, 0, ...found.map((e) => `${"  ".repeat(x.depth)}log error: ${e}`));
+  }
   const head = `run ${run} ${b.definition?.name ?? ""} ${b.buildNumber ?? ""}: ${b.result ?? b.status} ${dur(seconds(b.startTime ?? b.queueTime, b.finishTime))} on ${String(b.sourceBranch ?? "").replace("refs/heads/", "")}`;
   emit(ctx, v, { run, result: b.result ?? b.status, branch: b.sourceBranch, records: data }, [head, ...lines].join("\n"));
 }

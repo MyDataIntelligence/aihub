@@ -49,10 +49,10 @@ describe("built cli", () => {
 
 describe("aihub <command> --help", () => {
   it("prints one-line usage instead of an option error (cherry-pick, comments, story)", async () => {
-    const { main, HELP, LAZY_HELP } = await import("../src/router.js");
+    const { main, commands } = await import("../src/router.js");
     const out: string[] = [];
     const ctx = { cwd: ".", env: {}, out: (l: string) => out.push(l), err: () => {} } as never;
-    for (const name of [...Object.keys(HELP), ...Object.keys(LAZY_HELP)]) expect(await main([name, "--help"], ctx)).toBe(0);
+    for (const name of Object.keys(commands).filter((c) => c !== "fabric")) expect(await main([name, "--help"], ctx)).toBe(0);
     expect(out.join("\n")).toContain("aihub test changed");
     expect(out.join("\n")).toContain("--replies-file");
     expect(out.join("\n")).toContain("--summary-text");

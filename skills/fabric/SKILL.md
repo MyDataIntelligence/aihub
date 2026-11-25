@@ -1,26 +1,32 @@
 ---
 name: fabric
-description: "Use when work touches Microsoft Fabric: 'maak een notebook aan in DEV', 'lees de tabellen van lakehouse X', 'draai pipeline Y in mijn workspace', 'wat is de status van run ...', 'waarom faalde de run', 'create a notebook in DEV', 'show the logs of the failed job', 'pull the branch into the workspace'."
+description: "Use when a question or task is about Microsoft Fabric (workspace, notebook, pipeline, lakehouse, run): 'wat staat er in mijn workspace', 'draai notebook X', 'draai hem en wacht', 'waarom faalde de run', 'mijn notebook is rood', 'zet de parameter op ...', 'commit de workspace naar git', 'what is in my workspace', 'run notebook X and wait', 'why did the run fail', 'change the notebook and rerun'. No Fabric connector or tool is needed: run `aihub fabric ...` in the shell (aihub is on the PATH; `aihub fabric --help` lists the commands), also when this skill file cannot be read."
 ---
-# Fabric: read, run and write
+# Fabric: one command per task
 
 ## When
-The user wants to look at, change or run something in a Fabric workspace. Reads work in every workspace you can access; writes and runs not in ACC or PRD. A workspace is a name or id.
+Anything in a Fabric workspace: look, run, explain a failure, change, commit. Names or ids work; without `--workspace` the branch default from `team.yaml` is used.
 
 ## Steps
-1. Orient: `aihub fabric workspaces --filter test`, then `aihub fabric items --workspace DEV-test-project --type Notebook`.
-2. Run: `aihub fabric run --workspace DEV-test-project --item nb_load` prints the job id; follow it with `aihub watch --fabric-job DEV-test-project/nb_load/<job id> --notify` (say "ik volg het op de achtergrond"; `--wait` only on request). A failure prints the dig-deeper command: `aihub fabric logs --workspace DEV-test-project --item nb_load --job <id>`.
-3. What failed: `aihub fabric failures --branch feature/12-x` (root cause), or `aihub fabric logs --workspace DEV-test-project --since 24h --status failed`.
-4. Write, always look first with `--dry-run`: `aihub fabric item create --workspace DEV-test-project --type Notebook --name nb_new --definition-dir fabric/nb_new.Notebook` (also `item update`, `item rename`, `item delete --yes`, `git update|commit`).
-5. After code changes: `aihub fabric plan --check-workspace` lists the items to create or update.
-6. Data: `aihub fabric sql --item wh_test --query "select ..."`, `onelake`, `dax|kql|graphql`, `livy run`, `spark logs`; every other tool: `aihub fabric api list`.
+Run the ONE command for the task (plain text: no `--json`, `--help` or reference first) and answer from its output:
 
-Service principal: `aihub fabric auth sp add ci --tenant T --client-id C --secret-from-stdin`, then `--sp ci`.
+| Task | Command |
+|---|---|
+| What is in a workspace | `aihub fabric items --workspace W` |
+| Run and wait, "is hij gelukt?" | `aihub fabric run --workspace W --item I --wait` |
+| Why did it fail, "is rood" | `aihub fabric failures --workspace W --item I` |
+| Change a notebook and rerun | `aihub fabric item edit --workspace W --item I --set name=value --run --wait` |
+| Commit the workspace to git | `aihub fabric git commit --workspace W --message "<what changed>"` |
+| Pull the branch in | `aihub fabric git update --workspace W` |
+
+Example: "Zet in notebook nb_orders de regio op noord en draai hem opnieuw" -> `aihub fabric item edit --workspace DEV-test-project --item nb_orders --set regio=noord --run --wait`
+
+`run --wait` ends with the result and, on failure, the failed cell, the exception and the likely cause: no `status`, `logs` or `watch` after it. `item edit`: `--set name=value` changes an assignment and keeps its quotes; `--replace old --with new` changes any text that occurs once. Leave double quotes out of the text (PowerShell drops them) or use `--replace-file F --with-file F`. `git commit` says what it committed and whether the workspace is clean.
 
 ## What the CLI fills
-Workspace and item ids, the branch default workspace, the token, polling, paging and 429 retries.
+Ids, the token, waiting for the end of a run, the root cause of a failure, a commit message when none is given.
 
 ## If it fails
-ACC and PRD are refused (`--allow-env acc` only when the user asked). 403: the account lacks access. Not signed in: `az login`, `aihub fabric auth status`. A missing endpoint is reported per section. All commands and flags: [reference](references/fabric-commands.md).
+The error gives the one usage line or a "did you mean". ACC/PRD writes are refused. 403: no access. Not signed in: `az login`. Anything else (logs, lakehouse, sql, spark, deploy): `aihub fabric help`, or the [reference](references/fabric-commands.md).
 
-Rules: direct task, 0 questions, never ACC or PRD, `--json` when you parse.
+Rules: 0 questions, never ACC or PRD.

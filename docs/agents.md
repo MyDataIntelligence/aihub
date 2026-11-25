@@ -5,7 +5,7 @@
 | Agent | Kind | For |
 |---|---|---|
 | `aihub` | primary | Stories, pull requests, pipelines, reviews, Fabric through the skills |
-| `aihub-runner` | subagent | One long job: story-run, pipeline-fix, pr-watch, review-process; reports in at most 5 lines |
+| `aihub-runner` | subagent | Only on request or for independent jobs side by side: one long job (story-run, pipeline-fix, pr-watch, review-process), reported in at most 5 lines. By default the `aihub` agent does long jobs itself, in the chat the user is looking at |
 | `aihub-researcher` | subagent | One research angle of a feasibility question (docs, community or live probes); read-only; reports with sources |
 
 The source files live in `agents/<format>/` (`opencode`, `opencode2`, `copilot`, `codex`, `claude`): one body, a front matter per client. `npm run lint:skills` checks that the bodies are equal and that every front matter is valid.
@@ -28,7 +28,7 @@ The source files live in `agents/<format>/` (`opencode`, `opencode2`, `copilot`,
 
 ## Picking the agent
 
-- **opencode**: press Tab in the prompt to cycle through the primary agents and choose `aihub` (or `opencode --agent aihub`), or set `"default_agent": "aihub"` in `opencode.json` to start with it. `aihub-runner` is a subagent: the `aihub` agent hands long jobs to it, or you write `@aihub-runner` in the prompt.
+- **opencode**: press Tab in the prompt to cycle through the primary agents and choose `aihub` (or `opencode --agent aihub`), or set `"default_agent": "aihub"` in `opencode.json` to start with it. `aihub-runner` is a subagent: the `aihub` agent does long jobs itself so you can follow them, and uses the runner only when you ask (write `@aihub-runner` in the prompt) or for independent jobs side by side.
 - **VS Code (Copilot Chat)**: open chat, select the Copilot harness in the session target, then pick `aihub` in the Agent dropdown. `aihub-runner` is hidden from the dropdown (`user-invocable: false`); the `aihub` agent calls it as a subagent.
   Checked live in VS Code 1.146 (isolated profile, not signed in): `Chat: Open Customizations` > Agents (Local harness) lists `aihub` and `aihub-runner` from `.github/agents/`, from the profile folder `<user data dir>/User/prompts/` and from `~/.copilot/agents/` (it also listed an existing agent there, so the global install location is read). The Copilot harness list stayed empty without a sign-in.
 - **Copilot CLI**: type `/agent` and choose `aihub`, or start with `copilot --agent aihub`.

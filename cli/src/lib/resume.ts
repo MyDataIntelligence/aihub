@@ -21,7 +21,7 @@ const MILESTONES: { key: string; nl: string; en: string; match: RegExp; command:
   { key: "review", nl: "review verwerkt", en: "review processed", match: /^aihub comments reply/, command: "aihub comments get (review-process)" },
 ];
 
-function ago(at: string, nowMs: number, nl: boolean): string {
+export function ago(at: string, nowMs: number, nl: boolean): string {
   const min = Math.max(0, Math.round((nowMs - Date.parse(at)) / 60000));
   if (min < 2) return nl ? "zojuist" : "just now";
   if (min < 90) return nl ? `${min} min geleden` : `${min} min ago`;
@@ -29,6 +29,17 @@ function ago(at: string, nowMs: number, nl: boolean): string {
   if (h < 36) return nl ? `${h} uur geleden` : `${h} h ago`;
   const d = Math.round(h / 24);
   return nl ? `${d} dagen geleden` : `${d} days ago`;
+}
+
+/** The journal lines of one branch; a story command that names the story counts too. */
+export function journalOfBranch(all: JournalEntry[], branch: string, story: number | undefined): JournalEntry[] {
+  return all.filter((e) => e.branch === branch || (story !== undefined && new RegExp(`(--id|--story|AB#|story-?)\\s*${story}\\b`).test(e.command)));
+}
+
+/** The last step on this branch from the local journal (no git, no network), for aihub status. */
+export function lastStep(root: string, branch: string, story: number | undefined): JournalEntry | undefined {
+  const steps = journalOfBranch(readJournal(root), branch, story).filter((e) => !/^aihub note /.test(e.command));
+  return steps[steps.length - 1];
 }
 
 export interface Resume {
@@ -54,9 +65,8 @@ export function resume(ctx: Ctx): Resume {
   const story = workItemFromBranch(branch);
   const nowMs = (ctx.now ?? Date.now)();
   const all = readJournal(root);
-  // this branch's lines (the journal is per repository and records the branch); a story command that names the story counts too
-  const mine = all.filter((e) => e.branch === branch || (story !== undefined && new RegExp(`(--id|--story|AB#|story-?)\\s*${story}\\b`).test(e.command)));
-  const scope = mine.length ? mine : all.slice(-8);
+  // only this branch: lines of another branch in the same clone (another story, a review) are not "last time" here
+  const scope = journalOfBranch(all, branch, story);
   const ok = scope.filter((e) => e.status === "ok");
   const done = MILESTONES.filter((m) => ok.some((e) => m.match.test(e.command) && (m.key !== "green" || /green/.test(e.result)))).map((m) => (nl ? m.nl : m.en));
   const doneKeys = MILESTONES.filter((m) => ok.some((e) => m.match.test(e.command) && (m.key !== "green" || /green/.test(e.result))));
@@ -65,7 +75,7 @@ export function resume(ctx: Ctx): Resume {
   const unpushed = unpushedCount(root);
   // a note is shown on its own line; it is not the last step
   const steps = scope.filter((e) => !/^aihub note /.test(e.command));
-  const last = steps[steps.length - 1] ?? scope[scope.length - 1] ?? all[all.length - 1];
+  const last = steps[steps.length - 1] ?? scope[scope.length - 1];
   const notes = readNotes(root, branch);
   const note = notes[notes.length - 1]?.text.replace(/\s+/g, " ");
 

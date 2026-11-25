@@ -8,17 +8,14 @@ description: "Use when the change must be tested in Fabric or with Robot: 'test 
 The branch changes Fabric items (notebooks, pipelines) or a flow with Robot integration tests, and the PR tests section needs real results.
 
 ## Steps
-1. Fabric (all other Fabric commands: skill `fabric`): see what to run, then run it in order and wait:
+1. Fabric (other commands: skill `fabric`): see what to run, then run each item in order; `--wait` prints the result and, on failure, the failed cell and cause:
 
 ```sh
 aihub fabric plan
-aihub fabric run --item nb_load_orders
-aihub watch --fabric-job DEV-test-project/nb_load_orders/<job id> --notify
+aihub fabric run --item nb_load_orders --wait
 ```
 
-Follow runs in the background; `--wait` only on request.
-
-Several workspaces ("in beide DEV's"): repeat `--workspace` or use `--workspaces <group>`.
+Several workspaces ("in beide DEV's"): repeat `--workspace` or use `--workspaces <group>`. Not waiting: leave out `--wait`, follow the printed `aihub watch` line.
 
 2. Robot: check first, then run only when needed. The target comes from the sentence: "test op staging" is `--on staging`, "draai Robot op feature" is `--on feature`. No target named: use the team default, do not ask. Run merges your branch into a merge target first and stops on a conflict:
 

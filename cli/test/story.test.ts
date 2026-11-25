@@ -35,8 +35,8 @@ describe("story create", () => {
     const { ctx, lines } = ctxFor(dir, f.fn);
     const code = await main(["story", "create", "--title", "CSV-export", "--body-file", `${dir}/body.md`, "--parent", "90"], ctx, commands);
     expect(code).toBe(0);
-    expect(lines[0]).toBe("Story 501 created: https://dev.azure.com/ferron-org/test-project/_workitems/edit/501 (Niet van toepassing: Technical notes, Out of scope)");
-    const call = f.calls[0];
+    expect(lines[0]).toBe("Story 501 created: https://dev.azure.com/ferron-org/test-project/_workitems/edit/501 (Niet van toepassing: Technical notes, Out of scope); template: built-in (no team template found; add .agents/skills/_shared/assets/story-template.md to use your own)");
+    const call = f.calls.find((c) => c.method === "POST")!;
     expect(String(call.headers["Content-Type"])).toContain("application/json-patch+json");
     const ops = call.body as { op: string; path: string; value: any }[];
     const val = (p: string) => ops.find((o) => o.path === p)?.value;
@@ -73,6 +73,22 @@ describe("story show and refine", () => {
     expect(out).toContain("## Description\n\nAls gebruiker zoek ik.");
     expect(out).toContain("## Acceptance criteria\n\n(empty)");
     expect(out).toContain("## Technical notes\n\nGebruik index.");
+  });
+
+  it("shows a hand-written description that is not in template form instead of hiding it behind (empty) sections", async () => {
+    const dir = setup();
+    write(dir, "skills/_shared/assets/story-template.md", "## Context\n<why>\n\n## Gebruikersverhaal\n<als ...>\n\n## Acceptatiecriteria\n- [ ] <resultaat>\n");
+    const vague = { ...WI, fields: { ...WI.fields, "System.Description": "<div>Export naar CSV. Zie gesprek met de planning.</div>" } };
+    const f = fakeFetch([{ match: /wit\/workitems\/55\?/, respond: () => ({ body: vague }) }]);
+    const { ctx, lines } = ctxFor(dir, f.fn);
+    expect(await main(["story", "show", "55"], ctx, commands)).toBe(0);
+    const out = lines.join("\n");
+    expect(out).toContain("Current text (not in template form");
+    expect(out).toContain("Export naar CSV. Zie gesprek met de planning.");
+    expect(out).toContain("## Context\n\n(empty)");
+    const j = ctxFor(dir, f.fn);
+    await main(["story", "show", "--id", "55", "--json"], j.ctx, commands);
+    expect(JSON.parse(j.lines[0]).currentText).toBe("Export naar CSV. Zie gesprek met de planning.");
   });
 
   it("refine without a body reports gaps and writes nothing; positional id works", async () => {

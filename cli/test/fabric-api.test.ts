@@ -140,7 +140,9 @@ describe("read commands", () => {
     const ws = get(/\/v1\/workspaces$/, { value: [{ id: OTHER, displayName: "Sandbox-anna" }] });
     const items = get(new RegExp(`/workspaces/${OTHER}/items$`), { value: ITEMS });
     const a = await go([ws, items], ["items", "--workspace", "sandbox-anna"]);
-    expect(a.out).toContain("sandbox-anna (dev, not listed in team.yaml)");
+    // deliberately changed: "not listed in team.yaml" was noise on every call (writes outside team.yaml still say why they are refused)
+    expect(a.out).toContain("in sandbox-anna (dev)");
+    expect(a.out).not.toContain("not listed");
     const b = await go([items], ["items", "--workspace", OTHER]);
     expect(b.code).toBe(0);
   });
@@ -373,7 +375,8 @@ describe("git integration", () => {
     const msg = join(tmp(), "m.txt");
     writeFileSync(msg, "feat: orders\n\nbody\n");
     const d = await go([st, post(/git\/commitToGit$/)], ["git", "commit", "--workspace", "DEV-test-project", "--message-file", msg]);
-    expect(d.calls.at(-1)!.body).toEqual({ mode: "All", workspaceHead: "aaaaaaaa11", comment: "feat: orders\n\nbody" });
+    // the commit now reads the git status once more afterwards, so the commit is no longer the last call
+    expect(d.calls.find((c) => /commitToGit$/.test(c.url))!.body).toEqual({ mode: "All", workspaceHead: "aaaaaaaa11", comment: "feat: orders\n\nbody" });
     expect((await go([same], ["git", "commit", "--workspace", "DEV-test-project", "--message-file", msg])).out).toContain("nothing to commit");
     const e = await go([st], ["git", "update", "--workspace", "ACC-test-project"]);
     expect(e.errs[0]).toContain("is ACC");
@@ -462,7 +465,9 @@ describe("logs", () => {
     expect(a.out).toContain("failure: SparkError: Cell 3 failed");
     expect(a.out).toContain("session L1: dead, application app_1");
     expect(a.out).not.toContain("L2");
-    expect(a.out).toContain("[source: Spark monitoring driver log]");
+    // deliberately changed: the raw driver logs are digested (excerpt + where the full log is), not printed whole
+    expect(a.out).toContain("logs: Livy log not available; driver stderr 5 lines; driver stdout 2 lines");
+    expect(a.out).toContain("--out <file>");
     expect(a.out).toContain("error excerpt:");
     expect(a.out).toContain("ValueError: bad row");
     const s = await go(routes, ["logs", "--workspace", "DEV-test-project", "--item", "nb_load", "--job", "jf", "--search", "valueerror"]);
@@ -517,7 +522,9 @@ describe("logs", () => {
       ],
       ["logs", "--workspace", "DEV-test-project", "--item", "sjd_clean", "--job", "sj9"],
     );
-    expect(b.out).toContain("driver line");
+    // deliberately changed: log lines without an error are not shown in the digest (they were YARN chatter in live runs); the sizes are
+    expect(b.out).toContain("driver stderr 1 lines; driver stdout 1 lines");
+    expect(b.out).not.toContain("driver line");
     const c = await go([get(new RegExp(`/workspaces/${WS}/items$`), { value: [{ id: "wh-1", displayName: "wh_test", type: "Warehouse" }] }), get(/items\/wh-1\/jobs\/instances\/x$/, { id: "x", status: "Completed" })], ["logs", "--workspace", "DEV-test-project", "--item", "wh_test", "--job", "x"]);
     expect(c.out).toContain("no job or run-history REST API");
   });
@@ -549,7 +556,9 @@ describe("plan --check-workspace", () => {
 describe("usage", () => {
   it("explains unknown commands", async () => {
     const a = await go([], ["nonsense"]);
-    expect(a.errs[0]).toContain("usage: aihub fabric");
+    // deliberately changed: an unknown command gets the closest usage lines or a pointer to `fabric help`, not the whole manual
+    expect(a.errs[0]).toContain("unknown fabric command 'nonsense'");
+    expect(a.errs[0]).toContain("aihub fabric help");
     expect(existsSync(".")).toBe(true);
   });
 });

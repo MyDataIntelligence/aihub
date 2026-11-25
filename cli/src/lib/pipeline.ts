@@ -2,7 +2,7 @@ import { parse } from "yaml";
 import { branchRef, findActivePr, getPr, shortBranch, type AdoClient } from "./ado.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
-import { currentBranch } from "./git.js";
+import { currentBranch, git } from "./git.js";
 import { parsePrRef } from "./pr.js";
 import { readUtf8 } from "./team.js";
 
@@ -16,6 +16,7 @@ export interface Build {
   queueTime?: string;
   finishTime?: string;
   definition?: { id: number; name: string };
+  sourceVersion?: string;
 }
 
 interface TimelineRecord {
@@ -128,7 +129,7 @@ export function excerpt(lines: string[], n: number): string[] {
   return tail.map((l) => (ERROR_RE.test(l) ? `>> ${l}` : `   ${l}`));
 }
 
-async function stepLog(client: AdoClient, buildId: number, logId: number): Promise<string[]> {
+export async function stepLog(client: AdoClient, buildId: number, logId: number): Promise<string[]> {
   return cleanLog(await client.getText(`build/builds/${buildId}/logs/${logId}`));
 }
 
@@ -264,6 +265,22 @@ const PROTECTED_DEFAULT = ["main", "master", "develop", "staging", "release/*"];
 const isProtectedBranch = (patterns: string[], branch: string) =>
   patterns.some((p) => new RegExp("^" + p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$").test(branch));
 
+/** Generic lines that only say a step ended badly; the line before them names the cause. */
+export const GENERIC_ERROR = /exited with code|Process completed with exit code|exit code \d+ returned|The process '.*' failed|Error: The operation was canceled/i;
+
+/** The real error lines of a log ("##[error] ..."), the generic "exited with code 1" left out, at most `max`. */
+export function errorLines(log: string, max = 3): string[] {
+  const out: string[] = [];
+  for (const raw of log.split("\n")) {
+    const m = /##\[error\]\s*(.*)$/.exec(raw);
+    const text = (m ? m[1] : "").trim();
+    if (!text || GENERIC_ERROR.test(text) || out.includes(text)) continue;
+    out.push(text.length > 300 ? `${text.slice(0, 297)}...` : text);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 /**
  * `aihub pipeline logs --failed`: the failing steps of a run (a link, an id, or the newest failed run of this branch), led by
  * the branch, whether it is protected and how many runs in a row are red: the facts the /fix loop stops on
@@ -291,8 +308,37 @@ export async function pipelineFailed(ctx: Ctx, o: { run?: string; tail?: number;
   const head = `run ${build.id} ${stateOf(build)} on ${branch || "(unknown branch)"}; protected: ${isProt ? "yes" : "no"}; red runs in a row: ${rounds}`;
   const stop = isProt ? "STOP: protected branch, do not fix; report it." : rounds >= 3 ? "STOP after 3 red rounds: report what you tried." : "";
   const logs = await pipelineLogs(ctx, { run: build.id, tail: o.tail });
-  if (o.json) return JSON.stringify({ run: build.id, branch, protected: isProt, red: rounds, stop: stop || undefined, logs });
-  return [head, stop, logs].filter(Boolean).join("\n");
+  // the cause in the words of the log, first: quote it, do not paraphrase it
+  const errors = errorLines(logs);
+  if (o.json) return JSON.stringify({ run: build.id, branch, protected: isProt, red: rounds, stop: stop || undefined, errors, logs });
+  const cause = errors.length ? `error (quote it as is): ${errors.join(" | ")}` : "";
+  return [head, cause, stop, logs].filter(Boolean).join("\n");
+}
+
+/**
+ * After a fix is pushed: the run of the failed pipeline for the pushed commit. When the push started one (a CI trigger)
+ * that run is returned; otherwise the pipeline of the failed run is queued again on this branch. One command instead of
+ * runs + run --name + watch.
+ */
+export async function pipelineRerun(ctx: Ctx, o: { run?: string }): Promise<{ id: number; pipeline: string; branch: string; queued: boolean }> {
+  const { client, root } = repoClient(ctx);
+  const branch = currentBranch(root);
+  const head = git(root, ["rev-parse", "HEAD"]).trim();
+  const { builds } = await selectBuilds(client, root, { branch });
+  const failed = o.run ? await client.get<Build>(`build/builds/${parseRunRef(o.run)}`) : builds.find((b) => b.status === "completed" && b.result === "failed");
+  if (!failed?.definition) throw new AihubError(`no failed run on ${branch} to run again; pass --run <id>`);
+  const pipeline = failed.definition.name;
+  const ownOf = (list: Build[]) => list.find((b) => b.definition?.id === failed.definition!.id && b.sourceVersion === head && b.id !== failed.id);
+  let own = ownOf(builds);
+  // a CI trigger needs a few seconds after the push to create its run: look twice more before queuing a second one
+  const sleep = ctx.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let i = 0; !own && i < 2; i++) {
+    await sleep(5000);
+    own = ownOf((await selectBuilds(client, root, { branch })).builds);
+  }
+  if (own) return { id: own.id, pipeline, branch, queued: false };
+  const b = await client.post<Build>("build/builds", { definition: { id: failed.definition.id }, sourceBranch: branchRef(branch) });
+  return { id: b.id, pipeline, branch, queued: true };
 }
 
 export async function pipelineRun(ctx: Ctx, o: { name?: string; branch?: string; paramsFile?: string; json?: boolean }): Promise<string> {

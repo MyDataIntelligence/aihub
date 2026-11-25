@@ -62,7 +62,7 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 | delete_item | write | DELETE workspaces/{ws}/items/{item} | `aihub fabric item delete --yes` (also `api delete_item`) | ported, live |
 | move_item | write | POST workspaces/{ws}/items/{item}/move | `aihub fabric api move_item` | ported (generic) |
 | get_definition | read | POST workspaces/{ws}/items/{item}/getDefinition | `aihub fabric item definition [--out]` (also `api get_definition`) | ported, live |
-| update_item_definition | write | POST workspaces/{ws}/items/{item}/updateDefinition | `aihub fabric item update` (also `api update_item_definition`) | ported, live |
+| update_item_definition | write | POST workspaces/{ws}/items/{item}/updateDefinition | `aihub fabric item update` (also `api update_item_definition`); `aihub fabric item edit --set name=value \| --replace old --with new [--run --wait]` reads, changes and writes the definition in one call | ported, live (`item edit` unit-tested, not yet live) |
 | get_item_connections | read | GET workspaces/{ws}/items/{item}/connections | `aihub fabric api get_item_connections` | ported (generic) |
 | list_folders | read | GET workspaces/{ws}/folders | `aihub fabric api list_folders` | ported (generic) |
 | create_folder | write | POST workspaces/{ws}/folders | `aihub fabric api create_folder` | ported (generic) |
@@ -77,7 +77,7 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 | connect_git | write | POST workspaces/{ws}/git/connect | `aihub fabric api connect_git` | ported (generic) with --body-file |
 | disconnect_git | write | POST workspaces/{ws}/git/disconnect | `aihub fabric api disconnect_git` | ported (generic) |
 | initialize_git_connection | write | POST workspaces/{ws}/git/initializeConnection | `aihub fabric api initialize_git_connection` | ported (generic) |
-| commit_to_git | write | POST workspaces/{ws}/git/commitToGit | `aihub fabric git commit --message-file` (also `api commit_to_git`) | ported |
+| commit_to_git | write | POST workspaces/{ws}/git/commitToGit | `aihub fabric git commit [--message "text" \| --message-file F]` (reads the git status again afterwards: new head, clean or not) (also `api commit_to_git`) | ported |
 | update_from_git | write | POST workspaces/{ws}/git/updateFromGit | `aihub fabric git update` (also `api update_from_git`) | ported |
 | update_my_git_credentials | write | PATCH workspaces/{ws}/git/myGitCredentials | `aihub fabric api update_my_git_credentials` | ported (generic) with --body-file |
 | list_deployment_pipelines | read | GET deploymentPipelines | `aihub fabric deployment list` (also `api list_deployment_pipelines`) | ported |
@@ -99,7 +99,7 @@ Source: the legacy Hub (`MyDataIntelligence/extensions`, tag `legacy/hub-surface
 | delete_schedule | write | DELETE workspaces/{ws}/items/{item}/jobs/{jobType}/schedules/{scheduleId} | `aihub fabric api delete_schedule` | ported (generic) |
 | list_runs | read | custom handler | `aihub fabric jobs` | ported |
 | get_run | read | custom handler | `aihub fabric status / job show` | ported |
-| get_logs | read | custom handler | `aihub fabric logs --item I --job ID; spark logs (driver, executor, Livy; --tail --search --errors --cell)` | ported, live |
+| get_logs | read | custom handler | `aihub fabric logs --item I --job ID` (a digest by default, `--out file` for the full log); `spark logs` (driver, executor, Livy; --tail --search --errors --cell --out; capped on stdout). A driver log can answer 404 for a session that ended (two benchmark rounds on 2026-11-24, both files, ~9 min after the run; not reproduced in a fresh workspace, where it stayed readable for 30 min): one retry after 4 s, then the log's metadata (`meta=true`, its length) and a partial read of the last 256 KB (`isPartial=true&offset&size`, both answered 200 live); when nothing answers, one line says so instead of an empty cause | ported, live |
 | get_failure | read | custom handler | `aihub fabric failures` | ported, live |
 | link_pipeline_run | read | custom handler | `aihub fabric failures (follows pipeline -> child pipeline -> notebook -> Spark)` | ported |
 | prepare_repair | read | custom handler | - | dropped: IDE-only repair chat; the agent reads `failures` and edits the files itself |

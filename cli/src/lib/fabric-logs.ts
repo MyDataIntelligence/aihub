@@ -1,18 +1,45 @@
 import { AihubError } from "./errors.js";
 import { FabricHttpError, type FabricClient, type FabricItem, type JobInstance } from "./fabric.js";
-import { durationText, extractStack, oneLine, parseUtc, type LogSection } from "./fabric-ops.js";
+import { durationText, oneLine, parseUtc, type LogSection } from "./fabric-ops.js";
 
 /** Item types that have a job scheduler worth scanning. */
 export const JOB_ITEM_TYPES = ["Notebook", "DataPipeline", "SparkJobDefinition", "Lakehouse", "Dataflow", "CopyJob"];
 
 const why = (e: unknown) => (e instanceof FabricHttpError ? `HTTP ${e.status}` : e instanceof Error ? e.message : String(e));
 
-async function attempt<T>(source: string, title: string, fn: () => Promise<T>, sections: LogSection[], build: (r: T) => Partial<LogSection>): Promise<void> {
+async function attempt<T>(source: string, title: string, fn: () => Promise<T>, sections: LogSection[], build: (r: T) => Partial<LogSection>, raw = false): Promise<void> {
   try {
-    sections.push({ source, title, available: true, lines: [], ...build(await fn()) });
+    sections.push({ source, title, available: true, lines: [], ...(raw ? { raw } : {}), ...build(await fn()) });
   } catch (e) {
     if (e instanceof FabricHttpError && e.status === 401) throw e;
-    sections.push({ source, title, available: false, lines: [], note: `${source} answered ${why(e)}; open the Monitoring hub in Fabric for this part` });
+    sections.push({ source, title, available: false, lines: [], ...(raw ? { raw } : {}), note: `${source} answered ${why(e)}; open the Monitoring hub in Fabric for this part` });
+  }
+}
+
+/**
+ * One driver log file. Fabric can answer 404 for the driver log of a session that ended (seen in live benchmark rounds, see docs/fabric-inventory.md);
+ * one retry after a few seconds covers the short gap, a lasting 404 is reported by the caller.
+ */
+export async function driverLog(client: FabricClient, url: string): Promise<string> {
+  const get = async (u: string) => (await client.request("GET", u, undefined, { accept: "*/*" })).text;
+  try {
+    return await get(url);
+  } catch (e) {
+    if (!(e instanceof FabricHttpError) || e.status !== 404) throw e;
+  }
+  await client.wait(4_000);
+  try {
+    return await get(url);
+  } catch (e) {
+    if (!(e instanceof FabricHttpError) || e.status !== 404) throw e;
+    // second way in: the log's metadata (container, length), then its last part with the partial read the same API offers
+    const meta = (await client.request("GET", url.replace("type=driver&", "type=driver&meta=true&")).catch(() => undefined))?.data as { containerLogMeta?: { length?: number } } | undefined;
+    const len = Number(meta?.containerLogMeta?.length ?? 0);
+    if (!len) throw e;
+    const size = Math.min(len, 262_144);
+    return get(`${url}&isDownload=false&isPartial=true&offset=${len - size}&size=${size}`).catch(() => {
+      throw e;
+    });
   }
 }
 
@@ -40,9 +67,8 @@ export async function collectJobLogs(client: FabricClient, wsId: string, item: F
       const sid = s.livyId ?? s.id;
       const app = s.sparkApplicationId;
       await attempt("Spark monitoring Livy log", `Livy log (session ${sid})`, () => client.request("GET", `/workspaces/${wsId}/${base}/${item.id}/livySessions/${sid}/applications/none/logs?type=livy`, undefined, { accept: "text/plain" }), sections, (r) => {
-        const lines = txt(r.text);
-        return { lines: lines.slice(-40) };
-      });
+        return { lines: txt(r.text) };
+      }, true);
       if (!app) continue;
       // Endpoints verified against Microsoft Learn (2026-11): driver log
       //   https://learn.microsoft.com/en-us/fabric/data-engineering/driver-log
@@ -50,11 +76,7 @@ export async function collectJobLogs(client: FabricClient, wsId: string, item: F
       // Livy log https://learn.microsoft.com/en-us/fabric/data-engineering/livy-log  (.../applications/none/logs?type=livy)
       for (const f of ["stderr", "stdout"] as const) {
         const url = `/workspaces/${wsId}/${base}/${item.id}/livySessions/${sid}/applications/${app}/logs?type=driver&fileName=${f}`;
-        await attempt("Spark monitoring driver log", `driver ${f} (session ${sid})`, () => client.request("GET", url, undefined, { accept: "text/plain" }), sections, (r) => {
-          const lines = txt(r.text);
-          const stack = f === "stderr" ? extractStack(lines) : [];
-          return { lines: stack.length ? ["error excerpt:", ...stack.map((l) => `  ${l}`), "full log:", ...lines] : lines };
-        });
+        await attempt("Spark monitoring driver log", `driver ${f} (session ${sid})`, () => driverLog(client, url), sections, (text) => ({ lines: txt(text) }), true);
       }
     }
   } else if (item.type === "DataPipeline") {

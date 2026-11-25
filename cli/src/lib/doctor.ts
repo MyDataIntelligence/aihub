@@ -2,7 +2,9 @@ import { spawnSync } from "./proc.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
-import { parseRemote } from "./ado.js";
+import { parseRemote, type AdoRemote } from "./ado.js";
+import { cachedDetections, fabricTokenAtHand } from "./team-detect.js";
+import { effective, questions } from "./team-guide.js";
 import { defaultExec, type Exec, ADO_RESOURCE } from "./auth.js";
 import { CLIENTS, clientDirs, opencodeVersion } from "./clients.js";
 import type { Ctx } from "./context.js";
@@ -78,9 +80,11 @@ export function runChecks(ctx: Ctx): Check[] {
     checks.push(fix("repository", "not inside a git repository", "cd into a clone of your team repository"));
   }
   let repoName = "";
+  let remote: AdoRemote | undefined;
   if (root) {
     try {
       const r = parseRemote(remoteUrl(root));
+      remote = r;
       repoName = r.repo;
       checks.push(ok("remote", `${r.org}/${r.project}/${r.repo}`));
     } catch (e) {
@@ -92,7 +96,7 @@ export function runChecks(ctx: Ctx): Check[] {
   if (root) {
     const teamPath = join(root, TEAM_FILE);
     if (!existsSync(teamPath)) {
-      checks.push(fix("team.yaml", `${TEAM_FILE} not found`, "run 'aihub init' (opens a pull request with the team pack)"));
+      checks.push(fix("team.yaml", `${TEAM_FILE} not found`, "run 'aihub team setup' (detects what it can and asks the rest), then 'aihub init'"));
     } else {
       try {
         const data = parse(readUtf8(teamPath));
@@ -108,6 +112,11 @@ export function runChecks(ctx: Ctx): Check[] {
       }
     }
     const team = loadTeam(root);
+    if (existsSync(teamPath)) {
+      // keys team.yaml leaves open that aihub could only guess: from the detection cache, no network
+      const found = remote ? cachedDetections(ctx.env, remote, (ctx.now ?? Date.now)()) : [];
+      for (const q of questions(effective(team, found), 99)) checks.push(fix(`team:${q.key}`, `not in team.yaml and not sure (found: ${q.choices.join(", ")})`, `ask the user, then: ${q.command}`));
+    }
     const guidelines = Array.isArray(team.guidelines) ? (team.guidelines as unknown[]).map(String) : [];
     if (guidelines.length) {
       const missing = guidelines.filter((g) => !existsSync(join(root, g)));
@@ -125,6 +134,9 @@ export function runChecks(ctx: Ctx): Check[] {
         : fix("pr-template", "no pull request template found", "run 'aihub init' or add .azuredevops/pull_request_template.md"),
     );
   }
+
+  const fabricToken = fabricTokenAtHand(ctx.env, (ctx.now ?? Date.now)(), ctx.tokenCache && `${ctx.tokenCache}.fabric`);
+  checks.push(ok("fabric", fabricToken ? "token at hand (Fabric commands and workspace detection work)" : "no token at hand; Fabric commands sign in with 'az login' or AIHUB_FABRIC_TOKEN when used"));
 
   const current = cliVersion();
   for (const c of CLIENTS) {

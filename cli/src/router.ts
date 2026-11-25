@@ -94,23 +94,6 @@ export const commands: Record<string, CommandFn> = {
 
 export const VERSION = cliVersion();
 
-/** One-line usage per command, printed for `aihub <command> --help` (an agent that asks for help must not get an option error). */
-export const HELP: Record<string, string> = {
-  bar: "aihub bar --json [--fabric] [--events N]\n    Everything the VS Code status bar shows in one process: status, checks of the active PR, Fabric failures and logs (--fabric), watching, the newest events.",
-  "cherry-pick": 'aihub cherry-pick --from <pr N|url|commit sha|story id> --to <branch> [--to <branch>...|--to-group <name>] [--summary-text "<1-2 sentences>"] [--no-pr|--direct]\n    Cherry-picks in a temp worktree, pushes a cherry-pick/... branch per target and opens a PR per target (template, story link) unless --no-pr.',
-  comments: "aihub comments get [--pr <url|N>]\naihub comments reply [--pr <url|N>] --reply \"<threadId>:<status>:<text>\" [--reply ...]   (no file needed)\naihub comments reply [--pr <url|N>] --replies-file replies.yaml\n    replies.yaml: a list of {threadId, text, status} with status fixed|wontFix|closed|active (thread: and resolve: true also work).",
-  story: "aihub story branches [--id <story>]   (repo -> branches/worktrees of your stories; ★ = the one you work on)\naihub story branches link|unlink|mark|remove|place ...   (see aihub story branches --help)\naihub story open --id <story> [--mode worktree|switch] [--window new|this|none]   (the ★ of every repository as one set)\naihub story template   (prints the team story template: the headings to use)\naihub story create --title \"<title>\" --body-file story.md   (one ## <heading> section per template heading, all filled)",
-  branch: "aihub branch update [--branch B] [--target T] [--rebase]",
-};
-
-/** The usage texts that live in their command module: loaded only for --help. */
-export const LAZY_HELP: Record<string, () => Promise<string>> = {
-  test: async () => (await import("./commands/test.js")).TEST_USAGE,
-  probe: async () => (await import("./commands/probe.js")).PROBE_USAGE,
-  research: async () => (await import("./commands/research.js")).RESEARCH_USAGE,
-  learn: async () => (await import("./commands/learn.js")).LEARN_USAGE,
-};
-
 /**
  * "--append-text - a bullet" is a value, not an option: Node's parser refuses a value that starts with a dash, but markdown bullets do.
  * A token that starts with "- " (dash and space) after a long option is joined as --option=value.
@@ -132,20 +115,25 @@ export function mergeDashValues(args: string[]): string[] {
 export async function main(argv: string[], ctx: Ctx, registry: Record<string, CommandFn> = commands): Promise<number> {
   const [name, ...rest] = argv;
   if (!name || name === "--help" || name === "-h" || name === "help") {
-    ctx.out(`aihub ${VERSION}: Azure DevOps team workflows in one call. Commands: ${Object.keys(registry).join(", ")}.`);
+    ctx.out(`aihub ${VERSION}: Azure DevOps team workflows in one call. Commands: ${Object.keys(registry).join(", ")}. Usage of one: aihub <command> --help.`);
     return 0;
   }
   if (name === "--version" || name === "-v") {
     ctx.out(VERSION);
     return 0;
   }
-  if ((HELP[name] || LAZY_HELP[name]) && rest.includes("--help")) {
-    ctx.out(HELP[name] ?? (await LAZY_HELP[name]()));
-    return 0;
+  // --help and -h work for every command and subcommand (fabric prints its own); short: the usage lines and one example
+  if (name !== "fabric" && registry[name] && (rest.includes("--help") || rest.includes("-h") || rest[0] === "help")) {
+    const text = await (await import("./lib/help.js")).helpFor(name, rest[0] === "help" ? rest[1] : rest[0]);
+    if (text) {
+      ctx.out(text);
+      return 0;
+    }
   }
   const fn = registry[name];
   if (!fn) {
-    ctx.err(`aihub: unknown command '${name}'. Commands: ${Object.keys(registry).join(", ")}.`);
+    const near = (await import("./lib/help.js")).suggest(name, Object.keys(registry));
+    ctx.err(`aihub: unknown command '${name}'${near.length ? `; did you mean: ${near.join(", ")}?` : ""} (aihub --help lists them all)`);
     return 2;
   }
   // global flags: --verbose logs the real git/REST calls; --dry-run prints the writes it would do and skips them
@@ -182,9 +170,10 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
       return 0;
     }
     keep(false, (e as Error).message);
-    if (e instanceof AihubError) ctx.err(`aihub: ${e.message}`);
+    if (e instanceof AihubError) ctx.err(`aihub: ${name === "fabric" ? e.message : await (await import("./lib/help.js")).shortenUsageError(name, args, e.message)}`);
     else ctx.err(`aihub: unexpected error: ${(e as Error).message}`);
-    return 1;
+    // 3: one team setting is unclear (MissingTeamSetting); the agent asks the user and runs the `aihub team set` it names
+    return (e as { exitCode?: number }).exitCode ?? 1;
   } finally {
     setTrace({});
   }

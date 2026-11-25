@@ -27,22 +27,18 @@ import {
 } from "../lib/fabric.js";
 import { collectJobLogs, collectRefreshLogs, workspaceRuns } from "../lib/fabric-logs.js";
 import { classifyError } from "../lib/fabric-diag.js";
-import { CAPACITY_HINT, connectionWriteCmd, dbtCmd, failuresCmd, resolveBranchWorkspace, livyCmd, notebookTestCmd, sparkCmd, sqlCmd, udfCmd } from "./fabric-deep.js";
+import { clampLines, digestJob, formatDigest, WINDOW_BYTES, writeFullLog } from "../lib/fabric-digest.js";
+import { CAPACITY_HINT, connectionWriteCmd, dbtCmd, failuresCmd, formatChain, resolveBranchWorkspace, livyCmd, notebookTestCmd, rootCause, sparkCmd, sqlCmd, udfCmd, type Link } from "./fabric-deep.js";
 import { apiCmd, onelakeCmd, queryCmd } from "./fabric-api.js";
 import { authCmd, capacitiesCmd, connectionsCmd, deploymentCmd, environmentCmd, lakehouseLoad, lakehouseMaintenance, schedulesCmd, shortcutsCmd, workspaceCmd } from "./fabric-extra.js";
-import { didYouMean } from "../lib/fabric.js";
+import { fabricHelp, unknownCommand, usageOf } from "./fabric-help.js";
 import { durationText, filterLines, formatSections, oneLine, parseSince, parseUtc, readDefinitionDir, toTable, writeDefinitionParts } from "../lib/fabric-ops.js";
 import { git, repoRoot } from "../lib/git.js";
 import { FabricIdentity, identityJson } from "../lib/fabric-auth.js";
 import { redact } from "../lib/fabric-redact.js";
 import { buildTestPlan, testStrategy } from "../lib/fabric-testplan.js";
 import { loadTeam } from "../lib/team.js";
-
-const USAGE = `usage: aihub fabric <command> [flags]
-  read:   workspaces | items | item show|definition | jobs | job show | logs | lakehouse tables|files | git status
-  write:  item create|update|rename|delete | run | job cancel | git update|commit   (dev/feature only; --dry-run shows the plan)
-  plan:   plan [--check-workspace]
-  flags:  --workspace W --item I --type T --json --dry-run   (aihub fabric <command> --help is not needed: see skills/fabric)`;
+import { missingSetting } from "../lib/team-guide.js";
 
 const OPTIONS = {
   branch: { type: "string" },
@@ -140,6 +136,14 @@ const OPTIONS = {
   "to-stage": { type: "string" },
   note: { type: "string" },
   "job-type": { type: "string" },
+  message: { type: "string" },
+  replace: { type: "string", multiple: true },
+  with: { type: "string", multiple: true },
+  "replace-file": { type: "string" },
+  "with-file": { type: "string" },
+  set: { type: "string", multiple: true },
+  part: { type: "string" },
+  run: { type: "boolean" },
 } as const;
 
 export type V = Record<string, string | boolean | string[] | undefined>;
@@ -166,6 +170,15 @@ export interface Target {
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
+  if (!sub || sub === "help" || sub === "--help" || sub === "-h") {
+    ctx.out(fabricHelp(sub === "help" ? rest[0] : undefined));
+    return;
+  }
+  const p0 = rest.find((a) => !a.startsWith("-"));
+  if (rest.includes("--help") || rest.includes("-h")) {
+    ctx.out(usageOf(sub, p0) ?? unknownCommand(sub, p0));
+    return;
+  }
   let v: V;
   let pos: string[];
   try {
@@ -173,9 +186,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     v = p.values as V;
     pos = p.positionals;
   } catch (e) {
-    throw new AihubError(`${(e as Error).message}\n${USAGE}`);
+    // the first sentence of the parser's message and the usage line of this one command, not the whole manual
+    const first = (e as Error).message.split(/\.\s/)[0].replace(/\.$/, "");
+    throw new AihubError(`${first}\n${usageOf(sub, p0) ?? unknownCommand(sub, p0)}`);
   }
-  if (!sub) throw new AihubError(USAGE);
   const given = v.branch as string | undefined;
 
   let root: string | undefined;
@@ -225,8 +239,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
           return itemRename(s);
         case "delete":
           return itemDelete(s);
+        case "edit":
+          return itemEdit(s);
       }
-      throw new AihubError("usage: aihub fabric item show|definition|create|update|rename|delete");
+      throw new AihubError(unknownCommand(sub, pos[0]));
     case "job":
       switch (pos[0]) {
         case "show":
@@ -290,7 +306,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
       if (pos[0] === "commit") return gitCommit(s);
       throw new AihubError("usage: aihub fabric git status|update|commit --workspace W");
   }
-  throw new AihubError(USAGE);
+  throw new AihubError(unknownCommand(sub, pos[0]));
 }
 
 // ---- shared helpers --------------------------------------------------------------
@@ -328,7 +344,7 @@ const num = (v: V, key: string, dflt: number): number => {
 export function emit(s: Setup, data: unknown, text: string): void {
   if (s.v.json) {
     const id = currentIdentity?.resolve();
-    s.ctx.out(redact(JSON.stringify(id ? { identity: identityJson(id), result: data } : { result: data }, null, 2)));
+    s.ctx.out(redact(JSON.stringify(id ? { identity: identityJson(id), result: data } : { result: data })));
   } else s.ctx.out(redact(text));
 }
 
@@ -345,7 +361,7 @@ export async function target(s: Setup, client: FabricClient, write: boolean): Pr
     adhoc = !chooseWorkspace(s.list, { workspace: given });
   } else {
     ws = selectWorkspaces(s.list, s.groups, { branch: s.branch })[0];
-    if (!ws) throw new AihubError("no workspace chosen: pass --workspace <name|id> (or list workspaces in team.yaml fabric.workspaces with branch rules)");
+    if (!ws) throw noWorkspace(s);
   }
   // refuse ACC/PRD by name before any Fabric call; a bare id is classified after its name is read
   const byId = adhoc && isGuidLike(ws.name);
@@ -361,6 +377,13 @@ export async function target(s: Setup, client: FabricClient, write: boolean): Pr
   return { ws, id, adhoc };
 }
 
+/** No --workspace and team.yaml names none for this branch: one question for the user (exit 3), before any Fabric call. */
+function noWorkspace(s: Setup): AihubError {
+  const e = missingSetting("fabric.workspaces", s.list.map((w) => w.name));
+  e.message += "; or pass --workspace <name|id> when the user named one";
+  return e;
+}
+
 const isGuidLike = (x: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);
 
 const typeArg = (s: Setup) => {
@@ -372,10 +395,11 @@ export async function itemArg(s: Setup, client: FabricClient, wsId: string, key 
   return client.resolveItem(wsId, need(s.v, key, "name|id"), typeArg(s));
 }
 
-export const where = (t: Target) => `${t.ws.name} (${t.ws.environment}${t.adhoc ? ", not listed in team.yaml" : ""})`;
+/** "name (env)": whether team.yaml lists the workspace is not repeated on every call (writes outside it are refused with a reason). */
+export const where = (t: Target) => `${t.ws.name} (${t.ws.environment})`;
 
 export function dryRun(s: Setup, lines: string[]): void {
-  s.ctx.out(s.v.json ? JSON.stringify({ dryRun: true, plan: lines }, null, 2) : ["dry-run: nothing was changed", ...lines.map((l) => `  ${l}`)].join("\n"));
+  s.ctx.out(s.v.json ? JSON.stringify({ dryRun: true, plan: lines }) : ["dry-run: nothing was changed", ...lines.map((l) => `  ${l}`)].join("\n"));
 }
 
 // ---- plan ------------------------------------------------------------------------
@@ -427,7 +451,7 @@ async function runStatus(s: Setup, sub: "run" | "status"): Promise<void> {
   const { ctx, v } = s;
   if (sub === "run" && v.cancel) return cancelCmd(s, v.cancel as string);
   const chosen = selectWorkspaces(s.list, s.groups, { workspaces: v.workspace as string[] | undefined, group: v.workspaces as string | undefined, branch: s.branch });
-  if (!chosen.length) throw new AihubError("no dev/feature workspace in team.yaml fabric.workspaces; pass --workspace <name|id>");
+  if (!chosen.length) throw noWorkspace(s);
   // refuse before any Fabric call when one of them is not allowed
   if (sub === "run") for (const w of chosen) guardEnv(w, v["allow-env"] as string | undefined);
   const ws = chosen[0];
@@ -446,29 +470,51 @@ async function runStatus(s: Setup, sub: "run" | "status"): Promise<void> {
   const item = await itemArg(s, client, wsId);
 
   if (sub === "status") {
+    if (v.wait) return finishJob(s, client, ws.name, wsId, item, v.job as string);
     const j = await client.jobStatus(wsId, item.id, v.job as string);
     emit(s, j, formatJob(j, item.displayName));
     return;
   }
+  return startJob(s, client, ws, wsId, item);
+}
 
+/** Start one item; with --wait also wait and print the end result (and on failure its cause) in the same call. */
+export async function startJob(s: Setup, client: FabricClient, ws: FabricWorkspace, wsId: string, item: FabricItem): Promise<void> {
+  const { ctx, v } = s;
   const exec = v["params-file"] ? executionDataFromParams(readFileSync(v["params-file"] as string, "utf8"), item) : undefined;
   if (v["dry-run"]) {
-    dryRun(s, [`start ${item.type} ${item.displayName} in ${ws.name} (${ws.environment})${exec ? ` with parameters ${JSON.stringify(exec)}` : ""}`]);
+    dryRun(s, [`start ${item.type} ${item.displayName} in ${ws.name} (${ws.environment})${exec ? ` with parameters ${JSON.stringify(exec)}` : ""}${v.wait ? " and wait for the result" : ""}`]);
     return;
   }
   const jobId = await client.startJob(wsId, item, exec).catch((e) => {
     if (classifyError(String((e as Error).message)).kind === "capacity") throw new AihubError(`${(e as Error).message}; ${CAPACITY_HINT(ws.name)}`);
     throw e;
   });
-  ctx.out(`started ${item.type} ${item.displayName} in ${ws.name} (${ws.environment}): job ${jobId}`);
+  if (!v.json) ctx.out(`started ${item.type} ${item.displayName} in ${ws.name} (${ws.environment}): job ${jobId}`);
   if (!v.wait) {
-    ctx.out(`follow with: aihub fabric status --item ${item.displayName} --job ${jobId}\nor in the background: aihub watch --fabric-job ${ws.name}/${item.displayName}/${jobId} --notify`);
+    // the job runs already: waiting is `status --wait` on this job, never a second `run`
+    emit(s, { started: jobId, workspace: ws.name, item: item.displayName }, `wait for the result: aihub fabric status --workspace ${ws.name} --item ${item.displayName} --job ${jobId} --wait\nor in the background: aihub watch --fabric-job ${ws.name}/${item.displayName}/${jobId} --notify`);
     return;
   }
-  const j = await waitForJob(client, wsId, item.id, jobId, { pollMs: Number(ctx.env.AIHUB_POLL_MS ?? 5000) });
-  ctx.out(formatJob(j, item.displayName));
-  if (j.status === "Failed" && classifyError(String(j.failureReason?.message ?? "")).kind === "capacity") ctx.out(CAPACITY_HINT(ws.name));
-  if (j.status === "Failed") ctx.out(`dig deeper: aihub fabric logs --workspace ${ws.name} --item ${item.displayName} --job ${jobId}`);
+  return finishJob(s, client, ws.name, wsId, item, jobId);
+}
+
+/** Wait for a job; print its end state, and when it failed the root cause (failed cell, exception, likely cause) too. */
+export async function finishJob(s: Setup, client: FabricClient, wsName: string, wsId: string, item: FabricItem, jobId: string): Promise<void> {
+  const j = await waitForJob(client, wsId, item.id, jobId, { pollMs: Number(s.ctx.env.AIHUB_POLL_MS ?? 5000) });
+  const lines = [formatJob(j, item.displayName)];
+  let chain: Link[] = [];
+  if (j.status === "Failed") {
+    if (classifyError(String(j.failureReason?.message ?? "")).kind === "capacity") lines.push(CAPACITY_HINT(wsName));
+    chain = await rootCause(client, wsId, item, j).catch((e) => {
+      if (e instanceof FabricHttpError && e.status === 401) throw e;
+      return [];
+    });
+    // link 0 is the job printed above
+    if (chain.length > 1) lines.push("cause:", ...formatChain(chain, 1).map((l) => `  ${l}`));
+    lines.push(`full log: aihub fabric logs --workspace ${wsName} --item ${item.displayName} --job ${jobId}`);
+  }
+  emit(s, { job: j, ...(chain.length ? { chain } : {}) }, lines.join("\n"));
   if (j.status !== "Completed") throw new AihubError(`${item.displayName} ended as ${j.status}`);
 }
 
@@ -543,7 +589,11 @@ async function itemsCmd(s: Setup): Promise<void> {
   const type = typeArg(s);
   const items = await client.items(t.id, type);
   items.sort((a, b) => a.type.localeCompare(b.type) || a.displayName.localeCompare(b.displayName));
-  emit(s, items, items.length ? [`${items.length} item(s) in ${where(t)}`, toTable([["type", "name", "id"], ...items.map((i) => [i.type, i.displayName, i.id])])].join("\n") : `no ${type ?? ""} items in ${where(t)}`.replace("  ", " "));
+  // a lakehouse brings its own SQL endpoint with the same name: one row "Lakehouse (+SQL endpoint)", not a second item
+  const twin = (i: FabricItem) => i.type === "SQLEndpoint" && !type && items.some((l) => l.type === "Lakehouse" && l.displayName === i.displayName);
+  const shown = items.filter((i) => !twin(i));
+  const label = (i: FabricItem) => (i.type === "Lakehouse" && items.some((x) => twin(x) && x.displayName === i.displayName) ? "Lakehouse (+SQL endpoint)" : i.type);
+  emit(s, items, shown.length ? [`${shown.length} item(s) in ${where(t)}`, toTable([["type", "name", "id"], ...shown.map((i) => [label(i), i.displayName, i.id])])].join("\n") : `no ${type ?? ""} items in ${where(t)}`.replace("  ", " "));
 }
 
 async function itemShow(s: Setup): Promise<void> {
@@ -605,7 +655,18 @@ async function logsCmd(s: Setup): Promise<void> {
     }
     const { job, sections } = await collectJobLogs(client, t.id, it, v.job as string);
     const header = `logs of ${it.type} ${it.displayName}, job ${job.id}, in ${where(t)}`;
-    emit(s, { item: it.displayName, job, sections: sections.map((x) => ({ ...x, lines: filterLines(x.lines, { search, tail }) })) }, `${header}\n${formatSections(sections, { search, tail })}`);
+    const out = v.out as string | undefined;
+    const base = `aihub fabric logs --workspace ${t.ws.name} --item ${it.displayName} --job ${job.id}`;
+    const more = out ? `full log written to ${out} (${Math.ceil(writeFullLog(out, header, sections) / 1024)} KB)` : `full log: ${base} --out <file> (or --search <text>, --tail N)`;
+    if (search || tail) {
+      // a window: the matching or last lines of every section, still capped on stdout
+      const windowed = sections.map((x) => ({ ...x, lines: filterLines(x.lines, { search, tail }) }));
+      const text = clampLines(`${header}\n${formatSections(sections, { search, tail })}`.split("\n"), WINDOW_BYTES, out ? more : `full log: ${base} --out <file>`).join("\n");
+      return emit(s, { item: it.displayName, job, sections: windowed.map((x) => ({ ...x, lines: clampLines(x.lines, WINDOW_BYTES, "use --out <file>") })) }, text);
+    }
+    const d = digestJob(job, sections);
+    const small = sections.filter((x) => !x.raw && x.title !== "job instance").map((x) => ({ ...x, lines: x.lines.slice(0, 30) }));
+    emit(s, { item: it.displayName, job, digest: d, sections: small, ...(out ? { fullLog: out } : {}) }, formatDigest(job, `${it.type} ${it.displayName} in ${where(t)}`, sections, d, more));
     return;
   }
 
@@ -711,6 +772,98 @@ async function itemUpdate(s: Setup): Promise<void> {
   emit(s, { updated: it.id, parts: parts.length }, `updated ${it.type} ${it.displayName} in ${where(t)} (${parts.length} part(s))`);
 }
 
+interface Edit {
+  /** What the user asked, for messages. */
+  label: string;
+  /** Find the one place to change in a text; [] when absent. */
+  find: (text: string) => { at: number; len: number; replacement: string }[];
+}
+
+const stripEol = (t: string) => t.replace(/^﻿/, "").replace(/\r?\n$/, "");
+
+/** `--replace/--with` pairs, `--replace-file/--with-file`, and `--set name=value` (an assignment line, its quotes kept). */
+function editsFrom(v: V): Edit[] {
+  const edits: Edit[] = [];
+  const olds = (v.replace as string[] | undefined) ?? [];
+  const news = (v.with as string[] | undefined) ?? [];
+  if (v["replace-file"] || v["with-file"]) {
+    if (!v["replace-file"] || !v["with-file"]) throw new AihubError("--replace-file needs --with-file (and the other way round)");
+    olds.push(stripEol(readFileSync(v["replace-file"] as string, "utf8")));
+    news.push(stripEol(readFileSync(v["with-file"] as string, "utf8")));
+  }
+  if (olds.length !== news.length) throw new AihubError("every --replace needs a --with (use --with \"\" to delete the text)");
+  olds.forEach((old, i) => {
+    if (!old) throw new AihubError("--replace is empty");
+    const repl = news[i];
+    edits.push({
+      label: `'${oneLine(old, 60)}'`,
+      find: (text) => {
+        const hits: { at: number; len: number; replacement: string }[] = [];
+        for (let at = text.indexOf(old); at >= 0; at = text.indexOf(old, at + old.length)) hits.push({ at, len: old.length, replacement: repl });
+        return hits;
+      },
+    });
+  });
+  for (const a of (v.set as string[] | undefined) ?? []) {
+    const eq = a.indexOf("=");
+    const name = eq > 0 ? a.slice(0, eq).trim() : "";
+    if (!/^[A-Za-z_][\w.]*$/.test(name)) throw new AihubError(`--set wants name=value (an assignment in the code, e.g. --set regio=noord), not '${a}'`);
+    const value = a.slice(eq + 1);
+    const re = new RegExp(`^([ \\t]*${name.replace(/\./g, "\\.")}[ \\t]*=[ \\t]*)([^\\r\\n#]*?)([ \\t]*(?:#[^\\r\\n]*)?)$`, "gm");
+    edits.push({
+      label: `assignment '${name} = ...'`,
+      find: (text) =>
+        [...text.matchAll(re)].map((m) => {
+          const cur = m[2];
+          const q = /^(['"]).*\1$/.test(cur) ? cur[0] : "";
+          // keep the quote style of the current value, unless the new value brings its own quotes or is not a string there
+          const next = q && !/^(['"]).*\1$/.test(value) ? `${q}${value}${q}` : value;
+          return { at: m.index! + m[1].length, len: cur.length, replacement: next };
+        }),
+    });
+  }
+  if (!edits.length) throw new AihubError('usage: aihub fabric item edit --workspace W --item I (--set name=value | --replace "old" --with "new" | --replace-file F --with-file F) [--part P] [--run --wait] [--dry-run]');
+  return edits;
+}
+
+/** `aihub fabric item edit`: change text in an item's definition in place (download, replace, upload in one call), optionally run it. */
+async function itemEdit(s: Setup): Promise<void> {
+  const { v } = s;
+  const edits = editsFrom(v);
+  const client = makeClient(s.ctx, s.v);
+  const t = await target(s, client, true);
+  const it = await itemArg(s, client, t.id);
+  const r = await client.lro("POST", `/workspaces/${t.id}/items/${it.id}/getDefinition`);
+  const def = (r.data?.definition ?? {}) as { format?: string; parts?: { path: string; payload: string; payloadType?: string }[] };
+  const parts = (def.parts ?? []).map((p) => ({ ...p, text: Buffer.from(p.payload ?? "", "base64").toString("utf8") }));
+  if (!parts.length) throw new AihubError(`${it.type} '${it.displayName}' has no definition (not every item type supports getDefinition)`);
+  const only = v.part as string | undefined;
+  const isText = (p: { payload: string; text: string }) => !p.text.includes("\u0000") && Buffer.from(p.text, "utf8").toString("base64") === (p.payload ?? "");
+  const editable = parts.filter((p) => (only ? p.path === only : p.path !== ".platform") && isText(p));
+  if (only && !editable.length) throw new AihubError(`${it.displayName} has no text part '${only}'; parts: ${parts.map((p) => p.path).join(", ")}`);
+  const changes: string[] = [];
+  const lineOf = (text: string, at: number) => text.slice(0, at).split("\n").length;
+  const lineText = (text: string, n: number) => text.split("\n")[n - 1]?.replace(/\r$/, "") ?? "";
+  for (const e of edits) {
+    const hits = editable.flatMap((p) => e.find(p.text).map((h) => ({ p, ...h })));
+    const where1 = (h: { p: { path: string; text: string }; at: number }) => `${h.p.path} line ${lineOf(h.p.text, h.at)}`;
+    if (!hits.length) throw new AihubError(`${e.label} does not occur in ${it.type} ${it.displayName} (${editable.map((p) => p.path).join(", ")}); nothing was changed. PowerShell drops double quotes inside arguments: leave them out, use --set name=value, or --replace-file`);
+    if (hits.length > 1) throw new AihubError(`${e.label} occurs ${hits.length} times (${hits.slice(0, 5).map(where1).join(", ")}); make it longer so it occurs once; nothing was changed`);
+    const h = hits[0];
+    const n = lineOf(h.p.text, h.at);
+    const before = lineText(h.p.text, n);
+    h.p.text = h.p.text.slice(0, h.at) + h.replacement + h.p.text.slice(h.at + h.len);
+    const show = (l: string) => (l.trim().length > 120 ? `${l.trim().slice(0, 119)}…` : l.trim());
+    changes.push(`${h.p.path} line ${n}: ${show(before)}  ->  ${show(lineText(h.p.text, n))}`);
+  }
+  if (v["dry-run"]) return dryRun(s, [`edit ${it.type} '${it.displayName}' in ${where(t)}`, ...changes, ...(v.run ? [`then run it${v.wait ? " and wait" : ""}`] : [])]);
+  const send = parts.filter((p) => p.path !== ".platform").map((p) => ({ path: p.path, payload: editable.includes(p) ? Buffer.from(p.text, "utf8").toString("base64") : p.payload, payloadType: "InlineBase64" }));
+  await client.lro("POST", `/workspaces/${t.id}/items/${it.id}/updateDefinition`, { definition: { ...(def.format ? { format: def.format } : {}), parts: send } });
+  if (!v.run) return emit(s, { updated: it.id, changes }, [`updated ${it.type} ${it.displayName} in ${where(t)}:`, ...changes.map((c) => `  ${c}`)].join("\n"));
+  if (!v.json) s.ctx.out([`updated ${it.type} ${it.displayName} in ${where(t)}:`, ...changes.map((c) => `  ${c}`)].join("\n"));
+  return startJob(s, client, t.ws, t.id, it);
+}
+
 async function itemRename(s: Setup): Promise<void> {
   const client = makeClient(s.ctx, s.v);
   const name = need(s.v, "name", "new display name");
@@ -795,20 +948,34 @@ async function gitUpdate(s: Setup): Promise<void> {
 
 async function gitCommit(s: Setup): Promise<void> {
   const client = makeClient(s.ctx, s.v);
-  const file = need(s.v, "message-file", "file");
-  const message = readFileSync(file, "utf8").trim();
-  if (!message) throw new AihubError(`--message-file '${file}' is empty`);
+  const file = s.v["message-file"] as string | undefined;
+  const given = file ? readFileSync(file, "utf8").trim() : ((s.v.message as string | undefined) ?? "").trim();
+  if (file && !given) throw new AihubError(`--message-file '${file}' is empty`);
   const t = await target(s, client, true);
   const st = await gitState(client, t.id);
   const local = (st.changes ?? []).filter((c) => c.workspaceChange);
   if (!local.length) {
-    emit(s, st, `nothing to commit in ${t.ws.name}`);
+    emit(s, st, `nothing to commit in ${t.ws.name}: the workspace matches its branch`);
     return;
   }
-  const lines = [`commit ${local.length} workspace change(s) of ${where(t)} to git: "${oneLine(message.split("\n")[0], 80)}"`, ...changeRows({ changes: local }).map((r) => `${r[0]} ${r[1]}: ${r[2]}`)];
+  const what = changeRows({ changes: local }).map((r) => `${r[0]} ${r[1]}: ${r[2]}`);
+  // without a message the commit names what changed, so one call is enough
+  const message = given || `Update ${local.length === 1 ? `${local[0].itemMetadata?.displayName ?? "1 item"}` : `${local.length} items`} from Fabric workspace ${t.ws.name}`;
+  const lines = [`commit ${local.length} workspace change(s) of ${where(t)} to git: "${oneLine(message.split("\n")[0], 80)}"`, ...what];
   if (s.v["dry-run"]) return dryRun(s, lines);
   await client.lro("POST", `/workspaces/${t.id}/git/commitToGit`, { mode: "All", workspaceHead: st.workspaceHead, comment: message });
-  emit(s, { committed: local.length }, `committed ${local.length} change(s) of ${t.ws.name} to git`);
+  // read the status once more, so the caller does not need a second call: the new head and whether anything is left
+  const after = await gitState(client, t.id).catch((e) => {
+    if (e instanceof FabricHttpError && e.status === 401) throw e;
+    return undefined;
+  });
+  const left = (after?.changes ?? []).filter((c) => c.workspaceChange);
+  const state = !after ? "the git status after the commit could not be read" : left.length ? `${left.length} change(s) still not committed` : "the workspace is clean (matches its branch)";
+  emit(
+    s,
+    { committed: local.length, items: what, message, head: after?.workspaceHead, clean: after ? !left.length : undefined },
+    [`committed ${local.length} change(s) of ${t.ws.name} to git${after?.workspaceHead ? ` as ${after.workspaceHead.slice(0, 8)}` : ""}: "${oneLine(message.split("\n")[0], 80)}"`, ...what.map((w) => `  ${w}`), state].join("\n"),
+  );
 }
 
 export type { PlanItem };

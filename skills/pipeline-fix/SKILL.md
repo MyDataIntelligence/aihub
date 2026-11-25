@@ -1,32 +1,38 @@
 ---
 name: pipeline-fix
-description: "Use when a build or pipeline failed: '/fix <run url>', 'pipeline is rood', 'fix the build', 'de build faalt', 'tests falen in CI', a failed check on a pull request, a Fabric run that failed on your branch."
+description: "Use when a build or pipeline failed: 'waarom is de pipeline rood', 'waarom faalt de build', '/fix <run url>', 'pipeline is rood', 'fix the build', 'de build faalt', 'tests falen in CI', a failed check on a pull request."
 ---
-# Fix a failing run
+# Explain or fix a failing run
 
 ## When
-`/fix <run url or id>` (the Fix button of a watch toast), or the user says a build or Fabric run is red. Works without a story.
+A build is red. First decide what the user asked; do not read `team.yaml` (the CLI applies it).
+- **Why is it red?** ("waarom", "wat is de oorzaak", "what broke"): read only, answer, done.
+- **Fix it** ("fix", "repareer", "maak groen", `/fix`): the loop below.
 
-## Steps
-1. Facts: `aihub pipeline logs --failed --run <url|id>` (no run: the newest failed run of this branch). Line 1 names the branch, whether it is protected and the red rounds in a row. Where it failed: `aihub pipeline timeline --run <id> --failed`; failing tests with message and a flaky marker: `aihub pipeline tests --run <id>`. Fabric run: `aihub fabric failures`.
-2. The team may know it: `aihub fix known --run <id>`. A match is the fix to try first.
-3. STOP and report, no fix, when line 1 says so (protected branch such as main, staging, release/*; or 3 red rounds).
-4. Name the root cause in one sentence. Flaky or infrastructure (agent offline, quota, timeout): report it, `aihub pipeline retry --run <id>` once at most, change no code.
-5. Otherwise fix the cause on the own branch, never weaken a test; check with `aihub test changed --run`, never the whole suite.
-6. `aihub commit --type fix --subject "<what>" --push`, then `aihub watch --run <new run id> --notify` (`aihub pipeline runs --top 1` gives the id). Say "ik volg het op de achtergrond" and end your turn; `aihub pipeline follow` only when the user asks to wait.
-7. Red again: back to step 1. After the third red round stop and report what you tried.
-8. Green after a non-obvious fix: ask once, then `aihub fix remember --error "<line>" --fix "<1-3 lines>"` (a PR, only after a yes).
+## Steps: why is it red (one call)
+1. `aihub pipeline logs --failed` (add `--run <url|id>` when given).
+2. Answer in 2-3 sentences: quote its `error (quote it as is):` line word for word, then the file or test. End with one statement, never a question: "Repareren is een aparte vraag: zeg 'fix de pipeline'." Change nothing.
+
+## Steps: fix it (four calls)
+1. `aihub pipeline logs --failed`. It says STOP on a protected branch or after 3 red rounds: then only report.
+2. Fix the cause in the code with your own tools; never weaken a test.
+3. `aihub commit --type fix --subject "<what>" --push`
+4. `aihub pipeline rerun`: the new run of that pipeline for your commit (started by the push, or queued now) and a background watch with a toast. Report the run id in one line and end your turn.
+
+No `--help`, no `timeline`, `tests`, `runs` or `watch` calls: the commands above already give what they would. Flaky or infrastructure (agent offline, quota, timeout): change no code, `aihub pipeline rerun` once.
 
 ```sh
-aihub pipeline logs --failed --run "https://dev.azure.com/org/proj/_build/results?buildId=123"
-aihub commit --type fix --subject "handle empty export" --push
-aihub watch --run 124 --notify
+aihub pipeline logs --failed --run 123
+aihub commit --type fix --subject "add missing column" --push
+aihub pipeline rerun
 ```
 
+Example: "waarom is de pipeline rood?" is the first command and a short answer that quotes the error line.
+
 ## What the CLI fills
-Branch, protected flag, red rounds, failing step, log tail.
+Branch, protected flag, red rounds, the real error line, log tail, the pipeline to run again, the watch.
 
 ## If it fails
-Not signed in: `aihub doctor`. Never push to main, staging or release, never force-push.
+Not signed in: `aihub doctor`. Red again: one more round, then report what you tried. Never push to main, staging or release, never force-push.
 
-Rules: 0 questions. Commit messages follow the team language.
+Rules: done is done; never end with a question when the task is done. Commit messages follow the team language.

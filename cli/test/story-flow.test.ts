@@ -47,6 +47,55 @@ describe("aihub story start", () => {
     expect(again.lines.join("\n")).toContain("state stays In Progress");
   });
 
+  it("takes the active state from the process when team.yaml names none, and accepts a positional id", async () => {
+    const parent = newParent();
+    const { dir } = makeNamedRepo(parent, "test-repo");
+    const patches: { ops: any[]; contentType: string }[] = [];
+    const states: Route = {
+      match: /wit\/workitemtypes\/User%20Story\/states/,
+      respond: () => ({ body: { value: [{ name: "To Do", category: "Proposed" }, { name: "Doing", category: "InProgress" }, { name: "Done", category: "Completed" }] } }),
+    };
+    const r = await run(dir, [states, ...storyRoutes(41, { title: "Basis proces", state: "To Do" }, patches)], ["story", "start", "41"]);
+    expect(r.errs).toEqual([]);
+    expect(patches.flatMap((p) => p.ops).find((o) => o.path === "/fields/System.State").value).toBe("Doing");
+    expect(r.lines.join("\n")).toContain("state To Do -> Doing");
+    expect(r.lines.join("\n")).toContain("Implementing is a separate request");
+  });
+
+  it("two in-progress states and none in team.yaml: asks with exit 3 before anything is created", async () => {
+    const parent = newParent();
+    const { dir, bare } = makeNamedRepo(parent, "test-repo");
+    const patches: { ops: any[]; contentType: string }[] = [];
+    const states: Route = {
+      match: /wit\/workitemtypes\/User%20Story\/states/,
+      respond: () => ({ body: { value: [{ name: "New", category: "Proposed" }, { name: "Doing", category: "InProgress" }, { name: "Review", category: "InProgress" }, { name: "Done", category: "Completed" }] } }),
+    };
+    const r = await run(dir, [states, ...storyRoutes(43, { title: "Twee states" }, patches)], ["story", "start", "--id", "43"]);
+    expect(r.code).toBe(3);
+    expect(r.errs.join("\n")).toContain("missing team setting workItems.states.active (found: Doing, Review)");
+    expect(r.errs.join("\n")).toContain('aihub team set workItems.states.active "<value>"');
+    expect(patches).toEqual([]);
+    expect(sh(bare, ["branch", "--list"])).not.toContain("feature/43");
+  });
+
+  it("fails on an unknown team.yaml state before a branch is created, pushed or linked", async () => {
+    const parent = newParent();
+    const { dir, bare } = makeNamedRepo(parent, "test-repo");
+    write(dir, ".agents/skills/_shared/references/team.yaml", "workItems:\n  states:\n    active: Bezig\n");
+    sh(dir, ["add", "."]);
+    sh(dir, ["commit", "-m", "team"]);
+    sh(dir, ["push", "origin", "main"]);
+    const patches: { ops: any[]; contentType: string }[] = [];
+    const states: Route = { match: /wit\/workitemtypes\/User%20Story\/states/, respond: () => ({ body: { value: [{ name: "Doing", category: "InProgress" }, { name: "Done", category: "Completed" }] } }) };
+    const r = await run(dir, [states, ...storyRoutes(42, { title: "Fout state" }, patches)], ["story", "start", "--id", "42"]);
+    expect(r.code).not.toBe(0);
+    expect(r.errs.join("\n")).toContain("this project uses: Doing, Done");
+    expect(r.errs.join("\n")).toContain("nothing was created");
+    expect(patches).toEqual([]);
+    expect(branches(dir).some((b) => b.startsWith("feature/42"))).toBe(false);
+    expect(sh(bare, ["branch", "--list"])).not.toContain("feature/42");
+  });
+
   it("starts the story in several repositories next to the current one without switching them", async () => {
     const parent = newParent();
     const a = makeNamedRepo(parent, "repo-a");
