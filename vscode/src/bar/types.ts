@@ -9,6 +9,13 @@ export interface BarStoryBranch {
   status: "current" | "old" | "parked";
 }
 
+/** The pull request of a repository's branch. approved: required reviewers approved; failed: rejected, waiting for the author, or the merge check failed. */
+export interface BarPr {
+  id: number;
+  status: "active" | "approved" | "failed" | "merged";
+  url: string;
+}
+
 export interface BarRepo {
   name: string;
   path: string;
@@ -17,6 +24,16 @@ export interface BarRepo {
   linked?: boolean;
   /** changed files; absent when not known */
   dirty?: number;
+  /** changed files (the same number as dirty, from the git extension of VS Code); absent when not known */
+  changes?: number;
+  /** commits to push; absent when not known */
+  ahead?: number;
+  /** commits the target branch has that this branch does not (from the refs already there, no fetch); absent when not known */
+  behindTarget?: number;
+  /** the pull request of this branch; absent when there is none or it is not known yet */
+  pr?: BarPr;
+  /** this branch belongs to the story (linked, or the story number first in its name); false in a set without a story */
+  storyBranch: boolean;
   /** the branches of the story in this repository */
   storyBranches?: BarStoryBranch[];
 }
@@ -90,4 +107,6 @@ export const BAR_COMMANDS = {
   lookIn: "aihub.bar.lookIn",
   reopenLast: "aihub.bar.reopenLast",
   refresh: "aihub.bar.refresh",
+  /** read the pull requests of the set again (the overview menu calls it when it opens) */
+  refreshStatus: "aihub.bar.refreshStatus",
 } as const;

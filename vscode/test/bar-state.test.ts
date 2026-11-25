@@ -72,7 +72,7 @@ describe("BarState in the three modes", () => {
     expect(st.mode).toBe("repo");
     expect(st.story).toBeUndefined();
     expect(st.setFolder).toBeUndefined();
-    expect(st.repos).toEqual([{ name: "repo-b", path: join(root, "code", "repo-b"), branch: "develop", dirty: 3 }]);
+    expect(st.repos).toEqual([{ name: "repo-b", path: join(root, "code", "repo-b"), branch: "develop", dirty: 3, changes: 3, storyBranch: false }]);
     expect(st.sets).toEqual([]);
   });
 

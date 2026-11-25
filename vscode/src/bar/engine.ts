@@ -10,7 +10,8 @@ import { isClosedState, readSeenStories } from "../../../cli/src/lib/storyCache"
 import { readStoryWorktrees, storyWorktreesFileFor } from "../../../cli/src/lib/storyWorktrees";
 import { readPreferredClones, uniqueRepos } from "../worktrees/clones";
 import { buildState, setLabel, type OpenFacts } from "./state";
-import type { BarState, BarStoryBranch } from "./types";
+import { isStoryBranch } from "./repoStatus";
+import type { BarPr, BarState, BarStoryBranch } from "./types";
 
 /**
  * What the buttons ask for: the state of this window and of the PC. No vscode here; the extension passes the folder
@@ -23,6 +24,10 @@ export interface EngineDeps {
   dir: () => string | undefined;
   /** changed files of a worktree (a short cache in the extension); undefined when it cannot say */
   dirtyOf?: (path: string) => Promise<number | undefined>;
+  /** changes and ahead (the git extension of VS Code) and behind the target (remembered), of a worktree; undefined when it cannot say */
+  statusOf?: (path: string, name: string) => Promise<{ changes?: number; ahead?: number; behindTarget?: number } | undefined>;
+  /** the pull request of a branch (from the one read for the set, remembered for minutes; never a call) */
+  prOf?: (repo: string, branch: string) => BarPr | undefined;
   /** is the branch linked to the story in Azure DevOps (answered from an earlier read, never a call) */
   linkedOf?: (story: number, repo: string, branch: string) => boolean | undefined;
   /** other places known to be in use (the older recent list of this extension): folders, or workspace files of sets */
@@ -136,8 +141,12 @@ export class BarEngine {
       if (t) stories[set.story] = { id: set.story, title: t, at: 0 };
     }
     const dirty = new Map<string, number | undefined>();
+    const status = new Map<string, { changes?: number; ahead?: number; behindTarget?: number } | undefined>();
     const ask = async (paths: string[]) => void (await Promise.all(paths.map(async (p) => dirty.set(p, await this.deps.dirtyOf?.(p)))));
-    await ask(facts.set ? facts.set.repos.map((r) => r.path) : facts.repo ? [facts.repo.path] : []);
+    // the open set or repository: the git extension answers changes and ahead (no process of ours), dirtyOf only where it cannot
+    const open = facts.set ? facts.set.repos.map((r) => ({ name: r.name, path: r.path })) : facts.repo ? [{ name: facts.repo.name, path: facts.repo.path }] : [];
+    await Promise.all(open.map(async (r) => status.set(r.path, await this.deps.statusOf?.(r.path, r.name))));
+    await ask(open.filter((r) => status.get(r.path)?.changes === undefined).map((r) => r.path));
     // "clean" only for sets of closed stories (the ones the menu may offer to remove), at most MAX_CLEAN_CHECKS worktrees
     const candidates = scan.sets.filter((s) => s.story && isClosedState(stories[s.story]?.state)).flatMap((s) => s.repos.filter((r) => r.exists).map((r) => r.path)).filter((p) => !dirty.has(p)).slice(0, MAX_CLEAN_CHECKS);
     await ask(candidates);
@@ -148,7 +157,10 @@ export class BarEngine {
       lookIn: folders,
       stories,
       exists: existsSync,
-      dirty: (p) => dirty.get(p),
+      dirty: (p) => status.get(p)?.changes ?? dirty.get(p),
+      status: (p) => status.get(p),
+      pr: this.deps.prOf,
+      storyBranch: (p, b) => !!facts.set?.story && isStoryBranch(facts.set.story, b, (storyBranchesOf(p, facts.set.story) ?? []).filter((x) => x.status !== "old").map((x) => x.name)),
       storyBranches: storyBranchesOf,
       linked: this.deps.linkedOf,
       clean: (s) => {

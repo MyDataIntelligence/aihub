@@ -27,6 +27,8 @@ export interface PrListItem {
   reviewers: Reviewer[];
   url: string;
   created: string;
+  /** Azure DevOps' merge check: succeeded, conflicts, failure, queued (absent when it did not say) */
+  mergeStatus?: string;
 }
 
 interface RawIdentity {
@@ -77,6 +79,7 @@ function itemOf(client: AdoClient, pr: RawPr): PrListItem {
     reviewers: reviewersOf(pr),
     url: prUrl(client, repo, pr.pullRequestId),
     created: pr.creationDate ?? "",
+    ...(pr.mergeStatus ? { mergeStatus: pr.mergeStatus } : {}),
   };
 }
 
