@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as vscode from "vscode";
 import { forgetScan, setOfStory } from "../../../cli/src/lib/machineScan";
-import { readRecentUse } from "../../../cli/src/lib/recentUse";
+import { pathKey, readRecentUse } from "../../../cli/src/lib/recentUse";
 import { divergenceKey, divergenceMessage, divergences, markDivergenceSeen, seenDivergence, type Divergence } from "../../../cli/src/lib/setDivergence";
 import { readSetFile, stampStoryTitle } from "../../../cli/src/lib/setFile";
 import { readSeenStories } from "../../../cli/src/lib/storyCache";
@@ -15,7 +15,8 @@ import { answerExisting, showOpened } from "../repoSetUi";
 import type { StoryJson } from "../storyModel";
 import { BarEngine, openFacts, storyBranchesOf, titleFromFiles } from "./engine";
 import { nextStoryBranch, openStoryArgs, rowDescription, storyNumberOf, storyPickRows, storyRepoRows, type StoryRef, type StoryRepoRow } from "./storyModel";
-import { windowChoice } from "./window";
+import { windowChoice, openPath } from "./window";
+import { branchesOf, copyName, gitRun, openOwn, ownWindowItems, worktreesOf } from "./ownWindow";
 
 /**
  * Open Story, and the branch commands of a story set. The flows are quick picks (no webviews); every action is an
@@ -360,6 +361,51 @@ export function registerStoryCommands(h: StoryHooks): void {
     if (problems.length) void vscode.window.showWarningMessage(`AI Context Hub: ${branch} was created. Not done: ${problems.join("; ")}`);
     forgetScan(process.env);
     h.changed();
+  });
+
+  // One repository of the set in a window of its own, as a separate copy: the set (set file, workspace file, branch of the
+  // repository in the set, this window) is never changed. Nothing is changed before the user has chosen.
+  h.reg("aihub.bar.openInOwnWindow", async (arg?: { repo?: string; path?: string; branch?: string }) => {
+    const set = setContext();
+    const repo = set?.repos.find((r) => r.name === arg?.repo) ?? set?.repos.find((r) => arg?.path && pathKey(r.path) === pathKey(arg.path));
+    const facts = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+    const one = repo ?? (!set && facts.repo ? facts.repo : undefined);
+    if (!one) return void vscode.window.showWarningMessage(`AI Context Hub: ${arg?.repo ?? "that repository"} is not in this window.`);
+    const source = set?.source(one.name) ?? one.path;
+    const worktreeRoot = String(vscode.workspace.getConfiguration("worktreeMaker").get("worktreeRoot", "") ?? "");
+    const story = set?.story ?? 0;
+    let branch = arg?.branch;
+    let newBranch: string | undefined;
+    if (!branch) {
+      const [known, wts, dirty] = await Promise.all([branchesOf(gitRun, existsSync(source) ? source : one.path), worktreesOf(gitRun, existsSync(source) ? source : one.path), h.engine.changedFiles(one.path)]);
+      const mine = story ? (storyBranchesOf(one.path, story) ?? []).map((b) => b.name) : [];
+      const items = ownWindowItems({ current: one.branch, storyBranches: mine, branches: known.all, worktrees: wts, uncommitted: dirty });
+      type Row = vscode.QuickPickItem & { model?: (typeof items)[number] };
+      const rows: Row[] = items.map((m) => (m.separator ? { label: m.separator, kind: vscode.QuickPickItemKind.Separator } : { label: m.label, description: m.description, model: m }));
+      const picked = await vscode.window.showQuickPick(rows, { title: `Open ${one.name} in Own Window`, placeHolder: `Now on ${one.branch}`, matchOnDescription: true });
+      if (!picked?.model) return;
+      if (picked.model.kind === "branch") branch = picked.model.branch;
+      else if (picked.model.kind === "new") {
+        const title = story ? readSeenStories(process.env)[story]?.title || titleFromFiles(story, set!.repos.map((r) => r.path)) || "" : "";
+        const next = story && title ? nextStoryBranch({ id: story, title }, mine) : undefined;
+        const name = await vscode.window.showInputBox({
+          title: `New branch from ${one.branch} in its own window`,
+          prompt: "A separate copy to play with: not linked to the story, not pushed",
+          value: copyName(one.branch, next, known.local),
+          validateInput: (v) => (/^[^\s~^:?*[\\]+$/.test(v.trim()) && v.trim() ? (known.local.has(v.trim()) ? "That branch exists already" : undefined) : "Not a valid branch name"),
+        });
+        if (!name) return;
+        newBranch = name.trim();
+      }
+    }
+    try {
+      const res = await openOwn({ git: gitRun, source, setPath: one.path, current: one.branch, branch, newBranch, worktreeRoot });
+      h.log(`open in own window: ${res.note}`);
+      forgetScan(process.env);
+      await openPath(res.path, "new");
+    } catch (e) {
+      void vscode.window.showErrorMessage(`AI Context Hub: could not open ${one.name} in its own window: ${(e as Error).message}. Nothing in the set was changed.`);
+    }
   });
 
   h.reg("aihub.bar.addRepository", async (arg?: unknown) => {

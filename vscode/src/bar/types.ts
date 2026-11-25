@@ -81,6 +81,8 @@ export const BAR_COMMANDS = {
   removeSet: "aihub.bar.removeSet",
   switchBranch: "aihub.bar.switchBranch",
   newStoryBranch: "aihub.bar.newStoryBranch",
+  /** one repository of a set in a window of its own: `{ repo, path, branch? }`; the set never changes */
+  openInOwnWindow: "aihub.bar.openInOwnWindow",
   otherBranch: "aihub.bar.otherBranch",
   linkBranch: "aihub.bar.linkBranch",
   addRepository: "aihub.bar.addRepository",
