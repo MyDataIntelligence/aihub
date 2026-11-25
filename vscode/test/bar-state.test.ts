@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -44,7 +44,7 @@ const engineFor = (dir: string | undefined, extra: Partial<ConstructorParameters
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "aihub-bar-"));
-  env = { AIHUB_CONFIG_HOME: join(root, "cfg") };
+  env = { AIHUB_CONFIG_HOME: join(root, "cfg"), AIHUB_COMMON_ROOTS: "" };
   clone(join(root, "code", "repo-a"));
   clone(join(root, "code", "repo-b"), "develop");
   writeLookIn(env, [join(root, "code")]);
@@ -100,6 +100,17 @@ describe("BarState in the three modes", () => {
     expect(st.sets).toEqual([{ id: s7.workspace, story: 7, label: "#7 Export", repos: 2, open: true, done: false }]);
   });
 
+  it("a story this PC never read from Azure DevOps is still named, from the title the repositories remember", async () => {
+    const s7 = set(7, "feature/7-x", ["repo-a"]);
+    const file = storyWorktreesFile(join(root, "code", "repo-a", ".git"));
+    updateStoryWorktrees(file, (d) => ({ ...linkBranch(d, { storyId: 7, branch: "feature/7-x", current: true }, 1), stories: { "7": { title: "Order export" } } }));
+    const st = await engineFor(join(s7.where, "repo-a")).state();
+    expect(st.story?.title).toBe("Order export");
+    expect(st.sets[0].label).toBe("#7 Order export");
+    engineFor(join(s7.where, "repo-a")).noteOpen();
+    expect(readRecentUse(env)[0].label).toBe("#7 Order export");
+  });
+
   it("set: this window's set is listed even when it lies outside the folders to look in", async () => {
     const s = set(9, "feature/9-z", ["repo-a"], join(root, "elsewhere", "9-z"));
     const st = await engineFor(join(s.where, "repo-a")).state();
@@ -126,6 +137,27 @@ describe("BarState in the three modes", () => {
     const st = await engineFor(undefined, { dirtyOf: async () => undefined }).state();
     expect(st.sets[0]).toMatchObject({ done: true });
     expect(st.sets[0].clean).toBeUndefined();
+  });
+});
+
+describe("one repository is one line", () => {
+  it("clones of one remote are one entry with otherClones; the most recently used wins", async () => {
+    const remote = "https://dev.example/org/proj/_git/repo-z";
+    for (const dir of [join(root, "code", "repo-z"), join(root, "code", "old", "repo-z")]) {
+      clone(dir);
+      writeFileSync(join(dir, ".git", "config"), `[remote "origin"]
+	url = ${remote}
+`);
+    }
+    // the second clone is the one in use: its files were written later (explicit times: the file system's clock may tick coarsely)
+    const hourAgo = new Date(Date.now() - 3_600_000);
+    for (const f of ["HEAD", "config"]) utimesSync(join(root, "code", "repo-z", ".git", f), hourAgo, hourAgo);
+    writeFileSync(join(root, "code", "old", "repo-z", ".git", "index"), "x");
+    const st = await engineFor(undefined).state();
+    const z = st.repositories.filter((r) => r.name === "repo-z");
+    expect(z).toHaveLength(1);
+    expect(z[0]).toMatchObject({ path: join(root, "code", "old", "repo-z"), otherClones: 1 });
+    expect(st.repositories.find((r) => r.name === "repo-a")?.otherClones).toBeUndefined();
   });
 });
 

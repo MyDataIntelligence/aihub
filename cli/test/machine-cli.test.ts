@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -13,6 +13,7 @@ function runner(config: string) {
   return async (cwd: string, argv: string[]) => {
     const { ctx, lines, errs } = ctxFor(cwd, fakeFetch([]).fn);
     ctx.env.AIHUB_CONFIG_HOME = config;
+    ctx.env.AIHUB_COMMON_ROOTS = "";
     const code = await main(argv, ctx, commands);
     return { code, out: lines.join("\n"), err: errs.join("\n") };
   };
@@ -88,5 +89,33 @@ describe("aihub worktree list --all | look-in, aihub recent", { timeout: 60_000 
     await run(elsewhere, ["worktree", "look-in", "add", dirname(a.dir)]);
     expect(JSON.parse((await run(elsewhere, ["story", "open", "--id", "7", "--window", "none", "--json"])).out).folder).toBe(made.folder);
     expect(JSON.parse((await run(elsewhere, ["recent", "--json"])).out).recent[0]).toMatchObject({ kind: "set", story: 7 });
+  });
+
+  it("aihub worktree remove --folder removes exactly that set; a worktree with work in it stays and is named", async () => {
+    const parent = newParent();
+    const a = makeNamedRepo(parent, "repo-a");
+    const b = makeNamedRepo(parent, "repo-b");
+    for (const r of [a, b]) {
+      sh(r.dir, ["config", "user.name", "Test"]);
+      sh(r.dir, ["config", "user.email", "test@example.invalid"]);
+    }
+    const config = mkdtempSync(join(tmpdir(), "aihub-cfg-"));
+    const run = runner(config);
+    const made = JSON.parse((await run(a.dir, ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/7-x", "--from", "main", "--window", "none", "--story", "7", "--json"])).out);
+    writeFileSync(join(made.folder, "repo-b", "wip.txt"), "unsaved work");
+    const first = JSON.parse((await run(a.dir, ["worktree", "remove", "--folder", made.folder, "--branch", "feature/7-x", "--story", "7", "--json"])).out);
+    expect(first.kept).toEqual(["repo-b"]);
+    expect(first.lines.join(" | ")).toContain("repo-b: kept, uncommitted changes");
+    expect(existsSync(join(made.folder, "repo-a"))).toBe(false);
+    expect(existsSync(join(made.folder, "repo-b", "wip.txt"))).toBe(true);
+    // the branches stay
+    expect(sh(a.dir, ["branch", "--list", "feature/7-x"])).toContain("feature/7-x");
+    rmSync(join(made.folder, "repo-b", "wip.txt"));
+    const second = JSON.parse((await run(a.dir, ["worktree", "remove", "--folder", made.folder, "--branch", "feature/7-x", "--json"])).out);
+    expect(second.kept).toEqual([]);
+    expect(existsSync(made.folder)).toBe(false);
+    const none = await run(a.dir, ["worktree", "remove", "--folder", made.folder]);
+    expect(none.code).not.toBe(0);
+    expect(none.err).toContain("no worktree set in");
   });
 });

@@ -496,7 +496,7 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   // the groups come from the CLI: ask again once the first status read is behind us
   trackedTimeout("worktreeSets.firstRefresh", () => refreshSets(), 4000);
   phase("bar commands");
-  return registerBar(ctx, { log: (l) => bar.logLine(l) }).api;
+  return registerBar(ctx, { log: (l) => bar.logLine(l), extraPlaces: () => recents.get().sets.map((s) => s.id) }).api;
 }
 
 export function deactivate(): Promise<void> {

@@ -178,15 +178,16 @@ export function removeWorktreeSafely(r: { name: string; source: string; path: st
   return { removed: true, line: `${r.name}: worktree removed (branch '${branch}' kept)` };
 }
 
-export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?: string; json?: boolean }): string {
+export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?: string; folder?: string; json?: boolean }): string {
   const root = repoRoot(ctx.cwd);
   const setsRoot = resolve(o.root ?? defaultSetsRoot(root));
   // a story branch opened with `worktree open` lives in its story folder, next to the other sets of that story
   const storyId = o.story ?? (o.branch ? storyIdFromBranch(o.branch) : undefined);
   const byBranch = join(setsRoot, slugOfBranch(o.branch ?? ""));
-  const folder = o.story ? setFolder(setsRoot, o.story) : storyId && !existsSync(join(byBranch, META)) ? setFolder(setsRoot, storyId, o.branch) : byBranch;
+  // --folder names the set folder itself (the menus know it from the scan); else it is found from the story or the branch
+  const folder = o.folder ? resolve(o.folder) : o.story ? setFolder(setsRoot, o.story) : storyId && !existsSync(join(byBranch, META)) ? setFolder(setsRoot, storyId, o.branch) : byBranch;
   const metaPath = join(folder, META);
-  if (!existsSync(metaPath)) throw new AihubError(`no worktree set for ${o.story ? `story ${o.story}` : `branch '${o.branch}'`} under ${setsRoot}`);
+  if (!existsSync(metaPath)) throw new AihubError(o.folder ? `no worktree set in ${folder}` : `no worktree set for ${o.story ? `story ${o.story}` : `branch '${o.branch}'`} under ${setsRoot}`);
   const top = JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta;
   const all = [{ ...top, others: undefined }, ...(top.others ?? [])];
   const meta = all.find((s) => (o.branch ? s.branch === o.branch : s.story === o.story)) ?? all[0];
