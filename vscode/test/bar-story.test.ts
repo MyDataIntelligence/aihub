@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { divergenceKey, divergenceMessage, divergences, markDivergenceSeen, seenDivergence, type LinkedRow } from "../../cli/src/lib/setDivergence";
-import { nextStoryBranch, openStoryArgs, storyBranchPerRepo, storyNumberOf, storyPickRows, storyRepoRows } from "../src/bar/storyModel";
+import { nextStoryBranch, openStoryArgs, rowDescription, storyBranchCandidates, storyBranchPerRepo, storyNumberOf, storyPickRows, storyRepoRows } from "../src/bar/storyModel";
 import type { BranchRowJson } from "../src/storyModel";
 
 const row = (repo: string, branch: string, o: Partial<BranchRowJson> = {}): BranchRowJson => ({ repo, branch, linked: "ado", status: "parked", local: true, pushed: true, ahead: 0, dirty: false, ...o });
@@ -26,10 +26,50 @@ describe("Open Story: which repositories are ticked", () => {
     expect(per.has("repo-c")).toBe(false);
   });
 
-  it("a branch known only locally does not count when the story links others in Azure DevOps", () => {
-    const per = storyBranchPerRepo([row("repo-a", "feature/4711-x", { linked: "ado" }), row("repo-b", "feature/4711-z", { linked: "local" })]);
-    expect([...per.keys()]).toEqual(["repo-a"]);
-    expect([...storyBranchPerRepo([row("repo-b", "feature/4711-z", { linked: "local" })]).keys()]).toEqual(["repo-b"]);
+  it("a branch known only locally is a candidate: linked in one repository, local only in another", () => {
+    const per = storyBranchCandidates([row("repo-a", "feature/4711-x", { linked: "ado" }), row("repo-b", "feature/4711-z", { linked: "local", pushed: false })]);
+    expect([...per.keys()]).toEqual(["repo-a", "repo-b"]);
+    expect(per.get("repo-a")).toMatchObject({ linked: true, others: 0 });
+    expect(per.get("repo-b")).toMatchObject({ linked: false, others: 0 });
+    expect(per.get("repo-b")?.row.branch).toBe("feature/4711-z");
+  });
+
+  it("two candidates in one repository: linked in Azure DevOps first, then the star, then the most recently active; the rest is counted", () => {
+    const per = storyBranchCandidates([
+      row("repo-a", "feature/4711-a", { linked: "local", status: "current", pushed: false }),
+      row("repo-a", "feature/4711-b", { linked: "ado", status: "parked", lastActive: "2026-11-01" }),
+      row("repo-a", "feature/4711-c", { linked: "ado", status: "parked", lastActive: "2026-11-20" }),
+      row("repo-b", "feature/4711-x", { linked: "local", status: "parked", pushed: false, lastActive: "2026-11-01" }),
+      row("repo-b", "feature/4711-y", { linked: "local", status: "current", pushed: false, lastActive: "2026-10-01" }),
+      row("repo-b", "feature/4711-z", { linked: "local", status: "current", pushed: false, lastActive: "2026-11-15" }),
+    ]);
+    // linked in Azure DevOps wins over the local star; between two linked ones the latest
+    expect(per.get("repo-a")?.row.branch).toBe("feature/4711-c");
+    expect(per.get("repo-a")?.others).toBe(2);
+    // nothing linked: the star, and between two stars the latest
+    expect(per.get("repo-b")?.row.branch).toBe("feature/4711-z");
+    expect(per.get("repo-b")?.others).toBe(2);
+  });
+
+  it("a branch that is only on the remote counts; a repository with none gets a new branch", () => {
+    const { rows: out } = storyRepoRows(
+      [row("repo-a", "feature/4711-r", { linked: "ado", local: false, pushed: true }), row("repo-b", "feature/4711-gone", { linked: "ado", local: false, pushed: false })],
+      [{ name: "repo-a", path: "/c/repo-a" }, { name: "repo-b", path: "/c/repo-b" }],
+    );
+    expect(out.map((r) => [r.repo, r.branch ?? "new", r.picked])).toEqual([["repo-a", "feature/4711-r", true], ["repo-b", "new", false]]);
+  });
+
+  it("an existing branch without a link is shown, not ticked, and linked after opening; N other is information only", () => {
+    const { rows: out } = storyRepoRows(
+      [row("repo-a", "feature/4711-x", { linked: "ado" }), row("repo-b", "feature/4711-z", { linked: "local" }), row("repo-b", "feature/4711-w", { linked: "local", status: "old" })],
+      [{ name: "repo-a", path: "/c/repo-a" }, { name: "repo-b", path: "/c/repo-b" }, { name: "repo-c", path: "/c/repo-c" }],
+    );
+    expect(out.map((r) => [r.repo, r.branch ?? "new", r.picked, r.linked, r.others])).toEqual([
+      ["repo-a", "feature/4711-x", true, true, undefined],
+      ["repo-b", "feature/4711-z", false, false, 1],
+      ["repo-c", "new", false, undefined, undefined],
+    ]);
+    expect(out.map(rowDescription)).toEqual(["feature/4711-x", "feature/4711-z · 1 other", "new branch from the target"]);
   });
 
   it("linked repositories ticked first, every other clone on this PC unticked, repositories not cloned named", () => {

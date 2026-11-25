@@ -15,18 +15,35 @@ export interface StoryRef {
 
 const rank = (s: BranchRowJson["status"]) => (s === "current" ? 0 : s === "parked" ? 1 : 2);
 
-/** One branch per repository of the story: Azure DevOps links first (they are the truth), the star, else the most recently active. */
-export function storyBranchPerRepo(rows: BranchRowJson[]): Map<string, BranchRowJson> {
-  const out = new Map<string, BranchRowJson>();
-  const usable = rows.filter((b) => b.local || b.pushed);
-  const linkedInAdo = usable.filter((b) => b.linked !== "local");
-  // a story whose links are in Azure DevOps ignores a branch known only locally; a story with no link there uses what is local
-  const from = linkedInAdo.length ? linkedInAdo : usable;
-  for (const b of from) {
-    const had = out.get(b.repo);
-    if (!had || rank(b.status) < rank(had.status) || (rank(b.status) === rank(had.status) && (b.lastActive ?? "") > (had.lastActive ?? ""))) out.set(b.repo, b);
+export interface StoryPick {
+  row: BranchRowJson;
+  /** linked to the story in Azure DevOps (a branch known only locally is not) */
+  linked: boolean;
+  /** the other existing branches of the story in this repository (information only) */
+  others: number;
+}
+
+/**
+ * Per repository, one branch of the story out of every existing one (local or on the remote, linked in Azure DevOps or
+ * not): a branch linked in Azure DevOps goes before one that is not, then the star, then the most recently active.
+ * Only a repository with no branch for the story at all has none.
+ */
+export function storyBranchCandidates(rows: BranchRowJson[]): Map<string, StoryPick> {
+  const byRepo = new Map<string, BranchRowJson[]>();
+  for (const b of rows.filter((x) => x.local || x.pushed)) byRepo.set(b.repo, [...(byRepo.get(b.repo) ?? []), b]);
+  const out = new Map<string, StoryPick>();
+  for (const [repo, all] of byRepo) {
+    const inAdo = all.filter((b) => b.linked !== "local");
+    let best: BranchRowJson | undefined;
+    for (const b of inAdo.length ? inAdo : all) if (!best || rank(b.status) < rank(best.status) || (rank(b.status) === rank(best.status) && (b.lastActive ?? "") > (best.lastActive ?? ""))) best = b;
+    out.set(repo, { row: best!, linked: best!.linked !== "local", others: all.length - 1 });
   }
   return out;
+}
+
+/** One branch per repository of the story (see storyBranchCandidates). */
+export function storyBranchPerRepo(rows: BranchRowJson[]): Map<string, BranchRowJson> {
+  return new Map([...storyBranchCandidates(rows)].map(([repo, p]) => [repo, p.row]));
 }
 
 export interface StoryRepoRow {
@@ -34,24 +51,34 @@ export interface StoryRepoRow {
   path: string;
   /** the story's branch there; absent: a new branch is made */
   branch?: string;
-  /** ticked at the start: the linked ones */
+  /** the branch is linked to the story in Azure DevOps (false: it exists but is not linked yet; it is linked after opening) */
+  linked?: boolean;
+  /** how many other existing branches of the story this repository has */
+  others?: number;
+  /** ticked at the start: only the linked ones */
   picked: boolean;
   /** the repository is cloned on this PC (a linked repository that is not cannot be opened) */
   onThisPc: boolean;
 }
 
+/** The text behind a repository in the picker: its branch and "· N other", else the new branch. */
+export const rowDescription = (r: StoryRepoRow): string => (r.branch ? `${r.branch}${r.others ? ` · ${r.others} other` : ""}` : "new branch from the target");
+
 /** The repositories of "Open Story": the linked ones ticked, then every other repository on this PC unticked. */
 export function storyRepoRows(rows: BranchRowJson[], clones: Pick<ScanRepo, "name" | "path">[]): { rows: StoryRepoRow[]; notOnThisPc: string[] } {
-  const per = storyBranchPerRepo(rows);
+  const per = storyBranchCandidates(rows);
   const byName = new Map<string, Pick<ScanRepo, "name" | "path">>();
   for (const c of clones) if (!byName.has(c.name.toLowerCase())) byName.set(c.name.toLowerCase(), c);
   const out: StoryRepoRow[] = [];
   const notOnThisPc: string[] = [];
-  for (const [repo, b] of per) {
+  for (const [repo, c] of per) {
     const clone = byName.get(repo.toLowerCase());
     if (!clone) notOnThisPc.push(repo);
-    else out.push({ repo: clone.name, path: clone.path, branch: b.branch, picked: true, onThisPc: true });
+    // an existing branch that is not linked yet is shown but not ticked; it is linked after opening, like a new one
+    else out.push({ repo: clone.name, path: clone.path, branch: c.row.branch, linked: c.linked, ...(c.others ? { others: c.others } : {}), picked: c.linked, onThisPc: true });
   }
+  // ticked ones first, then the unlinked ones that already have a branch (the sort is stable)
+  out.sort((a, b) => Number(b.picked) - Number(a.picked));
   const taken = new Set(out.map((r) => r.repo.toLowerCase()));
   for (const c of [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))) if (!taken.has(c.name.toLowerCase())) out.push({ repo: c.name, path: c.path, picked: false, onThisPc: true });
   return { rows: out, notOnThisPc };
@@ -60,7 +87,7 @@ export function storyRepoRows(rows: BranchRowJson[], clones: Pick<ScanRepo, "nam
 /** `aihub worktree open ...` for the ticked repositories: linked ones on their branch, the others on a new story branch. */
 export function openStoryArgs(story: StoryRef, ticked: StoryRepoRow[], from?: string): string[] {
   const fresh = storyBranchSuggestion(story);
-  const setBranch = ticked.find((r) => r.branch)?.branch ?? fresh;
+  const setBranch = (ticked.find((r) => r.branch && r.linked !== false) ?? ticked.find((r) => r.branch))?.branch ?? fresh;
   const pairs = ticked.map((r) => `${r.repo}=${r.branch ?? fresh}`);
   return ["worktree", "open", "--repos", ticked.map((r) => r.repo).join(","), "--branch", setBranch, "--branch-for", pairs.join(","), "--story", String(story.id), ...(from ? ["--from", from] : []), "--window", "none"];
 }
