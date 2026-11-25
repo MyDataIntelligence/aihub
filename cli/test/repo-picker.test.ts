@@ -26,6 +26,9 @@ describe("the repo opener: pure parts", () => {
     const k = "ferron-org/test-project/repo-a";
     expect(adoKey("https://user@dev.azure.com/ferron-org/test-project/_git/repo-a")).toBe(k);
     expect(adoKey("git@ssh.dev.azure.com:v3/ferron-org/test-project/repo-a")).toBe(k);
+    expect(adoKey("ssh://git@ssh.dev.azure.com/v3/ferron-org/test-project/repo-a")).toBe(k);
+    // a stray % must not throw: one odd clone would otherwise fail the whole list
+    expect(() => adoKey("https://dev.azure.com/ferron-org/test-project/_git/100%")).not.toThrow();
     expect(adoKey("https://ferron-org.visualstudio.com/DefaultCollection/test-project/_git/repo-a")).toBe(k);
     expect(adoKey("https://dev.azure.com/ferron-org/test%20project/_git/repo-a.git")).toBe("ferron-org/test project/repo-a");
     expect(adoKey("https://example.invalid/x.git")).toBeUndefined();

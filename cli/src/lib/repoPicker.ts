@@ -52,10 +52,16 @@ export function originFromConfig(config: string): string | undefined {
 /** `org/project/repo` (lower case) of an Azure DevOps URL in its https, old visualstudio.com or ssh form. */
 export function adoKey(url: string | undefined): string | undefined {
   if (!url) return undefined;
-  const u = decodeURIComponent(url.trim()).replace(/\.git$/, "");
+  let u = url.trim();
+  try {
+    u = decodeURIComponent(u);
+  } catch {
+    /* a stray % in a url must not break the whole list of clones */
+  }
+  u = u.replace(/\.git$/, "");
   const m =
     /dev\.azure\.com\/([^/]+)\/([^/]+)\/_git\/([^/?#]+)/i.exec(u) ??
-    /ssh\.dev\.azure\.com:v3\/([^/]+)\/([^/]+)\/([^/?#]+)/i.exec(u) ??
+    /ssh\.dev\.azure\.com[:/]v3\/([^/]+)\/([^/]+)\/([^/?#]+)/i.exec(u) ??
     (() => {
       const v = /([^/.@]+)\.visualstudio\.com\/(?:DefaultCollection\/)?([^/]+)\/_git\/([^/?#]+)/i.exec(u);
       return v;
