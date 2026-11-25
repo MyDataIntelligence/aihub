@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { storyIdFromBranch } from "./storyWorktrees.js";
 
@@ -35,19 +35,30 @@ export interface SetMeta {
   others?: SetMeta[];
 }
 
+/**
+ * The text of a JSON file as an editor or PowerShell may have saved it: UTF-8 with or without a BOM, or UTF-16 (what
+ * `>` and `Out-File` write in Windows PowerShell 5). A set file edited by hand must stay readable.
+ */
+export function readJsonText(path: string): string {
+  const b = readFileSync(path);
+  if (b[0] === 0xff && b[1] === 0xfe) return b.subarray(2).toString("utf16le");
+  if (b[0] === 0xfe && b[1] === 0xff) return Buffer.from(b.subarray(2)).swap16().toString("utf16le");
+  return b.toString("utf8").replace(/^\uFEFF/, "");
+}
+
 export const repoBranch = (meta: Pick<SetMeta, "branch">, r: Pick<SetRepo, "branch">): string => r.branch || meta.branch;
 
 /** The set file of `folder` (`.aihub-set.json` first), in the shape of SetMeta; undefined when there is none or it is broken. */
 export function readSetFile(folder: string): { kind: SetKind; top: SetMeta } | undefined {
   try {
     if (existsSync(join(folder, AIHUB_SET))) {
-      const top = JSON.parse(readFileSync(join(folder, AIHUB_SET), "utf8")) as SetMeta;
+      const top = JSON.parse(readJsonText(join(folder, AIHUB_SET))) as SetMeta;
       if (!Array.isArray(top?.repos)) return undefined;
       top.repos = completeRepos(folder, top.repos as Partial<SetRepo>[]);
       return { kind: "aihub", top };
     }
     if (existsSync(join(folder, MAKER_SET))) {
-      const j = JSON.parse(readFileSync(join(folder, MAKER_SET), "utf8").replace(/^\uFEFF/, "")) as { branch?: unknown; slug?: unknown; repos?: unknown };
+      const j = JSON.parse(readJsonText(join(folder, MAKER_SET))) as { branch?: unknown; slug?: unknown; repos?: unknown };
       if (typeof j.branch !== "string" || !Array.isArray(j.repos)) return undefined;
       const repos = completeRepos(folder, j.repos as Partial<SetRepo>[]);
       const slug = typeof j.slug === "string" && j.slug ? j.slug : j.branch.replace(/[\\/:*?"<>|\s]+/g, "-");
@@ -81,7 +92,7 @@ export function writeSetFile(folder: string, kind: SetKind, meta: SetMeta): void
   const repos = meta.repos.map((r) => ({ ...r, branch: r.branch && r.branch !== meta.branch ? r.branch : undefined }));
   if (kind === "aihub") return writeSetMeta(folder, { ...meta, repos });
   const p = join(folder, MAKER_SET);
-  const raw = JSON.parse(readFileSync(p, "utf8").replace(/^\uFEFF/, "")) as Record<string, unknown> & { repos?: Record<string, unknown>[] };
+  const raw = JSON.parse(readJsonText(p)) as Record<string, unknown> & { repos?: Record<string, unknown>[] };
   const old = new Map((raw.repos ?? []).map((r) => [String(r.name), r]));
   const rel = (x: string) => {
     const r = relative(folder, x);
@@ -97,15 +108,37 @@ export function writeSetFile(folder: string, kind: SetKind, meta: SetMeta): void
   writeFileSync(p, JSON.stringify(raw, null, 2) + "\n", "utf8");
 }
 
+/**
+ * Saves a set a command just made: into the extension's `.worktree-set.json` when the folder holds one for the same
+ * branch (its other repositories stay, the new ones are added), else as the newest set of `.aihub-set.json`. A folder
+ * never gets a second set file for the same set: `readSetFile` would show only one of the two.
+ */
+export function saveSetMeta(folder: string, meta: SetMeta): void {
+  const have = existsSync(join(folder, AIHUB_SET)) ? undefined : readSetFile(folder);
+  if (have?.kind === "maker" && have.top.branch === meta.branch) {
+    const byName = new Map(have.top.repos.map((r) => [r.name, r]));
+    for (const r of meta.repos) byName.set(r.name, r);
+    return writeSetFile(folder, "maker", { ...have.top, repos: [...byName.values()] });
+  }
+  writeSetMeta(folder, meta);
+}
+
 /** Writes `meta` as the newest set of `folder`, keeping the other sets there (one per story and branch). */
 export function writeSetMeta(folder: string, meta: SetMeta): void {
   const p = join(folder, AIHUB_SET);
   let old: SetMeta[] = [];
-  try {
-    const top = JSON.parse(readFileSync(p, "utf8")) as SetMeta;
-    old = [{ ...top, others: undefined }, ...(top.others ?? [])];
-  } catch {
-    /* no set file yet, or a broken one: start fresh */
+  if (existsSync(p)) {
+    try {
+      const top = JSON.parse(readJsonText(p)) as SetMeta;
+      old = [{ ...top, others: undefined }, ...(top.others ?? [])];
+    } catch {
+      // a set file that cannot be read (broken by hand) is never overwritten unseen: its text is kept next to it
+      try {
+        copyFileSync(p, `${p}.broken-${new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-")}`);
+      } catch {
+        /* a read-only folder: the write below fails the same way */
+      }
+    }
   }
   const same = (a: SetMeta) => a.story === meta.story && a.branch === meta.branch && (a.group ?? "") === (meta.group ?? "");
   const others = old.filter((s) => !same(s)).map(({ others: _o, ...s }) => s);
@@ -117,7 +150,7 @@ export function stampStoryTitle(folder: string, story: number, title: string): v
   const p = join(folder, AIHUB_SET);
   if (!story || !title || !existsSync(p)) return;
   try {
-    const top = JSON.parse(readFileSync(p, "utf8")) as SetMeta;
+    const top = JSON.parse(readJsonText(p)) as SetMeta;
     const sets = [top, ...(top.others ?? [])];
     let changed = false;
     for (const m of sets) if (m.story === story && m.storyTitle !== title) (m.storyTitle = title), (changed = true);
