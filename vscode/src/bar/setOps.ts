@@ -74,6 +74,8 @@ export class SetFileWatcher implements vscode.Disposable {
   /** (Re)aimed at the set this window shows; nothing for a window without a set. */
   aim(): void {
     const folder = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.folder;
+    // a set file that cannot be read hides the set from findSet: keep watching the folder until the file is mended
+    if (!folder && this.key && [AIHUB_SET, MAKER_SET].some((n) => existsSync(join(this.key, n)))) return;
     if ((folder ?? "") === this.key) return;
     this.key = folder ?? "";
     this.watcher?.dispose();
@@ -99,14 +101,18 @@ export class SetFileWatcher implements vscode.Disposable {
 
   async apply(): Promise<void> {
     if (this.busy) return;
-    const here = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set;
-    if (!here) return;
+    if (!this.key) return;
     this.busy = true;
     try {
-      const raw = [AIHUB_SET, MAKER_SET].map((n) => join(here.folder, n)).find((p) => existsSync(p));
+      // a file that cannot be read makes this window "no set" for findSet, so the folder is the one aimed at, not looked up again
+      const raw = [AIHUB_SET, MAKER_SET].map((n) => join(this.key, n)).find((p) => existsSync(p));
       if (!raw) return;
       const parsed = parseSetFile(readFileSync(raw, "utf8"));
       if (parsed.problem) return this.say(`Set file: ${parsed.problem}; nothing was applied.`, true);
+      const here = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set;
+      if (!here) return;
+      // a readable file ends the "same line twice" rule: the next problem is new
+      this.lastSaid = "";
       const file = readSetFile(here.folder);
       const metas: SetMeta[] = file ? [file.top, ...(file.top.others ?? [])] : [];
       const meta = metas.find((m) => m.story === here.story && (m.branch === here.branch || metas.length === 1)) ?? metas[0];

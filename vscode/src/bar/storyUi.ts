@@ -13,7 +13,7 @@ import { cli, runner } from "./runner";
 import type { OpenResultJson } from "../repoSetModel";
 import { answerExisting, showOpened } from "../repoSetUi";
 import type { StoryJson } from "../storyModel";
-import { BarEngine, openFacts, storyBranchesOf } from "./engine";
+import { BarEngine, openFacts, storyBranchesOf, titleFromFiles } from "./engine";
 import { nextStoryBranch, openStoryArgs, storyNumberOf, storyPickRows, storyRepoRows, type StoryRef, type StoryRepoRow } from "./storyModel";
 import { windowChoice } from "./window";
 
@@ -308,9 +308,9 @@ export function registerStoryCommands(h: StoryHooks): void {
     if (!n) return;
     const story = n.set.story;
     if (!story) return void vscode.window.showInformationMessage("AI Context Hub: this set has no story; use New Branch instead.");
-    const seen = readSeenStories(process.env)[story];
+    const title = readSeenStories(process.env)[story]?.title || titleFromFiles(story, n.set.repos.map((r) => r.path)) || "";
     const mine = storyBranchesOf(n.repo.path, story) ?? [];
-    const name = await vscode.window.showInputBox({ title: `Create New Branch in ${n.repo.name}`, prompt: "New branch name", value: nextStoryBranch({ id: story, title: seen?.title ?? "" }, mine.map((b) => b.name)), validateInput: (v) => (/^[^\s~^:?*[\\]+$/.test(v.trim()) && v.trim() ? undefined : "Not a valid branch name") });
+    const name = await vscode.window.showInputBox({ title: `Create New Branch in ${n.repo.name}`, prompt: "New branch name", value: nextStoryBranch({ id: story, title }, mine.map((b) => b.name)), validateInput: (v) => (/^[^\s~^:?*[\\]+$/.test(v.trim()) && v.trim() ? undefined : "Not a valid branch name") });
     if (!name) return;
     type Opt = vscode.QuickPickItem & { key: "checkout" | "link" | "old" };
     const prev = mine.find((b) => b.name === n.repo.branch && b.status !== "old");
@@ -337,11 +337,25 @@ export function registerStoryCommands(h: StoryHooks): void {
     } else {
       await gitBranch(n.repo.path, ["branch", branch, from.from ?? `origin/${await defaultTarget(n.set.source(n.repo.name) ?? n.repo.path)}`]);
     }
+    // each step on its own: when Azure DevOps cannot be reached the local steps still happen, and one line says what did not
+    const problems: string[] = [];
+    const step = async (what: string, run: () => Promise<unknown>) => {
+      try {
+        await run();
+      } catch (e) {
+        problems.push(`${what}: ${(e as Error).message.slice(0, 120)}`);
+      }
+    };
     if (keys.has("link")) {
-      await cli(["story", "branches", "link", "--id", String(story), "--branch", branch, "--repo", n.repo.name, ...(keys.has("checkout") ? ["--current"] : [])], n.repo.path);
-      linkedMemo.set(`${story}|${n.repo.name}|${branch}`, true);
+      await step("link in Azure DevOps", async () => {
+        await cli(["story", "branches", "link", "--id", String(story), "--branch", branch, "--repo", n.repo.name, ...(keys.has("checkout") ? ["--current"] : [])], n.repo.path);
+        linkedMemo.set(`${story}|${n.repo.name}|${branch}`, true);
+      });
+      // the star follows the new branch locally, linked or not
+      if (keys.has("checkout")) await step("star", () => cli(["story", "branches", "mark", "--branch", branch, "--status", "current", "--id", String(story), "--repo", n.repo.name], n.repo.path));
     }
-    if (keys.has("old") && prev) await cli(["story", "branches", "mark", "--branch", prev.name, "--status", "old", "--id", String(story), "--repo", n.repo.name], n.repo.path);
+    if (keys.has("old") && prev) await step("mark old", () => cli(["story", "branches", "mark", "--branch", prev.name, "--status", "old", "--id", String(story), "--repo", n.repo.name], n.repo.path));
+    if (problems.length) void vscode.window.showWarningMessage(`AI Context Hub: ${branch} was created. Not done: ${problems.join("; ")}`);
     forgetScan(process.env);
     h.changed();
   });

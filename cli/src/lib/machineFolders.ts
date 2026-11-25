@@ -46,7 +46,7 @@ export function prune(folders: string[]): string[] {
 
 /** The usual places people keep repositories, the ones that exist (a first look when nothing is known yet). */
 export function commonRoots(env: NodeJS.ProcessEnv = process.env, home = homedir(), exists: (p: string) => boolean = existsSync): string[] {
-  // AIHUB_COMMON_ROOTS (a path list; empty = none) replaces the usual places: tests and isolated profiles
+  // AIHUB_COMMON_ROOTS (a path list; folders that do not exist count for nothing, so "none" means none; Windows has no empty variables) replaces the usual places: tests and isolated profiles
   if (env.AIHUB_COMMON_ROOTS !== undefined) return env.AIHUB_COMMON_ROOTS.split(delimiter).filter((p) => p && exists(p));
   const rel = ["source/repos", "repos", "git", "code", "projects", "dev", "src", "work", "Documents/GitHub", "PycharmProjects"];
   const drives = process.platform === "win32" ? ["C:\\", "D:\\"].flatMap((d) => ["git", "work", "dev", "repos", "src", "code"].map((n) => join(d, n))) : [];

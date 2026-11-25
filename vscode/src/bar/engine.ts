@@ -42,6 +42,20 @@ export function openFacts(dir: string | undefined): OpenFacts {
   return root ? { dir, repo: { name: basename(root), path: root, branch: headBranchOf(root) } } : { dir };
 }
 
+/** The title of a story as the repositories remember it (aihub writes it into each repository's story-worktrees.json when it reads the story). */
+export function titleFromFiles(story: number, repoPaths: string[]): string | undefined {
+  for (const p of repoPaths) {
+    try {
+      const file = storyWorktreesFileFor(p);
+      const t = file && existsSync(file) ? readStoryWorktrees(file).stories[String(story)]?.title : undefined;
+      if (t) return t;
+    } catch {
+      /* a newer schema or a broken file: no title from here */
+    }
+  }
+  return undefined;
+}
+
 /** The story's branches of a repository, from its story-worktrees.json (a file read). */
 export function storyBranchesOf(repoPath: string, story: number): BarStoryBranch[] | undefined {
   try {
@@ -106,6 +120,14 @@ export class BarEngine {
     const raw = scanMachine(this.deps.env, folders, { refresh: o.refresh, now: this.now() });
     const scan: Scan = { ...raw, repos: await oneClonePerRemote(this.deps.env, raw.repos) };
     const stories = readSeenStories(this.deps.env);
+    // a story this PC has not read from Azure DevOps lately still has a title in its repositories' files
+    const named = new Set<number>();
+    for (const set of [...raw.sets, ...(facts.set ? [{ story: facts.set.story, repos: facts.set.repos.map((r) => ({ path: r.path, exists: true })) }] : [])]) {
+      if (!set.story || stories[set.story]?.title || named.has(set.story)) continue;
+      named.add(set.story);
+      const t = titleFromFiles(set.story, set.repos.filter((r) => r.exists).map((r) => r.path));
+      if (t) stories[set.story] = { id: set.story, title: t, at: 0 };
+    }
     const dirty = new Map<string, number | undefined>();
     const ask = async (paths: string[]) => void (await Promise.all(paths.map(async (p) => dirty.set(p, await this.deps.dirtyOf?.(p)))));
     await ask(facts.set ? facts.set.repos.map((r) => r.path) : facts.repo ? [facts.repo.path] : []);
@@ -134,6 +156,8 @@ export class BarEngine {
     const facts = openFacts(this.deps.dir());
     const stories = readSeenStories(this.deps.env);
     if (facts.set) {
+      const t = facts.set.story && !stories[facts.set.story]?.title ? titleFromFiles(facts.set.story, facts.set.repos.map((r) => r.path)) : undefined;
+      if (t) stories[facts.set.story] = { id: facts.set.story, title: t, at: 0 };
       const id = workspaceOf(facts.set.folder, facts.set.branch) ?? facts.set.folder;
       rememberUse(this.deps.env, { kind: "set", id, label: setLabel(facts.set, stories), detail: facts.set.repos.map((r) => r.name).join(", "), ...(facts.set.story ? { story: facts.set.story } : {}) }, this.now());
     } else if (facts.repo) {

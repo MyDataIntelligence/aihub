@@ -94,7 +94,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     }),
   );
   // the window shows a set or a repository: remember it (a few seconds after startup, file reads only)
-  const first = setTimeout(() => engine.noteOpen(), 4000);
+  const first = setTimeout(() => (engine.noteOpen(), changed()), 4000);
   ctx.subscriptions.push({ dispose: () => clearTimeout(first) });
   const askContinue = setTimeout(() => void offerContinue(deps), 6000);
   ctx.subscriptions.push({ dispose: () => clearTimeout(askContinue) });
