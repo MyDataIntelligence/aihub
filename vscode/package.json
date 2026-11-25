@@ -39,12 +39,14 @@
         {
           "id": "aihub.worktreeSets",
           "name": "Worktree Sets",
-          "visibility": "collapsed"
+          "visibility": "collapsed",
+          "when": "config.aiContextHub.sidebarViews"
         },
         {
           "id": "aihub.myStories",
           "name": "My Stories",
-          "visibility": "collapsed"
+          "visibility": "collapsed",
+          "when": "config.aiContextHub.sidebarViews"
         },
         {
           "id": "aihub.learn",
@@ -503,6 +505,76 @@
         "title": "Run Robot Test...",
         "category": "AI Context Hub",
         "icon": "$(play)"
+      },
+      {
+        "command": "aihub.bar.openStory",
+        "title": "Open Story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.openRepository",
+        "title": "Open Repository...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.openRecent",
+        "title": "Open Recent (item)",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.openSet",
+        "title": "Open Worktree Set (item)",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.removeSet",
+        "title": "Remove Worktree Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.switchBranch",
+        "title": "Switch Branch of a Repository in the Set",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.newStoryBranch",
+        "title": "New Branch for the Story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.otherBranch",
+        "title": "Other Branch...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.linkBranch",
+        "title": "Link Branch to the Story",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.addRepository",
+        "title": "Add Repository to the Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.removeRepository",
+        "title": "Remove Repository from the Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.lookIn",
+        "title": "Folders to Look In...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.reopenLast",
+        "title": "Continue Where You Were",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.refresh",
+        "title": "Look Again for Repositories and Sets",
+        "category": "AI Context Hub"
       }
     ],
     "configuration": {
@@ -648,6 +720,25 @@
           "type": "string",
           "default": "",
           "markdownDescription": "The folder with your clones for the repo opener (New Worktree Set, Repositories on a branch). A repository that is not cloned yet is cloned here. Empty: team.yaml `reposRoot`, else the folder the current repository is in."
+        },
+        "aiContextHub.sidebarViews": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the Worktree Sets and My Stories views in the Explorer sidebar. Off by default: the title bar buttons (Open Story, Open Repository, Recent) do the same."
+        },
+        "aiContextHub.openIn": {
+          "type": "string",
+          "enum": [
+            "new",
+            "this"
+          ],
+          "default": "new",
+          "description": "Where a set or repository from the buttons opens. An empty window is always reused."
+        },
+        "aiContextHub.continueWhereYouWere": {
+          "type": "boolean",
+          "default": true,
+          "description": "In a window with no folder, offer to open the set or repository you worked in last."
         }
       }
     },
@@ -1186,6 +1277,46 @@
         {
           "command": "aihub.recentStories",
           "when": "false"
+        },
+        {
+          "command": "aihub.bar.openRecent",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.openSet",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.removeSet",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.switchBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.newStoryBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.otherBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.linkBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.addRepository",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.removeRepository",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.refresh",
+          "when": "false"
         }
       ],
       "editor/title": [
@@ -1208,6 +1339,11 @@
       {
         "view": "aihub.learn",
         "contents": "No lessons yet.\nAsk your chat for /leer on a pull request or branch: it explains the change with pictures and saves it here, in your personal store."
+      },
+      {
+        "view": "explorer",
+        "contents": "[Continue where you were](command:aihub.bar.reopenLast)\n[Open Story...](command:aihub.bar.openStory)\n[Open Repository...](command:aihub.bar.openRepository)",
+        "when": "workbenchState == empty"
       }
     ],
     "keybindings": [
@@ -1215,6 +1351,12 @@
         "command": "aihub.reposet.open",
         "key": "ctrl+alt+b",
         "mac": "cmd+alt+b"
+      },
+      {
+        "command": "aihub.bar.reopenLast",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "workbenchState == empty"
       }
     ]
   },
