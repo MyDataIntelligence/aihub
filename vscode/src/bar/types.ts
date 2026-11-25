@@ -58,6 +58,10 @@ export interface BarSet {
   done?: boolean;
   /** no work in it (nothing uncommitted or unpushed); only worked out for done sets */
   clean?: boolean;
+  /** disk the set holds (bytes); measured in the background when the menu opens, so absent at first */
+  sizeBytes?: number;
+  /** every repository has a merged pull request and nothing in the set would be lost (no uncommitted work, nothing unpushed) */
+  allMerged?: boolean;
 }
 
 export interface BarRepository {
@@ -80,6 +84,8 @@ export interface BarState {
   lookIn: string[];
   /** the scan stopped early (too many folders): the menu says "Not everything was scanned: narrow Folders to Look In..." */
   scanTruncated?: boolean;
+  /** the sizes of all sets whose size is known, added up */
+  totalSizeBytes?: number;
   /** OneDrive / network folders that were left out because they are not in "Folders to Look In" */
   scanSkipped?: string[];
 }
@@ -109,6 +115,8 @@ export const BAR_COMMANDS = {
   refresh: "aihub.bar.refresh",
   /** read the pull requests of the set again (the overview menu calls it when it opens) */
   refreshStatus: "aihub.bar.refreshStatus",
+  /** start measuring the sets in the background (the left menu calls it when it opens); the state gets sizeBytes as they come in */
+  measureSets: "aihub.bar.measureSets",
   /** pull (fast-forward) in every repository of the set; one result line per repository */
   updateAll: "aihub.bar.updateAll",
   /** push every repository of the set (a branch without a remote branch gets one) */

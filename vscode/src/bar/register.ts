@@ -9,6 +9,7 @@ import { CliProblem } from "./cliCheck";
 import { BarEngine, openFacts } from "./engine";
 import { gitRun } from "./ownWindow";
 import { cli } from "./runner";
+import { SizeMemo } from "./setSize";
 import { BehindMemo, gitStatusOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
 import { linkedOf, registerStoryCommands } from "./storyUi";
 import { registerSetOps, SetFileWatcher } from "./setOps";
@@ -67,7 +68,18 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     const out = await cli(["pr", "list", "--mine", "--status", "all", "--json"], cwd);
     return JSON.parse(out.slice(out.search(/[[{]/))) as PrRow[];
   });
+  const unpushed = new Map<string, { at: number; n: Promise<number | undefined> }>();
+  const unpushedOf = (path: string): Promise<number | undefined> => {
+    const hit = unpushed.get(path);
+    if (hit && Date.now() - hit.at < DIRTY_TTL_MS) return hit.n;
+    const n = gitRun(path, ["rev-list", "--count", "HEAD", "--not", "--remotes"]).then((o) => Number(o.trim()) || 0, () => undefined);
+    unpushed.set(path, { at: Date.now(), n });
+    return n;
+  };
+  const sizes = new SizeMemo();
   const engine = new BarEngine({
+    unpushedOf,
+    sizes,
     env: process.env,
     dir: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
     dirtyOf,
@@ -204,6 +216,9 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
     behind.forget();
     changed();
   });
+
+  // the left menu opens: measure the sets in the background, the state gets the sizes as they come in
+  reg(BAR_COMMANDS.measureSets, () => void engine.measureSets(changed).catch(() => undefined));
 
   reg(BAR_COMMANDS.refresh, async () => {
     engine.scan({ refresh: true });

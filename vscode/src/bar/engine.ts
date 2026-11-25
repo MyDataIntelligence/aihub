@@ -11,6 +11,7 @@ import { readStoryWorktrees, storyWorktreesFileFor } from "../../../cli/src/lib/
 import { readPreferredClones, uniqueRepos } from "../worktrees/clones";
 import { buildState, setLabel, type OpenFacts } from "./state";
 import { isStoryBranch } from "./repoStatus";
+import { allMerged, allPrsMerged, setKey, SizeMemo } from "./setSize";
 import type { BarPr, BarState, BarStoryBranch } from "./types";
 
 /**
@@ -26,6 +27,10 @@ export interface EngineDeps {
   dirtyOf?: (path: string) => Promise<number | undefined>;
   /** changes and ahead (the git extension of VS Code) and behind the target (remembered), of a worktree; undefined when it cannot say */
   statusOf?: (path: string, name: string) => Promise<{ changes?: number; ahead?: number; behindTarget?: number } | undefined>;
+  /** commits of a worktree that are on no remote; undefined when it cannot say */
+  unpushedOf?: (path: string) => Promise<number | undefined>;
+  /** sizes of the sets, measured in the background */
+  sizes?: SizeMemo;
   /** the pull request of a branch (from the one read for the set, remembered for minutes; never a call) */
   prOf?: (repo: string, branch: string) => BarPr | undefined;
   /** is the branch linked to the story in Azure DevOps (answered from an earlier read, never a call) */
@@ -150,8 +155,18 @@ export class BarEngine {
     // "clean" only for sets of closed stories (the ones the menu may offer to remove), at most MAX_CLEAN_CHECKS worktrees
     const candidates = scan.sets.filter((s) => s.story && isClosedState(stories[s.story]?.state)).flatMap((s) => s.repos.filter((r) => r.exists).map((r) => r.path)).filter((p) => !dirty.has(p)).slice(0, MAX_CLEAN_CHECKS);
     await ask(candidates);
+    // every pull request merged and nothing to lose: only for sets whose pull requests are all merged (a memory, no call), at most MAX_CLEAN_CHECKS sets
+    const merged = new Map<string, boolean>();
+    if (this.deps.prOf) {
+      const pr = this.deps.prOf;
+      for (const s of scan.sets.filter((x) => !(facts.set && pathKey(x.folder) === pathKey(facts.set.folder)) && allPrsMerged(x, pr)).slice(0, MAX_CLEAN_CHECKS)) {
+        merged.set(s.id, await allMerged(s, { pr, changes: async (p) => this.deps.dirtyOf?.(p), unpushed: async (p) => this.deps.unpushedOf?.(p) }));
+      }
+    }
     return buildState({
       open: facts,
+      size: (s) => this.deps.sizes?.get(s.id, setKey(s)),
+      allMerged: (s) => merged.get(s.id) ?? (this.deps.prOf ? false : undefined),
       scan,
       recents: readRecentUse(this.deps.env),
       lookIn: folders,
@@ -168,6 +183,12 @@ export class BarEngine {
         return counts.some((c) => c === undefined) ? undefined : counts.every((c) => c === 0);
       },
     });
+  }
+
+  /** Measures the size of every set in the background (one at a time, without blocking); `done` runs after each one. */
+  measureSets(done: () => void): Promise<void> {
+    const sets = this.scan().sets.map((s) => ({ id: s.id, key: setKey(s), paths: s.repos.filter((r) => r.exists).map((r) => r.path) }));
+    return this.deps.sizes?.measureAll(sets, done) ?? Promise.resolve();
   }
 
   /** The window shows a set or a repository: it goes to the top of the recent list (a file write at most once a minute). */

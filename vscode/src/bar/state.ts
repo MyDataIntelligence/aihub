@@ -45,6 +45,10 @@ export interface StateInput {
   pr?: (repo: string, branch: string) => BarPr | undefined;
   /** the branch belongs to the story */
   storyBranch?: (repoPath: string, branch: string) => boolean;
+  /** the remembered size of a set (bytes) */
+  size?: (s: ScanSet) => number | undefined;
+  /** every pull request merged and nothing to lose (worked out by the engine for the sets that can be offered) */
+  allMerged?: (s: ScanSet) => boolean | undefined;
   /** a set without work in it, asked only for sets of closed stories */
   clean?: (set: ScanSet) => boolean | undefined;
 }
@@ -61,6 +65,8 @@ export function buildState(i: StateInput): BarState {
   const sets: BarSet[] = i.scan.sets.map((s) => {
     const done = s.story ? (i.stories[s.story]?.state === undefined ? undefined : isClosedState(i.stories[s.story].state)) : undefined;
     const clean = done ? i.clean?.(s) : undefined;
+    const sizeBytes = i.size?.(s);
+    const merged = i.allMerged?.(s);
     return {
       id: s.id,
       ...(s.story ? { story: s.story } : {}),
@@ -69,8 +75,11 @@ export function buildState(i: StateInput): BarState {
       open: sameSet(s) && (!open.set || open.set.branch === s.branch),
       ...(done !== undefined ? { done } : {}),
       ...(clean !== undefined ? { clean } : {}),
+      ...(sizeBytes !== undefined ? { sizeBytes } : {}),
+      ...(merged !== undefined ? { allMerged: merged } : {}),
     };
   });
+  const sized = sets.filter((s) => s.sizeBytes !== undefined);
   // the set of this window may lie outside the folders to look in: it is still in the list
   if (open.set && !sets.some((s) => s.open)) {
     sets.unshift({ id: open.set.folder, ...(open.set.story ? { story: open.set.story } : {}), label: setLabel(open.set, i.stories), repos: open.set.repos.length, open: true });
@@ -84,7 +93,7 @@ export function buildState(i: StateInput): BarState {
     .filter((r) => i.exists(r.id))
     .map((r) => ({ kind: r.kind, id: r.id, label: r.label, ...(r.detail ? { detail: r.detail } : {}), lastUsed: r.lastUsed }));
 
-  const base = { recents, sets, repositories, lookIn, ...(i.scan.truncated ? { scanTruncated: true } : {}), ...(i.scan.skippedRemote?.length ? { scanSkipped: i.scan.skippedRemote } : {}) };
+  const base = { recents, sets, repositories, lookIn, ...(sized.length ? { totalSizeBytes: sized.reduce((n, s) => n + s.sizeBytes!, 0) } : {}), ...(i.scan.truncated ? { scanTruncated: true } : {}), ...(i.scan.skippedRemote?.length ? { scanSkipped: i.scan.skippedRemote } : {}) };
   if (open.set) {
     const story = open.set.story ? { id: open.set.story, title: i.stories[open.set.story]?.title ?? "", ...(i.stories[open.set.story]?.state ? { state: i.stories[open.set.story].state } : {}) } : undefined;
     const repos: BarRepo[] = open.set.repos.map((r) => {
