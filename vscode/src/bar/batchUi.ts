@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { forgetScan } from "../../../cli/src/lib/machineScan";
+import { createPullRequests, prOffers } from "./createPrs";
 import { commitOne, eachRepo, parseMessage, pushOne, summarize, updateOne, type RepoRef, type RepoResult } from "./batch";
 import { openFacts } from "./engine";
 import { gitRun } from "./ownWindow";
@@ -61,3 +62,26 @@ export function registerBatchCommands(h: StoryHooks): void {
 }
 
 export { parseMessage };
+
+/** Create Pull Requests: a quick pick with ticks (only repositories on a story branch without a pull request are ticked), then one aihub pr create per repository. */
+export function registerPullRequestCommand(h: StoryHooks): void {
+  h.reg("aihub.bar.createPullRequests", async (arg?: { repos?: string[] }) => {
+    const state = await h.engine.state({ refresh: false });
+    if (state.mode !== "set" || !state.story) return void vscode.window.showInformationMessage("AI Context Hub: this window does not show a story set.");
+    const offers = prOffers(state.repos);
+    type Row = vscode.QuickPickItem & { offer?: ReturnType<typeof prOffers>[number] };
+    const rows: Row[] = [
+      ...offers.filter((o) => o.enabled).map((o) => ({ label: o.repo, description: o.branch, detail: o.reason, picked: o.picked && (!arg?.repos || arg.repos.includes(o.repo)), offer: o })),
+      ...(offers.some((o) => !o.enabled) ? [{ label: "Not offered", kind: vscode.QuickPickItemKind.Separator } as Row] : []),
+      ...offers.filter((o) => !o.enabled).map((o) => ({ label: o.repo, description: o.reason, detail: o.branch, offer: o })),
+    ];
+    if (!offers.some((o) => o.enabled)) return void vscode.window.showInformationMessage(`AI Context Hub: no pull request to make. ${offers.map((o) => `${o.repo}: ${o.reason}`).join("; ")}`);
+    const chosen = await vscode.window.showQuickPick(rows, { title: `Create Pull Requests for #${state.story.id}`, placeHolder: "Tick the repositories; Enter creates one pull request each", canPickMany: true });
+    const picked = (chosen ?? []).filter((c) => c.offer?.enabled).map((c) => ({ name: c.offer!.repo, path: c.offer!.path }));
+    if (!picked.length) return [];
+    const { results, linked } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Creating ${picked.length} pull request${picked.length === 1 ? "" : "s"}...` }, () => createPullRequests(cli, picked, state.story!.id));
+    await report(h, "Create pull requests", results.map((r) => ({ repo: r.repo, ok: r.ok, line: r.line, detail: r.url })));
+    if (linked) h.log(`create pull requests: ${linked}`);
+    return results;
+  });
+}
