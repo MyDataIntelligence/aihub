@@ -2,6 +2,10 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.5.0
+- `aihub commit`: a git hook that stops the commit or the push is explained: which hook, the failed checks (pre-commit table, or the error lines of any other hook), their first lines, the files the hook changed itself, and the full output in `<git dir>/aihub/last-hook-output.txt`. The choices are printed as commands: fix and run again, `--skip-hooks <ids>` (new, the pre-commit hook ids) or `--no-verify`. Hooks that only reformatted files get one automatic second try. After a pre-push failure the commit stays; the same command again only pushes.
+- Red pipeline runs are facts, not an order to stop: `pipeline logs --failed` no longer prints `STOP after 3 red rounds`, the skills `pipeline-fix` and `story-run` no longer refuse on a count, and the agent text says the user's "ga door" or "override" beats any stop rule. Still refused: force-push, a direct push to a protected branch, ACC/PRD. `--json`: `stop` is replaced by `note`.
+
 ## 1.4.0
 - Guided team.yaml: `aihub team setup` detects what it can (git remote, origin/HEAD, branch names, work item states, branch policies, the target of recent PRs, the PR template; Fabric workspaces only with a token at hand), writes a commented proposal and lists only the open questions with their `aihub team set` command; `aihub team set <key> <value>` changes one key and keeps comments; `aihub team show [--missing]` shows each value with its source. `aihub init` without team.yaml runs the setup first.
 - A team setting aihub can only guess stops the command before anything is created, with exit code 3 and one `missing team setting ... aihub team set ...` line (story states with two candidates, the Fabric workspace, the PR target on a tie). `aihub doctor` lists such keys and whether a Fabric token is at hand.
