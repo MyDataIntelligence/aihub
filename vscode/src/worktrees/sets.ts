@@ -180,7 +180,17 @@ export async function writeSet(set: WorktreeSet): Promise<void> {
     if (r.base !== undefined) o.base = r.base;
     return o;
   });
-  await fs.promises.writeFile(path.join(folder, SET_FILE), JSON.stringify(meta, null, 2) + "\n", "utf8");
+  // a temporary file and a rename: the watcher of the bar never reads half a set file, a crash leaves the old one
+  const setFile = path.join(folder, SET_FILE);
+  const tmp = `${setFile}.${process.pid}.tmp`;
+  const text = JSON.stringify(meta, null, 2) + "\n";
+  try {
+    await fs.promises.writeFile(tmp, text, "utf8");
+    await fs.promises.rename(tmp, setFile);
+  } catch {
+    await fs.promises.rm(tmp, { force: true });
+    await fs.promises.writeFile(setFile, text, "utf8");
+  }
 
   const wsFile = setWorkspaceFile(set);
   let existing: Record<string, unknown> = {};

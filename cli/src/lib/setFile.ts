@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { storyIdFromBranch } from "./storyWorktrees.js";
 
@@ -46,7 +46,32 @@ export function readJsonText(path: string): string {
   return b.toString("utf8").replace(/^\uFEFF/, "");
 }
 
-export const repoBranch = (meta: Pick<SetMeta, "branch">, r: Pick<SetRepo, "branch">): string => r.branch || meta.branch;
+/**
+ * Writes a file so that a reader (the extension's set-file watcher, another window, `aihub`) never sees half of it and
+ * a crash leaves the old file, not an empty one: a temporary file in the same folder, then a rename. The rename can
+ * be refused for a moment on Windows (a scanner or watcher has the file open): it is tried again, and as a last resort
+ * the file is written in place.
+ */
+export function writeAtomic(path: string, text: string): void {
+  const tmp = `${path}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, text, "utf8");
+    for (let i = 0; ; i++) {
+      try {
+        renameSync(tmp, path);
+        return;
+      } catch (e) {
+        if (i >= 4 || !/^(EPERM|EBUSY|EACCES)$/.test(String((e as NodeJS.ErrnoException).code))) throw e;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * (i + 1));
+      }
+    }
+  } catch {
+    rmSync(tmp, { force: true });
+    writeFileSync(path, text, "utf8");
+  }
+}
+
+export const repoBranch =(meta: Pick<SetMeta, "branch">, r: Pick<SetRepo, "branch">): string => r.branch || meta.branch;
 
 /** The set file of `folder` (`.aihub-set.json` first), in the shape of SetMeta; undefined when there is none or it is broken. */
 export function readSetFile(folder: string): { kind: SetKind; top: SetMeta } | undefined {
@@ -105,7 +130,7 @@ export function writeSetFile(folder: string, kind: SetKind, meta: SetMeta): void
       return { name: r.name, source: r.source, path: rel(r.path), ...(r.branch ? { branch: r.branch } : {}), ...(typeof base === "string" ? { base } : {}) };
     });
   raw.updatedAt = new Date().toISOString();
-  writeFileSync(p, JSON.stringify(raw, null, 2) + "\n", "utf8");
+  writeAtomic(p, JSON.stringify(raw, null, 2) + "\n");
 }
 
 /**
@@ -142,7 +167,7 @@ export function writeSetMeta(folder: string, meta: SetMeta): void {
   }
   const same = (a: SetMeta) => a.story === meta.story && a.branch === meta.branch && (a.group ?? "") === (meta.group ?? "");
   const others = old.filter((s) => !same(s)).map(({ others: _o, ...s }) => s);
-  writeFileSync(p, JSON.stringify({ ...meta, ...(others.length ? { others } : {}) }, null, 2), "utf8");
+  writeAtomic(p, JSON.stringify({ ...meta, ...(others.length ? { others } : {}) }, null, 2));
 }
 
 /** Writes the story title into `.aihub-set.json` for the set of `story` (only when it is new or changed; no file, no write). */
@@ -154,7 +179,7 @@ export function stampStoryTitle(folder: string, story: number, title: string): v
     const sets = [top, ...(top.others ?? [])];
     let changed = false;
     for (const m of sets) if (m.story === story && m.storyTitle !== title) (m.storyTitle = title), (changed = true);
-    if (changed) writeFileSync(p, JSON.stringify(top, null, 2), "utf8");
+    if (changed) writeAtomic(p, JSON.stringify(top, null, 2));
   } catch {
     /* a broken set file is reported elsewhere */
   }

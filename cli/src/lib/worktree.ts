@@ -12,7 +12,7 @@ import { loadTeam } from "./team.js";
 import { getWorkItem, storyBranchName } from "./workitems.js";
 import { storyFolderFor, storyIdFromBranch, worktreePathFor } from "./storyWorktrees.js";
 import { findDirLinks, removeDirLink } from "./safeWorktree.js";
-import { MAKER_SET, readJsonText, readSetFile, repoBranch, writeSetFile, type SetMeta } from "./setFile.js";
+import { MAKER_SET, readJsonText, readSetFile, repoBranch, writeAtomic, writeSetFile, type SetMeta } from "./setFile.js";
 import { checkExisting, moveExisting, readWhenExists, recreateExisting, type WhenExists } from "./existingWorktree.js";
 
 const META = ".aihub-set.json";
@@ -103,14 +103,14 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
       if (inside || how === "reuse") {
         meta.repos.push({ name: d.name, source: d.dir, path: busy.path, ...(own !== branch ? { branch: own } : {}) });
         lines.push(`${d.name}: worktree ${busy.path} on '${own}' reused`);
-        writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+        writeAtomic(metaPath, JSON.stringify(meta, null, 2));
         continue;
       }
       const p = how === "move" ? moveExisting(d.dir, own, busy.path, path, again) : recreateExisting(d.dir, own, busy.path, path, { discard: o.discardLocalWork, again });
       if (!p.ok) throw new AihubError(`${d.name}: ${p.note}`);
       meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== branch ? { branch: own } : {}) });
       lines.push(`${d.name}: ${p.note}`);
-      writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+      writeAtomic(metaPath, JSON.stringify(meta, null, 2));
       continue;
     }
     fetchOrigin(d.dir);
@@ -119,9 +119,9 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
     mustGit(d.dir, ["worktree", "add", path, own]);
     meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== branch ? { branch: own } : {}) });
     lines.push(`${d.name}: worktree ${path} on '${own}'${e.created ? ` (new, from ${base})` : ""}`);
-    writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+    writeAtomic(metaPath, JSON.stringify(meta, null, 2));
   }
-  writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+  writeAtomic(metaPath, JSON.stringify(meta, null, 2));
   lines.unshift(`set for story ${o.story}: ${folder}`);
   return o.json ? JSON.stringify({ folder, ...meta }) : lines.join("\n");
 }
@@ -215,7 +215,7 @@ export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?:
     if (!x.removed) left.push(r);
     lines.push(x.line);
   }
-  const write = (sets: SetMeta[]) => maker ? writeSetFile(folder, "maker", sets[0]) : writeFileSync(metaPath, JSON.stringify({ ...sets[0], ...(sets.length > 1 ? { others: sets.slice(1) } : {}) }, null, 2));
+  const write = (sets: SetMeta[]) => maker ? writeSetFile(folder, "maker", sets[0]) : writeAtomic(metaPath, JSON.stringify({ ...sets[0], ...(sets.length > 1 ? { others: sets.slice(1) } : {}) }, null, 2));
   if (left.length) {
     write([{ ...meta, repos: left }, ...rest]);
     lines.push(`set kept: ${left.length} worktree(s) need attention`);
