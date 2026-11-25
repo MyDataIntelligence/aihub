@@ -11,7 +11,7 @@ export interface LinkedRow {
   repo: string;
   branch: string;
   /** where the link is: in Azure DevOps (Development), only locally, or both */
-  linked: "ado" | "local" | "both";
+  linked: "ado" | "local" | "both" | "name";
   status?: "current" | "old" | "parked";
   lastActive?: string;
 }
@@ -30,7 +30,7 @@ const rank = (s: LinkedRow["status"]) => (s === "current" ? 0 : s === "parked" ?
 export function divergences(set: { name: string; branch: string }[], rows: LinkedRow[]): Divergence[] {
   const out: Divergence[] = [];
   for (const r of set) {
-    const links = rows.filter((x) => x.repo === r.name && x.linked !== "local");
+    const links = rows.filter((x) => x.repo === r.name && (x.linked === "ado" || x.linked === "both"));
     if (!links.length || links.some((x) => x.branch === r.branch)) continue;
     const best = [...links].sort((a, b) => rank(a.status) - rank(b.status) || (b.lastActive ?? "").localeCompare(a.lastActive ?? ""))[0];
     out.push({ repo: r.name, current: r.branch, linked: best.branch });

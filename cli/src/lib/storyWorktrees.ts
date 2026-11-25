@@ -141,6 +141,15 @@ export function storyIdFromBranch(branch: string, pattern?: string): number | un
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
+/**
+ * Does this branch name belong to the story by its name alone: the story number is the first number of the name, after
+ * an optional prefix with slashes (`feature/4711-x`, `bugfix/4711_x`, `users/me/feature/4711`, `4711-x`) and an optional
+ * ticket prefix (`US-4711`), on a word boundary (4711 is not 47110, 14711 or 4711a).
+ */
+export function branchNamedForStory(branch: string, id: number): boolean {
+  return new RegExp(`(?:^|/)(?:[A-Z]+[-_])?${id}(?![0-9A-Za-z])`).test(branch);
+}
+
 // ---- folder layout -----------------------------------------------------------------------------------------
 
 const safe = (s: string) => s.replace(/[\\/:*?"<>|\s]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");

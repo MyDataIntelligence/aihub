@@ -13,6 +13,7 @@ export interface StoryRef {
   state?: string;
 }
 
+const tier = (b: BranchRowJson): number => (b.linked === "ado" || b.linked === "both" ? 0 : b.linked === "local" ? 1 : 2);
 const rank = (s: BranchRowJson["status"]) => (s === "current" ? 0 : s === "parked" ? 1 : 2);
 
 export interface StoryPick {
@@ -33,10 +34,11 @@ export function storyBranchCandidates(rows: BranchRowJson[]): Map<string, StoryP
   for (const b of rows.filter((x) => x.local || x.pushed)) byRepo.set(b.repo, [...(byRepo.get(b.repo) ?? []), b]);
   const out = new Map<string, StoryPick>();
   for (const [repo, all] of byRepo) {
-    const inAdo = all.filter((b) => b.linked !== "local");
+    // linked in Azure DevOps, then linked only locally, then known only by its name; inside a tier the star, then the latest
+    const best0 = Math.min(...all.map(tier));
     let best: BranchRowJson | undefined;
-    for (const b of inAdo.length ? inAdo : all) if (!best || rank(b.status) < rank(best.status) || (rank(b.status) === rank(best.status) && (b.lastActive ?? "") > (best.lastActive ?? ""))) best = b;
-    out.set(repo, { row: best!, linked: best!.linked !== "local", others: all.length - 1 });
+    for (const b of all.filter((x) => tier(x) === best0)) if (!best || rank(b.status) < rank(best.status) || (rank(b.status) === rank(best.status) && (b.lastActive ?? "") > (best.lastActive ?? ""))) best = b;
+    out.set(repo, { row: best!, linked: best0 === 0, others: all.length - 1 });
   }
   return out;
 }

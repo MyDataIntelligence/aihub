@@ -149,3 +149,25 @@ describe("the story links another branch", () => {
     }
   });
 });
+
+describe("Open Story with branches known only by their name", () => {
+  it("a repository whose only branch of the story is found by name shows it (unticked), not new branch; linked and local links go first", () => {
+    const { rows: out } = storyRepoRows(
+      [
+        row("repo-a", "feature/4711-x", { linked: "ado" }),
+        row("repo-b", "feature/4711-by-name", { linked: "name", status: "parked", pushed: false }),
+        row("repo-c", "feature/4711-local", { linked: "local", status: "parked", pushed: false }),
+        row("repo-c", "feature/4711-by-name", { linked: "name", status: "current", pushed: false }),
+        row("repo-d", "feature/4711-remote", { linked: "name", local: false, pushed: true }),
+      ],
+      [{ name: "repo-a", path: "/c/a" }, { name: "repo-b", path: "/c/b" }, { name: "repo-c", path: "/c/c" }, { name: "repo-d", path: "/c/d" }, { name: "repo-e", path: "/c/e" }],
+    );
+    expect(out.map((r) => [r.repo, r.branch ?? "new", r.picked, r.linked, r.others])).toEqual([
+      ["repo-a", "feature/4711-x", true, true, undefined],
+      ["repo-b", "feature/4711-by-name", false, false, undefined],
+      ["repo-c", "feature/4711-local", false, false, 1],
+      ["repo-d", "feature/4711-remote", false, false, undefined],
+      ["repo-e", "new", false, undefined, undefined],
+    ]);
+  });
+});
