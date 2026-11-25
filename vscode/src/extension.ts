@@ -26,9 +26,14 @@ import { registerWorktreeCommands } from "./worktreeUi";
 import { clearTrackedInterval, clearTrackedTimeout, count, trackedInterval, trackedTimeout, trackedWatcher } from "./perf/probe";
 import { startPerf, stopPerf } from "./perfUi";
 import { registerBar } from "./bar/register";
+import { infoText, openFacts } from "./bar/engine";
 import type { BarApi } from "./bar/types";
 
 const cfg = () => vscode.workspace.getConfiguration("aihub");
+const cfg2 = () => vscode.workspace.getConfiguration("aiContextHub");
+
+/** Ids PyCharm Git is published under (setting aiContextHub.pycharmGitExtensionId adds one); installed or not, without activating it. */
+const pycharmGitInstalled = (): boolean => ["ferron.pycharm-git", "FerronHooi.pycharm-git", cfg2().get<string>("pycharmGitExtensionId", "")].some((id) => !!id && vscode.extensions.getExtension(id) !== undefined);
 
 /** The folder whose repository the bar shows: the one of the active editor, else the first. */
 function repoFolder(): string | undefined {
@@ -206,6 +211,8 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   private renderReposetItem() {
+    // the story or set of this window belongs in the title bar of PyCharm Git; without that extension this is the one info item
+    if (!cfg2().get<boolean>("sidebarViews", false)) return this.renderInfoItem();
     const it = (this.reposetItem ??= vscode.window.createStatusBarItem("aihub.reposet", vscode.StatusBarAlignment.Left, 10999));
     it.name = "AI Context Hub: Worktree Sets";
     // a set is local: also without an `aihub status` answer (no Azure DevOps remote, offline) it shows its branch
@@ -226,13 +233,30 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     }
   }
 
+  /** One info item with the text PyCharm Git shows, only when PyCharm Git is not installed (checked without activating it). */
+  private renderInfoItem() {
+    if (pycharmGitInstalled()) return void this.reposetItem?.hide();
+    const f = openFacts(this.cwd);
+    const text = infoText(f);
+    if (!text) return void this.reposetItem?.hide();
+    const it = (this.reposetItem ??= vscode.window.createStatusBarItem("aihub.reposet", vscode.StatusBarAlignment.Left, 10999));
+    it.name = "AI Context Hub: story or set";
+    it.text = text;
+    it.tooltip = f.set ? `Worktree set on ${f.set.branch}: ${f.set.repos.map((r) => r.name).join(", ")}` : undefined;
+    it.command = undefined;
+    it.show();
+  }
+
   private renderStatusBar() {
     this.renderReposetItem();
     const r = this.last;
     if (!r) return;
     const wanted: StatusItem[] = r.ok
       ? statusItems(r.model)
-      : [{ id: "story", text: r.error.kind === "no-repo" ? "$(git-branch) AI Hub" : `$(warning) aihub: ${r.error.kind === "missing" ? "not installed" : r.error.kind === "old" ? "update needed" : "no status"}`, tooltip: r.error.message, tone: "warn", command: "aihub.showBar" }];
+      : // an item only when it says something: the CLI is missing or old (the user can fix that); "no status" says nothing
+        r.error.kind === "missing" || r.error.kind === "old"
+        ? [{ id: "story", text: `$(warning) aihub: ${r.error.kind === "missing" ? "not installed" : "update needed"}`, tooltip: r.error.message, tone: "warn", command: "aihub.showBar" }]
+        : [];
     const keep = new Set(wanted.map((w) => w.id));
     for (const [id, item] of this.items) if (!keep.has(id as StatusItem["id"])) (item.dispose(), this.items.delete(id));
     wanted.forEach((w, i) => {

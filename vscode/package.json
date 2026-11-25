@@ -739,6 +739,11 @@
           "type": "boolean",
           "default": true,
           "description": "In a window with no folder, offer to open the set or repository you worked in last."
+        },
+        "aiContextHub.pycharmGitExtensionId": {
+          "type": "string",
+          "default": "",
+          "description": "Extra id of the PyCharm Git extension (publisher.name). Without that extension installed, AI Context Hub shows one status bar item with the story or set of the window; with it, PyCharm Git shows it in the title bar."
         }
       }
     },

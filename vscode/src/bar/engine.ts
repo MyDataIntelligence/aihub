@@ -32,6 +32,13 @@ export interface EngineDeps {
 
 export { prune, repoRootOf } from "../../../cli/src/lib/machineFolders";
 
+/** What the single status item says: "#4711 · 3 repositories", "<name> · 2 repositories" (a set without a story), "<repo> · single repository". */
+export function infoText(f: OpenFacts): string | undefined {
+  const n = (c: number) => `${c} ${c === 1 ? "repository" : "repositories"}`;
+  if (f.set) return `${f.set.story ? `#${f.set.story}` : f.set.group || f.set.branch} · ${n(f.set.repos.length)}`;
+  return f.repo ? `${f.repo.name} · single repository` : undefined;
+}
+
 export function openFacts(dir: string | undefined): OpenFacts {
   if (!dir) return {};
   const set = findSet(dir);

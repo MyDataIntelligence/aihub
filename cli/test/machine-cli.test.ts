@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -117,5 +117,36 @@ describe("aihub worktree list --all | look-in, aihub recent", { timeout: 60_000 
     const none = await run(a.dir, ["worktree", "remove", "--folder", made.folder]);
     expect(none.code).not.toBe(0);
     expect(none.err).toContain("no worktree set in");
+  });
+
+  it("a set in the extension's own format (.worktree-set.json) is removed with the same checks", async () => {
+    const parent = newParent();
+    const a = makeNamedRepo(parent, "repo-a");
+    const b = makeNamedRepo(parent, "repo-b");
+    for (const r of [a, b]) {
+      sh(r.dir, ["config", "user.name", "Test"]);
+      sh(r.dir, ["config", "user.email", "test@example.invalid"]);
+    }
+    const config = mkdtempSync(join(tmpdir(), "aihub-cfg-"));
+    const run = runner(config);
+    const made = JSON.parse((await run(a.dir, ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/7-x", "--from", "main", "--window", "none", "--story", "7", "--json"])).out);
+    // the same worktrees, described the way the Worktree Sets of the extension write them
+    const old = JSON.parse(readFileSync(join(made.folder, ".aihub-set.json"), "utf8"));
+    rmSync(join(made.folder, ".aihub-set.json"));
+    rmSync(made.workspace, { force: true });
+    writeFileSync(join(made.folder, ".worktree-set.json"), JSON.stringify({ schema: 1, branch: "feature/7-x", slug: "feature-7-x", repos: old.repos.map((r: { name: string; source: string }) => ({ name: r.name, source: r.source, path: r.name })) }, null, 2));
+    writeFileSync(join(made.folder, "feature-7-x.code-workspace"), "{}");
+    writeFileSync(join(made.folder, "repo-b", "wip.txt"), "unsaved work");
+    const first = JSON.parse((await run(a.dir, ["worktree", "remove", "--folder", made.folder, "--json"])).out);
+    expect(first.kept).toEqual(["repo-b"]);
+    expect(existsSync(join(made.folder, "repo-a"))).toBe(false);
+    expect(existsSync(join(made.folder, "repo-b", "wip.txt"))).toBe(true);
+    const left = JSON.parse(readFileSync(join(made.folder, ".worktree-set.json"), "utf8"));
+    expect(left.repos.map((r: { name: string }) => r.name)).toEqual(["repo-b"]);
+    expect(sh(a.dir, ["branch", "--list", "feature/7-x"])).toContain("feature/7-x");
+    rmSync(join(made.folder, "repo-b", "wip.txt"));
+    const second = JSON.parse((await run(a.dir, ["worktree", "remove", "--folder", made.folder, "--json"])).out);
+    expect(second.kept).toEqual([]);
+    expect(existsSync(made.folder)).toBe(false);
   });
 });
