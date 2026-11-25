@@ -1,13 +1,13 @@
 import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
-import { list, optInt, parseFlags, posInt } from "../lib/cliargs.js";
+import { branchFor, list, optInt, parseFlags, posInt } from "../lib/cliargs.js";
 import { findGroup, groupDirs, listGroups, removeGroup, resolveRepos, saveGroup, saveTeamGroup } from "../lib/repoGroups.js";
 import { currentBranches, formatOpenSet, listBranches, openSet, type OpenMode, type OpenWindow } from "../lib/repoSet.js";
 import { createSet, listSets, removeSet } from "../lib/worktree.js";
 import { formatCleanup, formatRemoved, listCleanup, removeCleanup } from "../lib/worktreeCleanup.js";
 
 const USAGE =
-  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--new-set] | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
+  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--branch-for b=<branch>] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--branch-for b=<branch>,c=<branch>] [--new-set] | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -18,6 +18,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     group: { type: "string" },
     root: { type: "string" },
     branch: { type: "string" },
+    "branch-for": { type: "string" },
     base: { type: "string" },
     from: { type: "string" },
     mode: { type: "string" },
@@ -32,7 +33,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const root = v.root as string | undefined;
   const json = !!v.json;
   if (sub === "create") {
-    ctx.out(await createSet(ctx, { story: posInt(v.story, "--story"), repos: list(v.repos), root, branch: v.branch as string | undefined, base: v.base as string | undefined, json }));
+    ctx.out(await createSet(ctx, { story: posInt(v.story, "--story"), repos: list(v.repos), root, branch: v.branch as string | undefined, branches: branchFor(v["branch-for"]), base: v.base as string | undefined, json }));
   } else if (sub === "list") {
     ctx.out(listSets(ctx, { root, json }));
   } else if (sub === "remove") {
@@ -43,7 +44,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const window = (v.window as string | undefined) ?? "new";
     if (mode !== undefined && mode !== "worktree" && mode !== "switch") throw new AihubError("--mode must be worktree or switch");
     if (window !== "new" && window !== "this" && window !== "none") throw new AihubError("--window must be new, this or none");
-    const r = openSet(ctx, { group: v.group as string | undefined, repos: list(v.repos), branch: String(v.branch ?? ""), from: (v.from ?? v.base) as string | undefined, mode: mode as OpenMode | undefined, window: window as OpenWindow, root, storyId: optInt(v.story, "--story"), newSet: !!v["new-set"] });
+    const r = openSet(ctx, { group: v.group as string | undefined, repos: list(v.repos), branch: String(v.branch ?? ""), from: (v.from ?? v.base) as string | undefined, mode: mode as OpenMode | undefined, window: window as OpenWindow, root, storyId: optInt(v.story, "--story"), newSet: !!v["new-set"], branches: branchFor(v["branch-for"]) });
     ctx.out(json ? JSON.stringify(r) : formatOpenSet(r));
     const bad = r.repos.filter((x) => !x.ok).length;
     // --json is for programs (the VS Code extension): the table says which repositories failed, so the exit code stays 0

@@ -22,7 +22,7 @@ export interface StatusJson {
   warnings?: string[];
   /** false when there is no Azure DevOps credential (nothing remote was read). Older CLIs leave it out. */
   signedIn?: boolean;
-  set?: { story: number; branch: string; group?: string; total?: number; repos: string[] } | null;
+  set?: { story: number; branch: string; group?: string; total?: number; repos: string[]; branches?: Record<string, string> } | null;
 }
 
 export interface PolicyJson {
@@ -104,7 +104,7 @@ export interface BarModel {
   events: BarEvent[];
   watching: boolean;
   /** the worktree set this window is (aihub worktree create/open), else null */
-  set: { story: number; branch: string; group?: string; total?: number; repos: string[] } | null;
+  set: { story: number; branch: string; group?: string; total?: number; repos: string[]; branches?: Record<string, string> } | null;
   updatedAt: number;
 }
 
@@ -205,7 +205,7 @@ export function buildModel(input: {
     fabric: input.fabric ?? null,
     events: input.events ?? [],
     watching: !!input.watching,
-    set: s.set && Array.isArray(s.set.repos) ? { story: s.set.story ?? 0, branch: text(s.set.branch), group: s.set.group, total: s.set.total, repos: s.set.repos } : null,
+    set: s.set && Array.isArray(s.set.repos) ? { story: s.set.story ?? 0, branch: text(s.set.branch), group: s.set.group, total: s.set.total, repos: s.set.repos, ...(s.set.branches && typeof s.set.branches === "object" ? { branches: s.set.branches } : {}) } : null,
     updatedAt: input.now ?? Date.now(),
   };
 }

@@ -7,7 +7,7 @@ import { ARTIFACT_EXCLUDES, mustGit, tryGit } from "./gitx.js";
 import { linkPrs } from "./crossRepoOps.js";
 import { resolveRepoDirs } from "./repos.js";
 import { appendJournal } from "./journal.js";
-import { findSet, type SetInfo } from "./setInfo.js";
+import { findSet, reposWithBranch, type SetInfo } from "./setInfo.js";
 import { getStatus, type Status } from "./status.js";
 import { defaultTargetFor, loadTeam } from "./team.js";
 
@@ -24,7 +24,8 @@ export function wantsAllRepos(name: string, args: string[]): boolean {
 /** The repositories to work on: the set when there is one, else the repositories of team.yaml that are checked out next to this one on the same branch. */
 export function repoDirsFor(ctx: Ctx): { dirs: { name: string; dir: string }[]; set?: SetInfo; story?: number } {
   const set = findSet(ctx.cwd);
-  if (set) return { dirs: set.repos.map((r) => ({ name: r.name, dir: r.path })), set, story: set.story };
+  // a repository on its own branch (not the set's) is named with it in the table; git in its worktree uses its own branch
+  if (set) return { dirs: set.repos.map((r) => ({ name: r.branch !== set.branch ? `${r.name} (${r.branch})` : r.name, dir: r.path })), set, story: set.story || undefined };
   const root = repoRoot(ctx.cwd);
   const team = loadTeam(root);
   const branch = currentBranch(root);

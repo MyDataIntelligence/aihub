@@ -22,6 +22,19 @@ export function optInt(v: unknown, flag: string): number | undefined {
   return v === undefined ? undefined : posInt(v, flag);
 }
 
+/** `--branch-for repo-b=feature/2-y,repo-c=feature/3-z`: a repository's own branch in a set (else the set's --branch). */
+export function branchFor(v: unknown): Record<string, string> | undefined {
+  const pairs = list(v);
+  if (!pairs.length) return undefined;
+  const out: Record<string, string> = {};
+  for (const p of pairs) {
+    const i = p.indexOf("=");
+    if (i <= 0 || i === p.length - 1) throw new AihubError(`--branch-for takes repo=branch pairs, comma separated (got '${p}')`);
+    out[p.slice(0, i).trim()] = p.slice(i + 1).trim();
+  }
+  return out;
+}
+
 export function list(v: unknown): string[] {
   return v === undefined ? [] : String(v).split(",").map((s) => s.trim()).filter(Boolean);
 }

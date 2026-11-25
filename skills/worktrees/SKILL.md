@@ -15,7 +15,7 @@ One story in more than one repository, or the main checkout must stay untouched.
 aihub worktree open --group pipeline --branch feature/4711-search
 ```
 
-`--repos a,b,c`; `--mode switch` (dirty ones skipped); `--window this`; `--json`. Groups: `aihub worktree groups list|save <name> --repos a,b|remove <name>`.
+`--repos a,b,c`; one repository on its own branch: `--branch-for b=<branch>`; `--mode switch`; `--window this`. Groups: `aihub worktree groups list|save|remove`.
 3. One repository of the open set on another branch ("zet repo-b op X"): `aihub branch switch --repo repo-b --branch X`, never `worktree open` (a new set). Same folder and window; output: `the window stays as it is: 3 repositories, repo-b now on X`. Uncommitted work or branch checked out elsewhere: nothing switches, the output says why; offer commit/stash, or `--mode worktree` (folder `repo-b--<variant>` added to this set).
 4. `aihub worktree list`. Inside a set, `commit`, `pr create`, `pr update`, `pipeline follow` and `status` take `--all-repos`.
 5. Done and pushed: `aihub worktree remove --story 123` or `--branch <b>`.

@@ -12,35 +12,11 @@ import { loadTeam } from "./team.js";
 import { getWorkItem, storyBranchName } from "./workitems.js";
 import { storyFolderFor, storyIdFromBranch, worktreePathFor } from "./storyWorktrees.js";
 import { findDirLinks, removeDirLink } from "./safeWorktree.js";
+import { readSetFile, repoBranch, type SetMeta } from "./setFile.js";
 
 const META = ".aihub-set.json";
 
-export interface SetMeta {
-  story: number;
-  /** repo group name when `aihub worktree open` made the set (story is 0 then) */
-  group?: string;
-  /** the .code-workspace file `aihub worktree open` wrote; removed with the set */
-  workspace?: string;
-  branch: string;
-  repos: { name: string; source: string; path: string }[];
-  /** the other sets in the same folder (a story folder holds one set per branch); newest is the top one */
-  others?: SetMeta[];
-}
-
-/** Writes `meta` as the newest set of `folder`, keeping the other sets there (one per story and branch). */
-export function writeSetMeta(folder: string, meta: SetMeta): void {
-  const p = join(folder, META);
-  let old: SetMeta[] = [];
-  try {
-    const top = JSON.parse(readFileSync(p, "utf8")) as SetMeta;
-    old = [{ ...top, others: undefined }, ...(top.others ?? [])];
-  } catch {
-    /* no set file yet, or a broken one: start fresh */
-  }
-  const same = (a: SetMeta) => a.story === meta.story && a.branch === meta.branch && (a.group ?? "") === (meta.group ?? "");
-  const others = old.filter((s) => !same(s)).map(({ others: _o, ...s }) => s);
-  writeFileSync(p, JSON.stringify({ ...meta, ...(others.length ? { others } : {}) }, null, 2), "utf8");
-}
+export { writeSetMeta, type SetMeta } from "./setFile.js";
 
 export function defaultSetsRoot(repoRoot: string): string {
   return join(dirname(repoRoot), "worktrees");
@@ -61,6 +37,8 @@ export interface CreateSetOpts {
   repos: string[];
   root?: string;
   branch?: string;
+  /** a repository's own branch (`--branch-for b=feature/2-y`), else `branch` */
+  branches?: Record<string, string>;
   base?: string;
   json?: boolean;
 }
@@ -103,17 +81,18 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
       lines.push(`${d.name}: already in the set`);
       continue;
     }
-    const path = worktreePathFor({ root: setsRoot, storyId: o.story, repo: d.name, branch, storyFolders: [basename(folder)], exists: existsSync });
+    const own = o.branches?.[d.name] ?? branch;
+    const path = worktreePathFor({ root: setsRoot, storyId: o.story, repo: d.name, branch: own, storyFolders: [basename(folder)], exists: existsSync });
     fetchOrigin(d.dir);
     const base = await baseFor(d.dir, clientForDir(ctx, d.dir), team, o.base);
-    const e = ensureBranch(d.dir, branch, base);
-    const busy = listWorktrees(d.dir).find((w) => w.branch === branch);
+    const e = ensureBranch(d.dir, own, base);
+    const busy = listWorktrees(d.dir).find((w) => w.branch === own);
     if (busy) {
-      throw new AihubError(`branch '${branch}' is already checked out in ${busy.path}; switch that checkout to another branch first (nothing was changed)`);
+      throw new AihubError(`branch '${own}' is already checked out in ${busy.path}; switch that checkout to another branch first (nothing was changed)`);
     }
-    mustGit(d.dir, ["worktree", "add", path, branch]);
-    meta.repos.push({ name: d.name, source: d.dir, path });
-    lines.push(`${d.name}: worktree ${path} on '${branch}'${e.created ? ` (new, from ${base})` : ""}`);
+    mustGit(d.dir, ["worktree", "add", path, own]);
+    meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== branch ? { branch: own } : {}) });
+    lines.push(`${d.name}: worktree ${path} on '${own}'${e.created ? ` (new, from ${base})` : ""}`);
     writeFileSync(metaPath, JSON.stringify(meta, null, 2));
   }
   writeFileSync(metaPath, JSON.stringify(meta, null, 2));
@@ -121,18 +100,13 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
   return o.json ? JSON.stringify({ folder, ...meta }) : lines.join("\n");
 }
 
+/** The sets under a root: `.aihub-set.json` and the extension's `.worktree-set.json`. */
 export function readSets(setsRoot: string): { folder: string; meta: SetMeta }[] {
   if (!existsSync(setsRoot)) return [];
   const out: { folder: string; meta: SetMeta }[] = [];
   for (const e of readdirSync(setsRoot, { withFileTypes: true })) {
-    const p = join(setsRoot, e.name, META);
-    if (e.isDirectory() && existsSync(p)) {
-      try {
-        out.push({ folder: join(setsRoot, e.name), meta: JSON.parse(readFileSync(p, "utf8")) as SetMeta });
-      } catch {
-        /* ignore a broken set file */
-      }
-    }
+    const f = e.isDirectory() ? readSetFile(join(setsRoot, e.name)) : undefined;
+    if (f) out.push({ folder: join(setsRoot, e.name), meta: f.top });
   }
   return out;
 }
@@ -150,10 +124,10 @@ export function listSets(ctx: Ctx, o: { root?: string; json?: boolean }): string
   const root = repoRoot(ctx.cwd);
   const here = o.root ? undefined : findSet(ctx.cwd);
   const sets = readSets(resolve(o.root ?? (here ? dirname(here.folder) : defaultSetsRoot(root))));
-  if (o.json) return JSON.stringify(sets.map((s) => ({ folder: s.folder, ...s.meta, status: s.meta.repos.map((r) => ({ name: r.name, status: status(r.path) })) })));
+  if (o.json) return JSON.stringify(sets.map((s) => ({ folder: s.folder, ...s.meta, status: s.meta.repos.map((r) => ({ name: r.name, branch: repoBranch(s.meta, r), status: status(r.path) })) })));
   if (!sets.length) return "no worktree sets";
   return sets
-    .map((s) => `story ${s.meta.story} '${s.meta.branch}' ${s.folder}\n` + s.meta.repos.map((r) => `  ${r.name}: ${status(r.path)}`).join("\n"))
+    .map((s) => `story ${s.meta.story} '${s.meta.branch}' ${s.folder}\n` + s.meta.repos.map((r) => `  ${r.name}${repoBranch(s.meta, r) !== s.meta.branch ? ` on '${repoBranch(s.meta, r)}'` : ""}: ${status(r.path)}`).join("\n"))
     .join("\n");
 }
 
@@ -191,7 +165,7 @@ export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?:
     // folder links (a node_modules junction) go first: git would empty the folder they point to
     for (const l of links) removeDirLink(join(r.path, l.rel));
     mustGit(r.source, ["worktree", "remove", r.path]);
-    lines.push(`${r.name}: worktree removed (branch '${meta.branch}' kept)`);
+    lines.push(`${r.name}: worktree removed (branch '${repoBranch(meta, r)}' kept)`);
   }
   const write = (sets: SetMeta[]) => writeFileSync(metaPath, JSON.stringify({ ...sets[0], ...(sets.length > 1 ? { others: sets.slice(1) } : {}) }, null, 2));
   if (left.length) {
