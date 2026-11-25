@@ -552,6 +552,21 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.commitAll",
+        "title": "Commit All Repositories of the Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.pushAll",
+        "title": "Push All Repositories of the Set",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.updateAll",
+        "title": "Update All Repositories of the Set",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.otherBranch",
         "title": "Other Branch...",
         "category": "AI Context Hub"
@@ -1319,6 +1334,18 @@
         },
         {
           "command": "aihub.bar.refreshStatus",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.commitAll",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pushAll",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.updateAll",
           "when": "false"
         },
         {

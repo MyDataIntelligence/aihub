@@ -35,6 +35,8 @@ export interface StoryHooks {
   log: (line: string) => void;
   changed: () => void;
   reg: (id: string, f: (...a: any[]) => unknown) => void;
+  /** a command ran git in the set's repositories: what was remembered about their HEAD is stale */
+  afterGit?: () => void;
 }
 
 const idArg = (a: unknown): number | undefined => {
