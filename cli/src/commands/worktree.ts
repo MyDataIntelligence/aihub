@@ -2,12 +2,12 @@ import type { Ctx } from "../lib/context.js";
 import { AihubError } from "../lib/errors.js";
 import { branchFor, list, optInt, parseFlags, posInt } from "../lib/cliargs.js";
 import { findGroup, groupDirs, listGroups, removeGroup, resolveRepos, saveGroup, saveTeamGroup } from "../lib/repoGroups.js";
-import { currentBranches, formatOpenSet, listBranches, openSet, type OpenMode, type OpenWindow } from "../lib/repoSet.js";
+import { addToSet, currentBranches, dropFromSet, formatOpenSet, listBranches, openSet, repairSet, type OpenMode, type OpenSetResult, type OpenWindow } from "../lib/repoSet.js";
 import { createSet, listSets, removeSet } from "../lib/worktree.js";
 import { formatCleanup, formatRemoved, listCleanup, removeCleanup } from "../lib/worktreeCleanup.js";
 
 const USAGE =
-  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--branch-for b=<branch>] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--branch-for b=<branch>,c=<branch>] [--new-set] | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
+  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--branch-for b=<branch>] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--branch-for b=<branch>,c=<branch>] [--new-set] | worktree add --repos d [--branch <b>] [--from <target>] | worktree drop --repos d | worktree repair | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -49,6 +49,13 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const bad = r.repos.filter((x) => !x.ok).length;
     // --json is for programs (the VS Code extension): the table says which repositories failed, so the exit code stays 0
     if (bad && !json) throw new AihubError(`${bad} of ${r.repos.length} repositories need attention (the others are open)`);
+  } else if (sub === "add" || sub === "drop" || sub === "repair") {
+    // inside a set: a repository in or out, or the worktrees the set file lacks; the window stays
+    const r: OpenSetResult =
+      sub === "add" ? addToSet(ctx, { repos: list(v.repos), branch: v.branch as string | undefined, from: (v.from ?? v.base) as string | undefined }) : sub === "drop" ? dropFromSet(ctx, { repos: list(v.repos) }) : repairSet(ctx);
+    ctx.out(json ? JSON.stringify(r) : formatOpenSet(r));
+    const bad = r.repos.filter((x) => !x.ok).length;
+    if (bad && !json) throw new AihubError(`${bad} of ${r.repos.length} repositories need attention`);
   } else if (sub === "cleanup") {
     // aihub worktree cleanup [--json] [--repos a,b] [--no-size] [--offline] [--remove p1,p2 [--delete-branch]]
     const rows = await listCleanup(ctx, { repos: list(v.repos), sizes: !v["no-size"], offline: !!v.offline });

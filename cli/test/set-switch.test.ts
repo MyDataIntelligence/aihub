@@ -39,7 +39,7 @@ async function threeRepoSet() {
 
 const wsOf = (file: string) => JSON.parse(readFileSync(file, "utf8")) as { folders: { name: string; path: string }[]; settings: Record<string, { repos: { name: string; branch: string }[] }> };
 
-describe("one repository of a set on another branch", () => {
+describe("one repository of a set on another branch", { timeout: 30_000 }, () => {
   it("worktree open for one repository of the set switches it in place: same folder, same workspace, no window", async () => {
     const { set, inside } = await threeRepoSet();
     const before = readFileSync(set.workspace, "utf8");

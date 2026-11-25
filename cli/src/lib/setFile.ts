@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { storyIdFromBranch } from "./storyWorktrees.js";
 
 /**
@@ -40,16 +40,14 @@ export function readSetFile(folder: string): { kind: SetKind; top: SetMeta } | u
   try {
     if (existsSync(join(folder, AIHUB_SET))) {
       const top = JSON.parse(readFileSync(join(folder, AIHUB_SET), "utf8")) as SetMeta;
-      return Array.isArray(top?.repos) ? { kind: "aihub", top } : undefined;
+      if (!Array.isArray(top?.repos)) return undefined;
+      top.repos = completeRepos(folder, top.repos as Partial<SetRepo>[]);
+      return { kind: "aihub", top };
     }
     if (existsSync(join(folder, MAKER_SET))) {
       const j = JSON.parse(readFileSync(join(folder, MAKER_SET), "utf8").replace(/^\uFEFF/, "")) as { branch?: unknown; slug?: unknown; repos?: unknown };
       if (typeof j.branch !== "string" || !Array.isArray(j.repos)) return undefined;
-      const repos: SetRepo[] = [];
-      for (const r of j.repos as Record<string, unknown>[]) {
-        if (!r || typeof r.name !== "string" || typeof r.source !== "string" || typeof r.path !== "string") continue;
-        repos.push({ name: r.name, source: r.source, path: resolve(folder, r.path), ...(typeof r.branch === "string" && r.branch ? { branch: r.branch } : {}) });
-      }
+      const repos = completeRepos(folder, j.repos as Partial<SetRepo>[]);
       const slug = typeof j.slug === "string" && j.slug ? j.slug : j.branch.replace(/[\\/:*?"<>|\s]+/g, "-");
       return { kind: "maker", top: { story: storyIdFromBranch(j.branch) ?? 0, branch: j.branch, workspace: join(folder, `${slug}.code-workspace`), repos } };
     }
@@ -57,6 +55,23 @@ export function readSetFile(folder: string): { kind: SetKind; top: SetMeta } | u
     /* a broken set file is no set */
   }
   return undefined;
+}
+
+/**
+ * The repositories of a set file, also one added by hand with only a name: its folder is `<set>/<name>`, its source
+ * clone sits next to the other sources. Such an entry has no worktree yet; `aihub worktree repair` makes it.
+ */
+function completeRepos(folder: string, raw: Partial<SetRepo>[]): SetRepo[] {
+  const ok = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
+  const sibling = raw.find((r) => ok(r?.source))?.source;
+  const out: SetRepo[] = [];
+  for (const r of raw) {
+    if (!r || !ok(r.name)) continue;
+    const source = ok(r.source) ? r.source : sibling ? join(dirname(sibling), r.name) : undefined;
+    if (!source) continue;
+    out.push({ name: r.name, source, path: resolve(folder, ok(r.path) ? r.path : r.name), ...(ok(r.branch) ? { branch: r.branch } : {}) });
+  }
+  return out;
 }
 
 /** Writes `meta` back into the set file of its kind; `.aihub-set.json` keeps the other sets of the folder. */

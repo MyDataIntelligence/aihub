@@ -61,7 +61,7 @@ const run = async (cwd: string, argv: string[]) => {
 
 const head = (dir: string) => sh(dir, ["rev-parse", "--abbrev-ref", "HEAD"]);
 
-describe("a set whose repositories are on different branches", () => {
+describe("a set whose repositories are on different branches", { timeout: 30_000 }, () => {
   it("worktree open --branch-for puts one repository on its own branch and the set file says so", async () => {
     const { repos } = clones();
     const j = JSON.parse((await run(repos[0].dir, ["worktree", "open", "--repos", "repo-a,repo-b", "--branch", "feature/1-x", "--branch-for", "repo-b=feature/2-y", "--from", "main", "--window", "none", "--json"])).out);

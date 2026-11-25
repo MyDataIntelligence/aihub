@@ -11,7 +11,7 @@ import { fetchOrigin, type RepoDir } from "./repos.js";
 import { defaultTargetFor, loadTeam, type TeamConfig } from "./team.js";
 import { findSet } from "./setInfo.js";
 import { linkBranch, currentOf, readStoryWorktrees, storyFolderFor, storyIdFromBranch, storyWorktreesFileFor, updateStoryWorktrees, variantOf, worktreePathFor } from "./storyWorktrees.js";
-import { defaultSetsRoot, slugOfBranch } from "./worktree.js";
+import { defaultSetsRoot, removeWorktreeSafely, slugOfBranch } from "./worktree.js";
 import { readSetFile, repoBranch, writeSetFile, writeSetMeta, type SetKind, type SetMeta } from "./setFile.js";
 
 /**
@@ -39,7 +39,7 @@ export interface OpenSetOpts {
   newSet?: boolean;
 }
 
-export type RepoState = "existing" | "created" | "reused-worktree" | "switched" | "already-on" | "skipped" | "failed";
+export type RepoState = "existing" | "created" | "reused-worktree" | "switched" | "already-on" | "skipped" | "failed" | "removed" | "kept";
 
 export interface RepoResult {
   repo: string;
@@ -340,6 +340,7 @@ export function switchInSet(here: HereSet, o: { repos: string[]; branch: string;
   const switched = new Set<string>();
   const repos = entries.map((e): RepoResult => {
     if (mode === "switch") {
+      if (!hasWorktree(e.path)) return { repo: e.name, ok: false, state: "failed", branch, note: `in the set file without a worktree; make it first: aihub worktree repair` };
       const r = openRepo({ name: e.name, dir: e.path }, { branch, from: o.from, mode: "switch", folder, team });
       if (r.state === "skipped") return { ...r, note: dirtyNote(e) };
       if (r.checkedOutIn) return { ...r, note: `${branch} is already checked out in ${r.checkedOutIn}; nothing was changed. Add --mode worktree to put that folder in this set next to ${e.name}` };
@@ -395,6 +396,122 @@ export function branchSwitch(ctx: Ctx, o: { repos: string[]; branch: string; fro
   const repos = dirs.map((d) => openRepo(d, { branch, from: o.from, mode: "switch", folder: d.dir, team }));
   const done = repos.filter((r) => r.ok).map((r) => `${r.repo} ${r.state === "already-on" ? "already" : "now"} on ${branch}`);
   return { branch, mode: "switch", folder: dirname(dirs[0].dir), repos, opened: false, stays: done.length ? `no window opened: ${done.join(", ")}` : "nothing was changed" };
+}
+
+// ---- a repository added to or taken out of the set you are in (`aihub worktree add|drop|repair`) -------------
+
+const notInSet = (what: string) => new AihubError(`not inside a worktree set; ${what} runs from a folder of the set (or the set folder)`);
+const hasWorktree = (p: string) => existsSync(join(p, ".git"));
+
+/**
+ * Repositories added to the set you are in: a worktree `<set>/<repo>` on --branch (else the set's branch; created from
+ * --from or the team target when it does not exist yet), then the set file and the workspace file. A repository that is
+ * in the set file without a worktree (added by hand) gets its worktree at the folder the set file names. No window.
+ */
+export function addToSet(ctx: Ctx, o: { repos: string[]; branch?: string; from?: string }): OpenSetResult {
+  const here = setHere(ctx.cwd);
+  if (!here) throw notInSet("aihub worktree add");
+  if (!o.repos.length) throw new AihubError("usage: aihub worktree add --repos a,b [--branch <b>] [--from <target>]");
+  const { folder, meta, kind } = here;
+  const team = loadTeam(meta.repos[0]?.source ?? ctx.cwd);
+  const src = outsideSet(ctx);
+  const repos: RepoResult[] = [];
+  const entries = [...meta.repos];
+  for (const name of o.repos) {
+    const had = entryOf(here, name);
+    if (had && hasWorktree(had.path)) {
+      repos.push({ repo: had.name, ok: true, state: "already-on", branch: repoBranch(meta, had), path: had.path, note: "already in this set" });
+      continue;
+    }
+    const branch = o.branch?.trim() || (had ? repoBranch(meta, had) : meta.branch);
+    let dir: RepoDir;
+    try {
+      dir = had ? { name: had.name, dir: had.source } : resolveRepos(src, [name])[0];
+    } catch (e) {
+      repos.push({ repo: name, ok: false, state: "failed", branch, note: (e as Error).message.split("\n")[0] });
+      continue;
+    }
+    if (!dir) {
+      repos.push({ repo: name, ok: false, state: "failed", branch, note: "folder not found on this PC" });
+      continue;
+    }
+    const target = had ? had.path : existsSync(join(folder, dir.name)) ? variantPath(folder, dir.name, branch, storyIdFromBranch(branch, storyPatternOf(team))) : join(folder, dir.name);
+    const r = openRepo(dir, { branch, from: o.from, mode: "worktree", folder, team, path: () => target });
+    const label = had ? had.name : basename(target);
+    repos.push({ ...r, repo: label, ...(had && r.ok ? { note: `${r.note} (it was in the set file without a worktree)` } : {}) });
+    if (!r.ok || !r.path) continue;
+    const entry = { name: label, source: dir.dir, path: r.path, branch };
+    const i = entries.findIndex((x) => x.name === label);
+    if (i >= 0) entries[i] = entry;
+    else entries.push(entry);
+    const story = storyIdFromBranch(branch, storyPatternOf(team));
+    if (story) linkLocally(r.path, story, branch, r.path);
+  }
+  const changed = repos.filter((r) => r.ok && r.state !== "already-on");
+  if (changed.length) writeSetFile(folder, kind, { ...meta, repos: entries });
+  if (meta.workspace && changed.length) updateWorkspace(meta.workspace, folder, changed, kind);
+  const what = changed.map((r) => `${r.repo} added on ${r.branch}`);
+  return { story: meta.story || undefined, group: meta.group, branch: meta.branch, mode: "worktree", folder, workspace: meta.workspace, repos, opened: false, stays: what.length ? `the window stays as it is: ${entries.length} repositories, ${what.join(", ")}` : "nothing was changed; the window stays as it is" };
+}
+
+/** `aihub worktree repair`: every repository in the set file without a worktree gets one (see addToSet). */
+export function repairSet(ctx: Ctx): OpenSetResult {
+  const here = setHere(ctx.cwd);
+  if (!here) throw notInSet("aihub worktree repair");
+  const broken = here.meta.repos.filter((r) => !hasWorktree(r.path)).map((r) => r.name);
+  if (!broken.length) return { story: here.meta.story || undefined, branch: here.meta.branch, mode: "worktree", folder: here.folder, workspace: here.meta.workspace, repos: [], opened: false, stays: "every repository of this set has its worktree; nothing to repair" };
+  return addToSet(ctx, { repos: broken });
+}
+
+/**
+ * Repositories taken out of the set you are in. A worktree inside the set folder is removed with the checks of
+ * `worktree remove` (uncommitted or unpushed work keeps it, and it stays in the set); a worktree elsewhere (reused)
+ * only leaves the set. The branch stays. The set file and the workspace file are updated; no window.
+ */
+export function dropFromSet(ctx: Ctx, o: { repos: string[] }): OpenSetResult {
+  const here = setHere(ctx.cwd);
+  if (!here) throw notInSet("aihub worktree drop");
+  if (!o.repos.length) throw new AihubError("usage: aihub worktree drop --repos a,b");
+  const { folder, meta, kind } = here;
+  const unknown = o.repos.filter((n) => !entryOf(here, n));
+  if (unknown.length) throw new AihubError(`${unknown.join(", ")} not in this set (${meta.repos.map((r) => r.name).join(", ")})`);
+  const entries = [...new Set(o.repos.map((n) => entryOf(here, n)!))];
+  if (entries.length === meta.repos.length) throw new AihubError(`that is every repository of this set; remove the whole set: aihub worktree remove --branch ${meta.branch}`);
+  const inFolder = (p: string) => ((rel) => !!rel && !rel.startsWith("..") && !isAbsolute(rel))(relative(folder, p));
+  const gone = new Set<string>();
+  const repos = entries.map((e): RepoResult => {
+    const branch = repoBranch(meta, e);
+    if (!inFolder(e.path)) {
+      gone.add(e.name);
+      return { repo: e.name, ok: true, state: "removed", branch, path: e.path, note: `left the set; the worktree stays where it is: ${e.path}` };
+    }
+    try {
+      const x = removeWorktreeSafely(e, branch);
+      if (x.removed) gone.add(e.name);
+      return { repo: e.name, ok: x.removed, state: x.removed ? "removed" : "kept", branch, path: e.path, note: x.line.replace(`${e.name}: `, "") };
+    } catch (err) {
+      return { repo: e.name, ok: false, state: "kept", branch, path: e.path, note: (err as Error).message.split("\n")[0] };
+    }
+  });
+  const left = meta.repos.filter((r) => !gone.has(r.name));
+  if (gone.size) {
+    writeSetFile(folder, kind, { ...meta, repos: left });
+    if (meta.workspace) dropFromWorkspace(meta.workspace, folder, meta.repos.filter((r) => gone.has(r.name)));
+  }
+  const names = [...gone];
+  return { story: meta.story || undefined, group: meta.group, branch: meta.branch, mode: "worktree", folder, workspace: meta.workspace, repos, opened: false, stays: names.length ? `the window stays as it is: ${left.length} repositories, ${names.join(", ")} taken out` : "nothing was changed; the window stays as it is" };
+}
+
+function dropFromWorkspace(file: string, folder: string, gone: SetRepo[]): void {
+  try {
+    const ws = JSON.parse(readFileSync(file, "utf8")) as { folders?: { name?: string; path: string }[]; settings?: Record<string, unknown> };
+    ws.folders = (ws.folders ?? []).filter((f) => !gone.some((g) => samePath(resolve(folder, f.path), g.path)));
+    const set = ws.settings?.["aihub.set"] as WindowSet | undefined;
+    if (set?.repos) set.repos = set.repos.filter((x) => !gone.some((g) => g.name === x.name));
+    writeFileSync(file, JSON.stringify(ws, null, 2), "utf8");
+  } catch {
+    /* a hand-edited workspace file (with comments) is left alone */
+  }
 }
 
 /** The set's workspace file: a new folder is added, the branch of a switched one is updated; VS Code reloads it itself. */
