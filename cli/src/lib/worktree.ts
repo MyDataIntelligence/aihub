@@ -14,6 +14,7 @@ import { storyFolderFor, storyIdFromBranch, worktreePathFor } from "./storyWorkt
 import { findDirLinks, removeDirLink } from "./safeWorktree.js";
 import { MAKER_SET, readJsonText, readSetFile, repoBranch, writeAtomic, writeSetFile, type SetMeta } from "./setFile.js";
 import { checkExisting, moveExisting, readWhenExists, recreateExisting, type WhenExists } from "./existingWorktree.js";
+import { guardLocalFiles } from "./localFiles.js";
 
 const META = ".aihub-set.json";
 
@@ -166,7 +167,7 @@ export function listSets(ctx: Ctx, o: { root?: string; json?: boolean }): string
  * a worktree of its source keep it (removed false, the reason in the line). Folder links (a node_modules junction) go
  * first: git would empty the folder they point to. The branch stays.
  */
-export function removeWorktreeSafely(r: { name: string; source: string; path: string }, branch: string): { removed: boolean; line: string } {
+export function removeWorktreeSafely(r: { name: string; source: string; path: string }, branch: string, o: { discardLocalWork?: boolean; env?: NodeJS.ProcessEnv } = {}): { removed: boolean; line: string } {
   if (!existsSync(r.path)) {
     // a folder on a drive or share that is not there right now is not "gone": it stays in the set
     if (!existsSync(dirname(r.path))) return { removed: false, line: `${r.name}: kept, ${r.path} cannot be reached (drive or share not available); try again when it is back` };
@@ -182,12 +183,15 @@ export function removeWorktreeSafely(r: { name: string; source: string; path: st
   const dirty = known && tryGit(r.path, ["status", "--porcelain"]).out.split("\n").filter(Boolean).some((l) => !linkSet.has(l.slice(3).replace(/\/$/, "")));
   const unpushed = unpushedCount(r.path);
   if (!known || dirty || unpushed) return { removed: false, line: `${r.name}: kept, ${!known ? "not a worktree of its source repository" : dirty ? "uncommitted changes" : `${unpushed} unpushed commit(s)`}` };
+  // ignored local files (.env, notes) are saved first, or refuse the removal when they are too big (see localFiles.ts)
+  const saved = guardLocalFiles(r.path, r.source, { discard: o.discardLocalWork, env: o.env });
+  if (!saved.ok) return { removed: false, line: `${r.name}: kept, ${saved.note}` };
   for (const l of links) removeDirLink(join(r.path, l.rel));
   mustGit(r.source, ["worktree", "remove", r.path]);
-  return { removed: true, line: `${r.name}: worktree removed (branch '${branch}' kept)` };
+  return { removed: true, line: `${r.name}: worktree removed (branch '${branch}' kept)${saved.note ? `; ${saved.note}` : ""}` };
 }
 
-export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?: string; folder?: string; json?: boolean }): string {
+export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?: string; folder?: string; json?: boolean; discardLocalWork?: boolean }): string {
   // --folder names the set itself: no repository (and no sets root) is needed, so it also works from a folder that is no clone
   const setsRoot = o.folder ? resolve(o.folder, "..") : resolve(o.root ?? defaultSetsRoot(repoRoot(ctx.cwd)));
   // a story branch opened with `worktree open` lives in its story folder, next to the other sets of that story
@@ -212,7 +216,7 @@ export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?:
     // one failing repository (a locked worktree, a submodule) keeps only itself in the set; the others are still handled
     let x: { removed: boolean; line: string };
     try {
-      x = removeWorktreeSafely(r, repoBranch(meta, r));
+      x = removeWorktreeSafely(r, repoBranch(meta, r), { discardLocalWork: o.discardLocalWork, env: ctx.env });
     } catch (e) {
       x = { removed: false, line: `${r.name}: kept, ${(e as Error).message.split("\n")[0]}` };
     }

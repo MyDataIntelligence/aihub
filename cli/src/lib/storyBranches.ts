@@ -275,11 +275,11 @@ export function markStoryBranch(ctx: Ctx, o: { branch: string; status?: BranchSt
 }
 
 /** Removes the worktree and (with deleteBranch) the local branch; refuses when work would be lost. */
-export function removeStoryBranch(ctx: Ctx, o: { branch: string; repo?: string; deleteBranch?: boolean }): string {
+export function removeStoryBranch(ctx: Ctx, o: { branch: string; repo?: string; deleteBranch?: boolean; discardLocalWork?: boolean }): string {
   const r = repoDir(ctx, o.repo);
   const wt = listWorktrees(r.dir).find((w) => w.branch === o.branch);
   if (wt?.path && samePath(wt.path, r.dir)) throw new AihubError(`'${o.branch}' is checked out in the main clone ${r.dir}; switch it to another branch first (nothing was removed)`);
-  const res = removeWorktreeSafely(r.dir, wt?.path, o.branch, { deleteBranch: o.deleteBranch });
+  const res = removeWorktreeSafely(r.dir, wt?.path, o.branch, { deleteBranch: o.deleteBranch, discardLocalWork: o.discardLocalWork, env: ctx.env });
   if (res.removed || res.branchDeleted) {
     updateStoryWorktrees(fileOf(r.dir), (d) => {
       const e = d.branches[o.branch];

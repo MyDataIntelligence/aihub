@@ -59,7 +59,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     // --all: every set and repository on this PC, whichever folder this runs in
     ctx.out(v.all ? listEverything(ctx, { json, refresh: !!v.refresh }) : listSets(ctx, { root, json }));
   } else if (sub === "remove") {
-    ctx.out(removeSet(ctx, { story: optInt(v.story, "--story"), branch: v.branch as string | undefined, root, folder: v.folder as string | undefined, json }));
+    ctx.out(removeSet(ctx, { story: optInt(v.story, "--story"), branch: v.branch as string | undefined, root, folder: v.folder as string | undefined, json, discardLocalWork: ex.discardLocalWork }));
   } else if (sub === "open") {
     // no --mode: worktree for a new set; inside a set, naming some of its repositories switches them in place
     const mode = v.mode as string | undefined;
@@ -75,7 +75,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   } else if (sub === "add" || sub === "drop" || sub === "repair") {
     // inside a set: a repository in or out, or the worktrees the set file lacks; the window stays
     const r: OpenSetResult | undefined = orChoice(json, ctx.out, () =>
-      sub === "add" ? addToSet(ctx, { repos: list(v.repos), branch: v.branch as string | undefined, from: (v.from ?? v.base) as string | undefined, ...ex }) : sub === "drop" ? dropFromSet(ctx, { repos: list(v.repos) }) : repairSet(ctx, ex),
+      sub === "add" ? addToSet(ctx, { repos: list(v.repos), branch: v.branch as string | undefined, from: (v.from ?? v.base) as string | undefined, ...ex }) : sub === "drop" ? dropFromSet(ctx, { repos: list(v.repos), discardLocalWork: ex.discardLocalWork }) : repairSet(ctx, ex),
     );
     if (!r) return;
     ctx.out(json ? JSON.stringify(r) : formatOpenSet(r));
@@ -85,7 +85,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     // aihub worktree cleanup [--json] [--repos a,b] [--no-size] [--offline] [--remove p1,p2 [--delete-branch]]
     const rows = await listCleanup(ctx, { repos: list(v.repos), sizes: !v["no-size"], offline: !!v.offline });
     if (v.remove) {
-      const done = removeCleanup(rows, String(v.remove).split(",").map((p) => p.trim()).filter(Boolean), { deleteBranch: !!v["delete-branch"] });
+      const done = removeCleanup(rows, String(v.remove).split(",").map((p) => p.trim()).filter(Boolean), { deleteBranch: !!v["delete-branch"], discardLocalWork: ex.discardLocalWork });
       ctx.out(json ? JSON.stringify({ removed: done, freedBytes: done.reduce((n, r) => n + r.freedBytes, 0) }) : formatRemoved(done));
     } else ctx.out(json ? JSON.stringify({ worktrees: rows, preselected: rows.filter((r) => r.preselected).length, preselectedBytes: rows.filter((r) => r.preselected).reduce((n, r) => n + (r.sizeBytes ?? 0), 0) }) : formatCleanup(rows));
   } else if (sub === "branches") {
