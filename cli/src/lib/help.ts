@@ -187,7 +187,7 @@ export const USAGES: Record<string, Load> = {
     "aihub watch --run <id|link> | --robot <build> | --fabric-job <ws/item/job> [--notify]\naihub watch --mine [--notify] [--interval 2m] [--at-logon] | --remove-at-logon | --pr <n>|--branch <b> [--until done|comment|vote] [--notify] [--timeout 2h]\naihub watch list | stop [--id X] | events [--limit N] [--since 2h] [--json] | config [--notify all|needed|off] | quiet --for 1h|--until 18:00|--off",
   update: async () => "aihub update [--check]   (newer CLI from npm, then the skills)",
   explain: async () => "aihub explain pr|comments|init|skills|...   (what one aihub command does underneath)",
-  repos: async () => "aihub repos list [--filter text] [--root <folder>] [--json] | local [--root <folder>] [--json] | ado [--refresh] [--root <folder>] [--json] | clone --repos <project/name>[,...] [--root <folder>] [--json]",
+  repos: async () => "aihub repos list [--filter text] [--root <folder>] [--json] | local [--root <folder>] [--all] [--json] | prefer [<name> <folder> | <name> --remove] | ado [--refresh] [--root <folder>] [--json] | clone --repos <project/name>[,...] [--root <folder>] [--json]",
   open: async () => "aihub open --event <id> | --last | --url aihub://open?event=<id> [--print]   (back to the session a watch event belongs to)",
   commit: async () => (await import("../commands/commit.js")).COMMIT_USAGE,
   boards: async () => (await import("../commands/boards.js")).USAGE,
