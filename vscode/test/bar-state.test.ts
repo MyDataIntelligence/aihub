@@ -44,7 +44,7 @@ const engineFor = (dir: string | undefined, extra: Partial<ConstructorParameters
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "aihub-bar-"));
-  env = { AIHUB_CONFIG_HOME: join(root, "cfg") };
+  env = { AIHUB_CONFIG_HOME: join(root, "cfg"), AIHUB_COMMON_ROOTS: "" };
   clone(join(root, "code", "repo-a"));
   clone(join(root, "code", "repo-b"), "develop");
   writeLookIn(env, [join(root, "code")]);

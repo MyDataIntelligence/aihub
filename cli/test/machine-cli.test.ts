@@ -13,6 +13,7 @@ function runner(config: string) {
   return async (cwd: string, argv: string[]) => {
     const { ctx, lines, errs } = ctxFor(cwd, fakeFetch([]).fn);
     ctx.env.AIHUB_CONFIG_HOME = config;
+    ctx.env.AIHUB_COMMON_ROOTS = "";
     const code = await main(argv, ctx, commands);
     return { code, out: lines.join("\n"), err: errs.join("\n") };
   };

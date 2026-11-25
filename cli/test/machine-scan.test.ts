@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { commonRoots, configuredClones, machineFolders } from "../src/lib/machineFolders.js";
 import { forgetScan, lookInFolders, readLookIn, scanMachine, setById, setOfStory, walk, writeLookIn } from "../src/lib/machineScan.js";
 import { forgetUse, formatRecent, MAX_RECENT_USE, readRecentUse, rememberUse, withUse } from "../src/lib/recentUse.js";
 import { isClosedState, readSeenStories, rememberStories } from "../src/lib/storyCache.js";
@@ -36,7 +37,7 @@ function set(folder: string, story: number, branch: string, repos: string[]) {
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "aihub-scan-"));
-  env = { AIHUB_CONFIG_HOME: join(root, "cfg") };
+  env = { AIHUB_CONFIG_HOME: join(root, "cfg"), AIHUB_COMMON_ROOTS: "" };
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -140,5 +141,25 @@ describe("stories seen", () => {
     expect(isClosedState(s[8].state)).toBe(true);
     expect(isClosedState(s[7].state)).toBe(false);
     expect(isClosedState(undefined)).toBe(false);
+  });
+});
+
+describe("where to look when nothing is known yet", () => {
+  it("the usual folders that exist, a personal path list replaces them, an empty one means none", () => {
+    mkdirSync(join(root, "home", "source", "repos"), { recursive: true });
+    mkdirSync(join(root, "home", "git"), { recursive: true });
+    expect(commonRoots({}, join(root, "home")).filter((p) => p.startsWith(root))).toEqual([join(root, "home", "source", "repos"), join(root, "home", "git")]);
+    expect(commonRoots({ AIHUB_COMMON_ROOTS: join(root, "home", "git") })).toEqual([join(root, "home", "git")]);
+    expect(commonRoots({ AIHUB_COMMON_ROOTS: "" })).toEqual([]);
+  });
+
+  it("the clones of the config (groups, preferred clones) and a set's workspace file count as known; the folders are their parents, pruned", () => {
+    mkdirSync(env.AIHUB_CONFIG_HOME!, { recursive: true });
+    writeFileSync(join(env.AIHUB_CONFIG_HOME!, "groups.json"), JSON.stringify({ groups: { pipeline: [{ name: "repo-a", path: join(root, "g", "repo-a") }] } }));
+    writeFileSync(join(env.AIHUB_CONFIG_HOME!, "repos.json"), JSON.stringify({ prefer: { "repo-b": join(root, "g", "deep", "repo-b") } }));
+    expect(configuredClones(env)).toEqual([join(root, "g", "repo-a"), join(root, "g", "deep", "repo-b")]);
+    expect(machineFolders(env, undefined, [])).toEqual([join(root, "g")]);
+    expect(machineFolders(env, undefined, [join(root, "w", "7-x", "story-7.code-workspace")])).toEqual([join(root, "g"), join(root, "w")]);
+    expect(machineFolders(env, undefined, [], [join(root, "usual")])).toEqual([join(root, "g"), join(root, "usual")]);
   });
 });

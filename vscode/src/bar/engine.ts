@@ -25,6 +25,8 @@ export interface EngineDeps {
   dirtyOf?: (path: string) => Promise<number | undefined>;
   /** is the branch linked to the story in Azure DevOps (answered from an earlier read, never a call) */
   linkedOf?: (story: number, repo: string, branch: string) => boolean | undefined;
+  /** other places known to be in use (the older recent list of this extension): folders, or workspace files of sets */
+  extraPlaces?: () => string[];
   now?: () => number;
 }
 
@@ -81,7 +83,7 @@ export class BarEngine {
 
   folders(facts = openFacts(this.deps.dir())): string[] {
     // the personal list when there is one, else the parents of what is known (nested ones are covered by their parent)
-    return machineFolders(this.deps.env, facts.dir);
+    return machineFolders(this.deps.env, facts.dir, this.deps.extraPlaces?.() ?? []);
   }
 
   scan(o: { refresh?: boolean } = {}): Scan {

@@ -1,5 +1,7 @@
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { delimiter, dirname, join } from "node:path";
+import { configHome } from "./configHome.js";
 import { lookInFolders, MAX_DEPTH, readLookIn, scanMachine, type Scan } from "./machineScan.js";
 import { pathKey, readRecentUse } from "./recentUse.js";
 import { readSetFile } from "./setFile.js";
@@ -42,9 +44,36 @@ export function prune(folders: string[]): string[] {
   );
 }
 
-/** Paths this PC is known to use: the folder in use (a set or a repository) and the recent items. */
-export function knownPlaces(env: NodeJS.ProcessEnv, inUse?: string): string[] {
-  const k: string[] = [];
+/** The usual places people keep repositories, the ones that exist (a first look when nothing is known yet). */
+export function commonRoots(env: NodeJS.ProcessEnv = process.env, home = homedir(), exists: (p: string) => boolean = existsSync): string[] {
+  // AIHUB_COMMON_ROOTS (a path list; empty = none) replaces the usual places: tests and isolated profiles
+  if (env.AIHUB_COMMON_ROOTS !== undefined) return env.AIHUB_COMMON_ROOTS.split(delimiter).filter((p) => p && exists(p));
+  const rel = ["source/repos", "repos", "git", "code", "projects", "dev", "src", "work", "Documents/GitHub", "PycharmProjects"];
+  const drives = process.platform === "win32" ? ["C:\\", "D:\\"].flatMap((d) => ["git", "work", "dev", "repos", "src", "code"].map((n) => join(d, n))) : [];
+  return [...rel.map((r) => join(home, r)), ...drives].filter((p) => exists(p));
+}
+
+/** Clones the user's own aihub config names: repository groups and preferred clones (`groups.json`, `repos.json`). */
+export function configuredClones(env: NodeJS.ProcessEnv): string[] {
+  const out: string[] = [];
+  const read = (name: string): unknown => {
+    try {
+      return JSON.parse(readFileSync(join(configHome(env), name), "utf8"));
+    } catch {
+      return undefined;
+    }
+  };
+  const groups = (read("groups.json") as { groups?: Record<string, { path?: string }[]> } | undefined)?.groups ?? {};
+  for (const g of Object.values(groups)) for (const r of Array.isArray(g) ? g : []) if (typeof r?.path === "string") out.push(r.path);
+  const prefer = (read("repos.json") as { prefer?: Record<string, string> } | undefined)?.prefer ?? {};
+  for (const p of Object.values(prefer)) if (typeof p === "string") out.push(p);
+  return out;
+}
+
+/** Paths this PC is known to use: the folder in use (a set or a repository), the recent items, the configured clones, `extra`. */
+export function knownPlaces(env: NodeJS.ProcessEnv, inUse?: string, extra: string[] = []): string[] {
+  // a workspace file stands for the set folder it is in (and the clones that set came from)
+  const k: string[] = [...extra.flatMap((p) => (p.endsWith(".code-workspace") ? setPlaces(dirname(p)) : [p])), ...configuredClones(env)];
   const set = inUse ? findSet(inUse) : undefined;
   if (set) k.push(...setPlaces(set.folder));
   else if (inUse) {
@@ -55,8 +84,10 @@ export function knownPlaces(env: NodeJS.ProcessEnv, inUse?: string): string[] {
   return k;
 }
 
-export function machineFolders(env: NodeJS.ProcessEnv, inUse?: string): string[] {
-  return readLookIn(env) ? lookInFolders(env, []) : prune(lookInFolders(env, knownPlaces(env, inUse)));
+/** The personal list, else the parents of everything known plus the usual folders that exist; nested ones are covered by their parent. */
+export function machineFolders(env: NodeJS.ProcessEnv, inUse?: string, extra: string[] = [], roots: string[] = commonRoots(env)): string[] {
+  if (readLookIn(env)) return lookInFolders(env, []);
+  return prune([...new Map([...lookInFolders(env, knownPlaces(env, inUse, extra)), ...roots].map((f) => [pathKey(f), f])).values()]);
 }
 
 export function scanThisPc(env: NodeJS.ProcessEnv, inUse?: string, o: { refresh?: boolean; now?: number } = {}): Scan {

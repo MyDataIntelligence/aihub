@@ -33,6 +33,8 @@ export function dirtyCounter(): (path: string) => Promise<number | undefined> {
 
 export interface BarDeps {
   log: (line: string) => void;
+  /** places this extension knew before (its older recent list): workspace files of sets */
+  extraPlaces?: () => string[];
 }
 
 export interface BarHandle {
@@ -44,7 +46,7 @@ export interface BarHandle {
 
 export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHandle {
   const dirtyOf = dirtyCounter();
-  const engine = new BarEngine({ env: process.env, dir: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, dirtyOf, linkedOf });
+  const engine = new BarEngine({ env: process.env, dir: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, dirtyOf, linkedOf, extraPlaces: deps.extraPlaces });
   const emitter = new vscode.EventEmitter<void>();
   let debounce: NodeJS.Timeout | undefined;
   const changed = () => {
