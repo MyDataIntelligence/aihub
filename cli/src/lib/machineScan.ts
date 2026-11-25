@@ -36,6 +36,18 @@ export interface Scan {
   folders: string[];
   repos: ScanRepo[];
   sets: ScanSet[];
+  /** the walk stopped at MAX_VISITED folders: not everything was looked at */
+  truncated?: boolean;
+  /** OneDrive and network folders that were skipped (they are only read when listed in "Folders to Look In") */
+  skippedRemote?: string[];
+}
+
+/** A OneDrive folder or a network share (UNC path): read slowly, may download files. */
+export function isRemoteFolder(dir: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  const key = dir.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  if (key.startsWith("//")) return true;
+  if (key.split("/").some((s) => s.startsWith("onedrive"))) return true;
+  return [env.OneDrive, env.OneDriveCommercial, env.OneDriveConsumer].some((r) => !!r && (key === pathKey(r) || key.startsWith(pathKey(r) + "/")));
 }
 
 export const SCAN_TTL_MS = 5 * 60_000;
@@ -152,12 +164,16 @@ function setsOf(folder: string): ScanSet[] {
 const skipped = (name: string) => name.startsWith(".") || SKIP.has(name.toLowerCase());
 
 /** One walk over `folders`: no cache. */
-export function walk(folders: string[]): Scan {
+export function walk(folders: string[], o: { allowRemote?: boolean; env?: NodeJS.ProcessEnv } = {}): Scan {
   const repos = new Map<string, ScanRepo>();
   const sets = new Map<string, ScanSet>();
   let visited = 0;
+  let truncated = false;
+  const skippedRemote: string[] = [];
   const visit = (dir: string, depth: number) => {
-    if (visited++ > MAX_VISITED) return;
+    if (visited++ > MAX_VISITED) return void (truncated = true);
+    // OneDrive folders and network shares are slow to read and may download files: only read when they are listed in "Folders to Look In"
+    if (!o.allowRemote && isRemoteFolder(dir, o.env ?? process.env)) return void skippedRemote.push(dir);
     const found = setsOf(dir);
     if (found.length) return void found.forEach((s) => sets.set(pathKey(s.id), s));
     const g = gitDirOf(dir);
@@ -178,7 +194,7 @@ export function walk(folders: string[]): Scan {
   // the folder itself may be a clone or a set; else its children are the usual case
   for (const f of folders) visit(f, 0);
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
-  return { at: Date.now(), folders, repos: [...repos.values()].sort(byName), sets: [...sets.values()].sort((a, b) => a.folder.localeCompare(b.folder) || a.branch.localeCompare(b.branch)) };
+  return { at: Date.now(), folders, repos: [...repos.values()].sort(byName), sets: [...sets.values()].sort((a, b) => a.folder.localeCompare(b.folder) || a.branch.localeCompare(b.branch)), ...(truncated ? { truncated } : {}), ...(skippedRemote.length ? { skippedRemote } : {}) };
 }
 
 // ---- the cache ---------------------------------------------------------------------------------------------
@@ -208,7 +224,7 @@ export function scanMachine(env: NodeJS.ProcessEnv, folders: string[], o: { refr
   const cached = o.refresh ? undefined : readCache(env);
   const same = !!cached && cached.folders.length === folders.length && cached.folders.every((f, i) => pathKey(f) === pathKey(folders[i]));
   if (cached && same && cached.at > 0 && now - cached.at < (o.ttlMs ?? SCAN_TTL_MS)) return cached;
-  const fresh = { ...walk(folders), at: now };
+  const fresh = { ...walk(folders, { allowRemote: readLookIn(env) !== undefined, env }), at: now };
   try {
     const dir = configHome(env);
     mkdirSync(dir, { recursive: true });
