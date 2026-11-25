@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -138,7 +138,9 @@ describe("one repository is one line", () => {
 	url = ${remote}
 `);
     }
-    // the second clone is the one in use: its index was written later
+    // the second clone is the one in use: its files were written later (explicit times: the file system's clock may tick coarsely)
+    const hourAgo = new Date(Date.now() - 3_600_000);
+    for (const f of ["HEAD", "config"]) utimesSync(join(root, "code", "repo-z", ".git", f), hourAgo, hourAgo);
     writeFileSync(join(root, "code", "old", "repo-z", ".git", "index"), "x");
     const st = await engineFor(undefined).state();
     const z = st.repositories.filter((r) => r.name === "repo-z");
