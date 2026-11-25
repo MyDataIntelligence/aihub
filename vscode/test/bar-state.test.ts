@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -169,6 +169,16 @@ describe("what a window remembers", () => {
     expect(readRecentUse(env)).toMatchObject([{ kind: "set", id: s.workspace, label: "#7 Export", detail: "repo-a", story: 7 }]);
     engineFor(join(root, "code", "repo-b")).noteOpen();
     expect(readRecentUse(env).map((r) => [r.kind, r.label, r.detail])).toEqual([["repo", "repo-b", "develop"], ["set", "#7 Export", "repo-a"]]);
+  });
+
+  it("a set window writes the story title into its set file, once, so a label needs no guessing", () => {
+    const s = set(7, "feature/7-x", ["repo-a"]);
+    rememberStories(env, [{ id: 7, title: "Export" }]);
+    engineFor(join(s.where, "repo-a")).noteOpen();
+    const read = () => JSON.parse(readFileSync(join(s.where, ".aihub-set.json"), "utf8"));
+    expect(read()).toMatchObject({ story: 7, storyTitle: "Export", branch: "feature/7-x" });
+    engineFor(join(s.where, "repo-a")).noteOpen();
+    expect(read().storyTitle).toBe("Export");
   });
 
   it("an empty window or a folder without git remembers nothing", () => {

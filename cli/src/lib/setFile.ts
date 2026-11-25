@@ -23,6 +23,8 @@ export interface SetRepo {
 
 export interface SetMeta {
   story: number;
+  /** the story's title when it was known, so a label needs no read of Azure DevOps (optional; written by the extension) */
+  storyTitle?: string;
   /** repo group name when `aihub worktree open` made the set (story is 0 then) */
   group?: string;
   /** the .code-workspace file of the set; removed with the set */
@@ -108,4 +110,19 @@ export function writeSetMeta(folder: string, meta: SetMeta): void {
   const same = (a: SetMeta) => a.story === meta.story && a.branch === meta.branch && (a.group ?? "") === (meta.group ?? "");
   const others = old.filter((s) => !same(s)).map(({ others: _o, ...s }) => s);
   writeFileSync(p, JSON.stringify({ ...meta, ...(others.length ? { others } : {}) }, null, 2), "utf8");
+}
+
+/** Writes the story title into `.aihub-set.json` for the set of `story` (only when it is new or changed; no file, no write). */
+export function stampStoryTitle(folder: string, story: number, title: string): void {
+  const p = join(folder, AIHUB_SET);
+  if (!story || !title || !existsSync(p)) return;
+  try {
+    const top = JSON.parse(readFileSync(p, "utf8")) as SetMeta;
+    const sets = [top, ...(top.others ?? [])];
+    let changed = false;
+    for (const m of sets) if (m.story === story && m.storyTitle !== title) (m.storyTitle = title), (changed = true);
+    if (changed) writeFileSync(p, JSON.stringify(top, null, 2), "utf8");
+  } catch {
+    /* a broken set file is reported elsewhere */
+  }
 }

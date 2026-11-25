@@ -5,7 +5,7 @@ import { headBranchOf, scanMachine, type Scan, type ScanRepo } from "../../../cl
 import { machineFolders, repoRootOf } from "../../../cli/src/lib/machineFolders";
 import { pathKey, readRecentUse, rememberUse } from "../../../cli/src/lib/recentUse";
 import { findSet } from "../../../cli/src/lib/setInfo";
-import { readSetFile } from "../../../cli/src/lib/setFile";
+import { readSetFile, stampStoryTitle } from "../../../cli/src/lib/setFile";
 import { isClosedState, readSeenStories } from "../../../cli/src/lib/storyCache";
 import { readStoryWorktrees, storyWorktreesFileFor } from "../../../cli/src/lib/storyWorktrees";
 import { readPreferredClones, uniqueRepos } from "../worktrees/clones";
@@ -158,6 +158,7 @@ export class BarEngine {
     if (facts.set) {
       const t = facts.set.story && !stories[facts.set.story]?.title ? titleFromFiles(facts.set.story, facts.set.repos.map((r) => r.path)) : undefined;
       if (t) stories[facts.set.story] = { id: facts.set.story, title: t, at: 0 };
+      if (facts.set.story && stories[facts.set.story]?.title) stampStoryTitle(facts.set.folder, facts.set.story, stories[facts.set.story].title);
       const id = workspaceOf(facts.set.folder, facts.set.branch) ?? facts.set.folder;
       rememberUse(this.deps.env, { kind: "set", id, label: setLabel(facts.set, stories), detail: facts.set.repos.map((r) => r.name).join(", "), ...(facts.set.story ? { story: facts.set.story } : {}) }, this.now());
     } else if (facts.repo) {
