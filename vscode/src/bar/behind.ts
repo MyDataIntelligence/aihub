@@ -1,0 +1,210 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { gitDirFor } from "../../../cli/src/lib/machineScan";
+import type { GitRaw, GitRun } from "./ownWindow";
+
+/**
+ * A repository that is behind its target branch: when to look (cheap, never without focus), what an update would do
+ * (conflicts decided beforehand with `git merge-tree`, the working folder untouched), what to ask or do, and the update
+ * itself through `aihub branch update`. No vscode here: the notifications and settings come in as functions.
+ */
+export type BehindMode = "ask" | "auto" | "off";
+
+export const FETCH_FRESH_MS = 30 * 60_000;
+export const FETCH_FAILED_MS = 10 * 60_000;
+
+/** Fetches of the target branch: after each other, a failed one remembered 10 minutes, a fresh one (focus back) only after 30 minutes. */
+export class FetchGate {
+  private last = new Map<string, { ok: boolean; at: number }>();
+  constructor(
+    private git: GitRun,
+    private now: () => number = Date.now,
+  ) {}
+
+  /** `reason`: "focus" is the cheap background trigger; the others (open, own, menu) fetch unless the same call was made very recently. */
+  async fetch(path: string, target: string, reason: "open" | "own" | "menu" | "focus"): Promise<"fetched" | "skipped" | "failed"> {
+    const k = path.toLowerCase();
+    const had = this.last.get(k);
+    const t = this.now();
+    if (had && !had.ok && t - had.at < FETCH_FAILED_MS) return "skipped";
+    if (had && had.ok && t - had.at < (reason === "focus" ? FETCH_FRESH_MS : reason === "menu" ? 5 * 60_000 : 60_000)) return "skipped";
+    try {
+      await this.git(path, ["fetch", "--quiet", "origin", target]);
+      this.last.set(k, { ok: true, at: t });
+      return "fetched";
+    } catch {
+      this.last.set(k, { ok: false, at: t });
+      return "failed";
+    }
+  }
+
+  /** Was this repository fetched (successfully) in this window? Before that the count behind the target is not known and not asked. */
+  has(path: string): boolean {
+    return !!this.last.get(path.toLowerCase())?.ok;
+  }
+
+  /** When did the last successful fetch of any repository happen (for the focus trigger)? */
+  lastOk(): number {
+    return Math.max(0, ...[...this.last.values()].filter((v) => v.ok).map((v) => v.at));
+  }
+}
+
+export interface BehindFacts {
+  name: string;
+  path: string;
+  branch: string;
+  target: string;
+  /** commits the target has that the branch lacks */
+  behind: number;
+  /** the commit origin/<target> is at: the same stand is told once */
+  targetSha: string;
+  /** files that would conflict; "unknown" when this git cannot say (older than 2.38): then it is always asked */
+  conflicts: string[] | "unknown";
+  /** files the update changes that also have uncommitted changes */
+  overlap: string[];
+  /** why nothing is done to this repository (merge or rebase running, detached HEAD, on the target itself) */
+  blocked?: string;
+  /** where HEAD was before, for Undo */
+  head: string;
+}
+
+const gitDir = (path: string) => gitDirFor(path);
+
+/** A merge, rebase, cherry-pick or revert in progress: never update in the middle of one. */
+export function operationInProgress(path: string): string | undefined {
+  const d = gitDir(path);
+  if (!d) return undefined;
+  for (const [file, what] of [["MERGE_HEAD", "a merge"], ["rebase-merge", "a rebase"], ["rebase-apply", "a rebase"], ["CHERRY_PICK_HEAD", "a cherry-pick"], ["REVERT_HEAD", "a revert"]] as const) if (existsSync(join(d, file))) return what;
+  return undefined;
+}
+
+/** What an update of one repository would do. Reads only (merge-tree writes objects, never the working folder). Undefined: not behind, or nothing to say. */
+export async function inspect(git: GitRun, raw: GitRaw, r: { name: string; path: string; branch?: string; changes?: number }, target: string, count?: (path: string, name: string) => Promise<number | undefined>): Promise<BehindFacts | undefined> {
+  if (!r.branch || r.branch === target) return undefined;
+  // the count is one git call (shared with the state); the commits are read from the files
+  const behind = (count ? await count(r.path, r.name) : Number((await git(r.path, ["rev-list", "--count", `HEAD..origin/${target}`]).catch(() => "0")).trim())) || 0;
+  if (!behind) return undefined;
+  const targetSha = refSha(r.path, `refs/remotes/origin/${target}`) ?? (await git(r.path, ["rev-parse", `origin/${target}`]).catch(() => "")).trim();
+  const head = headSha(r.path) ?? (await git(r.path, ["rev-parse", "HEAD"]).catch(() => "")).trim();
+  const base = { name: r.name, path: r.path, branch: r.branch, target, behind, targetSha, head, conflicts: [] as string[] | "unknown", overlap: [] as string[] };
+  const busy = operationInProgress(r.path);
+  if (busy) return { ...base, blocked: `${busy} is in progress` };
+  // conflicts beforehand, without touching the working folder
+  const m = await raw(r.path, ["merge-tree", "--write-tree", "--name-only", "HEAD", `origin/${target}`]);
+  if (m.code === 0) base.conflicts = [];
+  else if (m.code === 1) {
+    // the tree id, then the names of the conflicted files, then an empty line, then git's messages
+    const lines = m.out.split(/\r?\n/).slice(1);
+    const end = lines.indexOf("");
+    base.conflicts = [...new Set((end === -1 ? lines : lines.slice(0, end)).map((l) => l.trim()).filter(Boolean))];
+    if (!base.conflicts.length) base.conflicts = "unknown";
+  } else base.conflicts = "unknown";
+  // uncommitted work that the update would touch
+  // the changed-file count (from the git extension) says whether there is anything to compare: no uncommitted work, no status call
+  const dirty = r.changes === 0 ? [] : (await git(r.path, ["status", "--porcelain"]).catch(() => "")).split(/\r?\n/).filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, ""));
+  if (dirty.length) {
+    const changed = new Set((await git(r.path, ["diff", "--name-only", `HEAD...origin/${target}`]).catch(() => "")).split(/\r?\n/).filter(Boolean));
+    base.overlap = dirty.filter((f) => changed.has(f));
+  }
+  return base;
+}
+
+export type Decision = "none" | "auto" | "ask" | "ask-conflict";
+
+/** off: nothing. Conflicts (or no way to check): the question, never by itself. auto: no conflicts and no overlap. Otherwise ask. */
+export function decide(mode: BehindMode, f: BehindFacts): Decision {
+  if (mode === "off" || f.blocked || f.behind === 0) return "none";
+  if (f.conflicts === "unknown" || f.conflicts.length) return "ask-conflict";
+  if (mode === "auto" && f.overlap.length === 0) return "auto";
+  return "ask";
+}
+
+const commits = (n: number) => `${n} commit${n === 1 ? "" : "s"}`;
+const files = (n: number) => `${n} file${n === 1 ? "" : "s"}`;
+
+/** "repo-a is 14 commits behind staging · no conflicts" / "· 3 files will conflict" / "· your uncommitted changes touch 2 of them". */
+export function behindMessage(f: BehindFacts): string {
+  const tail = f.conflicts === "unknown" ? "cannot tell whether it conflicts" : f.conflicts.length ? `${files(f.conflicts.length)} will conflict` : f.overlap.length ? `no conflicts, but your uncommitted changes touch ${f.overlap.length} of the changed files` : "no conflicts";
+  return `${f.name} is ${commits(f.behind)} behind ${f.target} · ${tail}`;
+}
+
+export const setMessage = (facts: BehindFacts[]) => `${facts.length} repositories are behind ${[...new Set(facts.map((f) => f.target))].join(", ")}`;
+
+/** Remembers which stand was told (repository, branch, commit of the target): the same stand is never told twice. */
+export class Told {
+  private keys = new Set<string>();
+  constructor(
+    private load: () => string[] = () => [],
+    private save: (keys: string[]) => void = () => undefined,
+  ) {
+    this.keys = new Set(load());
+  }
+  key = (f: BehindFacts) => `${f.path.toLowerCase()}|${f.branch}|${f.targetSha}`;
+  has(f: BehindFacts): boolean {
+    return this.keys.has(this.key(f));
+  }
+  add(f: BehindFacts): void {
+    this.keys.add(this.key(f));
+    this.save([...this.keys].slice(-200));
+  }
+}
+
+export interface UpdateResult {
+  name: string;
+  ok: boolean;
+  line: string;
+  /** commit before the update: Undo puts the branch back there (only while nothing is pushed) */
+  before?: string;
+}
+
+/** The team's way (merge or rebase after team.yaml): `aihub branch update`, in that repository. */
+export async function updateRepo(cli: (args: string[], cwd: string) => Promise<string>, git: GitRun, f: BehindFacts): Promise<UpdateResult> {
+  try {
+    await cli(["branch", "update", "--target", f.target], f.path);
+    const now = (await git(f.path, ["rev-parse", "HEAD"]).catch(() => "")).trim();
+    return { name: f.name, ok: true, before: f.head, line: `${f.name} updated from ${f.target} (${commits(f.behind)})${now === f.head ? " (nothing changed)" : ""}` };
+  } catch (e) {
+    return { name: f.name, ok: false, line: `${f.name}: not updated, ${(e as Error).message.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0] ?? "failed"}` };
+  }
+}
+
+/** Undo of an update: only while the new commits are not pushed; `git reset --keep` keeps what is uncommitted and refuses when that would be lost. */
+export async function undoUpdate(git: GitRun, r: { name: string; path: string; branch: string; before: string }): Promise<{ problem?: string }> {
+  const pushed = await git(r.path, ["merge-base", "--is-ancestor", "HEAD", `origin/${r.branch}`]).then(() => true, () => false);
+  if (pushed) return { problem: `${r.name} is pushed since; the update stays` };
+  try {
+    await git(r.path, ["reset", "--keep", r.before]);
+    return {};
+  } catch (e) {
+    return { problem: `${r.name} cannot go back without losing uncommitted work: ${(e as Error).message}` };
+  }
+}
+
+/** The commit a ref points at, read from the files of the repository (loose ref, else packed-refs): no process. */
+export function refSha(path: string, ref: string): string | undefined {
+  const dir = gitDirFor(path);
+  if (!dir) return undefined;
+  const common = /[\\/]worktrees[\\/][^\\/]+$/.test(dir) ? join(dir, "..", "..") : dir;
+  try {
+    return readFileSync(join(common, ...ref.split("/")), "utf8").trim();
+  } catch {
+    try {
+      return readFileSync(join(common, "packed-refs"), "utf8").split(/\r?\n/).find((l) => l.endsWith(` ${ref}`))?.split(" ")[0];
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+/** The commit HEAD is at, from the files: follows `ref: refs/heads/x`; a detached HEAD holds the commit itself. */
+export function headSha(path: string): string | undefined {
+  const dir = gitDirFor(path);
+  if (!dir) return undefined;
+  try {
+    const h = readFileSync(join(dir, "HEAD"), "utf8").trim();
+    const m = /^ref:\s*(.+)$/.exec(h);
+    return m ? refSha(path, m[1]) : h;
+  } catch {
+    return undefined;
+  }
+}

@@ -232,3 +232,24 @@ describe("aihub watch events", () => {
     expect(listEvents({ AIHUB_HOME: tmp("empty-") })).toEqual([]);
   });
 });
+
+describe("aihub pr list --builds", () => {
+  const evals = (byPr: Record<string, string>) => [
+    { match: /\/git\/repositories\/[^/?]+\?/, respond: () => ({ body: { id: "repo-a", project: { id: "proj-1" } } }) },
+    {
+      match: /\/policy\/evaluations\?/,
+      respond: (c: { url: string }) => ({ body: { value: [{ evaluationId: "e", status: byPr[/CodeReviewId%2Fproj-1%2F(\d+)/.exec(c.url)?.[1] ?? /CodeReviewId\/proj-1\/(\d+)/.exec(c.url)?.[1] ?? ""] ?? "approved", configuration: { isEnabled: true, isBlocking: true, type: { displayName: "Build" } } }, { evaluationId: "r", status: "rejected", configuration: { isEnabled: true, isBlocking: true, type: { displayName: "Minimum number of reviewers" } } }] } }),
+    },
+  ];
+
+  it("adds build: failed, running or succeeded to each active pull request, one policy read per active pull request; without the flag no policy read", async () => {
+    const w = world(evals({ "7": "rejected", "9": "running" }) as Route[]);
+    const j = JSON.parse((await run(repoWithTeam(), w.routes, ["pr", "list", "--builds", "--json"])).out);
+    expect(j.map((p: { id: number; build?: string }) => [p.id, p.build])).toEqual([[7, "failed"], [9, "running"]]);
+    const ok = world(evals({ "7": "approved", "9": "approved" }) as Route[]);
+    expect(JSON.parse((await run(repoWithTeam(), ok.routes, ["pr", "list", "--builds", "--json"])).out).map((p: { build?: string }) => p.build)).toEqual(["succeeded", "succeeded"]);
+    // the plain call reads no policies: no build key and no evaluations route needed
+    const plain = JSON.parse((await run(repoWithTeam(), world().routes, ["pr", "list", "--json"])).out);
+    expect(plain.every((p: { build?: string }) => p.build === undefined)).toBe(true);
+  });
+});
