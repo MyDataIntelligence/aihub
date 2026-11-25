@@ -3,7 +3,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import type { Ctx } from "./context.js";
 import { findPullRequests } from "./worktreeCleanupAdo.js";
 import { originDefaultBranch, repoRoot } from "./git.js";
-import { listWorktrees, samePath, tryGit } from "./gitx.js";
+import { listWorktrees, pruneIfSafe, samePath, tryGit } from "./gitx.js";
 import { listGroups, resolveRepos } from "./repoGroups.js";
 import { clientForDir } from "./repos.js";
 import { dirSize, findDirLinks, removeWorktreeSafely } from "./safeWorktree.js";
@@ -183,7 +183,7 @@ export function removeCleanup(rows: CleanupRow[], paths: string[], o: { deleteBr
     out.push({ path: row.path, branch: row.branch, ...r, note: busy ? `${r.note} (a program still has files open here: close VS Code windows and terminals in this folder)` : r.note });
     sources.add(row.source);
   }
-  for (const s of sources) tryGit(s, ["worktree", "prune"]);
+  for (const s of sources) pruneIfSafe(s);
   return out;
 }
 

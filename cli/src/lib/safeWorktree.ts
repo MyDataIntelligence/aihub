@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { listWorktrees, refSha, samePath, tryGit } from "./gitx.js";
+import { listWorktrees, pruneIfSafe, refSha, samePath, tryGit } from "./gitx.js";
 
 /**
  * Removing and moving a worktree without losing work. Shared by `aihub story branches remove|place` and the worktree
@@ -147,7 +147,7 @@ export function removeWorktreeSafely(source: string, path: string | undefined, b
     }
     removed = true;
     freedBytes = size;
-  } else tryGit(source, ["worktree", "prune"]);
+  } else pruneIfSafe(source);
   if (!o.deleteBranch || !refSha(source, `refs/heads/${branch}`)) return { removed, branchDeleted: false, note: removed ? "worktree removed, branch kept" : "no worktree", freedBytes };
   if (listWorktrees(source).some((w) => w.branch === branch)) return { removed, branchDeleted: false, note: `${removed ? "worktree removed; " : ""}branch kept: it is checked out elsewhere`, freedBytes };
   const d = tryGit(source, ["branch", "-d", branch]);
