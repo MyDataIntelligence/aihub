@@ -102,6 +102,9 @@ function gitDirOf(dir: string): { gitDir: string; linked: boolean } | undefined 
   }
 }
 
+/** The folder with HEAD for a clone or a linked worktree (a worktree's is inside the main clone's .git); undefined when `dir` has no git. */
+export const gitDirFor = (dir: string): string | undefined => gitDirOf(dir)?.gitDir;
+
 /** The checked-out branch of a clone or worktree, from HEAD; "" when detached or unreadable. */
 export function headBranchOf(dir: string): string {
   const g = gitDirOf(dir);

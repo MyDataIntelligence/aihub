@@ -8,7 +8,8 @@ import { readRecentUse } from "../../../cli/src/lib/recentUse";
 import { divergenceKey, divergenceMessage, divergences, markDivergenceSeen, seenDivergence, type Divergence } from "../../../cli/src/lib/setDivergence";
 import { readSetFile } from "../../../cli/src/lib/setFile";
 import { readSeenStories } from "../../../cli/src/lib/storyCache";
-import { makeRunner, readJson } from "../cli";
+import { readJson } from "../cli";
+import { cli, runner } from "./runner";
 import type { OpenResultJson } from "../repoSetModel";
 import { answerExisting, showOpened } from "../repoSetUi";
 import type { StoryJson } from "../storyModel";
@@ -20,9 +21,6 @@ import { windowChoice } from "./window";
  * Open Story, and the branch commands of a story set. The flows are quick picks (no webviews); every action is an
  * `aihub` command, run when the user asks. Azure DevOps is read only here, on request: one `aihub story branches`.
  */
-const cfg = () => vscode.workspace.getConfiguration("aihub");
-const runner = () => makeRunner({ command: String(cfg().get("cliPath", "aihub")) || "aihub", timeoutMs: 180_000, env: { GCM_INTERACTIVE: "never", GIT_TERMINAL_PROMPT: "0" } });
-const cli = (args: string[], cwd: string) => runner()(args, cwd);
 
 /** What links were read last, per story: `<story>|<repo>|<branch>` -> linked in Azure DevOps. Fed by the reads here; the state shows it. */
 const linkedMemo = new Map<string, boolean>();

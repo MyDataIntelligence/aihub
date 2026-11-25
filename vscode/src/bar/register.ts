@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import * as vscode from "vscode";
-import { forgetScan, writeLookIn } from "../../../cli/src/lib/machineScan";
+import { forgetScan, gitDirFor, writeLookIn } from "../../../cli/src/lib/machineScan";
 import { forgetUse, pathKey, readRecentUse, ago } from "../../../cli/src/lib/recentUse";
 import { BarEngine, openFacts } from "./engine";
 import { linkedOf, registerStoryCommands } from "./storyUi";
+import { registerSetOps, SetFileWatcher } from "./setOps";
 import { openPath, windowIsEmpty } from "./window";
 import { BAR_COMMANDS, type BarApi, type BarState } from "./types";
 
@@ -50,6 +51,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     clearTimeout(debounce);
     debounce = setTimeout(() => emitter.fire(), 300);
   };
+  const setFile = new SetFileWatcher({ log: deps.log, changed });
   const api: BarApi = {
     getState: () => {
       watchHeads();
@@ -65,18 +67,15 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   function watchHeads() {
     const facts = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
     const paths = facts.set ? facts.set.repos.map((r) => r.path) : facts.repo ? [facts.repo.path] : [];
+    setFile.aim();
     const key = paths.join("|");
     if (key === watched) return;
     watched = key;
     heads.forEach((h) => h.dispose());
     heads = paths.flatMap((p) => {
-      const dotGit = join(p, ".git");
-      let gitDir = dotGit;
-      try {
-        if (!statSync(dotGit).isDirectory()) return [];
-      } catch {
-        return [];
-      }
+      // a worktree's HEAD is in the main clone's .git/worktrees/<name>; a clone's in its own .git
+      const gitDir = gitDirFor(p);
+      if (!gitDir) return [];
       const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(gitDir), "HEAD"));
       w.onDidChange(changed);
       w.onDidCreate(changed);
@@ -85,6 +84,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   }
   ctx.subscriptions.push(
     emitter,
+    setFile,
     { dispose: () => (clearTimeout(debounce), heads.forEach((h) => h.dispose())) },
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       engine.noteOpen();
@@ -125,7 +125,6 @@ const idOf = (a: unknown): string | undefined => (typeof a === "string" ? a : a 
 function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps: BarDeps, changed: () => void): void {
   const fail = (e: unknown) => void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
   const reg = (id: string, f: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, (...a) => Promise.resolve(f(...a)).catch(fail)));
-  const notBuilt = (name: string) => () => void vscode.window.showInformationMessage(`AI Context Hub: ${name} is not built yet.`);
 
   reg(BAR_COMMANDS.refresh, async () => {
     engine.scan({ refresh: true });
@@ -197,8 +196,7 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   });
 
   registerStoryCommands({ engine, log: deps.log, changed, reg });
-  // built in the next step of this work; the command exists so the buttons can already call it
-  reg(BAR_COMMANDS.removeSet, notBuilt("removeSet"));
+  registerSetOps({ engine, log: deps.log, changed, reg });
 }
 
 async function pickRepository(engine: BarEngine): Promise<string | undefined> {

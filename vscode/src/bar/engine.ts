@@ -66,6 +66,11 @@ export class BarEngine {
     return scanMachine(this.deps.env, this.folders(), { refresh: o.refresh, now: this.now() });
   }
 
+  /** Changed files of a worktree (remembered a few seconds); undefined when git cannot say. */
+  changedFiles(path: string): Promise<number | undefined> {
+    return this.deps.dirtyOf ? this.deps.dirtyOf(path) : Promise.resolve(undefined);
+  }
+
   async state(o: { refresh?: boolean } = {}): Promise<BarState> {
     const facts = openFacts(this.deps.dir());
     const folders = this.folders(facts);

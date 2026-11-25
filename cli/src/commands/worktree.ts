@@ -13,7 +13,7 @@ import { againOf } from "../lib/repoSet.js";
 import { formatCleanup, formatRemoved, listCleanup, removeCleanup } from "../lib/worktreeCleanup.js";
 
 const USAGE =
-  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--branch-for b=<branch>] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--branch-for b=<branch>,c=<branch>] [--new-set] [--existing move|reuse|recreate [--discard-local-work]] | worktree list --all [--refresh] [--json] | worktree look-in [add <folder>|remove <folder>|reset] | worktree when-exists [ask|move|reuse|recreate] | worktree add --repos d [--branch <b>] [--from <target>] | worktree drop --repos d | worktree repair | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
+  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--branch-for b=<branch>] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--branch-for b=<branch>,c=<branch>] [--new-set] [--existing move|reuse|recreate [--discard-local-work]] | worktree list --all [--refresh] [--json] | worktree look-in [add <folder>|remove <folder>|reset] | worktree when-exists [ask|move|reuse|recreate] | worktree add --repos d [--branch <b>] [--from <target>] | worktree drop --repos d | worktree repair | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | --folder <set folder> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -30,6 +30,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     repos: { type: "string" },
     group: { type: "string" },
     root: { type: "string" },
+    folder: { type: "string" },
     branch: { type: "string" },
     "branch-for": { type: "string" },
     base: { type: "string" },
@@ -58,7 +59,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     // --all: every set and repository on this PC, whichever folder this runs in
     ctx.out(v.all ? listEverything(ctx, { json, refresh: !!v.refresh }) : listSets(ctx, { root, json }));
   } else if (sub === "remove") {
-    ctx.out(removeSet(ctx, { story: optInt(v.story, "--story"), branch: v.branch as string | undefined, root, json }));
+    ctx.out(removeSet(ctx, { story: optInt(v.story, "--story"), branch: v.branch as string | undefined, root, folder: v.folder as string | undefined, json }));
   } else if (sub === "open") {
     // no --mode: worktree for a new set; inside a set, naming some of its repositories switches them in place
     const mode = v.mode as string | undefined;
