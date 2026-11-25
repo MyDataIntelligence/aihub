@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import * as vscode from "vscode";
 import { forgetScan, gitDirFor, writeLookIn } from "../../../cli/src/lib/machineScan";
 import { forgetUse, pathKey, readRecentUse, ago } from "../../../cli/src/lib/recentUse";
+import { syncRepoName } from "../../../cli/src/lib/workspaceNames";
 import { CliProblem } from "./cliCheck";
 import { BarEngine, openFacts } from "./engine";
 import { linkedOf, registerStoryCommands } from "./storyUi";
@@ -67,6 +68,24 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   // ---- what changes the state: the folder of this window, and the branch of its repositories --------------------
   let heads: vscode.Disposable[] = [];
   let watched = "";
+  // the folder name in the Explorer and repos[].branch follow the real HEAD, whoever switched: files only, debounced, written only when they differ
+  const nameTimers = new Map<string, NodeJS.Timeout>();
+  function syncName(repoPath: string, setFolder: string) {
+    clearTimeout(nameTimers.get(repoPath));
+    nameTimers.set(
+      repoPath,
+      setTimeout(() => {
+        nameTimers.delete(repoPath);
+        try {
+          const ws = vscode.workspace.workspaceFile;
+          const r = syncRepoName({ setFolder, workspaceFile: ws?.scheme === "file" ? ws.fsPath : undefined, repoPath });
+          if (r.workspace || r.setFile) deps.log(`names follow HEAD: ${repoPath} (workspace file ${r.workspace ? "written" : "same"}, set file ${r.setFile ? "written" : "same"})`);
+        } catch (e) {
+          deps.log(`names follow HEAD: ${(e as Error).message}`);
+        }
+      }, 600),
+    );
+  }
   /** One watcher per repository of the open set (or the one repository): its HEAD only, set up when a button first asks. */
   function watchHeads() {
     const facts = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
@@ -81,15 +100,19 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       const gitDir = gitDirFor(p);
       if (!gitDir) return [];
       const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(gitDir), "HEAD"));
-      w.onDidChange(changed);
-      w.onDidCreate(changed);
+      const onHead = () => {
+        changed();
+        if (facts.set) syncName(p, facts.set.folder);
+      };
+      w.onDidChange(onHead);
+      w.onDidCreate(onHead);
       return [w];
     });
   }
   ctx.subscriptions.push(
     emitter,
     setFile,
-    { dispose: () => (clearTimeout(debounce), heads.forEach((h) => h.dispose())) },
+    { dispose: () => (clearTimeout(debounce), nameTimers.forEach((t) => clearTimeout(t)), heads.forEach((h) => h.dispose())) },
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       engine.noteOpen();
       changed();

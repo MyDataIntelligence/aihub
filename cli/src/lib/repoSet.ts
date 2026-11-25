@@ -180,7 +180,8 @@ export function workspaceJson(folder: string, repos: RepoResult[], set?: Omit<Wi
   const ok = repos.filter((r) => r.ok && r.path);
   const folders = ok.map((r) => {
     const rel = relative(folder, r.path!);
-    return { name: r.repo, path: norm(rel && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel) ? rel : r.path!) };
+    // one name form for every set: "<repo> (<branch>)", so the Explorer shows the branch each repository is on
+    return { name: `${r.repo} (${r.branch})`, path: norm(rel && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel) ? rel : r.path!) };
   });
   // a new terminal starts in the set's root, not in whichever repository VS Code would ask for
   const settings: Record<string, unknown> = { "terminal.integrated.cwd": norm(commonRoot(folder, ok.map((r) => r.path!))) };
@@ -586,9 +587,9 @@ function updateWorkspace(file: string, folder: string, rows: RepoResult[], kind:
     const set = ws.settings?.["aihub.set"] as WindowSet | undefined;
     for (const r of rows) {
       if (!r.path) continue;
-      // the extension's Worktree Sets name a folder "<repo> (<branch>)"
-      const label = kind === "maker" ? `${r.repo} (${r.branch})` : r.repo;
-      const had = folders.find((f) => samePath(resolve(folder, f.path), r.path!)) ?? folders.find((f) => f.name === r.repo);
+      // the same name form as the extension's Worktree Sets: "<repo> (<branch>)"
+      const label = `${r.repo} (${r.branch})`;
+      const had = folders.find((f) => samePath(resolve(folder, f.path), r.path!)) ?? folders.find((f) => f.name === r.repo || f.name?.startsWith(`${r.repo} (`));
       if (had) had.name = label;
       else {
         const rel = relative(folder, r.path);
