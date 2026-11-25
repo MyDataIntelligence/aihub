@@ -27,7 +27,7 @@ import { branchesOf, copyName, gitRun, openOwn, ownWindowItems, worktreesOf } fr
 const linkedMemo = new Map<string, boolean>();
 export const linkedOf = (story: number, repo: string, branch: string): boolean | undefined => linkedMemo.get(`${story}|${repo}|${branch}`);
 function remember(story: number, setRepos: { name: string; branch: string }[], rows: StoryJson["branches"]): void {
-  for (const r of setRepos) linkedMemo.set(`${story}|${r.name}|${r.branch}`, rows.some((x) => x.repo === r.name && x.branch === r.branch && x.linked !== "local"));
+  for (const r of setRepos) linkedMemo.set(`${story}|${r.name}|${r.branch}`, rows.some((x) => x.repo === r.name && x.branch === r.branch && (x.linked === "ado" || x.linked === "both")));
 }
 
 export interface StoryHooks {

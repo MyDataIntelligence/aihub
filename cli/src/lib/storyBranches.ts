@@ -17,6 +17,7 @@ import {
   markStatus,
   misplacedWorktrees,
   readStoryWorktrees,
+  branchNamedForStory,
   storyIdFromBranch,
   storyWorktreesFileFor,
   unlinkBranch,
@@ -54,8 +55,8 @@ export function branchLinks(wi: Pick<WorkItem, "relations">): BranchLink[] {
 export interface BranchRow {
   repo: string;
   branch: string;
-  /** where the link is: in Azure DevOps (Development), only locally, or both */
-  linked: "ado" | "local" | "both";
+  /** where the link is: in Azure DevOps (Development), only locally, or both; "name": no link anywhere, the name starts with the story number */
+  linked: "ado" | "local" | "both" | "name";
   status: BranchStatus;
   label?: string;
   worktree?: string;
@@ -142,6 +143,8 @@ export async function listStoryBranches(ctx: Ctx, o: { id?: number; mine?: boole
     return wtCache.get(dir)!;
   };
   const out: StoryRow[] = [];
+  const refCache = new Map<string, RefBranch[]>();
+  const refsOf = (dir: string): RefBranch[] => refCache.get(dir) ?? (refCache.set(dir, readRefs(dir)), refCache.get(dir)!);
   for (const id of ids) {
     let wi: WorkItem;
     try {
@@ -171,8 +174,16 @@ export async function listStoryBranches(ctx: Ctx, o: { id?: number; mine?: boole
       const pr = (await prs(row.repo)).find((p) => p.sourceRefName === `refs/heads/${row.branch}`);
       if (pr) row.pr = { id: pr.pullRequestId, draft: !!pr.isDraft, status: pr.status ?? "active" };
     }
+    // branches that only have the story number in their name: from the refs of each clone (one for-each-ref per clone, no fetch, no network)
+    for (const r of repos) {
+      if (!r.dir) continue;
+      for (const n of refsOf(r.dir)) {
+        if (!branchNamedForStory(n.branch, id) || rows.has(key(r.name, n.branch))) continue;
+        rows.set(key(r.name, n.branch), { repo: r.name, branch: n.branch, linked: "name", status: "parked", local: n.local, pushed: n.pushed, ahead: n.ahead, dirty: false, ...(worktreesOf(r.dir).find((w) => w.branch === n.branch)?.path ? { worktree: worktreesOf(r.dir).find((w) => w.branch === n.branch)!.path } : {}), ...(n.lastActive ? { lastActive: n.lastActive } : {}) });
+      }
+    }
     // the Worktree Maker has no Azure DevOps access: the title goes into the shared file of each repository with this story
-    for (const r of repos) if (r.dir && [...rows.values()].some((x) => x.repo === r.name)) rememberTitle(r.dir, id, wi.title);
+    for (const r of repos) if (r.dir && [...rows.values()].some((x) => x.repo === r.name && x.linked !== "name")) rememberTitle(r.dir, id, wi.title);
     out.push({ id, title: wi.title, state: wi.state, branches: [...rows.values()].sort((a, b) => a.repo.localeCompare(b.repo) || rank(a.status) - rank(b.status) || a.branch.localeCompare(b.branch)) });
   }
   // the menus name a story and know it is closed from this list, without asking Azure DevOps again
@@ -198,6 +209,34 @@ function rememberTitle(dir: string, id: number, title: string): void {
 
 const rank = (s: BranchStatus) => (s === "current" ? 0 : s === "parked" ? 1 : 2);
 
+/** The branches of a clone from its refs (local and what origin had at the last fetch): one `for-each-ref`, remembered per call. */
+interface RefBranch {
+  branch: string;
+  local: boolean;
+  pushed: boolean;
+  ahead: number;
+  lastActive?: string;
+}
+function readRefs(dir: string): RefBranch[] {
+  const out = tryGit(dir, ["for-each-ref", "--format=%(refname)%09%(committerdate:iso-strict)%09%(upstream:track)", "refs/heads", "refs/remotes/origin"]).out;
+  const by = new Map<string, RefBranch>();
+  for (const line of out.split("\n").filter(Boolean)) {
+    const [ref, date, track] = line.split("\t");
+    const isLocal = ref.startsWith("refs/heads/");
+    const branch = ref.replace(/^refs\/heads\//, "").replace(/^refs\/remotes\/origin\//, "");
+    if (branch === "HEAD") continue;
+    const row = by.get(branch) ?? { branch, local: false, pushed: false, ahead: 0 };
+    if (isLocal) {
+      row.local = true;
+      row.ahead = Number(/ahead (\d+)/.exec(track ?? "")?.[1] ?? 0);
+    } else row.pushed = true;
+    if (date && (!row.lastActive || date > row.lastActive)) row.lastActive = date;
+    by.set(branch, row);
+  }
+  return [...by.values()];
+}
+
+
 export function formatStoryBranches(rows: StoryRow[]): string {
   if (!rows.length) return "no active stories assigned to you";
   const out: string[] = [];
@@ -206,7 +245,7 @@ export function formatStoryBranches(rows: StoryRow[]): string {
     if (!s.branches.length) out.push("  no branches linked yet: aihub story branches link --id " + s.id);
     for (const b of s.branches) {
       const star = b.status === "current" ? "★" : b.status === "old" ? "·" : " ";
-      const facts = [b.local ? (b.pushed ? (b.ahead ? `${b.ahead} to push` : "pushed") : "local only") : b.pushed ? "remote only" : "gone", b.dirty ? "uncommitted work" : "", b.pr ? `PR !${b.pr.id}${b.pr.draft ? " (draft)" : ""}` : "", b.linked === "local" ? "not linked in Azure DevOps" : ""].filter(Boolean);
+      const facts = [b.local ? (b.pushed ? (b.ahead ? `${b.ahead} to push` : "pushed") : "local only") : b.pushed ? "remote only" : "gone", b.dirty ? "uncommitted work" : "", b.pr ? `PR !${b.pr.id}${b.pr.draft ? " (draft)" : ""}` : "", b.linked === "local" ? "not linked in Azure DevOps" : b.linked === "name" ? "not linked, found by its name" : ""].filter(Boolean);
       out.push(`  ${star} ${b.repo}: ${b.branch}${b.label ? ` "${b.label}"` : ""}  ${facts.join(", ")}${b.worktree ? `  ${b.worktree}` : ""}`);
     }
   }
@@ -300,9 +339,11 @@ export async function openStory(ctx: Ctx, o: { id: number; mode?: OpenMode; wind
   const rows = stories[0]?.branches.filter((b) => b.local || b.pushed) ?? [];
   if (!rows.length) throw new AihubError(`story ${o.id} has no branches yet; link one with: aihub story branches link --id ${o.id}`);
   const pick = new Map<string, BranchRow>();
+  // a branch that only has the story number in its name comes last: another branch of that repository wins
+  const nm = (r: BranchRow) => r.linked === "name";
   for (const b of rows) {
     const had = pick.get(b.repo);
-    const better = !had || rank(b.status) < rank(had.status) || (rank(b.status) === rank(had.status) && (b.lastActive ?? "") > (had.lastActive ?? ""));
+    const better = !had || (nm(b) !== nm(had) ? !nm(b) : rank(b.status) < rank(had.status) || (rank(b.status) === rank(had.status) && (b.lastActive ?? "") > (had.lastActive ?? "")));
     if (better) pick.set(b.repo, b);
   }
   const chosen = [...pick.values()];

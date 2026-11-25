@@ -227,3 +227,45 @@ describe("the story folder layout", () => {
     expect(state(a.dir)["feature/9-export-bouwen"]).toMatchObject({ storyId: 9, status: "current" });
   });
 });
+
+describe("branches that only have the story number in their name", () => {
+  it("the rule: the story number is the first number after an optional prefix, on a word boundary", async () => {
+    const { branchNamedForStory } = await import("../src/lib/storyWorktrees.js");
+    for (const yes of ["feature/4711-x", "bugfix/4711_x", "4711-x", "users/me/feature/4711", "feature/US-4711-x", "feature/4711"]) expect(branchNamedForStory(yes, 4711), yes).toBe(true);
+    for (const no of ["feature/47110-x", "feature/14711-x", "feature/4711a", "feature/x-4711", "main", "feature/4712-x"]) expect(branchNamedForStory(no, 4711), no).toBe(false);
+  });
+
+  it("are listed as linked: name, from the refs (local and remote only), mixed with the linked ones; none for other numbers", async () => {
+    const { a, b } = world();
+    for (const br of ["feature/9-by-name", "bugfix/9_other", "feature/90-not", "feature/19-not", "feature/9a-not", "feature/9-linked"]) sh(a.dir, ["branch", br]);
+    // remote only: pushed, then the local branch is gone
+    sh(b.dir, ["branch", "feature/9-remote-only"]);
+    sh(b.dir, ["push", "-q", "origin", "feature/9-remote-only"]);
+    sh(b.dir, ["branch", "-q", "-D", "feature/9-remote-only"]);
+    const { routes } = ado([ref("repo-a", "feature/9-linked")]);
+    const r = await run(a.dir, routes, ["story", "branches", "--id", "9", "--json"]);
+    expect(r.err).toBe("");
+    const rows = JSON.parse(r.out).stories[0].branches as { repo: string; branch: string; linked: string; local: boolean; pushed: boolean }[];
+    expect(rows.map((x) => [x.repo, x.branch, x.linked]).sort()).toEqual([
+      ["repo-a", "bugfix/9_other", "name"],
+      ["repo-a", "feature/9-by-name", "name"],
+      ["repo-a", "feature/9-linked", "ado"],
+      ["repo-b", "feature/9-remote-only", "name"],
+    ]);
+    expect(rows.find((x) => x.branch === "feature/9-remote-only")).toMatchObject({ local: false, pushed: true });
+    // the text says it too
+    const text = await run(a.dir, routes, ["story", "branches", "--id", "9"]);
+    expect(text.out).toContain("not linked, found by its name");
+  });
+
+  it("story open takes a branch known by its name only when the repository has no other", async () => {
+    const { a, b } = world();
+    sh(a.dir, ["branch", "feature/9-by-name"]);
+    sh(a.dir, ["branch", "feature/9-linked"]);
+    sh(b.dir, ["branch", "feature/9-only-name"]);
+    const { routes } = ado([ref("repo-a", "feature/9-linked")]);
+    const r = await run(a.dir, routes, ["story", "open", "--id", "9", "--window", "none", "--json"]);
+    const j = JSON.parse(r.out);
+    expect(j.repos.map((x: { repo: string; branch: string }) => [x.repo, x.branch]).sort()).toEqual([["repo-a", "feature/9-linked"], ["repo-b", "feature/9-only-name"]]);
+  });
+});

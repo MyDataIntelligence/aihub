@@ -9,7 +9,7 @@ import type { SetModel } from "./repoSetModel";
 export interface BranchRowJson {
   repo: string;
   branch: string;
-  linked: "ado" | "local" | "both";
+  linked: "ado" | "local" | "both" | "name";
   status: BranchStatus;
   label?: string;
   worktree?: string;
@@ -60,7 +60,7 @@ const order = (rows: BranchRowJson[]) => [...rows].sort((a, b) => rank(a.status)
 /** The facts of a branch in a few words: local work first, then where it is, then the PR. */
 export function branchFacts(b: BranchRowJson): string {
   const where = b.local ? (b.pushed ? (b.ahead ? `${b.ahead} to push` : "pushed") : "local only") : b.pushed ? "remote only" : "gone";
-  return [b.dirty ? "uncommitted work" : "", where, b.pr ? `PR !${b.pr.id}${b.pr.draft ? " draft" : ""}` : "", b.linked === "local" ? "not linked in Azure DevOps" : ""].filter(Boolean).join(" · ");
+  return [b.dirty ? "uncommitted work" : "", where, b.pr ? `PR !${b.pr.id}${b.pr.draft ? " draft" : ""}` : "", b.linked === "local" || b.linked === "name" ? "not linked in Azure DevOps" : ""].filter(Boolean).join(" · ");
 }
 
 export interface ItemView {
