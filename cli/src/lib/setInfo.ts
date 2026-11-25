@@ -29,7 +29,7 @@ const under = (cwd: string, p: string) => {
  */
 export function findSet(cwd: string): SetInfo | undefined {
   let dir = resolve(cwd);
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 12; i++) {
     const file = readSetFile(dir);
     if (file) {
       const all = [file.top, ...(file.top.others ?? [])];

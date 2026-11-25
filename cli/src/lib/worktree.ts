@@ -12,7 +12,7 @@ import { loadTeam } from "./team.js";
 import { getWorkItem, storyBranchName } from "./workitems.js";
 import { storyFolderFor, storyIdFromBranch, worktreePathFor } from "./storyWorktrees.js";
 import { findDirLinks, removeDirLink } from "./safeWorktree.js";
-import { MAKER_SET, readSetFile, repoBranch, writeSetFile, type SetMeta } from "./setFile.js";
+import { MAKER_SET, readJsonText, readSetFile, repoBranch, writeSetFile, type SetMeta } from "./setFile.js";
 import { checkExisting, moveExisting, readWhenExists, recreateExisting, type WhenExists } from "./existingWorktree.js";
 
 const META = ".aihub-set.json";
@@ -58,7 +58,7 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
   let folder = setFolder(setsRoot, o.story, o.branch ?? "");
   let metaPath = join(folder, META);
   const meta: SetMeta = existsSync(metaPath)
-    ? (JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta)
+    ? (JSON.parse(readJsonText(metaPath)) as SetMeta)
     : { story: o.story, branch: o.branch ?? "", repos: [] };
 
   let branch = o.branch ?? meta.branch;
@@ -193,7 +193,7 @@ export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?:
   const maker = !existsSync(join(folder, META)) && readSetFile(folder)?.kind === "maker";
   const metaPath = join(folder, maker ? MAKER_SET : META);
   if (!existsSync(metaPath)) throw new AihubError(o.folder ? `no worktree set in ${folder}` : `no worktree set for ${o.story ? `story ${o.story}` : `branch '${o.branch}'`} under ${setsRoot}`);
-  const top = maker ? readSetFile(folder)!.top : (JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta);
+  const top = maker ? readSetFile(folder)!.top : (JSON.parse(readJsonText(metaPath)) as SetMeta);
   const all = [{ ...top, others: undefined }, ...(top.others ?? [])];
   // naming a branch or a story that is not in this folder (anymore) removes nothing: never "the top set instead"
   const named = o.branch ? (s: SetMeta) => s.branch === o.branch : o.story ? (s: SetMeta) => s.story === o.story : undefined;
