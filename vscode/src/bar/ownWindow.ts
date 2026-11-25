@@ -10,9 +10,15 @@ import { worktreePath } from "../worktrees/core";
  */
 export type GitRun = (cwd: string, args: string[]) => Promise<string>;
 
+/** The line of git's stderr that says what went wrong: the first fatal or error line, else the first line (progress lines such as `From <url>` come first). */
+export const gitErrorLine = (stderr: string): string => {
+  const lines = stderr.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  return lines.find((l) => /^(fatal|error|remote: error):/i.test(l)) ?? lines[0] ?? "";
+};
+
 export const gitRun: GitRun = (cwd, args) =>
   new Promise((resolve, reject) =>
-    execFile("git", args, { cwd, timeout: 60_000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, out, stderr) => (err ? reject(new Error(String(stderr).trim().split("\n")[0] || err.message)) : resolve(String(out)))),
+    execFile("git", args, { cwd, timeout: 60_000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, out, stderr) => (err ? reject(new Error(gitErrorLine(String(stderr)) || err.message)) : resolve(String(out)))),
   );
 
 export interface WorktreeAt {

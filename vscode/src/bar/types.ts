@@ -109,4 +109,10 @@ export const BAR_COMMANDS = {
   refresh: "aihub.bar.refresh",
   /** read the pull requests of the set again (the overview menu calls it when it opens) */
   refreshStatus: "aihub.bar.refreshStatus",
+  /** pull (fast-forward) in every repository of the set; one result line per repository */
+  updateAll: "aihub.bar.updateAll",
+  /** push every repository of the set (a branch without a remote branch gets one) */
+  pushAll: "aihub.bar.pushAll",
+  /** `{ message, repos?, push? }`: one message, one `aihub commit` per repository; a failing hook in one repository does not stop the others */
+  commitAll: "aihub.bar.commitAll",
 } as const;
