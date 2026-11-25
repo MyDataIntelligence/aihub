@@ -7,6 +7,10 @@ export interface TeamConfig {
   pullRequest?: {
     emptySection?: string;
     optionalSections?: string[];
+    /** headings of template sections that list what readers must do themselves after the merge; the CLI refuses vague text there (--as-is overrides) */
+    actionSections?: string[];
+    /** who the action sections are for, the platform contract (globs; a change there touches users) and where users keep their files (globs per repository); `aihub pr impact` reads it */
+    userImpact?: { audience?: string; contractPaths?: string[]; userFiles?: { repository?: string; paths?: string[] }[] };
     /** done by `aihub pr create` right after a new PR exists: story state, auto-complete (only when the target branch has a blocking policy) */
     afterCreate?: { storyState?: string; autoComplete?: boolean };
   };

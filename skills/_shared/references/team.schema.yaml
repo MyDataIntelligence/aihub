@@ -21,6 +21,9 @@ pullRequest:                       # pull request settings (required)
   template: .azuredevops/pull_request_template.md   # path in the repo to the PR template (required)
   title: "{storyId}: {storyTitle}" # title pattern; placeholders {storyId} {storyTitle} {branch} (optional)
   emptySection: "-"                # text the CLI writes into a template section left empty (optional)
+  actionSections: ["Required user actions"]   # headings of sections that list what readers must do after the merge; vague text there is refused (optional; common headings count without it)
+  userImpact:                      # optional: audience (who the actions section is for), contractPaths (globs; a change there touches users), userFiles ([{repository, paths}] where users keep their files); read by `aihub pr impact`
+    contractPaths: ["schema/*.yaml"]
 
 workItems:                         # work item settings (required)
   storyType: User Story            # work item type used for stories (required)

@@ -22,11 +22,14 @@ function num(v: unknown, flag: string): number | undefined {
 }
 
 export const PR_USAGE = [
-  "aihub pr create [--summary-text \"<1-2 sentences>\"] [--body-file f.md] [--title t] [--target b] [--draft] [--work-item n] [--dry-run]",
+  "aihub pr create [--summary-text \"<1-2 sentences>\"] [--body-file f.md] [--title t] [--target b] [--draft] [--work-item n] [--dry-run] [--as-is]",
   "    One call: pushes the branch, fills the team template (story link, commits, empty sections) and opens the PR.",
+  "    A vague section for the reader's actions (user actions, migration, ...) is refused: name files, fields old -> new, how to check. --as-is skips that check.",
   "aihub pr update [--pr <url|N>] --section \"<heading>\" (--append-text \"<text>\" | --append-file f | --replace-text \"<text>\" | --replace-file f)",
   "    Changes ONE section and keeps the rest. Short text inline, long prose from a file.",
   "aihub pr update [--pr <url|N>] [--body-file f.md] [--title t] [--draft true|false] [--target b]   (--body-file merges the sections it contains)",
+  "aihub pr impact [--target b] [--json]",
+  "    What changed in the platform contract (team.yaml pullRequest.userImpact) and which user files still use removed keys: the facts for the user-actions section.",
   "aihub pr changes [--pr <url|N>]",
 ].join("\n");
 
@@ -37,6 +40,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     return;
   }
   if (sub === "changes") return runChanges(rest, ctx);
+  if (sub === "impact") {
+    const v = parse(rest, { target: { type: "string" }, json: { type: "boolean" } }).values;
+    ctx.out(await (await import("../lib/prImpact.js")).prImpact(ctx, { target: v.target as string | undefined, json: v.json as boolean | undefined }));
+    return;
+  }
   if (sub === "create") {
     const v = parse(rest, {
       title: { type: "string" },
@@ -47,6 +55,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
       "work-item": { type: "string" },
       "dry-run": { type: "boolean" },
       "no-notes": { type: "boolean" },
+      "as-is": { type: "boolean" },
       json: { type: "boolean" },
     }).values;
     const created = await createPr(ctx, {
@@ -58,6 +67,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
         workItem: num(v["work-item"], "--work-item"),
         dryRun: v["dry-run"] as boolean | undefined,
         noNotes: v["no-notes"] as boolean | undefined,
+        asIs: v["as-is"] as boolean | undefined,
         json: v.json as boolean | undefined,
       });
     ctx.out(created);
@@ -80,6 +90,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
       draft: { type: "string" },
       target: { type: "string" },
       "no-notes": { type: "boolean" },
+      "as-is": { type: "boolean" },
       json: { type: "boolean" },
     });
     const v = parsed.values;
@@ -101,6 +112,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
         draft,
         target: v.target as string | undefined,
         noNotes: v["no-notes"] as boolean | undefined,
+        asIs: v["as-is"] as boolean | undefined,
         json: v.json as boolean | undefined,
       }),
     );
