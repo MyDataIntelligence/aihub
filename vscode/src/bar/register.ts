@@ -24,7 +24,8 @@ export function dirtyCounter(): (path: string) => Promise<number | undefined> {
     const hit = memo.get(path);
     if (hit && Date.now() - hit.at < DIRTY_TTL_MS) return hit.n;
     const n = new Promise<number | undefined>((resolve) => {
-      execFile("git", ["status", "--porcelain"], { cwd: path, timeout: 10_000, windowsHide: true, maxBuffer: 4_000_000 }, (err, out) => resolve(err ? undefined : out.split("\n").filter(Boolean).length));
+      // --no-optional-locks: counting changes must never take the index lock a commit of the user needs at the same moment
+      execFile("git", ["--no-optional-locks", "status", "--porcelain"], { cwd: path, timeout: 10_000, windowsHide: true, maxBuffer: 4_000_000 }, (err, out) => resolve(err ? undefined : out.split("\n").filter(Boolean).length));
     });
     memo.set(path, { at: Date.now(), n });
     return n;

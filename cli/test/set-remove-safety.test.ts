@@ -1,8 +1,9 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { commands, main } from "../src/router.js";
 import { readSetFile } from "../src/lib/setFile.js";
-import { ctxFor, fakeFetch, sh } from "./helpers.js";
+import { ctxFor, fakeFetch, sh, tmp } from "./helpers.js";
 import { makeNamedRepo, newParent } from "./parity-helpers.js";
 
 function world(names = ["repo-a", "repo-b"]) {
@@ -61,5 +62,24 @@ describe("removing a set removes exactly the set that was named", { timeout: 90_
     expect(j.kept).toEqual(["repo-a"]);
     expect(existsSync(o.repos[1].path)).toBe(false);
     expect(readSetFile(o.folder)?.top.repos.map((x) => x.name)).toEqual(["repo-a"]);
+  });
+});
+
+describe("removing a set by its folder", { timeout: 90_000 }, () => {
+  it("works from a folder that is no repository, and deletes only the set's own workspace file", async () => {
+    const w = world();
+    const o = JSON.parse((await run(w.dirs[0], open("repo-a", "feature/8-x", "8"))).out);
+    // a hand-edited set file names a workspace file that belongs to something else
+    const other = join(w.parent, "mine.code-workspace");
+    writeFileSync(other, "{}");
+    const file = join(o.folder, ".aihub-set.json");
+    const j = JSON.parse(readFileSync(file, "utf8"));
+    writeFileSync(file, JSON.stringify({ ...j, workspace: other }));
+    const nowhere = tmp("aihub-nowhere-");
+    const r = await run(nowhere, ["worktree", "remove", "--folder", o.folder, "--branch", "feature/8-x", "--json"]);
+    expect(r.err).toBe("");
+    expect(r.code).toBe(0);
+    expect(existsSync(o.repos[0].path)).toBe(false);
+    expect(existsSync(other)).toBe(true);
   });
 });
