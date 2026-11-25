@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import * as vscode from "vscode";
 import { forgetScan, gitDirFor, writeLookIn } from "../../../cli/src/lib/machineScan";
 import { forgetUse, pathKey, readRecentUse, ago } from "../../../cli/src/lib/recentUse";
+import { CliProblem } from "./cliCheck";
 import { BarEngine, openFacts } from "./engine";
 import { linkedOf, registerStoryCommands } from "./storyUi";
 import { registerSetOps, SetFileWatcher } from "./setOps";
@@ -126,7 +127,22 @@ async function offerContinue(deps: BarDeps): Promise<void> {
 const idOf = (a: unknown): string | undefined => (typeof a === "string" ? a : a && typeof a === "object" && "id" in a ? String((a as { id: unknown }).id) : undefined);
 
 function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps: BarDeps, changed: () => void): void {
-  const fail = (e: unknown) => void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+  const fail = (e: unknown) => {
+    if (e instanceof CliProblem) {
+      const copy = "Copy update command";
+      const run = "Update now";
+      void vscode.window.showWarningMessage(`AI Context Hub: ${e.message}`, copy, run).then((pick) => {
+        if (pick === copy) void vscode.env.clipboard.writeText(e.updateCommand);
+        if (pick === run) {
+          const t = vscode.window.createTerminal("aihub update");
+          t.show();
+          t.sendText(e.updateCommand);
+        }
+      });
+      return;
+    }
+    void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+  };
   const reg = (id: string, f: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, (...a) => Promise.resolve(f(...a)).catch(fail)));
 
   reg(BAR_COMMANDS.refresh, async () => {
