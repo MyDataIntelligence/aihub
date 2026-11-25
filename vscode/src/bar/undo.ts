@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { headBranchOf } from "../../../cli/src/lib/machineScan";
 import { AIHUB_SET, MAKER_SET, readSetFile } from "../../../cli/src/lib/setFile";
 import { gitCommonDir } from "../../../cli/src/lib/storyWorktrees";
+import { headSha } from "./behind";
 import { branchesOf, worktreesOf, type GitRun } from "./ownWindow";
 
 /**
@@ -62,7 +63,8 @@ export async function takeSnapshot(git: GitRun, setFolder: string, label: string
     for (const r of m.repos) {
       if (seen.has(key(r.path)) || !existsSync(join(r.path, ".git"))) continue;
       seen.add(key(r.path));
-      const head = await git(r.path, ["rev-parse", "HEAD"]).then((o) => o.trim(), () => "");
+      // the commit comes from the files (no process); git only when the files cannot say
+      const head = headSha(r.path) ?? (await git(r.path, ["rev-parse", "HEAD"]).then((o) => o.trim(), () => ""));
       repos.push({ name: r.name, source: r.source, path: r.path, branch: headBranchOf(r.path) || undefined, head });
     }
   }

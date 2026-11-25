@@ -118,3 +118,76 @@ describe("process starts per phase, a set of 5 repositories", () => {
     console.log(["phase".padEnd(28) + "git".padStart(5) + "aihub".padStart(7), ...rows.map((r) => r.label.padEnd(28) + String(r.git).padStart(5) + String(r.aihub).padStart(7))].join("\n"));
   });
 });
+
+describe("process starts with 10 sets on the PC, and for one action and its Undo", () => {
+  it("opening the left menu starts nothing on the way; the background check is at most 8 worktrees, once per 5 minutes; an action and its Undo are counted", async () => {
+    const { rememberStories } = await import("../../cli/src/lib/storyCache");
+    const { takeSnapshot, planUndo, runUndo } = await import("../src/bar/undo");
+    const w = world();
+    const cfg = mkdtempSync(join(tmpdir(), "aihub-budget-cfg-"));
+    const env = { AIHUB_CONFIG_HOME: cfg, AIHUB_COMMON_ROOTS: join(w.root, "other-sets") } as NodeJS.ProcessEnv;
+    // 10 more sets of closed stories, each with a worktree of repository a and b on a pushed branch, all with a merged pull request
+    const stories: { id: number; title: string; state: string }[] = [];
+    for (let i = 1; i <= 10; i++) {
+      const folder = join(w.root, "other-sets", `${100 + i}-x`);
+      mkdirSync(folder, { recursive: true });
+      const rows = w.repos.slice(0, 2).map((r) => {
+        const branch = `feature/${100 + i}-x`;
+        const path = join(folder, r.name);
+        sh(r.source, "worktree", "add", "-b", branch, path, "main");
+        sh(r.source, "push", "origin", branch);
+        return { name: r.name, source: r.source, path, branch };
+      });
+      writeFileSync(join(folder, ".aihub-set.json"), JSON.stringify({ story: 100 + i, branch: `feature/${100 + i}-x`, repos: rows.map(({ name, source, path }) => ({ name, source, path })) }));
+      stories.push({ id: 100 + i, title: `Old ${i}`, state: "Closed" });
+    }
+    rememberStories(env, stories);
+    const merged = { id: 1, status: "merged" as const, url: "u" };
+    // the same memory as the extension's dirtyCounter: one git status per worktree, remembered 20 seconds
+    const memo = new Map<string, Promise<number | undefined>>();
+    const dirtyMemo = (p: string) => memo.get(p) ?? (memo.set(p, gitRun(p, ["status", "--porcelain"]).then((o) => o.split("\n").filter(Boolean).length, () => undefined)), memo.get(p)!);
+    const engine = new BarEngine({
+      env,
+      dir: () => w.repos[0].path,
+      dirtyOf: dirtyMemo,
+      unpushedOf: async (p) => Number((await gitRun(p, ["rev-list", "--count", "HEAD", "--not", "--remotes"])).trim()),
+      prOf: (_repo, branch) => (/feature\/1\d\d-x/.test(branch) ? merged : undefined),
+      sizes: new SizeMemo(async () => 1),
+    });
+    const count = async (run: () => Promise<unknown>) => {
+      const before = c.n;
+      await run();
+      return c.n - before;
+    };
+    await engine.state();
+    // the left menu: the state itself starts nothing; the background check looks at no more than 8 worktrees
+    const critical = await count(() => engine.state());
+    expect(critical).toBe(0);
+    const background = await count(() => engine.measureSets(() => undefined));
+    expect(background).toBeLessThanOrEqual(8);
+    const again = await count(async () => (await engine.state(), await engine.measureSets(() => undefined)));
+    // the next opening of the menu within 5 minutes: the sizes and the 8 worktrees are remembered; only the worktrees not yet looked at (the 20 are looked at 8 at a time)
+    expect(again).toBeLessThanOrEqual(8);
+    const st = await engine.state();
+    expect(st.sets.filter((s) => s.sizeBytes !== undefined).length).toBeGreaterThan(0);
+    // one action and its Undo: a snapshot before (the worktree list and the branches of each clone, the commit of each worktree), the plan and the steps of the Undo
+    const snap = await (async () => {
+      let s!: Awaited<ReturnType<typeof takeSnapshot>>;
+      const n = await count(async () => void (s = await takeSnapshot(gitRun, w.folder, "Switch a")));
+      rowsExtra.push(["action: the snapshot before it", n]);
+      return s;
+    })();
+    sh(w.repos[0].path, "switch", "feature/5-y");
+    const undoStarts = await count(async () => {
+      const plan = await planUndo(gitRun, snap);
+      expect(plan.problem).toBeUndefined();
+      await runUndo(plan);
+    });
+    rowsExtra.push(["one Undo (plan and steps)", undoStarts]);
+    rowsExtra.push(["left menu, 10 sets: the state", critical]);
+    rowsExtra.push(["left menu, 10 sets: background", background]);
+    rowsExtra.push(["left menu again (within 5 min)", again]);
+    console.log(rowsExtra.map(([l, n]) => `${String(l).padEnd(36)}${String(n).padStart(4)}`).join("\n"));
+  });
+});
+const rowsExtra: [string, number][] = [];

@@ -11,7 +11,8 @@ import { readStoryWorktrees, storyWorktreesFileFor } from "../../../cli/src/lib/
 import { readPreferredClones, uniqueRepos } from "../worktrees/clones";
 import { buildState, setLabel, type OpenFacts } from "./state";
 import { isStoryBranch } from "./repoStatus";
-import { allMerged, allPrsMerged, setKey, SizeMemo } from "./setSize";
+import { allPrsMerged, setKey, SizeMemo } from "./setSize";
+import { headSha, refSha } from "./behind";
 import type { BarPr, BarState, BarStoryBranch } from "./types";
 
 /**
@@ -109,8 +110,11 @@ export async function oneClonePerRemote(env: NodeJS.ProcessEnv, repos: ScanRepo[
   return unique.map((u) => ({ ...by.get(pathKey(u.path))!, ...(u.otherClones?.length ? { otherClones: u.otherClones } : {}) })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+const OTHERS_TTL_MS = 5 * 60_000;
+
 export class BarEngine {
   constructor(private deps: EngineDeps) {}
+  private others = new Map<string, { at: number; changes?: number; unpushed?: number }>();
 
   private now = () => (this.deps.now ?? Date.now)();
 
@@ -154,22 +158,28 @@ export class BarEngine {
     const open = facts.set ? facts.set.repos.map((r) => ({ name: r.name, path: r.path })) : facts.repo ? [{ name: facts.repo.name, path: facts.repo.path }] : [];
     await Promise.all(open.map(async (r) => status.set(r.path, await this.deps.statusOf?.(r.path, r.name))));
     await ask(open.filter((r) => status.get(r.path)?.changes === undefined).map((r) => r.path));
-    // "clean" only for sets of closed stories (the ones the menu may offer to remove), at most MAX_CLEAN_CHECKS worktrees
-    const candidates = scan.sets.filter((s) => s.story && isClosedState(stories[s.story]?.state)).flatMap((s) => s.repos.filter((r) => r.exists).map((r) => r.path)).filter((p) => !dirty.has(p)).slice(0, MAX_CLEAN_CHECKS);
-    await ask(candidates);
-    // every pull request merged and nothing to lose: only for sets whose pull requests are all merged (a memory, no call), at most MAX_CLEAN_CHECKS sets
+    // what is known of the worktrees of the OTHER sets (closed stories, merged pull requests): a memory filled in the background when the left menu opens, never here
+    const known = (p: string) => this.others.get(p);
+    const fresh = (p: string) => {
+      const k = known(p);
+      return k && this.now() - k.at < OTHERS_TTL_MS ? k : undefined;
+    };
+    for (const s of scan.sets) for (const r of s.repos) if (r.exists && !dirty.has(r.path) && fresh(r.path)) dirty.set(r.path, fresh(r.path)!.changes);
     const merged = new Map<string, boolean>();
     if (this.deps.prOf) {
       const pr = this.deps.prOf;
-      for (const s of scan.sets.filter((x) => !(facts.set && pathKey(x.folder) === pathKey(facts.set.folder)) && allPrsMerged(x, pr)).slice(0, MAX_CLEAN_CHECKS)) {
-        merged.set(s.id, await allMerged(s, { pr, changes: async (p) => this.deps.dirtyOf?.(p), unpushed: async (p) => this.deps.unpushedOf?.(p) }));
+      for (const s of scan.sets.filter((x) => allPrsMerged(x, pr))) {
+        const live = s.repos.filter((r) => r.exists);
+        const k = live.map((r) => fresh(r.path));
+        // unknown until the background check has looked: not "no"
+        if (k.every((x) => x && x.changes !== undefined && x.unpushed !== undefined)) merged.set(s.id, k.every((x) => x!.changes === 0 && x!.unpushed === 0));
       }
     }
     return buildState({
       open: facts,
       undo: this.deps.undoLabel?.(),
       size: (s) => this.deps.sizes?.get(s.id, setKey(s)),
-      allMerged: (s) => merged.get(s.id) ?? (this.deps.prOf ? false : undefined),
+      allMerged: (s) => merged.get(s.id) ?? (this.deps.prOf && !allPrsMerged(s, this.deps.prOf) ? false : undefined),
       scan,
       recents: readRecentUse(this.deps.env),
       lookIn: folders,
@@ -189,9 +199,38 @@ export class BarEngine {
   }
 
   /** Measures the size of every set in the background (one at a time, without blocking); `done` runs after each one. */
-  measureSets(done: () => void): Promise<void> {
-    const sets = this.scan().sets.map((s) => ({ id: s.id, key: setKey(s), paths: s.repos.filter((r) => r.exists).map((r) => r.path) }));
-    return this.deps.sizes?.measureAll(sets, done) ?? Promise.resolve();
+  async measureSets(done: () => void): Promise<void> {
+    const scan = this.scan();
+    const sets = scan.sets.map((s) => ({ id: s.id, key: setKey(s), paths: s.repos.filter((r) => r.exists).map((r) => r.path) }));
+    await (this.deps.sizes?.measureAll(sets, done) ?? Promise.resolve());
+    await this.checkOthers(done);
+  }
+
+  /**
+   * Changed files and unpushed commits of the worktrees of other sets that can be offered for removal (closed story, all
+   * pull requests merged): at most MAX_CLEAN_CHECKS worktrees per menu opening, each remembered for 5 minutes. Unpushed is
+   * read from files when the branch is at its remote branch; git is asked only when it is not.
+   */
+  private async checkOthers(done: () => void): Promise<void> {
+    const stories = readSeenStories(this.deps.env);
+    const facts = openFacts(this.deps.dir());
+    const wanted: { path: string; branch: string }[] = [];
+    for (const s of this.scan().sets) {
+      if (facts.set && pathKey(s.folder) === pathKey(facts.set.folder)) continue;
+      const offered = (s.story && isClosedState(stories[s.story]?.state)) || (this.deps.prOf && allPrsMerged(s, this.deps.prOf));
+      if (offered) for (const r of s.repos) if (r.exists) wanted.push({ path: r.path, branch: r.branch });
+    }
+    let n = 0;
+    for (const w of wanted) {
+      const k = this.others.get(w.path);
+      if (k && this.now() - k.at < OTHERS_TTL_MS) continue;
+      if (n++ >= MAX_CLEAN_CHECKS) break;
+      const changes = await this.deps.dirtyOf?.(w.path);
+      const head = headSha(w.path);
+      const unpushed = head && head === refSha(w.path, `refs/remotes/origin/${w.branch}`) ? 0 : await this.deps.unpushedOf?.(w.path);
+      this.others.set(w.path, { at: this.now(), changes, unpushed });
+    }
+    if (n) done();
   }
 
   /** The window shows a set or a repository: it goes to the top of the recent list (a file write at most once a minute). */
