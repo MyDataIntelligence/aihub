@@ -12,7 +12,7 @@ import { loadTeam } from "./team.js";
 import { getWorkItem, storyBranchName } from "./workitems.js";
 import { storyFolderFor, storyIdFromBranch, worktreePathFor } from "./storyWorktrees.js";
 import { findDirLinks, removeDirLink } from "./safeWorktree.js";
-import { readSetFile, repoBranch, type SetMeta } from "./setFile.js";
+import { MAKER_SET, readSetFile, repoBranch, writeSetFile, type SetMeta } from "./setFile.js";
 import { checkExisting, moveExisting, readWhenExists, recreateExisting, type WhenExists } from "./existingWorktree.js";
 
 const META = ".aihub-set.json";
@@ -186,9 +186,11 @@ export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?:
   const byBranch = join(setsRoot, slugOfBranch(o.branch ?? ""));
   // --folder names the set folder itself (the menus know it from the scan); else it is found from the story or the branch
   const folder = o.folder ? resolve(o.folder) : o.story ? setFolder(setsRoot, o.story) : storyId && !existsSync(join(byBranch, META)) ? setFolder(setsRoot, storyId, o.branch) : byBranch;
-  const metaPath = join(folder, META);
+  // the extension's own format (.worktree-set.json) is a set too: same checks, same result
+  const maker = !existsSync(join(folder, META)) && readSetFile(folder)?.kind === "maker";
+  const metaPath = join(folder, maker ? MAKER_SET : META);
   if (!existsSync(metaPath)) throw new AihubError(o.folder ? `no worktree set in ${folder}` : `no worktree set for ${o.story ? `story ${o.story}` : `branch '${o.branch}'`} under ${setsRoot}`);
-  const top = JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta;
+  const top = maker ? readSetFile(folder)!.top : (JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta);
   const all = [{ ...top, others: undefined }, ...(top.others ?? [])];
   const meta = all.find((s) => (o.branch ? s.branch === o.branch : s.story === o.story)) ?? all[0];
   const rest = all.filter((s) => s !== meta);
@@ -199,7 +201,7 @@ export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?:
     if (!x.removed) left.push(r);
     lines.push(x.line);
   }
-  const write = (sets: SetMeta[]) => writeFileSync(metaPath, JSON.stringify({ ...sets[0], ...(sets.length > 1 ? { others: sets.slice(1) } : {}) }, null, 2));
+  const write = (sets: SetMeta[]) => maker ? writeSetFile(folder, "maker", sets[0]) : writeFileSync(metaPath, JSON.stringify({ ...sets[0], ...(sets.length > 1 ? { others: sets.slice(1) } : {}) }, null, 2));
   if (left.length) {
     write([{ ...meta, repos: left }, ...rest]);
     lines.push(`set kept: ${left.length} worktree(s) need attention`);

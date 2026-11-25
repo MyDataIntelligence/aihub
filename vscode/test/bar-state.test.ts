@@ -6,7 +6,7 @@ import { writeLookIn } from "../../cli/src/lib/machineScan";
 import { readRecentUse, rememberUse } from "../../cli/src/lib/recentUse";
 import { rememberStories } from "../../cli/src/lib/storyCache";
 import { updateStoryWorktrees, linkBranch, storyWorktreesFile } from "../../cli/src/lib/storyWorktrees";
-import { BarEngine, prune } from "../src/bar/engine";
+import { BarEngine, infoText, openFacts, prune } from "../src/bar/engine";
 
 let root: string;
 let env: NodeJS.ProcessEnv;
@@ -137,6 +137,16 @@ describe("BarState in the three modes", () => {
     const st = await engineFor(undefined, { dirtyOf: async () => undefined }).state();
     expect(st.sets[0]).toMatchObject({ done: true });
     expect(st.sets[0].clean).toBeUndefined();
+  });
+});
+
+describe("the single status item", () => {
+  it("says what PyCharm Git would say: story and count, a name for a set without a story, a single repository", () => {
+    const s7 = set(7, "feature/7-x", ["repo-a", "repo-b"]);
+    expect(infoText(openFacts(join(s7.where, "repo-a")))).toBe("#7 · 2 repositories");
+    expect(infoText(openFacts(join(root, "code", "repo-a")))).toBe("repo-a · single repository");
+    expect(infoText(openFacts(undefined))).toBeUndefined();
+    expect(infoText({ set: { folder: "f", story: 0, branch: "feature/x", group: "pipeline", repos: [{ name: "a", path: "p", branch: "b" }] } })).toBe("pipeline · 1 repository");
   });
 });
 
