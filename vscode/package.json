@@ -557,6 +557,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.createPullRequests",
+        "title": "Create Pull Requests for the Story...",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.pushAll",
         "title": "Push All Repositories of the Set",
         "category": "AI Context Hub"
@@ -1338,6 +1343,10 @@
         },
         {
           "command": "aihub.bar.commitAll",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.createPullRequests",
           "when": "false"
         },
         {

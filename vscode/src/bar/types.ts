@@ -115,4 +115,6 @@ export const BAR_COMMANDS = {
   pushAll: "aihub.bar.pushAll",
   /** `{ message, repos?, push? }`: one message, one `aihub commit` per repository; a failing hook in one repository does not stop the others */
   commitAll: "aihub.bar.commitAll",
+  /** a pick with ticks (story branches without a pull request); one `aihub pr create` per ticked repository, linked to the story and to each other */
+  createPullRequests: "aihub.bar.createPullRequests",
 } as const;

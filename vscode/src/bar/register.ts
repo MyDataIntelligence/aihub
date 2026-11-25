@@ -12,7 +12,7 @@ import { cli } from "./runner";
 import { BehindMemo, gitStatusOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
 import { linkedOf, registerStoryCommands } from "./storyUi";
 import { registerSetOps, SetFileWatcher } from "./setOps";
-import { registerBatchCommands } from "./batchUi";
+import { registerBatchCommands, registerPullRequestCommand } from "./batchUi";
 import { openPath, windowIsEmpty } from "./window";
 import { BAR_COMMANDS, type BarApi, type BarState } from "./types";
 
@@ -279,6 +279,7 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
 
   registerStoryCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerBatchCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
+  registerPullRequestCommand({ engine, log: deps.log, changed, reg });
   registerSetOps({ engine, log: deps.log, changed, reg });
 }
 
