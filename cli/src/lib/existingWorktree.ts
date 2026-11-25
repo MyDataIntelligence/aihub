@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { AihubError } from "./errors.js";
 import { listWorktrees, samePath, tryGit, unpushedCount, type Worktree } from "./gitx.js";
+import { spawnSync } from "./proc.js";
 import { configHome } from "./notifyPolicy.js";
 import { findDirLinks, moveWorktreeSafely, removeDirLink, restoreDirLinks } from "./safeWorktree.js";
 import { gitCommonDir } from "./storyWorktrees.js";
@@ -208,11 +209,12 @@ export function recreateExisting(source: string, branch: string, from: string, t
     const common = gitCommonDir(source);
     if (!common) return { ok: false, state: "failed", note: `no git folder for ${source}; nothing was removed` };
     tryGit(from, ["add", "-A"]);
-    const diff = tryGit(from, ["diff", "--cached", "--binary", "HEAD"]);
-    if (!diff.ok) return { ok: false, state: "failed", note: `the backup of ${from} failed (${diff.err.split("\n")[0]}); nothing was removed` };
+    // the bytes as git wrote them: tryGit turns CRLF into LF and trims the end, and such a patch no longer applies
+    const diff = spawnSync("git", ["diff", "--cached", "--binary", "HEAD"], { cwd: from, maxBuffer: 1024 * 1024 * 1024 });
+    if (diff.error || diff.status !== 0) return { ok: false, state: "failed", note: `the backup of ${from} failed (${(diff.error?.message ?? String(diff.stderr ?? "")).split("\n")[0]}); nothing was removed` };
     backup = join(common, "aihub", "backup", `${branch.replace(/[\\/:*?"<>|\s]+/g, "-")}-${stamp(o.now)}.patch`);
     mkdirSync(dirname(backup), { recursive: true });
-    writeFileSync(backup, diff.out + "\n", "utf8");
+    writeFileSync(backup, diff.stdout);
   }
   // folder links (a linked node_modules) go first: --force would follow them and empty what they point to
   const links = findDirLinks(from);
