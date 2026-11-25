@@ -562,6 +562,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.measureSets",
+        "title": "Measure the Sets on This PC",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.pushAll",
         "title": "Push All Repositories of the Set",
         "category": "AI Context Hub"
@@ -1347,6 +1352,10 @@
         },
         {
           "command": "aihub.bar.createPullRequests",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.measureSets",
           "when": "false"
         },
         {
