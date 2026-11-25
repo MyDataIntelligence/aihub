@@ -44,6 +44,8 @@ export interface OpenResultJson {
   workspace?: string;
   repos: OpenRepoJson[];
   opened: boolean;
+  /** aihub 1.5.1+: run inside a set for some of its repositories, they changed in this window; nothing to open */
+  stays?: string;
 }
 
 export interface PrJson {
@@ -186,8 +188,12 @@ export function summarizeOpen(r: OpenResultJson): OpenSummary {
   return { ok: failed === 0, failed, title, lines };
 }
 
-/** What the extension opens after the CLI did the git work: the set's workspace file, in this window or a new one. */
-export function openTarget(r: OpenResultJson, window: HowWindow): { file: string; options: { forceReuseWindow: true } | { forceNewWindow: true } } | { error: string } {
+/**
+ * What the extension opens after the CLI did the git work: the set's workspace file, in this window or a new one;
+ * nothing when the repositories switched inside the set this window already shows (`stays`).
+ */
+export function openTarget(r: OpenResultJson, window: HowWindow): { file: string; options: { forceReuseWindow: true } | { forceNewWindow: true } } | { error: string } | { stays: string } {
+  if (r.stays) return { stays: r.stays };
   if (!r.workspace || !r.repos.some((x) => x.ok)) return { error: `No repository could be opened on ${r.branch}, so the window was not changed.` };
   return { file: r.workspace, options: window === "this" ? { forceReuseWindow: true } : { forceNewWindow: true } };
 }

@@ -106,6 +106,12 @@ describe("the quick-pick flow", () => {
     expect(openTarget({ ...res, workspace: undefined, repos: [{ ...res.repos[0], ok: false }] }, "this")).toEqual({ error: "No repository could be opened on b, so the window was not changed." });
   });
 
+  it("opens nothing when the CLI switched repositories inside the set this window already shows", () => {
+    const res: OpenResultJson = { branch: "b", mode: "switch", folder: "/s/x", workspace: "/s/x/story-1.code-workspace", opened: false, stays: "the window stays as it is: 3 repositories, a now on b", repos: [{ repo: "a", ok: true, state: "switched", branch: "b", note: "switched", path: "/s/x/a" }] };
+    expect(openTarget(res, "new")).toEqual({ stays: "the window stays as it is: 3 repositories, a now on b" });
+    expect(openTarget(res, "this")).toEqual({ stays: "the window stays as it is: 3 repositories, a now on b" });
+  });
+
   it("summarizes the result: all open, or which repositories need attention", () => {
     const ok: OpenResultJson = { branch: "b", mode: "worktree", folder: "f", workspace: "w", opened: true, repos: [{ repo: "a", ok: true, state: "existing", branch: "b", note: "worktree" }] };
     expect(summarizeOpen(ok)).toMatchObject({ ok: true, failed: 0 });

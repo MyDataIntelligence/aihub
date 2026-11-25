@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { spawn } from "./proc.js";
 import { ensureBranch } from "./branches.js";
 import type { Ctx } from "./context.js";
@@ -10,7 +10,7 @@ import { findGroup, groupDirs, resolveRepos } from "./repoGroups.js";
 import { fetchOrigin, type RepoDir } from "./repos.js";
 import { defaultTargetFor, loadTeam, type TeamConfig } from "./team.js";
 import { findSet } from "./setInfo.js";
-import { linkBranch, currentOf, storyFolderFor, storyIdFromBranch, storyWorktreesFileFor, updateStoryWorktrees, variantOf, worktreePathFor } from "./storyWorktrees.js";
+import { linkBranch, currentOf, readStoryWorktrees, storyFolderFor, storyIdFromBranch, storyWorktreesFileFor, updateStoryWorktrees, variantOf, worktreePathFor } from "./storyWorktrees.js";
 import { defaultSetsRoot, slugOfBranch, writeSetMeta, type SetMeta } from "./worktree.js";
 
 /**
@@ -34,6 +34,8 @@ export interface OpenSetOpts {
   window?: OpenWindow;
   root?: string;
   json?: boolean;
+  /** run from inside a set: still make a new set (else naming only some repositories of the set switches them in place) */
+  newSet?: boolean;
 }
 
 export type RepoState = "existing" | "created" | "reused-worktree" | "switched" | "already-on" | "skipped" | "failed";
@@ -48,6 +50,8 @@ export interface RepoResult {
   /** what happened, one short line */
   note: string;
   from?: string;
+  /** mode switch: the worktree that has the branch checked out already */
+  checkedOutIn?: string;
 }
 
 export interface OpenSetResult {
@@ -59,6 +63,8 @@ export interface OpenSetResult {
   workspace?: string;
   repos: RepoResult[];
   opened: boolean;
+  /** run inside a set for some of its repositories: what changed in the open window (no new window) */
+  stays?: string;
 }
 
 export const slug = slugOfBranch;
@@ -78,6 +84,8 @@ export function openRepo(r: RepoDir, o: { branch: string; from?: string; mode: O
     let created = false;
     let from = "";
     if (!hasBranch(r.dir, o.branch)) {
+      // never create a branch and then refuse the switch: nothing half done
+      if (o.mode === "switch" && hasTrackedChanges(r.dir)) return out("skipped", false, "uncommitted changes; commit or stash them, nothing was changed");
       const base = baseOf(r.dir, r.name, o.from, o.team);
       const e = ensureBranch(r.dir, o.branch, base, false);
       created = e.created;
@@ -87,7 +95,7 @@ export function openRepo(r: RepoDir, o: { branch: string; from?: string; mode: O
     const made = created ? `created from ${from} (local; pushed with your first push)` : "existing branch";
     if (o.mode === "switch") {
       if (where && samePath(where.path, r.dir)) return out("already-on", true, "already on the branch", { path: r.dir });
-      if (where) return out("failed", false, `branch is checked out in ${where.path}; use mode worktree or switch that one first`);
+      if (where) return out("failed", false, `branch is checked out in ${where.path}; use mode worktree or switch that one first`, { checkedOutIn: where.path });
       if (hasTrackedChanges(r.dir)) return out("skipped", false, "uncommitted changes; commit or stash them, nothing was changed");
       mustGit(r.dir, ["switch", o.branch]);
       return out("switched", true, `switched (${made})`, { path: r.dir, from: from || undefined });
@@ -174,6 +182,11 @@ function outsideSet(ctx: Ctx): Ctx {
 export function openSet(setCtx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = launchCode): OpenSetResult {
   const branch = o.branch?.trim();
   if (!branch) throw new AihubError("--branch <name> is required");
+  // inside a set, naming some of its repositories changes those in this set: no new set, no new window
+  if (!o.newSet && !o.group && !o.branches && o.repos?.length) {
+    const here = setHere(setCtx.cwd);
+    if (here && someOfSet(here, o.repos)) return switchInSet(here, { repos: o.repos, branch, from: o.from, mode: o.mode });
+  }
   // the sets root is still found from where this runs (next to the set, never inside it)
   const setsBase = setCtx.cwd;
   const ctx = outsideSet(setCtx);
@@ -246,9 +259,172 @@ export function formatOpenSet(r: OpenSetResult): string {
   const w = Math.max(4, ...r.repos.map((x) => x.repo.length));
   const lines = [`${r.group ? `group ${r.group} · ` : ""}branch ${r.branch} · ${r.mode}`];
   for (const x of r.repos) lines.push(`${x.ok ? "ok  " : "FAIL"} ${x.repo.padEnd(w)}  ${x.state.padEnd(15)} ${x.note}`);
-  if (r.workspace) lines.push(`workspace ${r.workspace}${r.opened ? " (opened in VS Code)" : ""}`);
+  if (r.stays) lines.push(r.stays);
+  else if (r.workspace) lines.push(`workspace ${r.workspace}${r.opened ? " (opened in VS Code)" : ""}`);
   return lines.join("\n");
 }
+
+// ---- some repositories of the set you are in on another branch (`aihub branch switch`) -----------------------
+
+/** The set this folder is in, with its full set file entry (source clones, workspace file). */
+export interface HereSet {
+  folder: string;
+  meta: SetMeta;
+}
+
+export function setHere(cwd: string): HereSet | undefined {
+  const s = findSet(cwd);
+  const top = s && readSetMeta(s.folder);
+  if (!s || !top?.repos?.length) return undefined;
+  const all = [top, ...(top.others ?? [])];
+  const { others: _o, ...meta } = all.find((m) => m.story === s.story && m.branch === s.branch && (m.group ?? "") === (s.group ?? "")) ?? top;
+  return { folder: s.folder, meta };
+}
+
+/** A repository of the set by name, or by the folder of its worktree in the set (the VS Code picker passes folders). */
+const entryOf = (here: HereSet, name: string) => {
+  const n = name.trim();
+  const abs = isAbsolute(n) || /^[A-Za-z]:[\\/]/.test(n);
+  return here.meta.repos.find((r) => (abs ? samePath(r.path, n) : r.name.toLowerCase() === n.toLowerCase()));
+};
+
+/** Only some of the set's repositories, all of them in the set: a branch change inside the set, not a new set. */
+function someOfSet(here: HereSet, names: string[]): boolean {
+  const wanted = new Set(names.map((n) => n.trim().toLowerCase()).filter(Boolean));
+  return wanted.size > 0 && wanted.size < here.meta.repos.length && [...wanted].every((n) => entryOf(here, n));
+}
+
+/** A free `<set>/<repo>--<variant>` folder for a second worktree of a repository. */
+function variantPath(folder: string, repo: string, branch: string, storyId?: number): string {
+  const first = join(folder, `${repo}--${variantOf(branch, storyId)}`);
+  if (!existsSync(first)) return first;
+  for (let i = 2; ; i++) if (!existsSync(`${first}-${i}`)) return `${first}-${i}`;
+}
+
+type SetRepo = SetMeta["repos"][number];
+
+/**
+ * Some repositories of the set you are in on another branch. Default: `git switch` in the set's own worktree (the
+ * folder, the workspace file's folders and the other repositories stay). `mode worktree`: a second worktree
+ * `<repo>--<variant>` (or the folder that already has the branch) is added to this set and its workspace file.
+ * Never opens a window.
+ */
+export function switchInSet(here: HereSet, o: { repos: string[]; branch: string; from?: string; mode?: OpenMode }): OpenSetResult {
+  const { folder, meta } = here;
+  const branch = o.branch.trim();
+  if (!branch) throw new AihubError("--branch <name> is required");
+  const mode = o.mode ?? "switch";
+  const unknown = o.repos.filter((n) => !entryOf(here, n));
+  if (unknown.length) throw new AihubError(`${unknown.join(", ")} not in this set (${meta.repos.map((r) => r.name).join(", ")}); add --new-set to open a new set instead`);
+  const entries = [...new Set(o.repos.map((n) => entryOf(here, n)!))];
+  const team = loadTeam(entries[0].source);
+  const storyId = storyIdFromBranch(branch, storyPatternOf(team));
+  const result = (repos: RepoResult[], stays: string): OpenSetResult => ({ story: meta.story || undefined, group: meta.group, branch, mode, folder, workspace: meta.workspace, repos, opened: false, stays });
+  const keep = "nothing was changed; the window stays as it is";
+  const dirtyNote = (e: SetRepo) => `uncommitted changes in ${e.path}; nothing was changed. Commit or stash them first, or add --mode worktree for a second worktree of ${e.name} next to it`;
+  // several repositories: all or nothing when one of them has uncommitted work
+  if (mode === "switch" && entries.length > 1) {
+    const dirty = entries.filter((e) => hasTrackedChanges(e.path));
+    if (dirty.length)
+      return result(
+        entries.map((e) => ({ repo: e.name, ok: false, state: "skipped", branch, note: dirty.includes(e) ? dirtyNote(e) : `not switched: ${dirty.map((d) => d.name).join(", ")} has uncommitted changes` })),
+        keep,
+      );
+  }
+  const added: SetRepo[] = [];
+  const repos = entries.map((e): RepoResult => {
+    if (mode === "switch") {
+      const r = openRepo({ name: e.name, dir: e.path }, { branch, from: o.from, mode: "switch", folder, team });
+      if (r.state === "skipped") return { ...r, note: dirtyNote(e) };
+      if (r.checkedOutIn) return { ...r, note: `${branch} is already checked out in ${r.checkedOutIn}; nothing was changed. Add --mode worktree to put that folder in this set next to ${e.name}` };
+      if (r.ok) relinkWorktree(e.path, branch, storyId);
+      return r;
+    }
+    const target = variantPath(folder, e.name, branch, storyId);
+    const r = openRepo({ name: e.name, dir: e.source }, { branch, from: o.from, mode: "worktree", folder, team, path: () => target });
+    if (!r.ok || !r.path) return r;
+    const inSet = meta.repos.find((x) => samePath(x.path, r.path!));
+    if (inSet) return { ...r, repo: inSet.name, state: "already-on", note: `already in this set as ${inSet.name}` };
+    const name = basename(target);
+    added.push({ name, source: e.source, path: r.path });
+    if (storyId) linkLocally(r.path, storyId, branch, r.path);
+    return { ...r, repo: name };
+  });
+  const changed = repos.filter((r) => r.ok && r.state !== "already-on");
+  if (added.length) writeSetMeta(folder, { ...meta, repos: [...meta.repos, ...added] });
+  if (meta.workspace && changed.length) updateWorkspace(meta.workspace, folder, changed);
+  const total = meta.repos.length + added.length;
+  const what = changed.map((r) => `${r.repo} ${added.some((a) => a.name === r.repo) ? "added" : "now"} on ${r.branch}`);
+  if (what.length) return result(repos, `the window stays as it is: ${total} repositories, ${what.join(", ")}`);
+  return result(repos, repos.every((r) => r.ok) ? `the window stays as it is: ${repos.map((r) => `${r.repo} already on ${r.branch}`).join(", ")}` : keep);
+}
+
+/**
+ * `aihub branch switch --repo r --branch X`: inside a set, that repository's worktree in this set (see switchInSet);
+ * outside a set, the checkout itself (`git switch`, never over uncommitted work). Never opens a window.
+ */
+export function branchSwitch(ctx: Ctx, o: { repos: string[]; branch: string; from?: string; mode?: OpenMode }): OpenSetResult {
+  const branch = o.branch?.trim();
+  if (!branch) throw new AihubError("--branch <name> is required");
+  const here = setHere(ctx.cwd);
+  if (here) {
+    const inside = (p: string) => ((rel) => !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel) && !rel.startsWith("/"))(relative(resolve(p), resolve(ctx.cwd)));
+    const mine = here.meta.repos.find((r) => inside(r.path));
+    const names = o.repos.length ? o.repos : mine ? [mine.name] : [];
+    if (!names.length) throw new AihubError(`name the repository: --repo <name> (this set: ${here.meta.repos.map((r) => r.name).join(", ")})`);
+    return switchInSet(here, { repos: names, branch, from: o.from, mode: o.mode });
+  }
+  if (o.mode === "worktree") throw new AihubError(`not inside a worktree set; for a worktree use: aihub worktree open --repos ${o.repos.join(",") || "<repo>"} --branch ${branch}`);
+  let dirs: RepoDir[];
+  if (o.repos.length) dirs = resolveRepos(ctx, o.repos);
+  else {
+    const root = repoRoot(ctx.cwd);
+    dirs = [{ name: basename(root), dir: root }];
+  }
+  const team = loadTeam(dirs[0].dir);
+  const repos = dirs.map((d) => openRepo(d, { branch, from: o.from, mode: "switch", folder: d.dir, team }));
+  const done = repos.filter((r) => r.ok).map((r) => `${r.repo} ${r.state === "already-on" ? "already" : "now"} on ${branch}`);
+  return { branch, mode: "switch", folder: dirname(dirs[0].dir), repos, opened: false, stays: done.length ? `no window opened: ${done.join(", ")}` : "nothing was changed" };
+}
+
+/** The set's workspace file: a new folder is added, the branch of a switched one is updated; VS Code reloads it itself. */
+function updateWorkspace(file: string, folder: string, rows: RepoResult[]): void {
+  try {
+    const ws = JSON.parse(readFileSync(file, "utf8")) as { folders?: { name?: string; path: string }[]; settings?: Record<string, unknown> };
+    const folders = (ws.folders ??= []);
+    const set = ws.settings?.["aihub.set"] as WindowSet | undefined;
+    for (const r of rows) {
+      if (!r.path) continue;
+      if (!folders.some((f) => f.name === r.repo || samePath(resolve(folder, f.path), r.path!))) {
+        const rel = relative(folder, r.path);
+        folders.push({ name: r.repo, path: norm(rel && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel) ? rel : r.path) });
+      }
+      if (set?.repos) {
+        const row = set.repos.find((x) => x.name === r.repo);
+        if (row) row.branch = r.branch;
+        else set.repos.push({ name: r.repo, branch: r.branch });
+      }
+    }
+    writeFileSync(file, JSON.stringify(ws, null, 2), "utf8");
+  } catch {
+    /* a hand-edited workspace file (with comments) is left alone: the worktrees are right, a reload shows them */
+  }
+}
+
+/** story-worktrees.json after a worktree changed branch: the old branch no longer points at it, a story branch is linked. */
+function relinkWorktree(path: string, branch: string, storyId?: number): void {
+  try {
+    const file = storyWorktreesFileFor(path);
+    if (!file) return;
+    const here = (b: { branch: string; worktree?: string }) => b.branch !== branch && !!b.worktree && samePath(b.worktree, path);
+    if (Object.values(readStoryWorktrees(file).branches).some(here))
+      updateStoryWorktrees(file, (d) => ({ ...d, branches: Object.fromEntries(Object.entries(d.branches).map(([k, b]) => [k, here(b) ? { ...b, worktree: undefined } : b])) }));
+    if (storyId) linkLocally(path, storyId, branch, path);
+  } catch {
+    /* the link is a convenience, as in linkLocally */
+  }
+}
+
 
 // ---- which branches exist where (the picker's second step) -------------------------------------------------
 

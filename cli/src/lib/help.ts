@@ -151,7 +151,7 @@ export const USAGES: Record<string, Load> = {
   dbt: async () => (await import("../commands/dbt.js")).DBT_USAGE,
   robot: async () => "aihub robot needed [--json] | run [--on <target>] [--no-merge] [--pipeline P] | targets\naihub robot local [--json] [--command --file f --test t --env e] | result [--since <epoch ms>] [--dir d] [--json]",
   "cherry-pick": async () => 'aihub cherry-pick --from <pr N|url|commit sha,...|story id> --to <branch> [--to <branch>...|--to-group <name>] [--summary-text "<1-2 sentences>"] [--no-pr|--direct]',
-  branch: async () => "aihub branch update [--branch B] [--target T] [--rebase]",
+  branch: async () => (await import("../commands/branch.js")).USAGE.replace(/^usage: /, ""),
   pipeline: async () =>
     join("aihub pipeline follow|status|runs [--name P] [--branch B] [--run N] [--json] | logs --run N [--failed] [--tail N] | run --name P [--branch B] [--params-file f] | rerun [--run N] (after a pushed fix: the new run, followed in the background) | retry --run N", (await import("../commands/pipeline-admin.js")).USAGE),
   batch: async () => 'aihub batch --select "<query>" --run "<aihub subcommand with {target}>" [--parallel N] [--json] | --retry-failed <id>',
@@ -171,7 +171,7 @@ export const USAGES: Record<string, Load> = {
       "aihub story open --id <story> [--mode worktree|switch] [--window new|this|none] [--json]",
     ),
   worktree: async () =>
-    "aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | open --group <name>|--repos a,b --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] | branches --group <name>|--repos a,b | groups list|save <name> --repos a,b|remove <name> | cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]",
+    "aihub worktree create|list|remove --story <id> [--repos a,b] [--root <folder>] | open --group <name>|--repos a,b --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--new-set] | branches --group <name>|--repos a,b | groups list|save <name> --repos a,b|remove <name> | cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]",
   review: async () => "aihub review show|prepare --pr <n|url> [--json] | post --pr <n> [--pick 1,3,5] [--findings-file f] | post --pr <n> --comments-file <file.yaml>",
   wiki: async () => (await import("../commands/wiki.js")).USAGE,
   release: async () => "aihub release plan --stories a,b|--prs a,b --target <branch> | plan --from DEV --to ACC [--target <branch>] [--out plan.yaml] [--notes-out notes.md] [--json] | run --plan-file <file>",
