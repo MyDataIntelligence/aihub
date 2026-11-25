@@ -19,10 +19,10 @@ export function setPlaces(folder: string): string[] {
   return [folder, ...(f ? [f.top, ...(f.top.others ?? [])].flatMap((m) => m.repos.map((r) => r.source)) : [])];
 }
 
-/** The nearest folder up from `dir` (at most 6 levels) with a `.git`; undefined when none. */
+/** The nearest folder up from `dir` (at most 12 levels) with a `.git`; undefined when none. */
 export function repoRootOf(dir: string): string | undefined {
   let d = dir;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 12; i++) {
     if (existsSync(join(d, ".git"))) return d;
     const up = dirname(d);
     if (up === d) return undefined;

@@ -13,7 +13,7 @@ import { defaultTargetFor, loadTeam, type TeamConfig } from "./team.js";
 import { findSet } from "./setInfo.js";
 import { linkBranch, currentOf, readStoryWorktrees, storyFolderFor, storyIdFromBranch, storyWorktreesFileFor, updateStoryWorktrees, variantOf, worktreePathFor } from "./storyWorktrees.js";
 import { defaultSetsRoot, removeWorktreeSafely, slugOfBranch } from "./worktree.js";
-import { readSetFile, repoBranch, writeSetFile, writeSetMeta, type SetKind, type SetMeta } from "./setFile.js";
+import { readSetFile, repoBranch, saveSetMeta, writeSetFile, type SetKind, type SetMeta } from "./setFile.js";
 
 /**
  * `aihub worktree open`: several repositories on the SAME branch at once, in one VS Code window.
@@ -274,7 +274,7 @@ export function openSet(setCtx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = la
     writeFileSync(workspace, workspaceJson(folder, repos, { story: storyId, group: o.group, branch, mode }), "utf8");
     if (mode === "worktree") {
       const meta: SetMeta = { story: storyId ?? 0, branch, group: o.group, workspace, repos: okRepos.map((r) => ({ name: r.repo, source: dirs.find((d) => d.name === r.repo)!.dir, path: r.path!, ...(r.branch !== branch ? { branch: r.branch } : {}) })) };
-      writeSetMeta(folder, meta);
+      saveSetMeta(folder, meta);
     }
     // a story branch opened here belongs to the story: linked locally, and the star when the story has none yet
     if (storyId) for (const r of okRepos) linkLocally(r.path!, storyId, r.branch, mode === "worktree" ? r.path : undefined);

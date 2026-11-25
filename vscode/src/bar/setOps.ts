@@ -1,9 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import * as vscode from "vscode";
 import { forgetScan, headBranchOf, setById } from "../../../cli/src/lib/machineScan";
 import { forgetUse, pathKey } from "../../../cli/src/lib/recentUse";
-import { AIHUB_SET, MAKER_SET, readSetFile, type SetMeta } from "../../../cli/src/lib/setFile";
+import { AIHUB_SET, MAKER_SET, readJsonText, readSetFile, type SetMeta } from "../../../cli/src/lib/setFile";
 import type { OpenResultJson } from "../repoSetModel";
 import { answerExisting, showOpened } from "../repoSetUi";
 import { openFacts } from "./engine";
@@ -107,7 +107,7 @@ export class SetFileWatcher implements vscode.Disposable {
       // a file that cannot be read makes this window "no set" for findSet, so the folder is the one aimed at, not looked up again
       const raw = [AIHUB_SET, MAKER_SET].map((n) => join(this.key, n)).find((p) => existsSync(p));
       if (!raw) return;
-      const parsed = parseSetFile(readFileSync(raw, "utf8"));
+      const parsed = parseSetFile(readJsonText(raw));
       if (parsed.problem) return this.say(`Set file: ${parsed.problem}; nothing was applied.`, true);
       const here = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set;
       if (!here) return;
