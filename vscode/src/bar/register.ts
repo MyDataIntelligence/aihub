@@ -205,7 +205,7 @@ async function pickRepository(engine: BarEngine): Promise<string | undefined> {
   const rows: Row[] = [
     { label: "$(folder-opened) Browse...", description: "any folder with a repository", browse: true },
     { label: "Repositories on this PC", kind: vscode.QuickPickItemKind.Separator },
-    ...state.repositories.map((r) => ({ label: r.name, description: r.branch, detail: r.path, path: r.path })),
+    ...state.repositories.map((r) => ({ label: r.name, description: `${r.branch}${r.otherClones ? `  +${r.otherClones} more` : ""}`, detail: r.path, path: r.path })),
   ];
   const pick = await vscode.window.showQuickPick(rows, { title: "Open Repository", placeHolder: "A repository on this PC, or browse", matchOnDetail: true });
   if (!pick) return undefined;

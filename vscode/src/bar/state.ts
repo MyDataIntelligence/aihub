@@ -70,7 +70,7 @@ export function buildState(i: StateInput): BarState {
     sets.unshift({ id: open.set.folder, ...(open.set.story ? { story: open.set.story } : {}), label: setLabel(open.set, i.stories), repos: open.set.repos.length, open: true });
   }
 
-  const repositories: BarRepository[] = i.scan.repos.map((r) => ({ name: r.name, path: r.path, branch: r.branch }));
+  const repositories: BarRepository[] = i.scan.repos.map((r) => ({ name: r.name, path: r.path, branch: r.branch, ...(r.otherClones?.length ? { otherClones: r.otherClones.length } : {}) }));
   if (open.repo && !repositories.some((r) => pathKey(r.path) === pathKey(open.repo!.path))) repositories.push({ ...open.repo });
   repositories.sort((a, b) => a.name.localeCompare(b.name));
 

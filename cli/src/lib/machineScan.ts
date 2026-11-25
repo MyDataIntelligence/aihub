@@ -17,6 +17,8 @@ export interface ScanRepo {
   branch: string;
   /** origin url without credentials, for finding the clones of one repository */
   remote?: string;
+  /** the other clones of the same remote on this PC (set when the list is made one-per-remote) */
+  otherClones?: string[];
 }
 
 export interface ScanSet {

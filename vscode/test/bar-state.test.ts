@@ -129,6 +129,25 @@ describe("BarState in the three modes", () => {
   });
 });
 
+describe("one repository is one line", () => {
+  it("clones of one remote are one entry with otherClones; the most recently used wins", async () => {
+    const remote = "https://dev.example/org/proj/_git/repo-z";
+    for (const dir of [join(root, "code", "repo-z"), join(root, "code", "old", "repo-z")]) {
+      clone(dir);
+      writeFileSync(join(dir, ".git", "config"), `[remote "origin"]
+	url = ${remote}
+`);
+    }
+    // the second clone is the one in use: its index was written later
+    writeFileSync(join(root, "code", "old", "repo-z", ".git", "index"), "x");
+    const st = await engineFor(undefined).state();
+    const z = st.repositories.filter((r) => r.name === "repo-z");
+    expect(z).toHaveLength(1);
+    expect(z[0]).toMatchObject({ path: join(root, "code", "old", "repo-z"), otherClones: 1 });
+    expect(st.repositories.find((r) => r.name === "repo-a")?.otherClones).toBeUndefined();
+  });
+});
+
 describe("what a window remembers", () => {
   it("a set window is remembered by its workspace file, a repository window by its folder, newest first", () => {
     const s = set(7, "feature/7-x", ["repo-a"]);

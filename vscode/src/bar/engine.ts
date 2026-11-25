@@ -1,12 +1,14 @@
 import { existsSync } from "node:fs";
-import { basename } from "node:path";
-import { headBranchOf, scanMachine, type Scan } from "../../../cli/src/lib/machineScan";
+import { statSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { headBranchOf, scanMachine, type Scan, type ScanRepo } from "../../../cli/src/lib/machineScan";
 import { machineFolders, repoRootOf } from "../../../cli/src/lib/machineFolders";
-import { readRecentUse, rememberUse } from "../../../cli/src/lib/recentUse";
+import { pathKey, readRecentUse, rememberUse } from "../../../cli/src/lib/recentUse";
 import { findSet } from "../../../cli/src/lib/setInfo";
 import { readSetFile } from "../../../cli/src/lib/setFile";
 import { isClosedState, readSeenStories } from "../../../cli/src/lib/storyCache";
 import { readStoryWorktrees, storyWorktreesFileFor } from "../../../cli/src/lib/storyWorktrees";
+import { readPreferredClones, uniqueRepos } from "../worktrees/clones";
 import { buildState, setLabel, type OpenFacts } from "./state";
 import type { BarState, BarStoryBranch } from "./types";
 
@@ -52,6 +54,26 @@ export function storyBranchesOf(repoPath: string, story: number): BarStoryBranch
 
 const MAX_CLEAN_CHECKS = 8;
 
+/** When a clone was last used: the newest of .git/index and .git/HEAD (git writes them on status, commit, switch). */
+function usedAt(dir: string): number {
+  let t = 0;
+  for (const f of ["index", "HEAD"]) {
+    try {
+      t = Math.max(t, statSync(join(dir, ".git", f)).mtimeMs);
+    } catch {
+      /* missing: never used */
+    }
+  }
+  return t;
+}
+
+/** One entry per remote ("+N more" is otherClones): the preferred clone (`aihub repos prefer`), else the most recently used, else the shortest path. */
+export async function oneClonePerRemote(env: NodeJS.ProcessEnv, repos: ScanRepo[]): Promise<ScanRepo[]> {
+  const by = new Map(repos.map((r) => [pathKey(r.path), r]));
+  const unique = await uniqueRepos(repos.map((r) => ({ name: r.name, path: r.path, root: dirname(r.path) })), readPreferredClones(env), async (f) => ({ url: by.get(pathKey(f))?.remote, lastUsed: usedAt(f) }));
+  return unique.map((u) => ({ ...by.get(pathKey(u.path))!, ...(u.otherClones?.length ? { otherClones: u.otherClones } : {}) })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export class BarEngine {
   constructor(private deps: EngineDeps) {}
 
@@ -66,6 +88,11 @@ export class BarEngine {
     return scanMachine(this.deps.env, this.folders(), { refresh: o.refresh, now: this.now() });
   }
 
+  /** The repositories on this PC, one per remote. */
+  async repositories(o: { refresh?: boolean } = {}): Promise<ScanRepo[]> {
+    return oneClonePerRemote(this.deps.env, this.scan(o).repos);
+  }
+
   /** Changed files of a worktree (remembered a few seconds); undefined when git cannot say. */
   changedFiles(path: string): Promise<number | undefined> {
     return this.deps.dirtyOf ? this.deps.dirtyOf(path) : Promise.resolve(undefined);
@@ -74,7 +101,8 @@ export class BarEngine {
   async state(o: { refresh?: boolean } = {}): Promise<BarState> {
     const facts = openFacts(this.deps.dir());
     const folders = this.folders(facts);
-    const scan = scanMachine(this.deps.env, folders, { refresh: o.refresh, now: this.now() });
+    const raw = scanMachine(this.deps.env, folders, { refresh: o.refresh, now: this.now() });
+    const scan: Scan = { ...raw, repos: await oneClonePerRemote(this.deps.env, raw.repos) };
     const stories = readSeenStories(this.deps.env);
     const dirty = new Map<string, number | undefined>();
     const ask = async (paths: string[]) => void (await Promise.all(paths.map(async (p) => dirty.set(p, await this.deps.dirtyOf?.(p)))));

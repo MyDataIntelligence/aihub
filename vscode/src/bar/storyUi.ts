@@ -149,6 +149,7 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
   const story = picked.story;
   const scan = h.engine.scan({ refresh: true });
   const have = setOfStory(scan, story.id);
+  const repositories = await h.engine.repositories();
   if (have && have.repos.some((r) => r.exists)) {
     // a story has one set: that set opens, nothing is asked. The links are compared first (one read), and told once when they differ.
     h.log(`open story ${story.id}: its set ${have.id}`);
@@ -158,7 +159,7 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
   }
   if (!cwd) return void vscode.window.showWarningMessage("AI Context Hub: no repository is known on this PC yet. Add a folder with Folders to Look In...");
   const rows = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Reading story ${story.id}...` }, () => storyRows(story, picked, cwd));
-  const { rows: repoRows, notOnThisPc } = storyRepoRows(rows, scan.repos);
+  const { rows: repoRows, notOnThisPc } = storyRepoRows(rows, repositories);
   if (!repoRows.length) return void vscode.window.showWarningMessage("AI Context Hub: there are no repositories on this PC. Add a folder with Folders to Look In...");
   const ticked = await pickRepos(story, repoRows, notOnThisPc);
   if (!ticked) return;
@@ -351,7 +352,7 @@ export function registerStoryCommands(h: StoryHooks): void {
     let name = nameOf(arg);
     if (!name) {
       const inSet = new Set(set.repos.map((r) => r.name.toLowerCase()));
-      const rows = h.engine.scan().repos.filter((r) => !inSet.has(r.name.toLowerCase())).map((r) => ({ label: r.name, description: r.branch, detail: r.path }));
+      const rows = (await h.engine.repositories()).filter((r) => !inSet.has(r.name.toLowerCase())).map((r) => ({ label: r.name, description: r.branch, detail: r.path }));
       name = (await vscode.window.showQuickPick(rows, { title: `Add Repository to ${set.story ? `#${set.story}` : "the set"}`, placeHolder: `It joins on ${set.branch}`, matchOnDetail: true }))?.label;
     }
     if (!name) return;
