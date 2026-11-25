@@ -4,7 +4,7 @@ import { ensureBranch, findStoryBranchName } from "./branches.js";
 import { repoClient, type Ctx } from "./context.js";
 import { repoRoot } from "./git.js";
 import { AihubError } from "./errors.js";
-import { isDirty, listWorktrees, mustGit, refSha, samePath, tryGit, unpushedCount } from "./gitx.js";
+import { isDirty, listWorktrees, mustGit, pruneIfSafe, refSha, samePath, tryGit, unpushedCount } from "./gitx.js";
 import { clientForDir, fetchOrigin, resolveRepoDirs } from "./repos.js";
 import { findSet } from "./setInfo.js";
 import { baseFor } from "./story-flow.js";
@@ -164,7 +164,9 @@ export function listSets(ctx: Ctx, o: { root?: string; json?: boolean }): string
  */
 export function removeWorktreeSafely(r: { name: string; source: string; path: string }, branch: string): { removed: boolean; line: string } {
   if (!existsSync(r.path)) {
-    tryGit(r.source, ["worktree", "prune"]);
+    // a folder on a drive or share that is not there right now is not "gone": it stays in the set
+    if (!existsSync(dirname(r.path))) return { removed: false, line: `${r.name}: kept, ${r.path} cannot be reached (drive or share not available); try again when it is back` };
+    pruneIfSafe(r.source);
     return { removed: true, line: `${r.name}: worktree already gone` };
   }
   const listed = listWorktrees(r.source);

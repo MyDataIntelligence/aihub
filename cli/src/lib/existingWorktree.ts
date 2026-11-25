@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { AihubError } from "./errors.js";
-import { listWorktrees, samePath, tryGit, unpushedCount, type Worktree } from "./gitx.js";
+import { listWorktrees, pruneIfSafe, samePath, tryGit, unpushedCount, type Worktree } from "./gitx.js";
 import { patchOfWork } from "./workBackup.js";
 import { configHome } from "./notifyPolicy.js";
 import { findDirLinks, moveWorktreeSafely, removeDirLink, restoreDirLinks } from "./safeWorktree.js";
@@ -152,7 +152,7 @@ export function checkExisting(plan: PlannedWorktree[], o: { folder: string; poli
       continue;
     }
     if (list.some((w) => !w.main && w.path && !existsSync(w.path))) {
-      tryGit(p.source, ["worktree", "prune"]);
+      pruneIfSafe(p.source);
       list = list.filter((w) => w.main || existsSync(w.path));
     }
     lists.set(p.source, list);
