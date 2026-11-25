@@ -94,15 +94,17 @@ describe("aihub pipeline logs --failed", () => {
     expect(JSON.parse(j.lines.join("")).errors).toEqual(["BENCH-abc123-PIPE: tabel klanten mist de kolom klantnummer"]);
   });
 
-  it("says STOP after three red rounds and on a protected branch", async () => {
+  it("reports three red rounds and a protected branch as facts, never as an order to stop", async () => {
     const three = world("feature/x", [build(12, "feature/x"), build(11, "feature/x"), build(10, "feature/x")]);
     expect(await main(["pipeline", "logs", "--failed", "--run", "12"], three.ctx)).toBe(0);
-    expect(three.lines.join("\n")).toContain("STOP after 3 red rounds");
+    expect(three.lines.join("\n")).toContain("red runs in a row: 3");
+    expect(three.lines.join("\n")).not.toContain("STOP");
     const prot = world("staging", [build(12, "staging")]);
     expect(await main(["pipeline", "logs", "--failed", "--run", "12", "--json"], prot.ctx)).toBe(0);
     const j = JSON.parse(prot.lines.join(""));
     expect(j).toMatchObject({ run: 12, branch: "staging", protected: true });
-    expect(j.stop).toContain("protected branch");
+    expect(j.note).toContain("protected branch");
+    expect(j.stop).toBeUndefined();
   });
 
   it("parseRunRef reads ids and links and refuses the rest", () => {
