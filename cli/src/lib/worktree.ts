@@ -167,7 +167,10 @@ export function removeWorktreeSafely(r: { name: string; source: string; path: st
     tryGit(r.source, ["worktree", "prune"]);
     return { removed: true, line: `${r.name}: worktree already gone` };
   }
-  const known = listWorktrees(r.source).some((w) => samePath(w.path, r.path));
+  const listed = listWorktrees(r.source);
+  // a set entry that IS the main clone (a story branch that was checked out there and reused): never removable, it only leaves the set
+  if (listed.some((w) => w.main && samePath(w.path, r.path))) return { removed: true, line: `${r.name}: the main clone ${r.path} stays where it is; it is no longer part of the set` };
+  const known = listed.some((w) => samePath(w.path, r.path));
   const links = known ? findDirLinks(r.path) : [];
   const linkSet = new Set(links.map((l) => l.rel.replace(/\\/g, "/")));
   const dirty = known && tryGit(r.path, ["status", "--porcelain"]).out.split("\n").filter(Boolean).some((l) => !linkSet.has(l.slice(3).replace(/\/$/, "")));
@@ -192,12 +195,21 @@ export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?:
   if (!existsSync(metaPath)) throw new AihubError(o.folder ? `no worktree set in ${folder}` : `no worktree set for ${o.story ? `story ${o.story}` : `branch '${o.branch}'`} under ${setsRoot}`);
   const top = maker ? readSetFile(folder)!.top : (JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta);
   const all = [{ ...top, others: undefined }, ...(top.others ?? [])];
-  const meta = all.find((s) => (o.branch ? s.branch === o.branch : s.story === o.story)) ?? all[0];
+  // naming a branch or a story that is not in this folder (anymore) removes nothing: never "the top set instead"
+  const named = o.branch ? (s: SetMeta) => s.branch === o.branch : o.story ? (s: SetMeta) => s.story === o.story : undefined;
+  const meta = named ? all.find(named) : all[0];
+  if (!meta) throw new AihubError(`no worktree set for ${o.branch ? `branch '${o.branch}'` : `story ${o.story}`} in ${folder}${all.length ? ` (it holds: ${all.map((s) => `'${s.branch}'`).join(", ")})` : ""}; nothing was removed`);
   const rest = all.filter((s) => s !== meta);
   const lines: string[] = [];
   const left: SetMeta["repos"] = [];
   for (const r of meta.repos) {
-    const x = removeWorktreeSafely(r, repoBranch(meta, r));
+    // one failing repository (a locked worktree, a submodule) keeps only itself in the set; the others are still handled
+    let x: { removed: boolean; line: string };
+    try {
+      x = removeWorktreeSafely(r, repoBranch(meta, r));
+    } catch (e) {
+      x = { removed: false, line: `${r.name}: kept, ${(e as Error).message.split("\n")[0]}` };
+    }
     if (!x.removed) left.push(r);
     lines.push(x.line);
   }
