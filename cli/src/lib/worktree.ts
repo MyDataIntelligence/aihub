@@ -73,11 +73,15 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
     if (!wi.title) throw new AihubError(`work item ${o.story} not found; pass --branch <name>`);
     branch = storyBranchName(team, o.story, wi.title);
   }
-  meta.branch = branch;
+  // an existing set keeps its branch: another --branch only puts the new repositories on that branch (repos[].branch)
+  if (!meta.branch) meta.branch = branch;
   if (!existsSync(metaPath)) {
     // the folder name takes the slug of the branch now that it is known
     folder = setFolder(setsRoot, o.story, branch);
     metaPath = join(folder, META);
+  }
+  if (!existsSync(metaPath) && readSetFile(folder)?.kind === "maker") {
+    throw new AihubError(`${folder} holds a set in the extension's format (.worktree-set.json); add repositories to it from inside that set: aihub worktree add --repos ${o.repos.join(",")}`);
   }
 
   // what each repository becomes; a branch with a worktree elsewhere is asked about before anything is created
@@ -101,14 +105,14 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
       const how = policy === "ask" ? "reuse" : policy;
       const inside = samePath(dirname(busy.path), folder);
       if (inside || how === "reuse") {
-        meta.repos.push({ name: d.name, source: d.dir, path: busy.path, ...(own !== branch ? { branch: own } : {}) });
+        meta.repos.push({ name: d.name, source: d.dir, path: busy.path, ...(own !== meta.branch ? { branch: own } : {}) });
         lines.push(`${d.name}: worktree ${busy.path} on '${own}' reused`);
         writeAtomic(metaPath, JSON.stringify(meta, null, 2));
         continue;
       }
       const p = how === "move" ? moveExisting(d.dir, own, busy.path, path, again) : recreateExisting(d.dir, own, busy.path, path, { discard: o.discardLocalWork, again });
       if (!p.ok) throw new AihubError(`${d.name}: ${p.note}`);
-      meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== branch ? { branch: own } : {}) });
+      meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== meta.branch ? { branch: own } : {}) });
       lines.push(`${d.name}: ${p.note}`);
       writeAtomic(metaPath, JSON.stringify(meta, null, 2));
       continue;
@@ -117,7 +121,7 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
     const base = await baseFor(d.dir, clientForDir(ctx, d.dir), team, o.base);
     const e = ensureBranch(d.dir, own, base);
     mustGit(d.dir, ["worktree", "add", path, own]);
-    meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== branch ? { branch: own } : {}) });
+    meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== meta.branch ? { branch: own } : {}) });
     lines.push(`${d.name}: worktree ${path} on '${own}'${e.created ? ` (new, from ${base})` : ""}`);
     writeAtomic(metaPath, JSON.stringify(meta, null, 2));
   }
