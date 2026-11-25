@@ -122,8 +122,10 @@ export function headBranchOf(dir: string): string {
 export function remoteOf(gitDir: string): string | undefined {
   try {
     const cfg = readFileSync(join(gitDir, "config"), "utf8");
-    const m = /\[remote "origin"\][^[]*?\burl\s*=\s*(\S+)/.exec(cfg);
-    return m ? m[1].replace(/\/\/[^@/]+@/, "//") : undefined;
+    // the whole line: a repository name may hold spaces ("_git/Repo With Spaces"), and git keeps them as typed
+    const m = /\[remote "origin"\][^[]*?\burl\s*=\s*([^\r\n]+)/.exec(cfg);
+    const url = m?.[1].trim().replace(/^"(.*)"$/, "$1");
+    return url ? url.replace(/\/\/[^@/]+@/, "//") : undefined;
   } catch {
     return undefined;
   }
