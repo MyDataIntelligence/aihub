@@ -2,6 +2,19 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.4.0
+- Guided team.yaml: `aihub team setup` detects what it can (git remote, origin/HEAD, branch names, work item states, branch policies, the target of recent PRs, the PR template; Fabric workspaces only with a token at hand), writes a commented proposal and lists only the open questions with their `aihub team set` command; `aihub team set <key> <value>` changes one key and keeps comments; `aihub team show [--missing]` shows each value with its source. `aihub init` without team.yaml runs the setup first.
+- A team setting aihub can only guess stops the command before anything is created, with exit code 3 and one `missing team setting ... aihub team set ...` line (story states with two candidates, the Fabric workspace, the PR target on a tie). `aihub doctor` lists such keys and whether a Fabric token is at hand.
+- Without a target in team.yaml, `pr create`, `branch update` and `learn change` use the branch the feature branch was cut from (local git, closest merge-base) and say so: `target: <branch> (derived from the branch point)`.
+- `aihub <command> [<sub>] --help` and `-h` work for every command, at most 600 bytes with one example; an unknown command or subcommand gets "did you mean" (at most three); a parse error shows only the one usage line. `--json` output is one line.
+- Templates: a fixed lookup order for story, Bug and Task templates (team.yaml, the team pack, the team's work item template in Azure DevOps, built-in) and the template source in every result line; PR templates are also found under another letter case.
+- `story start` checks the state before it creates, pushes or links anything and stops after starting; `story show` keeps hand-written text outside the template headings; `story start|link|finish` take a positional id.
+- `aihub status` is the one call to resume (last aihub step and the latest note of this branch); `status --resume` shows only this branch.
+- `pipeline logs --failed` prints the real `##[error]` line second; `pipeline timeline --failed` adds the log error of a task with only an exit code; new `aihub pipeline rerun [--run N]` finds or queues the run after a pushed fix and watches it.
+- `review prepare` creates the findings folder; `probe api --get <docs url>` returns the page content; `learn` reads PowerShell-written (UTF-16) JSON and explains a change in one call.
+- Fabric: `fabric logs --job` prints a digest (failed cell, exception, likely cause, error excerpt) instead of the whole log; `run --wait` and `status --wait` end with the cause; new `item edit`; `git commit --message` or no message; `failures --item`; a missing driver log is read a second way and never hides the cause; `fabric help` is one short screen.
+- Agents and skills: long jobs run in the main chat (the runner only on request); aihub is on the PATH, an unreadable skill file means `aihub <command> --help`; done is done, no closing question; do not read team.yaml. Release notes: docs/releases/1.4.0.md.
+
 ## 1.3.0
 - `aihub worktree cleanup [--json] [--repos a,b] [--no-size] [--offline]`: every worktree of this repository and your repo groups with size, last activity, uncommitted and unpushed work, merged, the pull request and the story of its branch; finished worktrees without local work are preselected. `--remove p1,p2 [--delete-branch]` removes them safely (folder links first, never --force, never local work) and says how much space was freed.
 - `aihub robot local [--json] [--command --file f --test t --env e]` and `aihub robot result [--since ms] [--dir d]`: the local Robot run behind the VS Code button (the team's runner or `python -m robot`, the repository's venv, only the test environments of team.yaml `robot.environments`) and its result (counts, failing tests, log.html, report.html). team.yaml: `robot.runner`, `robot.environments`.
