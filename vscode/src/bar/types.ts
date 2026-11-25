@@ -61,6 +61,10 @@ export interface BarState {
   sets: BarSet[];
   repositories: BarRepository[];
   lookIn: string[];
+  /** the scan stopped early (too many folders): the menu says "Not everything was scanned: narrow Folders to Look In..." */
+  scanTruncated?: boolean;
+  /** OneDrive / network folders that were left out because they are not in "Folders to Look In" */
+  scanSkipped?: string[];
 }
 
 export interface BarApi {

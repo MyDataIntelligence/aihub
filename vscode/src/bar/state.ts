@@ -78,7 +78,7 @@ export function buildState(i: StateInput): BarState {
     .filter((r) => i.exists(r.id))
     .map((r) => ({ kind: r.kind, id: r.id, label: r.label, ...(r.detail ? { detail: r.detail } : {}), lastUsed: r.lastUsed }));
 
-  const base = { recents, sets, repositories, lookIn };
+  const base = { recents, sets, repositories, lookIn, ...(i.scan.truncated ? { scanTruncated: true } : {}), ...(i.scan.skippedRemote?.length ? { scanSkipped: i.scan.skippedRemote } : {}) };
   if (open.set) {
     const story = open.set.story ? { id: open.set.story, title: i.stories[open.set.story]?.title ?? "", ...(i.stories[open.set.story]?.state ? { state: i.stories[open.set.story].state } : {}) } : undefined;
     const repos: BarRepo[] = open.set.repos.map((r) => {

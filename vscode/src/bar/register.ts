@@ -179,7 +179,10 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
     for (;;) {
       const folders = engine.folders();
       type Row = vscode.QuickPickItem & { act: "add" | "refresh" | "remove"; folder?: string };
+      const last = engine.scan();
       const rows: Row[] = [
+        ...(last.truncated ? [{ label: "$(warning) Not everything was scanned", description: "too many folders: narrow Folders to Look In...", act: "refresh" as const }] : []),
+        ...(last.skippedRemote?.length ? [{ label: "$(cloud) OneDrive and network folders were left out", description: "add one below to scan it", act: "refresh" as const }] : []),
         { label: "$(add) Add a folder...", description: "repositories and sets below it are found (a few levels deep)", act: "add" },
         { label: "$(refresh) Look again now", description: "the result is kept for a few minutes", act: "refresh" },
         { label: "Folders to look in", kind: vscode.QuickPickItemKind.Separator, act: "refresh" },
