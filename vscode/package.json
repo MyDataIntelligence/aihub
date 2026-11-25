@@ -542,6 +542,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.openInOwnWindow",
+        "title": "Open in Own Window...",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.otherBranch",
         "title": "Other Branch...",
         "category": "AI Context Hub"
@@ -1301,6 +1306,10 @@
         },
         {
           "command": "aihub.bar.newStoryBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.openInOwnWindow",
           "when": "false"
         },
         {
