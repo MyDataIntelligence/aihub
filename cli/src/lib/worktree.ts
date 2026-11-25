@@ -182,8 +182,8 @@ export function removeWorktreeSafely(r: { name: string; source: string; path: st
 }
 
 export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?: string; folder?: string; json?: boolean }): string {
-  const root = repoRoot(ctx.cwd);
-  const setsRoot = resolve(o.root ?? defaultSetsRoot(root));
+  // --folder names the set itself: no repository (and no sets root) is needed, so it also works from a folder that is no clone
+  const setsRoot = o.folder ? resolve(o.folder, "..") : resolve(o.root ?? defaultSetsRoot(repoRoot(ctx.cwd)));
   // a story branch opened with `worktree open` lives in its story folder, next to the other sets of that story
   const storyId = o.story ?? (o.branch ? storyIdFromBranch(o.branch) : undefined);
   const byBranch = join(setsRoot, slugOfBranch(o.branch ?? ""));
@@ -218,7 +218,8 @@ export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?:
     write([{ ...meta, repos: left }, ...rest]);
     lines.push(`set kept: ${left.length} worktree(s) need attention`);
   } else {
-    if (meta.workspace) rmSync(meta.workspace, { force: true });
+    // the workspace file is the set's own (a hand-edited set file may name another one)
+    if (meta.workspace && dirname(resolve(meta.workspace)).toLowerCase() === resolve(folder).toLowerCase()) rmSync(meta.workspace, { force: true });
     if (rest.length) write(rest);
     else {
       rmSync(metaPath);
