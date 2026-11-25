@@ -18,8 +18,15 @@ export function remoteKey(url: string): string | undefined {
   const u = url.trim();
   if (!u) return undefined;
   let m: RegExpExecArray | null;
-  const ado = (org: string, project: string, repo: string) => `azure/${[org, project, repo].map((s) => decodeURIComponent(s).toLowerCase()).join("/")}`;
-  if ((m = /^(?:ssh:\/\/)?[^@\s]+@(?:ssh\.dev\.azure\.com|vs-ssh\.visualstudio\.com)[:/](?:v3\/)?([^/]+)\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i.exec(u))) return ado(m[1], m[2], m[3]);
+  const decode = (s: string) => {
+    try {
+      return decodeURIComponent(s);
+    } catch {
+      return s; // a stray % in a name must not break the whole list
+    }
+  };
+  const ado = (org: string, project: string, repo: string) => `azure/${[org, project, repo].map((s) => decode(s).toLowerCase()).join("/")}`;
+  if ((m = /^(?:ssh:\/\/)?(?:[^@\s]+@)?(?:ssh\.dev\.azure\.com|vs-ssh\.visualstudio\.com)[:/](?:v3\/)?([^/]+)\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i.exec(u))) return ado(m[1], m[2], m[3]);
   if ((m = /^https?:\/\/(?:[^@/]+@)?dev\.azure\.com\/([^/]+)\/([^/]+)\/_git\/([^/?#]+?)(?:\.git)?\/?(?:[?#].*)?$/i.exec(u))) return ado(m[1], m[2], m[3]);
   if ((m = /^https?:\/\/(?:[^@/]+@)?([^./]+)\.visualstudio\.com\/(?:DefaultCollection\/)?([^/]+)\/_git\/([^/?#]+?)(?:\.git)?\/?(?:[?#].*)?$/i.exec(u))) return ado(m[1], m[2], m[3]);
   // other hosts: scheme://[user@]host[:port]/path or user@host:path
