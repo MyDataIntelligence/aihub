@@ -7,6 +7,9 @@ import { forgetUse, pathKey, readRecentUse, ago } from "../../../cli/src/lib/rec
 import { syncRepoName } from "../../../cli/src/lib/workspaceNames";
 import { CliProblem } from "./cliCheck";
 import { BarEngine, openFacts } from "./engine";
+import { gitRun } from "./ownWindow";
+import { cli } from "./runner";
+import { BehindMemo, gitStatusOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
 import { linkedOf, registerStoryCommands } from "./storyUi";
 import { registerSetOps, SetFileWatcher } from "./setOps";
 import { openPath, windowIsEmpty } from "./window";
@@ -49,7 +52,29 @@ export interface BarHandle {
 
 export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHandle {
   const dirtyOf = dirtyCounter();
-  const engine = new BarEngine({ env: process.env, dir: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, dirtyOf, linkedOf, extraPlaces: deps.extraPlaces });
+  // changes and ahead come from the git extension of VS Code when it is running (no process of ours); behind the target is one git call per repository after a HEAD change
+  const behind = new BehindMemo(gitRun);
+  const gitRepos = (): GitRepoLike[] | undefined => {
+    const ext = vscode.extensions.getExtension("vscode.git");
+    return ext?.isActive ? (ext.exports?.getAPI?.(1)?.repositories as GitRepoLike[] | undefined) : undefined;
+  };
+  // the pull requests of the set: one aihub call for the whole set, remembered for minutes, never on a timer
+  const prs = new PrMemo(async () => {
+    const f = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+    const cwd = f.set?.repos[0]?.path;
+    if (!cwd) return [];
+    const out = await cli(["pr", "list", "--mine", "--status", "all", "--json"], cwd);
+    return JSON.parse(out.slice(out.search(/[[{]/))) as PrRow[];
+  });
+  const engine = new BarEngine({
+    env: process.env,
+    dir: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    dirtyOf,
+    linkedOf,
+    extraPlaces: deps.extraPlaces,
+    statusOf: async (path, name) => ({ ...(gitStatusOf(gitRepos() ?? [], path) ?? {}), ...(await behind.behind(path, name).then((n) => (n === undefined ? {} : { behindTarget: n }))) }),
+    prOf: (repo, branch) => prOfBranch(prs.get(), repo, branch),
+  });
   const emitter = new vscode.EventEmitter<void>();
   let debounce: NodeJS.Timeout | undefined;
   const changed = () => {
@@ -60,6 +85,8 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   const api: BarApi = {
     getState: () => {
       watchHeads();
+      // opening a set (or its overview menu) reads the pull requests once, then they are remembered for minutes
+      if (openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set) void prs.refresh().then(changed);
       return engine.state();
     },
     onDidChangeState: emitter.event,
@@ -101,6 +128,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       if (!gitDir) return [];
       const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(gitDir), "HEAD"));
       const onHead = () => {
+        behind.forget(p);
         changed();
         if (facts.set) syncName(p, facts.set.folder);
       };
@@ -124,7 +152,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   const askContinue = setTimeout(() => void offerContinue(deps), 6000);
   ctx.subscriptions.push({ dispose: () => clearTimeout(askContinue) });
 
-  registerCommands(ctx, engine, deps, changed);
+  registerCommands(ctx, engine, deps, changed, { prs, behind });
   return { api, engine, changed };
 }
 
@@ -149,7 +177,8 @@ async function offerContinue(deps: BarDeps): Promise<void> {
 
 const idOf = (a: unknown): string | undefined => (typeof a === "string" ? a : a && typeof a === "object" && "id" in a ? String((a as { id: unknown }).id) : undefined);
 
-function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps: BarDeps, changed: () => void): void {
+function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps: BarDeps, changed: () => void, memo: { prs: PrMemo; behind: BehindMemo }): void {
+  const { prs, behind } = memo;
   const fail = (e: unknown) => {
     if (e instanceof CliProblem) {
       const copy = "Copy update command";
@@ -167,6 +196,13 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
     void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
   };
   const reg = (id: string, f: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, (...a) => Promise.resolve(f(...a)).catch(fail)));
+
+  // the overview menu opens: read the pull requests again (at most once per call, a failed call is remembered like a good one)
+  reg(BAR_COMMANDS.refreshStatus, async () => {
+    await prs.refresh(true);
+    behind.forget();
+    changed();
+  });
 
   reg(BAR_COMMANDS.refresh, async () => {
     engine.scan({ refresh: true });

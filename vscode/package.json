@@ -547,6 +547,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.refreshStatus",
+        "title": "Refresh Pull Requests of the Set",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.otherBranch",
         "title": "Other Branch...",
         "category": "AI Context Hub"
@@ -1310,6 +1315,10 @@
         },
         {
           "command": "aihub.bar.openInOwnWindow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.refreshStatus",
           "when": "false"
         },
         {

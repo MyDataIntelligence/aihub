@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import { pathKey, type RecentUse } from "../../../cli/src/lib/recentUse";
 import type { Scan, ScanSet } from "../../../cli/src/lib/machineScan";
 import { isClosedState, type SeenStory } from "../../../cli/src/lib/storyCache";
-import type { BarRecent, BarRepo, BarRepository, BarSet, BarState, BarStoryBranch } from "./types";
+import type { BarPr, BarRecent, BarRepo, BarRepository, BarSet, BarState, BarStoryBranch } from "./types";
 
 /**
  * BarState from what is already known: the folder this window shows, the scan of the PC, the recent list and the
@@ -39,6 +39,12 @@ export interface StateInput {
   storyBranches?: (repoPath: string, story: number) => BarStoryBranch[] | undefined;
   /** is the branch linked to the story in Azure DevOps; undefined when not known */
   linked?: (story: number, repo: string, branch: string) => boolean | undefined;
+  /** changes (git extension), ahead and behind the target for a worktree; undefined when not known */
+  status?: (path: string) => { changes?: number; ahead?: number; behindTarget?: number } | undefined;
+  /** the pull request of a branch of a repository (a memory of one earlier read) */
+  pr?: (repo: string, branch: string) => BarPr | undefined;
+  /** the branch belongs to the story */
+  storyBranch?: (repoPath: string, branch: string) => boolean;
   /** a set without work in it, asked only for sets of closed stories */
   clean?: (set: ScanSet) => boolean | undefined;
 }
@@ -82,16 +88,30 @@ export function buildState(i: StateInput): BarState {
   if (open.set) {
     const story = open.set.story ? { id: open.set.story, title: i.stories[open.set.story]?.title ?? "", ...(i.stories[open.set.story]?.state ? { state: i.stories[open.set.story].state } : {}) } : undefined;
     const repos: BarRepo[] = open.set.repos.map((r) => {
-      const dirty = i.dirty?.(r.path);
+      const st = i.status?.(r.path);
+      const dirty = st?.changes ?? i.dirty?.(r.path);
       const sb = open.set!.story ? i.storyBranches?.(r.path, open.set!.story) : undefined;
       const linked = open.set!.story ? i.linked?.(open.set!.story, r.name, r.branch) : undefined;
-      return { name: r.name, path: r.path, branch: r.branch, ...(linked !== undefined ? { linked } : {}), ...(dirty !== undefined ? { dirty } : {}), ...(sb?.length ? { storyBranches: sb } : {}) };
+      const pr = i.pr?.(r.name, r.branch);
+      return {
+        name: r.name,
+        path: r.path,
+        branch: r.branch,
+        ...(linked !== undefined ? { linked } : {}),
+        ...(dirty !== undefined ? { dirty, changes: dirty } : {}),
+        ...(st?.ahead !== undefined ? { ahead: st.ahead } : {}),
+        ...(st?.behindTarget !== undefined ? { behindTarget: st.behindTarget } : {}),
+        ...(pr ? { pr } : {}),
+        storyBranch: !!open.set!.story && !!i.storyBranch?.(r.path, r.branch),
+        ...(sb?.length ? { storyBranches: sb } : {}),
+      };
     });
     return { mode: "set", ...(story ? { story } : {}), setFolder: open.set.folder, repos, ...base };
   }
   if (open.repo) {
     const dirty = i.dirty?.(open.repo.path);
-    return { mode: "repo", repos: [{ name: open.repo.name || basename(open.repo.path), path: open.repo.path, branch: open.repo.branch, ...(dirty !== undefined ? { dirty } : {}) }], ...base };
+    const st = i.status?.(open.repo.path);
+    return { mode: "repo", repos: [{ name: open.repo.name || basename(open.repo.path), path: open.repo.path, branch: open.repo.branch, storyBranch: false, ...(dirty !== undefined || st?.changes !== undefined ? { dirty: st?.changes ?? dirty, changes: st?.changes ?? dirty } : {}), ...(st?.ahead !== undefined ? { ahead: st.ahead } : {}), ...(st?.behindTarget !== undefined ? { behindTarget: st.behindTarget } : {}) }], ...base };
   }
   return { mode: "empty", repos: [], ...base };
 }
