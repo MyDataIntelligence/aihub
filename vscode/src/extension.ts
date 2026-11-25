@@ -6,7 +6,8 @@ import { RecentStore, registerRecents, rememberStory } from "./recentsUi";
 import { AdvisorController } from "./advisorUi";
 import { CleanupController } from "./cleanupUi";
 import { RobotController } from "./robotUi";
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
@@ -18,6 +19,7 @@ import { popupFor } from "./popups";
 import { statusItems, type BarError, type BarModel, type StatusItem, type Tone } from "./model";
 import { Refresher, type Result } from "./refresher";
 import { registerGitCommands } from "./gitUi";
+import { SET_FILES, terminalRoot } from "./terminalRoot";
 import { ThreadsController } from "./threadsUi";
 import { LearnController } from "./learnUi";
 import { registerWorktreeCommands } from "./worktreeUi";
@@ -31,6 +33,21 @@ function repoFolder(): string | undefined {
   const ed = vscode.window.activeTextEditor?.document.uri;
   const f = (ed && vscode.workspace.getWorkspaceFolder(ed)) ?? vscode.workspace.workspaceFolders?.[0];
   return f?.uri.fsPath;
+}
+
+/** Where opencode starts: the set folder of a worktree set, else the common root of the folders (terminalRoot), else the repo folder. */
+function opencodeFolder(fallback: string | undefined): string | undefined {
+  const file = vscode.workspace.workspaceFile;
+  const active = vscode.window.activeTextEditor?.document.uri;
+  const root = terminalRoot({
+    folders: (vscode.workspace.workspaceFolders ?? []).filter((f) => f.uri.scheme === "file").map((f) => f.uri.fsPath),
+    workspaceFile: file?.scheme === "file" ? file.fsPath : undefined,
+    activeFile: active?.scheme === "file" ? active.fsPath : undefined,
+    platform: process.platform,
+    home: homedir(),
+    isSetFolder: (dir) => SET_FILES.some((f) => existsSync(join(dir, f))),
+  });
+  return root ?? fallback;
 }
 
 class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -362,7 +379,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
       return vscode.window.activeTerminal;
     }
     const name = String(cfg().get("chatAgentName", "aihub"));
-    const t = vscode.window.createTerminal({ name: "opencode", cwd: this.cwd });
+    const t = vscode.window.createTerminal({ name: "opencode", cwd: opencodeFolder(this.cwd) });
     t.show(false);
     t.sendText(`opencode --agent ${name}`, true);
     // give the TUI time to start before the text goes to its prompt

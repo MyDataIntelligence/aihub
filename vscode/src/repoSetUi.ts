@@ -6,6 +6,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { makeRunner, readJson, type Runner } from "./cli";
 import { findRepos, type Repo } from "./worktrees/core";
+import { cloneItem, readPreferredClones, uniqueRepos } from "./worktrees/clones";
 import { listGroups as listLocalGroups } from "./worktrees/extras";
 import {
   branchItems,
@@ -215,10 +216,11 @@ export class RepoSetController {
     const roots = (cfg().get<string[]>("worktrees.repoRoots", []) ?? []).filter(Boolean);
     const search = roots.length ? roots : [...new Set((vscode.workspace.workspaceFolders ?? []).map((f) => path.dirname(f.uri.fsPath)))];
     if (!search.length) return void vscode.window.showWarningMessage("Open a folder, or set aihub.worktrees.repoRoots, so repositories can be found.");
-    const found = await findRepos(search, Number(cfg().get("worktrees.scanDepth", 2)));
+    // one line per repository, however often it is cloned
+    const found = await uniqueRepos(await findRepos(search, Number(cfg().get("worktrees.scanDepth", 2))), readPreferredClones());
     if (!found.length) return void vscode.window.showWarningMessage(`No git repositories found in ${search.join(", ")}.`);
     const picks = await vscode.window.showQuickPick(
-      found.map((r) => ({ label: r.name, description: r.path, repo: r })),
+      found.map((r) => ({ ...cloneItem(r), repo: r as Repo })),
       { canPickMany: true, title: stepTitle(1, [], this.flow), placeHolder: "Tick the repositories" },
     );
     if (!picks?.length) return;
