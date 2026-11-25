@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import { forgetScan, setOfStory } from "../../../cli/src/lib/machineScan";
 import { readRecentUse } from "../../../cli/src/lib/recentUse";
 import { divergenceKey, divergenceMessage, divergences, markDivergenceSeen, seenDivergence, type Divergence } from "../../../cli/src/lib/setDivergence";
-import { readSetFile } from "../../../cli/src/lib/setFile";
+import { readSetFile, stampStoryTitle } from "../../../cli/src/lib/setFile";
 import { readSeenStories } from "../../../cli/src/lib/storyCache";
 import { readJson } from "../cli";
 import { cli, runner } from "./runner";
@@ -154,6 +154,7 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
     // a story has one set: that set opens, nothing is asked. The links are compared first (one read), and told once when they differ.
     h.log(`open story ${story.id}: its set ${have.id}`);
     if (cwd) await checkDivergence(h, story.id, have.repos.filter((r) => r.exists).map((r) => ({ name: r.name, branch: r.branch, path: r.path })), picked, cwd, windowChoice() === "this");
+    if (story.title) stampStoryTitle(have.folder, story.id, story.title);
     await vscode.commands.executeCommand("aihub.bar.openSet", { id: have.id });
     return;
   }
@@ -174,6 +175,7 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
     if (made) void cli(["story", "branches", "link", "--id", String(story.id), "--branch", made.branch, "--repo", r.repo], r.path).catch((e: Error) => h.log(`story ${story.id}: Azure DevOps link for ${made.branch} not made: ${e.message}`));
   }
   forgetScan(process.env);
+  if (story.title && res.folder) stampStoryTitle(res.folder, story.id, story.title);
   await showOpened(res, windowChoice(), h.log, { storyTitle: story.title });
   h.changed();
 }
