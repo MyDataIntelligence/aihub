@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitDirFor } from "../../../cli/src/lib/machineScan";
-import { defaultTargetFor, loadTeam } from "../../../cli/src/lib/team";
 import { branchNamedForStory } from "../../../cli/src/lib/storyWorktrees";
 import type { GitRun } from "./ownWindow";
 import type { BarPr } from "./types";
@@ -33,10 +32,41 @@ export function gitStatusOf(repos: GitRepoLike[], path: string): { changes: numb
   return { changes: files.size, ahead: r.state.HEAD?.ahead ?? 0 };
 }
 
+/** The team.yaml path inside a repository (the same as the CLI's TEAM_FILE; no yaml package is needed here for one key). */
+const TEAM_YAML = ".agents/skills/_shared/references/team.yaml";
+
+/**
+ * `defaultTarget` of the repository `name` in the text of team.yaml: the item of `repositories:` with that name, or the only
+ * item when it has no name. A line reader for this one key, so the extension needs no yaml parser.
+ */
+export function teamTargetOf(text: string, name: string): string | undefined {
+  const items: { name?: string; target?: string }[] = [];
+  let inRepos = false;
+  for (const raw of text.replace(/\r\n/g, "\n").split("\n")) {
+    if (/^repositories:\s*$/.test(raw)) {
+      inRepos = true;
+      continue;
+    }
+    if (/^\S/.test(raw)) inRepos = false;
+    if (!inRepos) continue;
+    const dash = /^\s*-\s+(\w+):\s*(.*?)\s*$/.exec(raw);
+    const key = /^\s+(\w+):\s*(.*?)\s*$/.exec(raw);
+    const m = dash ?? key;
+    if (!m) continue;
+    if (dash) items.push({});
+    const it = items[items.length - 1];
+    const val = m[2].replace(/\s+#.*$/, "").replace(/^["']|["']$/g, "");
+    if (it && m[1] === "name") it.name = val;
+    if (it && m[1] === "defaultTarget") it.target = val;
+  }
+  const hit = items.find((i) => i.name?.toLowerCase() === name.toLowerCase()) ?? (items.length === 1 && !items[0].name ? items[0] : undefined);
+  return hit?.target || undefined;
+}
+
 /** The target branch of a repository: team.yaml, else what origin/HEAD says, else main. Files only. */
 export function targetOf(path: string, name: string): string {
   try {
-    const t = defaultTargetFor(loadTeam(path), name);
+    const t = teamTargetOf(readFileSync(join(path, TEAM_YAML), "utf8"), name);
     if (t) return t;
   } catch {
     /* no team.yaml here */

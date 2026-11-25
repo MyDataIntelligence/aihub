@@ -135,3 +135,24 @@ describe("BarState.repos[]", () => {
     expect(isStoryBranch(0, "feature/5-x", [])).toBe(false);
   });
 });
+
+describe("the target branch from team.yaml without a yaml parser", () => {
+  const yaml = [
+    "branches:",
+    "  protected: [main]",
+    "repositories:",
+    "  - name: repo-a",
+    "    defaultTarget: staging   # pull requests go here",
+    "  - name: Repo With Spaces",
+    "    defaultTarget: \"develop\"",
+    "other:",
+    "  defaultTarget: nope",
+  ].join("\r\n");
+  it("by repository name, any case; the only unnamed item; none otherwise", async () => {
+    const { teamTargetOf } = await import("../src/bar/repoStatus");
+    expect(teamTargetOf(yaml, "REPO-A")).toBe("staging");
+    expect(teamTargetOf(yaml, "repo with spaces")).toBe("develop");
+    expect(teamTargetOf(yaml, "unknown")).toBeUndefined();
+    expect(teamTargetOf("repositories:\n  - defaultTarget: main\n", "anything")).toBe("main");
+  });
+});
