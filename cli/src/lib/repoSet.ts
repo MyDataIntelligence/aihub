@@ -11,7 +11,8 @@ import { fetchOrigin, type RepoDir } from "./repos.js";
 import { defaultTargetFor, loadTeam, type TeamConfig } from "./team.js";
 import { findSet } from "./setInfo.js";
 import { linkBranch, currentOf, readStoryWorktrees, storyFolderFor, storyIdFromBranch, storyWorktreesFileFor, updateStoryWorktrees, variantOf, worktreePathFor } from "./storyWorktrees.js";
-import { defaultSetsRoot, slugOfBranch, writeSetMeta, type SetMeta } from "./worktree.js";
+import { defaultSetsRoot, slugOfBranch } from "./worktree.js";
+import { readSetFile, repoBranch, writeSetFile, writeSetMeta, type SetKind, type SetMeta } from "./setFile.js";
 
 /**
  * `aihub worktree open`: several repositories on the SAME branch at once, in one VS Code window.
@@ -172,8 +173,7 @@ export function defaultSetsRootFor(cwd: string, root: string | undefined, firstR
 
 /** Run from inside a set, repository names resolve next to the normal checkout it came from, not to the set's worktrees. */
 function outsideSet(ctx: Ctx): Ctx {
-  const here = findSet(ctx.cwd);
-  const meta = here && readSetMeta(here.folder);
+  const meta = setHere(ctx.cwd)?.meta;
   if (!meta?.repos?.length) return ctx;
   const mine = meta.repos.find((r) => samePath(r.path, ctx.cwd) || resolve(ctx.cwd).toLowerCase().startsWith(resolve(r.path).toLowerCase())) ?? meta.repos[0];
   return mine.source && existsSync(mine.source) ? { ...ctx, cwd: mine.source } : ctx;
@@ -209,11 +209,13 @@ export function openSet(setCtx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = la
   const pattern = storyPatternOf(team);
   const setsRoot = resolve(o.root ?? worktreeRootOf(team, root) ?? defaultSetsRootFor(setsBase, root, dirs[0].dir));
   const storyId = o.storyId ?? storyIdFromBranch(branch, pattern);
+  const stray = Object.keys(o.branches ?? {}).filter((n) => !dirs.some((d) => d.name === n) && !missing.includes(n));
+  if (stray.length) throw new AihubError(`--branch-for names ${stray.join(", ")}, which is not in --repos/--group (${dirs.map((d) => d.name).join(", ")}); nothing was changed`);
   const branchOf = (name: string) => o.branches?.[name] ?? branch;
   // a story's worktrees go to <root>/<id>-<slug>/<repo>[--variant]; other branches keep one folder per branch
   const storyFolders = storyId && existsSync(setsRoot) ? readdirSync(setsRoot) : [];
   const folder = storyId ? storyFolderFor({ root: setsRoot, storyId, branch, storyFolders }) : join(setsRoot, slug(branch));
-  const pathFor = storyId ? (d: RepoDir) => worktreePathFor({ root: setsRoot, storyId, repo: d.name, branch: branchOf(d.name), storyFolders, exists: existsSync }) : undefined;
+  const pathFor = storyId ? (d: RepoDir) => worktreePathFor({ root: setsRoot, storyId, repo: d.name, branch: branchOf(d.name), storyFolders: [basename(folder), ...storyFolders], exists: existsSync }) : undefined;
   const repos = dirs.map((d) => openRepo(d, { branch: branchOf(d.name), from: o.from, mode, folder, team, path: pathFor }));
   for (const m of missing) repos.push({ repo: m, ok: false, state: "failed", branch, note: "folder not found on this PC" });
   let workspace: string | undefined;
@@ -224,7 +226,7 @@ export function openSet(setCtx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = la
     workspace = join(folder, `${name}.code-workspace`);
     writeFileSync(workspace, workspaceJson(folder, repos, { story: storyId, group: o.group, branch, mode }), "utf8");
     if (mode === "worktree") {
-      const meta: SetMeta = { story: storyId ?? 0, branch, group: o.group, workspace, repos: okRepos.map((r) => ({ name: r.repo, source: dirs.find((d) => d.name === r.repo)!.dir, path: r.path! })) };
+      const meta: SetMeta = { story: storyId ?? 0, branch, group: o.group, workspace, repos: okRepos.map((r) => ({ name: r.repo, source: dirs.find((d) => d.name === r.repo)!.dir, path: r.path!, ...(r.branch !== branch ? { branch: r.branch } : {}) })) };
       writeSetMeta(folder, meta);
     }
     // a story branch opened here belongs to the story: linked locally, and the star when the story has none yet
@@ -270,15 +272,17 @@ export function formatOpenSet(r: OpenSetResult): string {
 export interface HereSet {
   folder: string;
   meta: SetMeta;
+  /** `.aihub-set.json` or the extension's `.worktree-set.json`: changes go back into the same file */
+  kind: SetKind;
 }
 
 export function setHere(cwd: string): HereSet | undefined {
   const s = findSet(cwd);
-  const top = s && readSetMeta(s.folder);
-  if (!s || !top?.repos?.length) return undefined;
-  const all = [top, ...(top.others ?? [])];
-  const { others: _o, ...meta } = all.find((m) => m.story === s.story && m.branch === s.branch && (m.group ?? "") === (s.group ?? "")) ?? top;
-  return { folder: s.folder, meta };
+  const file = s && readSetFile(s.folder);
+  if (!s || !file?.top.repos?.length) return undefined;
+  const all = [file.top, ...(file.top.others ?? [])];
+  const { others: _o, ...meta } = all.find((m) => m.story === s.story && m.branch === s.branch && (m.group ?? "") === (s.group ?? "")) ?? file.top;
+  return { folder: s.folder, meta, kind: file.kind };
 }
 
 /** A repository of the set by name, or by the folder of its worktree in the set (the VS Code picker passes folders). */
@@ -302,6 +306,7 @@ function variantPath(folder: string, repo: string, branch: string, storyId?: num
 }
 
 type SetRepo = SetMeta["repos"][number];
+export { repoBranch };
 
 /**
  * Some repositories of the set you are in on another branch. Default: `git switch` in the set's own worktree (the
@@ -310,7 +315,7 @@ type SetRepo = SetMeta["repos"][number];
  * Never opens a window.
  */
 export function switchInSet(here: HereSet, o: { repos: string[]; branch: string; from?: string; mode?: OpenMode }): OpenSetResult {
-  const { folder, meta } = here;
+  const { folder, meta, kind } = here;
   const branch = o.branch.trim();
   if (!branch) throw new AihubError("--branch <name> is required");
   const mode = o.mode ?? "switch";
@@ -332,12 +337,16 @@ export function switchInSet(here: HereSet, o: { repos: string[]; branch: string;
       );
   }
   const added: SetRepo[] = [];
+  const switched = new Set<string>();
   const repos = entries.map((e): RepoResult => {
     if (mode === "switch") {
       const r = openRepo({ name: e.name, dir: e.path }, { branch, from: o.from, mode: "switch", folder, team });
       if (r.state === "skipped") return { ...r, note: dirtyNote(e) };
       if (r.checkedOutIn) return { ...r, note: `${branch} is already checked out in ${r.checkedOutIn}; nothing was changed. Add --mode worktree to put that folder in this set next to ${e.name}` };
-      if (r.ok) relinkWorktree(e.path, branch, storyId);
+      if (r.ok) {
+        relinkWorktree(e.path, branch, storyId);
+        switched.add(e.name);
+      }
       return r;
     }
     const target = variantPath(folder, e.name, branch, storyId);
@@ -346,13 +355,14 @@ export function switchInSet(here: HereSet, o: { repos: string[]; branch: string;
     const inSet = meta.repos.find((x) => samePath(x.path, r.path!));
     if (inSet) return { ...r, repo: inSet.name, state: "already-on", note: `already in this set as ${inSet.name}` };
     const name = basename(target);
-    added.push({ name, source: e.source, path: r.path });
+    added.push({ name, source: e.source, path: r.path, branch });
     if (storyId) linkLocally(r.path, storyId, branch, r.path);
     return { ...r, repo: name };
   });
   const changed = repos.filter((r) => r.ok && r.state !== "already-on");
-  if (added.length) writeSetMeta(folder, { ...meta, repos: [...meta.repos, ...added] });
-  if (meta.workspace && changed.length) updateWorkspace(meta.workspace, folder, changed);
+  // the set file keeps each repository's own branch (`repos[].branch`), so status, list and --all-repos show it
+  if (added.length || switched.size) writeSetFile(folder, kind, { ...meta, repos: [...meta.repos.map((r) => (switched.has(r.name) ? { ...r, branch } : r)), ...added] });
+  if (meta.workspace && changed.length) updateWorkspace(meta.workspace, folder, changed, kind);
   const total = meta.repos.length + added.length;
   const what = changed.map((r) => `${r.repo} ${added.some((a) => a.name === r.repo) ? "added" : "now"} on ${r.branch}`);
   if (what.length) return result(repos, `the window stays as it is: ${total} repositories, ${what.join(", ")}`);
@@ -388,16 +398,20 @@ export function branchSwitch(ctx: Ctx, o: { repos: string[]; branch: string; fro
 }
 
 /** The set's workspace file: a new folder is added, the branch of a switched one is updated; VS Code reloads it itself. */
-function updateWorkspace(file: string, folder: string, rows: RepoResult[]): void {
+function updateWorkspace(file: string, folder: string, rows: RepoResult[], kind: SetKind = "aihub"): void {
   try {
     const ws = JSON.parse(readFileSync(file, "utf8")) as { folders?: { name?: string; path: string }[]; settings?: Record<string, unknown> };
     const folders = (ws.folders ??= []);
     const set = ws.settings?.["aihub.set"] as WindowSet | undefined;
     for (const r of rows) {
       if (!r.path) continue;
-      if (!folders.some((f) => f.name === r.repo || samePath(resolve(folder, f.path), r.path!))) {
+      // the extension's Worktree Sets name a folder "<repo> (<branch>)"
+      const label = kind === "maker" ? `${r.repo} (${r.branch})` : r.repo;
+      const had = folders.find((f) => samePath(resolve(folder, f.path), r.path!)) ?? folders.find((f) => f.name === r.repo);
+      if (had) had.name = label;
+      else {
         const rel = relative(folder, r.path);
-        folders.push({ name: r.repo, path: norm(rel && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel) ? rel : r.path) });
+        folders.push({ name: label, path: norm(rel && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel) ? rel : r.path) });
       }
       if (set?.repos) {
         const row = set.repos.find((x) => x.name === r.repo);
@@ -458,10 +472,7 @@ export function currentBranches(dirs: RepoDir[]): Record<string, string> {
   return Object.fromEntries(dirs.map((d) => [d.name, tryGit(d.dir, ["branch", "--show-current"]).out.trim()]));
 }
 
+/** The set file of a folder (`.aihub-set.json`, else the extension's `.worktree-set.json`). */
 export function readSetMeta(folder: string): SetMeta | undefined {
-  try {
-    return JSON.parse(readFileSync(join(folder, ".aihub-set.json"), "utf8")) as SetMeta;
-  } catch {
-    return undefined;
-  }
+  return readSetFile(folder)?.top;
 }

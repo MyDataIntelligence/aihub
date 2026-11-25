@@ -204,13 +204,16 @@ export interface SetModel {
   group?: string;
   repos: string[];
   total?: number;
+  /** aihub 1.5.1+: a repository on its own branch (not the set's) */
+  branches?: Record<string, string>;
 }
 
 /** A set's `.aihub-set.json` (written by `aihub worktree open`) as the status bar's set; the repositories whose folder is gone are left out. */
 export function setFromMeta(meta: unknown, exists: (p: string) => boolean): SetModel | null {
-  const m = meta as { story?: number; group?: string; branch?: string; repos?: { name: string; path: string }[] } | null;
+  const m = meta as { story?: number; group?: string; branch?: string; repos?: { name: string; path: string; branch?: string }[] } | null;
   if (!m?.branch || !Array.isArray(m.repos)) return null;
-  return { story: m.story ?? 0, group: m.group, branch: m.branch, total: m.repos.length, repos: m.repos.filter((r) => exists(r.path)).map((r) => r.name) };
+  const own = Object.fromEntries(m.repos.filter((r) => r.branch && r.branch !== m.branch).map((r) => [r.name, r.branch!]));
+  return { story: m.story ?? 0, group: m.group, branch: m.branch, total: m.repos.length, repos: m.repos.filter((r) => exists(r.path)).map((r) => r.name), ...(Object.keys(own).length ? { branches: own } : {}) };
 }
 
 /** The chip of a window that is a set: "Set: pipeline · 3/3 op feature/x". */
@@ -226,7 +229,7 @@ export function reposetStatus(s: SetModel | null | undefined): { text: string; t
   const NL = String.fromCharCode(10);
   if (!s) return { text: "$(repo-forked) Worktree Sets", tooltip: ["Open several repositories on the same branch in one window.", "", "Click for New Worktree Set, Open Worktree Set and the recent stories and sets."].join(NL) };
   const total = s.total ?? s.repos.length;
-  const rows = s.repos.map((r) => `- ${r}: ${s.branch}`);
+  const rows = s.repos.map((r) => `- ${r}: ${s.branches?.[r] ?? s.branch}`);
   return { text: `$(repo-forked) ${s.branch} · ${total} repos`, tooltip: [`**${s.group ?? "Set"}** on ${s.branch} (${s.repos.length}/${total} repositories)`, "", ...rows, "", "Click to open repositories on another branch."].join(NL) };
 }
 

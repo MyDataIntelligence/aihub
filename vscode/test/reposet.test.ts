@@ -143,6 +143,15 @@ describe("the status bar item and the other entries", () => {
     expect(s.tooltip).toContain("- b: feature/x");
   });
 
+  it("names a repository's own branch when it is not the set's (repos[].branch)", async () => {
+    const { reposetStatus, setFromMeta } = await import("../src/repoSetModel");
+    const m = setFromMeta({ story: 0, branch: "feature/x", repos: [{ name: "a", path: "/s/a" }, { name: "b", path: "/s/b", branch: "feature/y" }] }, () => true);
+    expect(m).toMatchObject({ repos: ["a", "b"], branches: { b: "feature/y" } });
+    const s = reposetStatus(m);
+    expect(s.tooltip).toContain("- a: feature/x");
+    expect(s.tooltip).toContain("- b: feature/y");
+  });
+
   it("is in the Source Control title, the editor title and has a keybinding", () => {
     const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8"));
     const m = pkg.contributes.menus;
