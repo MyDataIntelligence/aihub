@@ -141,9 +141,9 @@ export interface GitResult {
 }
 
 /** Run git and return the exit status instead of throwing. */
-export function gitRaw(cwd: string, args: string[]): GitResult {
+export function gitRaw(cwd: string, args: string[], env?: Record<string, string>): GitResult {
   if (gitGate(cwd, args)) return { status: 0, stdout: "", stderr: "" };
-  const r = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, env: env ? { ...process.env, ...env } : undefined });
   if (r.error) throw new AihubError(`git is not available: ${r.error.message}`);
   return { status: r.status ?? 1, stdout: r.stdout.split("\r\n").join("\n").trimEnd(), stderr: (r.stderr || "").trim() };
 }

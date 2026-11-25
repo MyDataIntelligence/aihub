@@ -5,8 +5,8 @@ import { AihubError } from "../lib/errors.js";
 import { setHint } from "../lib/allRepos.js";
 
 export const COMMIT_USAGE =
-  'aihub commit --type <type> --subject "<what changed>" [--scope s] [--story id] [--push] [--no-add] [--no-verify]\n' +
-  "    One call: stages everything, builds the message from the team's commits.format in team.yaml (story id from the branch name, scope from the changed folder), commits, optionally pushes. Prints a line before the repository's git hooks run and how long they took; --no-verify skips them ONLY when the user explicitly asked for that.";
+  'aihub commit --type <type> --subject "<what changed>" [--scope s] [--story id] [--push] [--no-add] [--skip-hooks id,id] [--no-verify]\n' +
+  "    One call: stages everything, builds the message from the team's commits.format in team.yaml (story id from the branch name, scope from the changed folder), commits, optionally pushes. Prints a line before the repository's git hooks run and how long they took; A hook that stops the commit or the push is reported with the failed check, its first lines and the choices: fix and run again (a run with nothing new to commit only pushes), --skip-hooks <ids> (pre-commit hook ids) or --no-verify (all hooks); the last two only when the user says so. Hooks that only reformatted files get one automatic second try.";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   if (argv.includes("--help") || argv[0] === "help") {
@@ -21,11 +21,12 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     push: { type: "boolean" },
     "no-add": { type: "boolean" },
     "no-verify": { type: "boolean" },
+    "skip-hooks": { type: "string" },
     json: { type: "boolean" },
   }).values;
   const story = v.story === undefined ? undefined : Number(String(v.story).replace(/^AB#/i, ""));
   if (story !== undefined && (!Number.isInteger(story) || story <= 0)) throw new AihubError("--story must be a number");
-  const text = await commitChanges(ctx, { type: v.type, scope: v.scope, subject: v.subject, story, push: v.push, noAdd: v["no-add"], noVerify: v["no-verify"], json: v.json });
+  const text = await commitChanges(ctx, { type: v.type, scope: v.scope, subject: v.subject, story, push: v.push, noAdd: v["no-add"], noVerify: v["no-verify"], skipHooks: v["skip-hooks"] ? String(v["skip-hooks"]).split(",").map((x) => x.trim()).filter(Boolean) : undefined, json: v.json });
   ctx.out(text);
   const hint = v.json ? "" : setHint(ctx.cwd, "commit");
   if (hint) ctx.out(hint);

@@ -283,8 +283,8 @@ export function errorLines(log: string, max = 3): string[] {
 
 /**
  * `aihub pipeline logs --failed`: the failing steps of a run (a link, an id, or the newest failed run of this branch), led by
- * the branch, whether it is protected and how many runs in a row are red: the facts the /fix loop stops on
- * (3 red rounds, protected branch).
+ * the branch, whether it is protected and how many runs in a row are red. These are facts for the reader, never an order to
+ * stop: the user decides whether the work goes on.
  */
 export async function pipelineFailed(ctx: Ctx, o: { run?: string; tail?: number; json?: boolean }, protectedPatterns: string[] = []): Promise<string> {
   const { client, root } = repoClient(ctx);
@@ -306,13 +306,13 @@ export async function pipelineFailed(ctx: Ctx, o: { run?: string; tail?: number;
   }
   const rounds = red || 1;
   const head = `run ${build.id} ${stateOf(build)} on ${branch || "(unknown branch)"}; protected: ${isProt ? "yes" : "no"}; red runs in a row: ${rounds}`;
-  const stop = isProt ? "STOP: protected branch, do not fix; report it." : rounds >= 3 ? "STOP after 3 red rounds: report what you tried." : "";
+  const note = isProt ? "note: protected branch; a fix goes through a pull request from a topic branch." : "";
   const logs = await pipelineLogs(ctx, { run: build.id, tail: o.tail });
   // the cause in the words of the log, first: quote it, do not paraphrase it
   const errors = errorLines(logs);
-  if (o.json) return JSON.stringify({ run: build.id, branch, protected: isProt, red: rounds, stop: stop || undefined, errors, logs });
+  if (o.json) return JSON.stringify({ run: build.id, branch, protected: isProt, red: rounds, note: note || undefined, errors, logs });
   const cause = errors.length ? `error (quote it as is): ${errors.join(" | ")}` : "";
-  return [head, cause, stop, logs].filter(Boolean).join("\n");
+  return [head, cause, note, logs].filter(Boolean).join("\n");
 }
 
 /**
