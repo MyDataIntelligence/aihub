@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.5.0
+
+- A branch whose worktree already exists elsewhere: Open Repo Set, New Worktree Set and My Stories "Open story" ask the same three choices as the CLI in a dialog (Move it into this set, recommended; Reuse it where it is; Recreate it) and run the command again with the answer. Needs aihub 1.6.0; with an older CLI nothing changes.
+- When the CLI switched repositories inside the set this window already shows (aihub 1.6.0 `stays`), no window is opened; the line is shown instead.
+- The status bar tooltip of a set shows each repository's own branch when it is not the set's branch (`repos[].branch`, or `set.branches` of `aihub status`). Notes: docs/releases/3.5.0.md.
+
 ## 3.4.0
 
 - Repo opener: step 1 of New Worktree Set... and of "Repositories on a branch..." is one multi-select pick with search. Saved groups (★) and recent repositories come first, then per Azure DevOps project its repositories (branch and folder, or "not cloned ↓"), then the local clones that are not in Azure DevOps. The local clones show at once; the Azure DevOps list is added when it is there. A repository that is not cloned is cloned into the repos root first (one notification, git's own error). After the pick: Save as group (personal or team.yaml); step 2 also has "Open as they are" (the folders on their current branches, no worktree). Setting `aihub.reposRoot`. Nothing runs at activation; opening the picker starts `aihub repos local` (no network) and `aihub repos ado` (cached).

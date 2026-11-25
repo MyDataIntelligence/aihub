@@ -24,7 +24,7 @@ A direct command needs no routing: "maak een PR" -> run `aihub pr create --summa
 | write or check pipeline YAML | pipeline-author |
 | "start story 123" | story-start |
 | "rond af", clean up, complete the PR | story-finish |
-| worktree set, several repos | worktrees |
+| worktree set, "repo X on branch Y" | worktrees |
 | "run story 123" | story-run |
 | review someone else's PR | pr-review |
 | "leg de PR uit" | pr-explain, learn |

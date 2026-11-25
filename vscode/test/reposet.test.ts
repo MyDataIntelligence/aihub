@@ -106,6 +106,12 @@ describe("the quick-pick flow", () => {
     expect(openTarget({ ...res, workspace: undefined, repos: [{ ...res.repos[0], ok: false }] }, "this")).toEqual({ error: "No repository could be opened on b, so the window was not changed." });
   });
 
+  it("opens nothing when the CLI switched repositories inside the set this window already shows", () => {
+    const res: OpenResultJson = { branch: "b", mode: "switch", folder: "/s/x", workspace: "/s/x/story-1.code-workspace", opened: false, stays: "the window stays as it is: 3 repositories, a now on b", repos: [{ repo: "a", ok: true, state: "switched", branch: "b", note: "switched", path: "/s/x/a" }] };
+    expect(openTarget(res, "new")).toEqual({ stays: "the window stays as it is: 3 repositories, a now on b" });
+    expect(openTarget(res, "this")).toEqual({ stays: "the window stays as it is: 3 repositories, a now on b" });
+  });
+
   it("summarizes the result: all open, or which repositories need attention", () => {
     const ok: OpenResultJson = { branch: "b", mode: "worktree", folder: "f", workspace: "w", opened: true, repos: [{ repo: "a", ok: true, state: "existing", branch: "b", note: "worktree" }] };
     expect(summarizeOpen(ok)).toMatchObject({ ok: true, failed: 0 });
@@ -137,11 +143,40 @@ describe("the status bar item and the other entries", () => {
     expect(s.tooltip).toContain("- b: feature/x");
   });
 
+  it("names a repository's own branch when it is not the set's (repos[].branch)", async () => {
+    const { reposetStatus, setFromMeta } = await import("../src/repoSetModel");
+    const m = setFromMeta({ story: 0, branch: "feature/x", repos: [{ name: "a", path: "/s/a" }, { name: "b", path: "/s/b", branch: "feature/y" }] }, () => true);
+    expect(m).toMatchObject({ repos: ["a", "b"], branches: { b: "feature/y" } });
+    const s = reposetStatus(m);
+    expect(s.tooltip).toContain("- a: feature/x");
+    expect(s.tooltip).toContain("- b: feature/y");
+  });
+
   it("is in the Source Control title, the editor title and has a keybinding", () => {
     const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8"));
     const m = pkg.contributes.menus;
     expect(m["scm/title"].some((x: { command?: string }) => x.command === "aihub.reposet.open")).toBe(true);
     expect(m["editor/title"].some((x: { command?: string; group: string }) => x.command === "aihub.reposet.open" && x.group.startsWith("navigation"))).toBe(true);
     expect(pkg.contributes.keybindings.some((k: { command: string; key: string }) => k.command === "aihub.reposet.open" && k.key === "ctrl+alt+b")).toBe(true);
+  });
+});
+
+describe("a branch that already has a worktree elsewhere", () => {
+  it("reads the CLI's question and turns a choice into the same arguments as its ready command", async () => {
+    const { needsChoiceOf, choiceArgs } = await import("../src/repoSetModel");
+    const q = {
+      question: "worktree for feature/x already exists: /w/a (2 uncommitted files). choose: ...",
+      existing: [{ repo: "repo-a", branch: "feature/x", path: "/w/a", target: "/s/a", state: "2 uncommitted files", dirty: 2, unpushed: 0 }],
+      choices: [
+        { choice: "move", label: "move it into this set (recommended; work and branch go along)", command: "aihub worktree open --repos repo-a --branch feature/x --existing move" },
+        { choice: "reuse", label: "reuse it where it is", command: "aihub worktree open --repos repo-a --branch feature/x --existing reuse" },
+        { choice: "recreate", label: "recreate it", command: "aihub worktree open --repos repo-a --branch feature/x --existing recreate --discard-local-work" },
+      ],
+    };
+    const parsed = needsChoiceOf(JSON.stringify({ needsChoice: q }));
+    expect(parsed?.choices.map((c) => c.choice)).toEqual(["move", "reuse", "recreate"]);
+    expect(choiceArgs(parsed!.choices[0])).toEqual(["--existing", "move"]);
+    expect(choiceArgs(parsed!.choices[2])).toEqual(["--existing", "recreate", "--discard-local-work"]);
+    expect(needsChoiceOf(JSON.stringify({ branch: "b", repos: [] }))).toBeUndefined();
   });
 });

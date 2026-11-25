@@ -44,6 +44,30 @@ export interface OpenResultJson {
   workspace?: string;
   repos: OpenRepoJson[];
   opened: boolean;
+  /** aihub 1.5.1+: run inside a set for some of its repositories, they changed in this window; nothing to open */
+  stays?: string;
+}
+
+/** aihub 1.5.1+: `--json` output when a branch already has a worktree elsewhere; nothing was changed yet. */
+export interface NeedsChoiceJson {
+  question: string;
+  existing: { repo: string; branch: string; path: string; target: string; state: string; dirty: number; unpushed: number }[];
+  choices: { choice: "move" | "reuse" | "recreate"; label: string; command: string }[];
+}
+
+/** The question in a CLI answer, if the CLI stopped on an existing worktree. */
+export function needsChoiceOf(text: string): NeedsChoiceJson | undefined {
+  try {
+    const j = JSON.parse(text.slice(Math.max(0, text.search(/[{]/)))) as { needsChoice?: NeedsChoiceJson };
+    return j?.needsChoice && Array.isArray(j.needsChoice.choices) && j.needsChoice.choices.length ? j.needsChoice : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The arguments that answer the question with one choice (the same as its ready command). */
+export function choiceArgs(c: NeedsChoiceJson["choices"][number]): string[] {
+  return ["--existing", c.choice, ...(/--discard-local-work/.test(c.command) ? ["--discard-local-work"] : [])];
 }
 
 export interface PrJson {
@@ -186,8 +210,12 @@ export function summarizeOpen(r: OpenResultJson): OpenSummary {
   return { ok: failed === 0, failed, title, lines };
 }
 
-/** What the extension opens after the CLI did the git work: the set's workspace file, in this window or a new one. */
-export function openTarget(r: OpenResultJson, window: HowWindow): { file: string; options: { forceReuseWindow: true } | { forceNewWindow: true } } | { error: string } {
+/**
+ * What the extension opens after the CLI did the git work: the set's workspace file, in this window or a new one;
+ * nothing when the repositories switched inside the set this window already shows (`stays`).
+ */
+export function openTarget(r: OpenResultJson, window: HowWindow): { file: string; options: { forceReuseWindow: true } | { forceNewWindow: true } } | { error: string } | { stays: string } {
+  if (r.stays) return { stays: r.stays };
   if (!r.workspace || !r.repos.some((x) => x.ok)) return { error: `No repository could be opened on ${r.branch}, so the window was not changed.` };
   return { file: r.workspace, options: window === "this" ? { forceReuseWindow: true } : { forceNewWindow: true } };
 }
@@ -198,13 +226,16 @@ export interface SetModel {
   group?: string;
   repos: string[];
   total?: number;
+  /** aihub 1.5.1+: a repository on its own branch (not the set's) */
+  branches?: Record<string, string>;
 }
 
 /** A set's `.aihub-set.json` (written by `aihub worktree open`) as the status bar's set; the repositories whose folder is gone are left out. */
 export function setFromMeta(meta: unknown, exists: (p: string) => boolean): SetModel | null {
-  const m = meta as { story?: number; group?: string; branch?: string; repos?: { name: string; path: string }[] } | null;
+  const m = meta as { story?: number; group?: string; branch?: string; repos?: { name: string; path: string; branch?: string }[] } | null;
   if (!m?.branch || !Array.isArray(m.repos)) return null;
-  return { story: m.story ?? 0, group: m.group, branch: m.branch, total: m.repos.length, repos: m.repos.filter((r) => exists(r.path)).map((r) => r.name) };
+  const own = Object.fromEntries(m.repos.filter((r) => r.branch && r.branch !== m.branch).map((r) => [r.name, r.branch!]));
+  return { story: m.story ?? 0, group: m.group, branch: m.branch, total: m.repos.length, repos: m.repos.filter((r) => exists(r.path)).map((r) => r.name), ...(Object.keys(own).length ? { branches: own } : {}) };
 }
 
 /** The chip of a window that is a set: "Set: pipeline · 3/3 op feature/x". */
@@ -220,7 +251,7 @@ export function reposetStatus(s: SetModel | null | undefined): { text: string; t
   const NL = String.fromCharCode(10);
   if (!s) return { text: "$(repo-forked) Worktree Sets", tooltip: ["Open several repositories on the same branch in one window.", "", "Click for New Worktree Set, Open Worktree Set and the recent stories and sets."].join(NL) };
   const total = s.total ?? s.repos.length;
-  const rows = s.repos.map((r) => `- ${r}: ${s.branch}`);
+  const rows = s.repos.map((r) => `- ${r}: ${s.branches?.[r] ?? s.branch}`);
   return { text: `$(repo-forked) ${s.branch} · ${total} repos`, tooltip: [`**${s.group ?? "Set"}** on ${s.branch} (${s.repos.length}/${total} repositories)`, "", ...rows, "", "Click to open repositories on another branch."].join(NL) };
 }
 

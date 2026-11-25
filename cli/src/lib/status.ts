@@ -35,7 +35,7 @@ export interface Status {
   next: string;
   warnings: string[];
   /** The worktree set this checkout belongs to (aihub worktree create): commit, pr create, pipeline follow and status take --all-repos there. */
-  set?: { story: number; branch: string; group?: string; total: number; repos: string[] };
+  set?: { story: number; branch: string; group?: string; total: number; repos: string[]; /** a repository whose own branch is not the set's branch */ branches?: Record<string, string> };
 }
 
 const stateOf = (b: Build) => (b.status === "completed" ? (b.result ?? "completed") : (b.status ?? "unknown"));
@@ -182,14 +182,14 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
     done: step.done,
     next: signedIn ? step.next : "sign in to Azure DevOps (az login, or set AIHUB_ADO_PAT), then run aihub status again",
     warnings,
-    set: ((x) => (x ? { story: x.story, branch: x.branch, group: x.group, total: x.total, repos: x.repos.map((r) => r.name) } : undefined))(findSet(root)),
+    set: ((x) => (x ? { story: x.story, branch: x.branch, group: x.group, total: x.total, repos: x.repos.map((r) => r.name), ...(((b) => (Object.keys(b).length ? { branches: b } : {}))(Object.fromEntries(x.repos.filter((r) => r.branch !== x.branch).map((r) => [r.name, r.branch])))) } : undefined))(findSet(root)),
   };
 }
 
 export function formatStatus(s: Status): string {
   const L: string[] = [];
   L.push(`${s.repo} @ ${s.branch}`);
-  if (s.set) L.push(`Set: ${s.set.story ? `story-${s.set.story}` : (s.set.group ?? s.set.branch)} with ${s.set.repos.join(", ")}: use --all-repos with commit, pr create, pr update, pipeline follow and status to do every repository at once`);
+  if (s.set) L.push(`Set: ${s.set.story ? `story-${s.set.story}` : (s.set.group ?? s.set.branch)} with ${s.set.repos.map((n) => (s.set!.branches?.[n] ? `${n} (${s.set!.branches[n]})` : n)).join(", ")}: use --all-repos with commit, pr create, pr update, pipeline follow and status to do every repository at once${s.set.total > s.set.repos.length ? `; ${s.set.total - s.set.repos.length} repository(ies) in the set file have no worktree: aihub worktree repair` : ""}`);
   L.push(s.story ? `Story: ${s.story.id} ${s.story.title} [${s.story.state}]` : "Story: none linked");
   L.push(s.pr ? `PR: !${s.pr.id} ${s.pr.title} [${s.pr.status}${s.pr.draft ? ", draft" : ""}] ${s.pr.url}` : "PR: none");
   if (s.pipeline.length) L.push(`Pipeline: ${s.pipeline.map((p) => `${p.name} ${p.state}`).join("; ")}`);

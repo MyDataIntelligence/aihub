@@ -3,7 +3,7 @@ import { currentBranch, repoRoot, workItemFromBranch } from "./git.js";
 import { hasWorkToCommit, unpushedCount } from "./gitx.js";
 import { type JournalEntry, readJournal } from "./journal.js";
 import { readNotes } from "./notes.js";
-import { findSet } from "./setInfo.js";
+import { findSet, reposWithBranch } from "./setInfo.js";
 import { isProtected, loadTeam } from "./team.js";
 
 const LABELS = {
@@ -95,6 +95,6 @@ export function resume(ctx: Ctx): Resume {
     `${branch}${story ? ` (story ${story})` : ""}${dirty ? ", uncommitted" : ""}${unpushed ? `, ${unpushed} unpushed` : ""}`,
   ];
   if (note) lines.push(`${L.note}: ${note.slice(0, 200)}`);
-  if (set) lines.push(`${L.set}: story-${set.story}: ${set.repos.map((r) => r.name).join(", ")} (--all-repos)`);
+  if (set) lines.push(`${L.set}: story-${set.story}: ${reposWithBranch(set)} (--all-repos)`);
   return { branch, story, last, done, rest, next, dirty, unpushed, note, text: lines.join("\n") };
 }
