@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.7.0
+
+- `aihub.bar.pipeline*` commands for pipelines in the PyCharm Git bar (runs, run, log, status, rerun plan, rerun, rerun failed, cancel, fix in chat, retry): CLI JSON or a typed error, no popups; lasting failures remembered 5 minutes per folder; the rerun changes go through a private temp file that is removed at once.
+- Smart Checkout instead of a CLI flag for a switch with uncommitted work; every failure in one plain sentence with Show Details.
+- A clone that cannot be found offers Choose Folder… (checked against the remote, remembered, the action repeated), also when it is reported inside an open result; the search clone shows where it goes, can be cancelled, and Undo removes it even with read-only git files.
+- No process of the extension inherits the git repository variables. The buttons need aihub 1.8.0. Notes: docs/releases/3.7.0.md.
+
 ## 3.6.0
 
 - The engine behind the story-set buttons of PyCharm Git 0.28.0 (`exports.bar`, `BarState`, `aihub.bar.*`): Open Story with existing story branches, the four-choice question for a branch with a worktree elsewhere, Update All / Commit All / Push All / Create Pull Requests, Open in Own Window, Undo after every set action (one message per action), behind the target branch (`aiContextHub.behindTarget`: ask, auto, off; never pushes), set sizes and "all merged". The set never resets another repository by itself. A set file that cannot be read keeps the last good set (`BarState.setFileProblem`); a branch checked out in the clone itself and a hand-edited branch that git does not have each get one plain question.
