@@ -1,16 +1,21 @@
 ## Summary
-<what changed and why, in two or three sentences>
+<what changes, why and for whom>
 
-## Changes
-- <change 1>
-- <change 2>
+## Verification
+<one change: expected behavior and observed result or outstanding check>
+<several changes: one row per change, expectation and observation or artifact>
 
-## Tests
-| Test | Result |
-|---|---|
-| <test that was really run> | <pass or fail> |
+## User actions
+<!-- aihub:optional -->
+<affected users and files, old and new behavior, and how to verify>
 
-Not run: <what was not tested and why>
+## Rollout
+<!-- aihub:optional -->
+<related changes, required versions or deployment order>
+
+## Open review points
+<!-- aihub:optional -->
+<unverified behavior, reason and remaining decision>
 
 ## Related
 Story: <work item link>

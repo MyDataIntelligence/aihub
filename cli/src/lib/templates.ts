@@ -1,10 +1,17 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { AihubError } from "./errors.js";
 import { readUtf8 } from "./team.js";
 
 export const TEMPLATE_DIRS = [".azuredevops", ".vsts", "docs", ""];
 export const DEFAULT_EMPTY = "n.v.t.";
 export const MAX_DESCRIPTION = 4000;
+
+export function checkDescriptionLength(description: string): void {
+  if (description.length > MAX_DESCRIPTION) {
+    throw new AihubError(`PR description exceeds ${MAX_DESCRIPTION} characters by ${description.length - MAX_DESCRIPTION}; shorten the edited section or link a detailed artifact`);
+  }
+}
 
 export interface TemplateSource {
   /** Content of a file at origin/<target> (preferred), or undefined. */
@@ -230,6 +237,7 @@ export function compose(input: ComposeInput): Composed {
       freeUsed = true;
       by = "body";
     }
+    if (!text && s.body.split("\n").some((line) => line.trim() === "<!-- aihub:optional -->")) continue;
     out.push({ heading: s.heading, body: text ?? empty });
     filled.push({ heading: s.heading, by: text ? by : "empty" });
   }
@@ -267,7 +275,8 @@ export function editSection(
   change: { append?: string; replace?: string },
 ): string {
   const parsed = parseSections(description);
-  const idx = parsed.sections.findIndex((s) => headingsMatch(s.heading, heading));
+  const exact = parsed.sections.findIndex((s) => normHeading(s.heading) === normHeading(heading));
+  const idx = exact >= 0 ? exact : parsed.sections.findIndex((s) => headingsMatch(s.heading, heading));
   if (idx < 0) {
     parsed.sections.push({ heading, body: (change.replace ?? change.append ?? "").trim() });
   } else {

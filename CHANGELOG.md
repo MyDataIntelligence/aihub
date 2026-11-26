@@ -2,6 +2,10 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.8.1
+- Diagnose failures with a representative check before queuing a full run. Explicit monitoring continues to an observed outcome. Pipeline reruns retain template parameters and pin the source revision.
+- Generic PR templates and skills link expectations to observations. Optional migration, rollout and review sections appear when filled. Section updates prefer an exact heading and reject oversized descriptions before sending.
+
 ## 1.8.0
 - Pipelines for the bar: `aihub pipeline list` (a red run carries its failed stage, step and tests; "today" over the whole set; red-run facts read once and kept in `~/.aihub/pipeline-red-runs.json`), `pipeline show --run N` (stages, jobs, steps, trigger, parameters, variables without secrets, a summary in plain words), `pipeline log`, `pipeline poll` and `pipeline run-again --run N --plan | --changes-file F`. A retried stage no longer counts its tests twice.
 - A repository is its remote: one rule for which clone wins (preferred, last used, first folder to look in, shortest path), shared with the extension; a clone is found by its remote or a loose folder name; when none is found the failure says so in one sentence.

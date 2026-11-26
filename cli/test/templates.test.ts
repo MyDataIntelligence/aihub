@@ -214,3 +214,20 @@ describe("mergeSections keeps the sections the CLI fills", () => {
     expect(out).not.toContain("<work item link>");
   });
 });
+
+describe("review evidence", () => {
+  it("omits empty optional sections and preserves required team sections", () => {
+    const template = "## Summary\n## Verification\n## Rollout\n<!-- aihub:optional -->\n## Team";
+    const input = { template, code: {}, body: "## Summary\nExport ready\n## Verification\nCSV has three rows" };
+    const small = compose(input).text;
+    expect(small).toContain("CSV has three rows");
+    expect(small).toContain("## Team");
+    expect(small).not.toContain("## Rollout");
+    expect(compose({ ...input, body: input.body + "\n## Rollout\nDeploy API first" }).text).toContain("Deploy API first");
+  });
+
+  it("edits an exact heading before a longer heading containing it", () => {
+    const current = "## Tests overview\n\nManual link\n\n## Tests\n\nPending\n";
+    expect(editSection(current, "Tests", { replace: "Passed" })).toBe(current.replace("Pending", "Passed"));
+  });
+});
