@@ -1,4 +1,5 @@
 import { trackedExecFile } from "../perf/probe";
+import { gitEnvironment } from "../../../cli/src/lib/gitEnv";
 
 export interface GitResult {
   code: number;
@@ -59,7 +60,7 @@ function spawnGit(gitPath: string, log?: (line: string) => void): Git {
             windowsHide: true,
             maxBuffer: 16 * 1024 * 1024,
             timeout: 120_000,
-            env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+            env: gitEnvironment(process.env, { GIT_TERMINAL_PROMPT: "0" }),
           },
           (error, stdout, stderr) => {
             const out = String(stdout ?? "");
