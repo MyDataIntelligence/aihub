@@ -207,3 +207,76 @@ describe("BarState.undo", () => {
     expect(buildState({ ...base, undo: "Switch Repo A to feature/5-y" }).undo).toEqual({ label: "Switch Repo A to feature/5-y" });
   });
 });
+
+describe("Undo for a hand edit of the set file and for Open Story", () => {
+  it("a branch changed in the set file by hand: the switch goes back and the file is as it was before the edit", async () => {
+    const w = world();
+    const before = fingerprint(w);
+    const old = readFileSync(w.setFile);
+    // the user edits the file; the snapshot knows what it said at the last read
+    w.writeSet([{ ...w.repos[0], branch: "feature/5-y" }, w.repos[1]]);
+    const snap = await takeSnapshot(gitRun, w.folder, "Set file: Repo A to feature/5-y", { files: [{ path: w.setFile, bytes: old }] });
+    sh(w.repos[0].path, "switch", "feature/5-y");
+    await undo(snap);
+    expect(readFileSync(w.setFile).equals(old)).toBe(true);
+    expect(sh(w.repos[0].path, "branch", "--show-current").trim()).toBe("feature/5-x");
+    expect(fingerprint(w).worktrees).toEqual(before.worktrees);
+  });
+
+  /** Open Story: a set that did not exist: a folder, a set file, a workspace file, a worktree on an existing branch and one on a new branch. */
+  async function openStory(w: W) {
+    const sources = w.repos.map((r) => r.source);
+    const snap = await takeSnapshot(gitRun, "", "Open story #7", { sources });
+    const folder = join(w.root, "sets", "7-new");
+    mkdirSync(folder, { recursive: true });
+    const a = join(folder, "Repo A");
+    const b = join(folder, "Repo B");
+    sh(w.repos[0].source, "worktree", "add", a, "feature/5-y");
+    sh(w.repos[1].source, "worktree", "add", "-b", "feature/7-new", b, "main");
+    writeFileSync(join(folder, ".aihub-set.json"), JSON.stringify({ story: 7, branch: "feature/7-new", workspace: join(folder, "story-7.code-workspace"), repos: [{ name: "Repo A", source: w.repos[0].source, path: a }, { name: "Repo B", source: w.repos[1].source, path: b }] }));
+    writeFileSync(join(folder, "story-7.code-workspace"), "{}");
+    snap.setFolder = folder;
+    return { snap, folder, a, b };
+  }
+
+  it("Open Story: the new worktrees, the branches it made and the set are gone; a branch that existed stays", async () => {
+    const w = world();
+    const before = fingerprint(w);
+    const o = await openStory(w);
+    await undo(o.snap);
+    expect(existsSync(o.folder)).toBe(false);
+    expect(fingerprint(w)).toEqual(before);
+    expect(sh(w.repos[0].source, "branch", "--list", "feature/5-y")).toContain("feature/5-y");
+    expect(sh(w.repos[1].source, "branch", "--list", "feature/7-new").trim()).toBe("");
+  });
+
+  it("Open Story: something changed in it since (uncommitted work, or a commit on a new branch): said, nothing done", async () => {
+    const w = world();
+    const o = await openStory(w);
+    write(o.a, "a.txt", "later work\n");
+    expect((await planUndo(gitRun, o.snap)).problem).toBe("Repo A has uncommitted changes since; commit or stash them, then undo");
+    sh(o.a, "checkout", "--", "a.txt");
+    write(o.b, "later.txt", "x\n");
+    sh(o.b, "add", "-A");
+    sh(o.b, "commit", "-m", "later");
+    const plan = await planUndo(gitRun, o.snap);
+    expect(plan.problem).toBe("feature/7-new has commits of its own since; they would be lost");
+    expect(plan.steps).toEqual([]);
+    expect(existsSync(o.b)).toBe(true);
+  });
+});
+
+describe("Undo never throws away commits", () => {
+  it("a branch the action made that got a commit since is not deleted: said, nothing done (was a gap in #243: the exclude pattern counted the branch itself)", async () => {
+    const w = world();
+    const snap = await takeSnapshot(gitRun, w.folder, "Switch Repo B to feature/5-new");
+    sh(w.repos[1].path, "switch", "-c", "feature/5-new");
+    write(w.repos[1].path, "later.txt", "x\n");
+    sh(w.repos[1].path, "add", "-A");
+    sh(w.repos[1].path, "commit", "-m", "later");
+    w.writeSet([w.repos[0], { ...w.repos[1], branch: "feature/5-new" }]);
+    const plan = await planUndo(gitRun, snap);
+    expect(plan.problem).toBe("feature/5-new has commits of its own since; they would be lost");
+    expect(sh(w.repos[1].source, "branch", "--list", "feature/5-new")).toContain("feature/5-new");
+  });
+});

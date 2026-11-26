@@ -119,7 +119,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       ask: async (message, buttons) => vscode.window.showInformationMessage(`AI Context Hub: ${message}`, ...buttons),
       said: (line, undo) => {
         void vscode.window.showInformationMessage(`AI Context Hub: ${line}`, ...(undo ? ["Undo"] : [])).then((pick) => {
-          if (pick === "Undo" && undo) void undoLast({ engine, log: deps.log, changed, reg: () => undefined, afterGit: () => behind.forget() });
+          if (pick === "Undo" && undo) void undoLast({ log: deps.log, changed, afterGit: () => behind.forget() });
         });
         if (undo) setCustomUndo({ engine, log: deps.log, changed, reg: () => undefined }, undo.label, undo.run);
         deps.log(line);
