@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { headBranchOf } from "../../../cli/src/lib/machineScan";
+import { operationInProgress } from "./behind";
 import type { GitRun } from "./ownWindow";
 
 /**
@@ -21,6 +24,13 @@ export interface RepoResult {
 const first = (t: string, n = 3) => t.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, n).join(" | ");
 const errText = (e: unknown) => (e as Error).message ?? String(e);
 
+/** Why nothing should be done to this repository now: its folder is gone, or a merge, rebase, cherry-pick or revert is in the middle. */
+export function unfit(path: string): string | undefined {
+  if (!existsSync(path)) return "its folder is missing (aihub worktree repair makes it again)";
+  const busy = operationInProgress(path);
+  return busy ? `${busy} is in progress; finish or abort it first` : undefined;
+}
+
 /** Runs `one` for each repository, two at a time at most, and keeps going when one fails (it becomes that repository's line). */
 export async function eachRepo(repos: RepoRef[], one: (r: RepoRef) => Promise<RepoResult>, limit = 2): Promise<RepoResult[]> {
   const out: RepoResult[] = new Array(repos.length);
@@ -28,6 +38,11 @@ export async function eachRepo(repos: RepoRef[], one: (r: RepoRef) => Promise<Re
   const worker = async () => {
     for (let i = next++; i < repos.length; i = next++) {
       try {
+        const why = unfit(repos[i].path);
+        if (why) {
+          out[i] = { repo: repos[i].name, ok: false, line: `${repos[i].name}: ${why}` };
+          continue;
+        }
         out[i] = await one(repos[i]);
       } catch (e) {
         out[i] = { repo: repos[i].name, ok: false, line: `${repos[i].name}: ${first(errText(e), 1)}`, detail: errText(e) };
@@ -55,7 +70,9 @@ export async function updateOne(git: GitRun, r: RepoRef): Promise<RepoResult> {
 }
 
 /** `git push` in one repository; a branch without a remote branch gets one (`--set-upstream origin HEAD`). */
-export async function pushOne(git: GitRun, r: RepoRef): Promise<RepoResult> {
+export async function pushOne(git: GitRun, r: RepoRef, target?: string): Promise<RepoResult> {
+  // the target branch (staging, main) is never pushed from here: it goes through a pull request
+  if (target && headBranchOf(r.path) === target) return { repo: r.name, ok: true, line: `${r.name}: on ${target}, the target branch: left alone` };
   try {
     const hasUpstream = await git(r.path, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).then(() => true, () => false);
     const ahead = hasUpstream ? Number((await git(r.path, ["rev-list", "--count", "@{u}..HEAD"])).trim()) : 1;

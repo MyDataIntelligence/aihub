@@ -95,14 +95,15 @@ describe("Commit all", () => {
       if (cwd.endsWith("Repo C")) throw new Error("nothing to commit: no staged or changed files");
       return JSON.stringify({ sha: "abc1234", files: 2, pushed: args.includes("--push") });
     };
-    const repos = ["Repo A", "Repo B", "Repo C"].map((n) => ({ name: n, path: `/w/${n}` }));
+    const base = mkdtempSync(join(tmpdir(), "aihub-batch-dirs-"));
+    const repos = ["Repo A", "Repo B", "Repo C"].map((n) => (mkdirSync(join(base, n)), { name: n, path: join(base, n) }));
     const res = await eachRepo(repos, (r) => commitOne(cli, r, "feat(export): add the csv", true), 1);
     expect(res.map((r) => [r.repo, r.ok, r.line])).toEqual([
       ["Repo A", true, "Repo A: committed abc1234 (2 files), pushed"],
       ["Repo B", false, "Repo B: git hooks stopped the commit: ruff failed (3 lines). choose: fix and run again | --skip-hooks ruff | --no-verify"],
       ["Repo C", true, "Repo C: nothing to commit"],
     ]);
-    expect(calls[0]).toEqual({ args: ["commit", "--type", "feat", "--scope", "export", "--subject", "add the csv", "--push", "--json"], cwd: "/w/Repo A" });
+    expect(calls[0]).toEqual({ args: ["commit", "--type", "feat", "--scope", "export", "--subject", "add the csv", "--push", "--json"], cwd: repos[0].path });
     expect(calls).toHaveLength(3);
     expect(res[1].detail).toContain("--skip-hooks ruff");
   });
@@ -110,11 +111,69 @@ describe("Commit all", () => {
 
 describe("eachRepo", () => {
   it("an exception becomes the line of that repository; the order of the results is the order of the repositories", async () => {
-    const res = await eachRepo([{ name: "x", path: "1" }, { name: "y", path: "2" }, { name: "z", path: "3" }], async (r) => {
+    const here = mkdtempSync(join(tmpdir(), "aihub-each-"));
+    const res = await eachRepo([{ name: "x", path: here }, { name: "y", path: here }, { name: "z", path: here }], async (r) => {
       if (r.name === "y") throw new Error("boom\nsecond line");
       await new Promise((ok) => setTimeout(ok, r.name === "x" ? 20 : 0));
       return { repo: r.name, ok: true, line: `${r.name}: ok` };
     });
     expect(res.map((r) => r.line)).toEqual(["x: ok", "y: boom", "z: ok"]);
+  });
+});
+
+describe("the awkward repositories", () => {
+  const lone = () => {
+    const root = mkdtempSync(join(tmpdir(), "aihub-lone-"));
+    const path = join(root, "Repo Alone");
+    mkdirSync(path);
+    sh(path, "init", "-b", "feature/5-x");
+    write(path, "a.txt", "a\n");
+    sh(path, "add", "-A");
+    sh(path, "commit", "-m", "init");
+    return { root, path };
+  };
+
+  it("a repository without a remote: update and push say so in one line, nothing throws, the others go on", async () => {
+    const w = world();
+    const l = lone();
+    commitIn(w.a.clone, "a2.txt", "1");
+    const res = await eachRepo([{ name: "Repo Alone", path: l.path }, { name: "Repo A", path: w.a.clone }], (r) => pushOne(gitRun, r));
+    expect(res[0].ok).toBe(false);
+    expect(res[0].line).toMatch(/^Repo Alone: not pushed, /);
+    expect(res[1].line).toBe("Repo A: pushed 1 commit");
+    const up = await updateOne(gitRun, { name: "Repo Alone", path: l.path });
+    expect(up.ok).toBe(false);
+    expect(up.line).toMatch(/^Repo Alone: not updated, /);
+  });
+
+  it("a folder that is gone: one line that names the repair, not a spawn error", async () => {
+    const w = world();
+    const res = await eachRepo([{ name: "Repo Gone", path: join(w.root, "nowhere") }, { name: "Repo A", path: w.a.clone }], (r) => updateOne(gitRun, r));
+    expect(res[0]).toEqual({ repo: "Repo Gone", ok: false, line: "Repo Gone: its folder is missing (aihub worktree repair makes it again)" });
+    expect(res[1].ok).toBe(true);
+  });
+
+  it("in the middle of a merge or a rebase nothing is updated, pushed or committed", async () => {
+    const w = world();
+    writeFileSync(join(w.a.clone, ".git", "MERGE_HEAD"), sh(w.a.clone, "rev-parse", "HEAD"));
+    mkdirSync(join(w.b.clone, ".git", "rebase-merge"));
+    const calls: string[] = [];
+    const cli = async (args: string[]) => (calls.push(args[0]), "{}");
+    const repos = [{ name: "Repo A", path: w.a.clone }, { name: "Repo B", path: w.b.clone }];
+    const u = await eachRepo(repos, (r) => updateOne(gitRun, r));
+    const p = await eachRepo(repos, (r) => pushOne(gitRun, r));
+    const c = await eachRepo(repos, (r) => commitOne(cli, r, "fix: x", false), 1);
+    expect(u.map((r) => r.line)).toEqual(["Repo A: a merge is in progress; finish or abort it first", "Repo B: a rebase is in progress; finish or abort it first"]);
+    expect(p.every((r) => !r.ok) && c.every((r) => !r.ok)).toBe(true);
+    expect(calls).toEqual([]);
+  });
+
+  it("Push All leaves the target branch alone", async () => {
+    const w = world();
+    sh(w.a.clone, "switch", "main");
+    commitIn(w.a.clone, "on-main.txt", "1");
+    const r = await pushOne(gitRun, { name: "Repo A", path: w.a.clone }, "main");
+    expect(r).toEqual({ repo: "Repo A", ok: true, line: "Repo A: on main, the target branch: left alone" });
+    expect(sh(w.a.origin, "rev-list", "--count", "main").trim()).toBe("1");
   });
 });
