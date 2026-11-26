@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, rmdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { BACKGROUND_ENV, type GitRun } from "./ownWindow";
 
@@ -120,7 +120,37 @@ export async function removeFolderPatiently(dir: string, o: { tries?: number; wa
 }
 
 function removeFolderOrThrow(dir: string): void {
-  rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+  } catch {
+    // the removal of the whole tree refused (a read-only file such as a git object or pack, or a file in use): one entry at a time, read-only
+    // cleared, so what cannot go is named and everything else is gone
+    removeTree(dir, dir);
+  }
+}
+
+function removeTree(root: string, dir: string): void {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) removeTree(root, p);
+    else {
+      try {
+        unlinkSync(p);
+      } catch {
+        try {
+          chmodSync(p, 0o666);
+          unlinkSync(p);
+        } catch (err) {
+          throw new Error(`${(err as NodeJS.ErrnoException).code ?? "error"} on ${p.slice(root.length + 1)}`);
+        }
+      }
+    }
+  }
+  try {
+    rmdirSync(dir);
+  } catch (err) {
+    throw new Error(`${(err as NodeJS.ErrnoException).code ?? "error"} on ${dir === root ? "the folder itself" : dir.slice(root.length + 1)}`);
+  }
 }
 
 /** Removes a folder git made (read-only pack files included); quiet when it is gone already. */

@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -228,6 +228,17 @@ describe("removing a clone while a file in it is still in use (Undo, Cancel)", (
     expect(r.gone).toBe(true);
     expect(r.why).toMatch(/EBUSY/);
     expect(calls).toBe(3);
+  });
+
+  it("removes a folder with a read-only file in it (a git object or pack)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "aihub-ro-"));
+    mkdirSync(join(dir, ".git", "objects", "ab"), { recursive: true });
+    const f = join(dir, ".git", "objects", "ab", "cdef");
+    writeFileSync(f, "x");
+    chmodSync(f, 0o444);
+    const r = await removeFolderPatiently(dir, { tries: 2, waitMs: 1 });
+    expect(r.gone).toBe(true);
+    expect(existsSync(dir)).toBe(false);
   });
 
   it("gives up after its tries and says the folder is still there", async () => {
