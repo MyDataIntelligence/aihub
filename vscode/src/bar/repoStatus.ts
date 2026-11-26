@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { gitDirFor } from "../../../cli/src/lib/machineScan";
+import { gitDirFor, headBranchOf } from "../../../cli/src/lib/machineScan";
 import { branchNamedForStory } from "../../../cli/src/lib/storyWorktrees";
 import type { GitRun } from "./ownWindow";
 import type { BarPr } from "./types";
@@ -42,6 +42,8 @@ const TEAM_YAML = ".agents/skills/_shared/references/team.yaml";
 export function teamTargetOf(text: string, name: string): string | undefined {
   const items: { name?: string; target?: string }[] = [];
   let inRepos = false;
+  let itemIndent = -1;
+  let keyIndent = -1;
   for (const raw of text.replace(/\r\n/g, "\n").split("\n")) {
     if (/^repositories:\s*$/.test(raw)) {
       inRepos = true;
@@ -53,6 +55,16 @@ export function teamTargetOf(text: string, name: string): string | undefined {
     const key = /^\s+(\w+):\s*(.*?)\s*$/.exec(raw);
     const m = dash ?? key;
     if (!m) continue;
+    const indent = raw.length - raw.trimStart().length;
+    // a list or a map nested inside an item (reviewers, branches...) is not another item and its keys are not the item's
+    if (dash) {
+      if (itemIndent === -1) itemIndent = indent;
+      if (indent !== itemIndent) continue;
+      keyIndent = -1;
+    } else {
+      if (keyIndent === -1) keyIndent = indent;
+      if (indent !== keyIndent) continue;
+    }
     if (dash) items.push({});
     const it = items[items.length - 1];
     const val = m[2].replace(/\s+#.*$/, "").replace(/^["']|["']$/g, "");
@@ -81,27 +93,98 @@ export function originHas(path: string, branch: string): boolean {
   }
 }
 
+/** What `[branch "<b>"]` in the clone's config says it merges with (the upstream), without `refs/heads/`. */
+function configMerge(common: string, branch: string): string | undefined {
+  try {
+    let inBranch = false;
+    for (const line of readFileSync(join(common, "config"), "utf8").split(/\r?\n/)) {
+      const sec = /^\s*\[\s*([^\]]+?)\s*\]/.exec(line);
+      if (sec) {
+        inBranch = sec[1].toLowerCase() === `branch "${branch}"`.toLowerCase();
+        continue;
+      }
+      const kv = inBranch ? /^\s*merge\s*=\s*(\S+)/i.exec(line) : null;
+      if (kv) return kv[1].replace(/^refs\/heads\//, "");
+    }
+  } catch {
+    /* no config */
+  }
+  return undefined;
+}
+
 /**
- * The branch pull requests go to and a branch is kept up to date with: the repository's entry in team.yaml; else
- * `staging` when origin has it; else what origin/HEAD says; else `main`. One function for behind-the-target, the update
- * question and Create Pull Requests. Files only.
+ * The branch this one was cut from, from local files only (the same signals as the CLI: the upstream, "branch: Created
+ * from X" in the branch's own reflog, "checkout: moving from X to <b>" in the HEAD reflog), taken only when origin has it.
+ * A hotfix branch cut from main is thereby never measured against staging.
  */
-export function targetOf(path: string, name: string): string {
+export function derivedTarget(path: string, branch: string): string | undefined {
+  const common = commonDirOf(path);
+  if (!common || !branch) return undefined;
+  const ok = (c: string | undefined) => (c && c !== branch && c !== "HEAD" && !/^[0-9a-f]{7,40}$/.test(c) && originHas(path, c) ? c : undefined);
+  const upstream = ok(configMerge(common, branch));
+  if (upstream) return upstream;
+  const read = (rel: string): string[] => {
+    try {
+      return readFileSync(join(common, ...rel.split("/")), "utf8").split(/\r?\n/).filter(Boolean);
+    } catch {
+      return [];
+    }
+  };
+  const msg = (l: string) => l.slice(l.indexOf("\t") + 1);
+  const created = read(`logs/refs/heads/${branch}`).map(msg).map((m) => /^branch: Created from (\S+)$/.exec(m)?.[1]).find(Boolean);
+  const fromCreated = ok(created?.replace(/^(refs\/remotes\/)?origin\//, "").replace(/^refs\/heads\//, ""));
+  if (fromCreated) return fromCreated;
+  const esc = branch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const moved = read("logs/HEAD").slice(-500).map(msg).map((m) => new RegExp(`^checkout: moving from (\\S+) to ${esc}$`).exec(m)?.[1]).filter(Boolean).pop();
+  return ok(moved);
+}
+
+/** The base the set file names for a repository (the extension's `.worktree-set.json`: `repos[].base`, else the set's `base`). */
+export function setBaseOf(setFolder: string | undefined, name: string): string | undefined {
+  if (!setFolder) return undefined;
+  try {
+    const j = JSON.parse(readFileSync(join(setFolder, ".worktree-set.json"), "utf8").replace(/^﻿/, "")) as { base?: unknown; repos?: { name?: unknown; base?: unknown }[] };
+    const own = j.repos?.find((r) => typeof r.name === "string" && r.name.toLowerCase() === name.toLowerCase())?.base;
+    const v = typeof own === "string" && own ? own : typeof j.base === "string" && j.base ? j.base : undefined;
+    return v?.replace(/^origin\//, "");
+  } catch {
+    return undefined;
+  }
+}
+
+export interface TargetInfo {
+  target: string;
+  /** named by team.yaml or by the set file: safe to pass as --target; else the CLI is left to derive its own */
+  sure: boolean;
+}
+
+/**
+ * The branch a repository is kept up to date with and pull requests go to: team.yaml; the base of the set file; the branch
+ * it was cut from (local files); else `staging` when origin has it; else what origin/HEAD says; else `main`. One function for
+ * behind-the-target, the update question and Create Pull Requests. Files only.
+ */
+export function targetInfo(path: string, name: string, o: { setFolder?: string } = {}): TargetInfo {
   try {
     const t = teamTargetOf(readFileSync(join(path, TEAM_YAML), "utf8"), name);
-    if (t) return t;
+    if (t) return { target: t, sure: true };
   } catch {
     /* no team.yaml here */
   }
-  if (originHas(path, "staging")) return "staging";
+  const base = setBaseOf(o.setFolder, name);
+  if (base) return { target: base, sure: true };
+  const cut = derivedTarget(path, headBranchOf(path));
+  if (cut) return { target: cut, sure: false };
+  if (originHas(path, "staging")) return { target: "staging", sure: false };
   const common = commonDirOf(path);
   try {
     const head = common ? readFileSync(join(common, "refs", "remotes", "origin", "HEAD"), "utf8") : "";
-    return /refs\/remotes\/origin\/(.+)/.exec(head)?.[1].trim() ?? "main";
+    return { target: /refs\/remotes\/origin\/(.+)/.exec(head)?.[1].trim() ?? "main", sure: false };
   } catch {
-    return "main";
+    return { target: "main", sure: false };
   }
 }
+
+export const targetOf = (path: string, name: string, o: { setFolder?: string } = {}): string => targetInfo(path, name, o).target;
 
 /** How far behind the target each repository is: one `git rev-list --count` after a HEAD change, then remembered until forget(). */
 export class BehindMemo {

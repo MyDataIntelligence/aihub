@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { decide, behindMessage, FetchGate, headSha, inspect, refSha, setMessage, Told, undoUpdate, updateRepo, type BehindFacts, type BehindMode, type UpdateResult } from "./behind";
-import { targetOf } from "./repoStatus";
+import { targetInfo, type TargetInfo } from "./repoStatus";
 import type { GitRaw, GitRun } from "./ownWindow";
 
 export type CheckReason = "open" | "own" | "menu" | "focus";
@@ -12,6 +12,8 @@ export interface BehindUi {
   setAuto(): Promise<void>;
   focused(): boolean;
   repos(): { name: string; path: string; branch?: string; changes?: number }[];
+  /** the folder of the set this window shows (its set file may name a base per repository) */
+  setFolder?(): string | undefined;
   /** one message with buttons; the button that was clicked, else undefined (Later, closed) */
   ask(message: string, buttons: string[]): Promise<string | undefined>;
   /** a result line, with Undo for an update that was made by itself; `undo` runs it */
@@ -27,7 +29,7 @@ export interface BehindDeps {
   ui: BehindUi;
   gate?: FetchGate;
   told?: Told;
-  target?: (path: string, name: string) => string;
+  target?: (path: string, name: string) => TargetInfo;
   /** commits behind the target, one git call remembered per repository (the same one the state uses) */
   count?: (path: string, name: string) => Promise<number | undefined>;
 }
@@ -42,11 +44,11 @@ export class BehindManager {
   private running = false;
   /** what was found for a repository at a pair of commits (HEAD, origin/<target>): the same pair is not looked at again, no process */
   private seen = new Map<string, { key: string; facts?: BehindFacts }>();
-  private target: (path: string, name: string) => string;
+  private target: (path: string, name: string) => TargetInfo;
   constructor(private d: BehindDeps) {
     this.gate = d.gate ?? new FetchGate(d.git);
     this.told = d.told ?? new Told();
-    this.target = d.target ?? targetOf;
+    this.target = d.target ?? ((path, name) => targetInfo(path, name, { setFolder: d.ui.setFolder?.() }));
   }
 
   /** What was shown and done, for the tests and the log. */
@@ -57,13 +59,13 @@ export class BehindManager {
     this.running = true;
     try {
       for (const r of ui.repos()) {
-        const target = this.target(r.path, r.name);
+        const { target, sure } = this.target(r.path, r.name);
         // a folder that is gone (a set with a missing worktree) is not looked at: no process, no failure to remember
         if (!r.branch || r.branch === target || !existsSync(r.path)) continue;
         if ((await this.gate.fetch(r.path, target, reason)) === "fetched") ui.changed(r.path);
         const key = `${r.branch}|${headSha(r.path)}|${refSha(r.path, `refs/remotes/origin/${target}`)}`;
         const known = this.seen.get(r.path.toLowerCase());
-        const f = known && known.key === key && key.indexOf("undefined") === -1 ? known.facts : await inspect(this.d.git, this.d.raw, r, target, this.d.count);
+        const f = known && known.key === key && key.indexOf("undefined") === -1 ? known.facts : await inspect(this.d.git, this.d.raw, r, target, this.d.count, sure);
         this.seen.set(r.path.toLowerCase(), { key, facts: f });
         if (f) out.facts.push(f);
       }

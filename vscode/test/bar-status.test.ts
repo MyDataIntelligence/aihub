@@ -198,3 +198,13 @@ describe("the build of a pull request", () => {
     expect(asked).toEqual([false, true]);
   });
 });
+
+describe("team.yaml with lists inside a repository item", () => {
+  it("a nested list is not another repository and its keys are not the item's", async () => {
+    const { teamTargetOf } = await import("../src/bar/repoStatus");
+    const yaml = ["repositories:", "  - name: repo-a", "    reviewers:", "      - name: anna", "        defaultTarget: wrong", "    defaultTarget: staging", "  - name: repo-b", "    defaultTarget: develop", ""].join("\n");
+    expect(teamTargetOf(yaml, "repo-a")).toBe("staging");
+    expect(teamTargetOf(yaml, "repo-b")).toBe("develop");
+    expect(teamTargetOf(yaml, "anna")).toBeUndefined();
+  });
+});

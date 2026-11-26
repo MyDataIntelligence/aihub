@@ -98,6 +98,8 @@ export interface BehindFacts {
   conflicts: string[] | "unknown";
   /** files the update changes that also have uncommitted changes */
   overlap: string[];
+  /** the target is named by team.yaml or the set file: only then it is passed as --target (else the CLI derives its own) */
+  sure: boolean;
   /** files with uncommitted changes to tracked files: while there are any, nothing is updated by itself */
   tracked: number;
   /** why nothing is done to this repository (merge or rebase running, detached HEAD, on the target itself) */
@@ -117,14 +119,14 @@ export function operationInProgress(path: string): string | undefined {
 }
 
 /** What an update of one repository would do. Reads only (merge-tree writes objects, never the working folder). Undefined: not behind, or nothing to say. */
-export async function inspect(git: GitRun, raw: GitRaw, r: { name: string; path: string; branch?: string; changes?: number }, target: string, count?: (path: string, name: string) => Promise<number | undefined>): Promise<BehindFacts | undefined> {
+export async function inspect(git: GitRun, raw: GitRaw, r: { name: string; path: string; branch?: string; changes?: number }, target: string, count?: (path: string, name: string) => Promise<number | undefined>, sure = false): Promise<BehindFacts | undefined> {
   if (!r.branch || r.branch === target) return undefined;
   // the count is one git call (shared with the state); the commits are read from the files
   const behind = (count ? await count(r.path, r.name) : Number((await git(r.path, ["rev-list", "--count", `HEAD..origin/${target}`]).catch(() => "0")).trim())) || 0;
   if (!behind) return undefined;
   const targetSha = refSha(r.path, `refs/remotes/origin/${target}`) ?? (await git(r.path, ["rev-parse", `origin/${target}`]).catch(() => "")).trim();
   const head = headSha(r.path) ?? (await git(r.path, ["rev-parse", "HEAD"]).catch(() => "")).trim();
-  const base = { name: r.name, path: r.path, branch: r.branch, target, behind, targetSha, head, conflicts: [] as string[] | "unknown", overlap: [] as string[], tracked: 0 };
+  const base = { name: r.name, path: r.path, branch: r.branch, target, behind, targetSha, head, conflicts: [] as string[] | "unknown", overlap: [] as string[], tracked: 0, sure };
   const busy = operationInProgress(r.path);
   if (busy) return { ...base, blocked: `${busy} is in progress` };
   // conflicts beforehand, without touching the working folder
@@ -204,7 +206,7 @@ export interface UpdateResult {
 /** The team's way (merge or rebase after team.yaml): `aihub branch update`, in that repository. */
 export async function updateRepo(cli: (args: string[], cwd: string) => Promise<string>, git: GitRun, f: BehindFacts): Promise<UpdateResult> {
   try {
-    await cli(["branch", "update", "--no-push", "--target", f.target], f.path);
+    await cli(["branch", "update", "--no-push", ...(f.sure ? ["--target", f.target] : [])], f.path);
     const now = headSha(f.path) ?? (await git(f.path, ["rev-parse", "HEAD"]).catch(() => "")).trim();
     return { name: f.name, ok: true, before: f.head, after: now, line: `${f.name} updated from ${f.target} (${commits(f.behind)})${now === f.head ? " (nothing changed)" : ""}` };
   } catch (e) {
