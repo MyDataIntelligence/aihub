@@ -10,7 +10,7 @@ import { BarEngine, openFacts } from "./engine";
 import { BACKGROUND_ENV, gitRun } from "./ownWindow";
 import { cli } from "./runner";
 import { SizeMemo } from "./setSize";
-import { BehindMemo, gitStatusOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
+import { BehindMemo, gitStatusOf, targetOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
 import { linkedOf, registerStoryCommands } from "./storyUi";
 import { registerSetOps, SetFileWatcher } from "./setOps";
 import { registerBatchCommands, registerPullRequestCommand } from "./batchUi";
@@ -164,7 +164,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     linkedOf,
     extraPlaces: deps.extraPlaces,
     // behind the target is counted from the refs that are there (one rev-list per repository, remembered per pair of commits), also without focus and before any fetch; only the fetch waits for focus
-    statusOf: async (path, name) => ({ ...(gitStatusOf(gitRepos() ?? [], path) ?? {}), ...(await behind.behind(path, name).then((n) => (n === undefined ? {} : { behindTarget: n }))) }),
+    statusOf: async (path, name) => ({ ...(gitStatusOf(gitRepos() ?? [], path) ?? {}), ...(await behind.behind(path, name).then((n) => (n === undefined ? {} : { behindTarget: n, target: targetOf(path, name) }))) }),
     prOf: (repo, branch) => prOfBranch(prs.get(), repo, branch),
     prsKnown: () => prs.get().length > 0,
   });

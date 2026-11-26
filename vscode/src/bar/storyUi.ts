@@ -11,7 +11,7 @@ import { readSeenStories } from "../../../cli/src/lib/storyCache";
 import { readJson } from "../cli";
 import { cli, runner } from "./runner";
 import type { OpenResultJson } from "../repoSetModel";
-import { answerExisting, showOpened } from "../repoSetUi";
+import { answerExisting, askCloneCheckedOut, showOpened } from "../repoSetUi";
 import type { StoryJson } from "../storyModel";
 import { BarEngine, openFacts, storyBranchesOf, titleFromFiles } from "./engine";
 import { nextStoryBranch, openStoryArgs, rowDescription, storyNumberOf, storyPickRows, storyRepoRows, type StoryRef, type StoryRepoRow } from "./storyModel";
@@ -260,6 +260,13 @@ async function switchInRun(h: StoryHooks, repo: string, branch: string, path: st
   const out = await answerExisting(first, (extra) => cli([...args, ...extra], path), { ownWindow: true });
   if (out === undefined) return false;
   const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
+  // the branch is checked out in the clone itself: nothing changed; a short question, never a command line
+  const clone = res.repos.find((r) => r.checkedOutIn);
+  if (clone?.checkedOutIn) {
+    h.log(`switch ${repo} to ${branch}: checked out in ${clone.checkedOutIn}`);
+    await askCloneCheckedOut(branch, clone.checkedOutIn);
+    return false;
+  }
   const ok = await showOpened(res, "this", h.log);
   forgetScan(process.env);
   h.changed();

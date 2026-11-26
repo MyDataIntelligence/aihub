@@ -5,7 +5,7 @@ import { headBranchOf, scanMachine, type Scan, type ScanRepo } from "../../../cl
 import { machineFolders, repoRootOf } from "../../../cli/src/lib/machineFolders";
 import { pathKey, readRecentUse, rememberUse } from "../../../cli/src/lib/recentUse";
 import { findSet } from "../../../cli/src/lib/setInfo";
-import { readSetFile, stampStoryTitle } from "../../../cli/src/lib/setFile";
+import { AIHUB_SET, MAKER_SET, readJsonText, readSetFile, stampStoryTitle } from "../../../cli/src/lib/setFile";
 import { isClosedState, readSeenStories } from "../../../cli/src/lib/storyCache";
 import { readStoryWorktrees, storyWorktreesFileFor } from "../../../cli/src/lib/storyWorktrees";
 import { readPreferredClones, uniqueRepos } from "../worktrees/clones";
@@ -27,7 +27,7 @@ export interface EngineDeps {
   /** changed files of a worktree (a short cache in the extension); undefined when it cannot say */
   dirtyOf?: (path: string) => Promise<number | undefined>;
   /** changes and ahead (the git extension of VS Code) and behind the target (remembered), of a worktree; undefined when it cannot say */
-  statusOf?: (path: string, name: string) => Promise<{ changes?: number; ahead?: number; behindTarget?: number } | undefined>;
+  statusOf?: (path: string, name: string) => Promise<{ changes?: number; ahead?: number; behindTarget?: number; target?: string } | undefined>;
   /** the label of the last action that can be undone (BarState.undo) */
   undoLabel?: (setFolder?: string) => string | undefined;
   /** commits of a worktree that are on no remote; undefined when it cannot say */
@@ -54,11 +54,49 @@ export function infoText(f: OpenFacts): string | undefined {
   return f.repo ? `${f.repo.name} · single repository` : undefined;
 }
 
+/** The last set that was read well, per window folder: a set file that cannot be read for a moment does not turn the set into a loose repository. */
+const lastGoodSet = new Map<string, NonNullable<OpenFacts["set"]>>();
+
+/** The set file above this folder that exists but cannot be read, with why; undefined when there is none. */
+export function unreadableSetFile(dir: string): string | undefined {
+  let d = dir;
+  for (let i = 0; i < 12; i++) {
+    for (const name of [AIHUB_SET, MAKER_SET]) {
+      const file = join(d, name);
+      if (!existsSync(file) || readSetFile(d)) continue;
+      try {
+        JSON.parse(readJsonText(file));
+        return "the set file has no list of repositories";
+      } catch {
+        return "not valid JSON";
+      }
+    }
+    const up = dirname(d);
+    if (up === d) break;
+    d = up;
+  }
+  return undefined;
+}
+
 export function openFacts(dir: string | undefined): OpenFacts {
   if (!dir) return {};
   const set = findSet(dir);
+  if (!set) {
+    // a set this window showed does not become a loose repository because the file cannot be read for a moment (it is being replaced, a
+    // scanner holds it): the last good one stays while its folder is there
+    const was = lastGoodSet.get(dir);
+    const problem = unreadableSetFile(dir) ?? (was && existsSync(was.folder) ? "the set file cannot be read right now" : undefined);
+    const kept = problem ? was : undefined;
+    if (problem && kept) return { dir, set: { ...kept, repos: kept.repos.map((r) => ({ ...r, branch: headBranchOf(r.path) || r.branch })) }, setFileProblem: problem };
+    if (problem) {
+      const root = repoRootOf(dir);
+      return { dir, setFileProblem: problem, ...(root ? { repo: { name: basename(root), path: root, branch: headBranchOf(root) } } : {}) };
+    }
+  }
   if (set) {
-    return { dir, set: { folder: set.folder, story: set.story, branch: set.branch, ...(set.group ? { group: set.group } : {}), repos: set.repos.map((r) => ({ name: r.name, path: r.path, branch: headBranchOf(r.path) || r.branch })) } };
+    const facts = { folder: set.folder, story: set.story, branch: set.branch, ...(set.group ? { group: set.group } : {}), repos: set.repos.map((r) => ({ name: r.name, path: r.path, branch: headBranchOf(r.path) || r.branch })) };
+    lastGoodSet.set(dir, facts);
+    return { dir, set: facts };
   }
   const root = repoRootOf(dir);
   return root ? { dir, repo: { name: basename(root), path: root, branch: headBranchOf(root) } } : { dir };
@@ -154,7 +192,7 @@ export class BarEngine {
       if (t) stories[set.story] = { id: set.story, title: t, at: 0 };
     }
     const dirty = new Map<string, number | undefined>();
-    const status = new Map<string, { changes?: number; ahead?: number; behindTarget?: number } | undefined>();
+    const status = new Map<string, { changes?: number; ahead?: number; behindTarget?: number; target?: string } | undefined>();
     const ask = async (paths: string[]) => void (await Promise.all(paths.map(async (p) => dirty.set(p, await this.deps.dirtyOf?.(p)))));
     // the open set or repository: the git extension answers changes and ahead (no process of ours), dirtyOf only where it cannot
     const open = facts.set ? facts.set.repos.map((r) => ({ name: r.name, path: r.path })) : facts.repo ? [{ name: facts.repo.name, path: facts.repo.path }] : [];

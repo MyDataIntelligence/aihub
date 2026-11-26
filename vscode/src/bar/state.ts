@@ -21,6 +21,8 @@ export interface OpenFacts {
   dir?: string;
   /** the set the folder belongs to */
   set?: OpenSetFacts;
+  /** the set file of this folder cannot be read now ("not valid JSON"); `set` is then the last good one */
+  setFileProblem?: string;
   /** the folder is a git clone or worktree (not part of a set) */
   repo?: { name: string; path: string; branch: string };
 }
@@ -40,7 +42,7 @@ export interface StateInput {
   /** is the branch linked to the story in Azure DevOps; undefined when not known */
   linked?: (story: number, repo: string, branch: string) => boolean | undefined;
   /** changes (git extension), ahead and behind the target for a worktree; undefined when not known */
-  status?: (path: string) => { changes?: number; ahead?: number; behindTarget?: number } | undefined;
+  status?: (path: string) => { changes?: number; ahead?: number; behindTarget?: number; target?: string } | undefined;
   /** the pull request of a branch of a repository (a memory of one earlier read) */
   pr?: (repo: string, branch: string) => BarPr | undefined;
   /** the branch belongs to the story */
@@ -100,7 +102,7 @@ export function buildState(i: StateInput): BarState {
     .filter((r) => i.exists(r.id))
     .map((r) => ({ kind: r.kind, id: r.id, label: r.label, ...(r.detail ? { detail: r.detail } : {}), lastUsed: r.lastUsed }));
 
-  const base = { handlesBehindTarget: true as const, recents, sets, repositories, lookIn, ...(i.undo ? { undo: { label: i.undo } } : {}), ...(sized.length ? { totalSizeBytes: sized.reduce((n, s) => n + s.sizeBytes!, 0), ...(sized.some((s) => s.sizeLowerBound) ? { totalSizeLowerBound: true } : {}) } : {}), ...(i.scan.truncated ? { scanTruncated: true } : {}), ...(i.scan.skippedRemote?.length ? { scanSkipped: i.scan.skippedRemote } : {}) };
+  const base = { handlesBehindTarget: true as const, ...(open.setFileProblem ? { setFileProblem: open.setFileProblem } : {}), recents, sets, repositories, lookIn, ...(i.undo ? { undo: { label: i.undo } } : {}), ...(sized.length ? { totalSizeBytes: sized.reduce((n, s) => n + s.sizeBytes!, 0), ...(sized.some((s) => s.sizeLowerBound) ? { totalSizeLowerBound: true } : {}) } : {}), ...(i.scan.truncated ? { scanTruncated: true } : {}), ...(i.scan.skippedRemote?.length ? { scanSkipped: i.scan.skippedRemote } : {}) };
   if (open.set) {
     const story = open.set.story ? { id: open.set.story, title: i.stories[open.set.story]?.title ?? "", ...(i.stories[open.set.story]?.state ? { state: i.stories[open.set.story].state } : {}) } : undefined;
     const repos: BarRepo[] = open.set.repos.map((r) => {
@@ -117,6 +119,7 @@ export function buildState(i: StateInput): BarState {
         ...(dirty !== undefined ? { dirty, changes: dirty } : {}),
         ...(st?.ahead !== undefined ? { ahead: st.ahead } : {}),
         ...(st?.behindTarget !== undefined ? { behindTarget: st.behindTarget } : {}),
+        ...(st?.target ? { target: st.target } : {}),
         ...(pr ? { pr } : {}),
         storyBranch: !!open.set!.story && !!i.storyBranch?.(r.path, r.branch),
         ...(sb?.length ? { storyBranches: sb } : {}),

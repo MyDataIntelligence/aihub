@@ -27,6 +27,8 @@ export interface BranchesJson {
 
 export interface OpenRepoJson {
   repo: string;
+  /** the branch is checked out in this folder (a clone that cannot be moved); nothing was changed */
+  checkedOutIn?: string;
   ok: boolean;
   state: string;
   branch: string;

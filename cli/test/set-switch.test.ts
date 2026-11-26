@@ -159,3 +159,48 @@ describe("one repository of a set on another branch", { timeout: 30_000 }, () =>
     expect(head(repos[0].dir)).toBe("feature/other");
   });
 });
+
+describe("the answer to the question of a switch (Move, Reuse, Recreate): one entry per repository", { timeout: 60_000 }, () => {
+  for (const choice of ["move", "reuse", "recreate"] as const) {
+    it(`--existing ${choice}: the set has the same repositories as before, repo-a stands on the chosen branch in a folder named after the repository`, async () => {
+      const { parent, repos, set, inside } = await threeRepoSet();
+      // feature/other of repo-a already has a worktree elsewhere
+      const elsewhere = join(parent, "other", "repo-a-other");
+      sh(repos[0].dir, ["worktree", "add", elsewhere, "feature/other"]);
+      const { ctx, lines } = ctxFor(inside, fakeFetch([]).fn);
+      const code = await main(["branch", "switch", "--repo", "repo-a", "--branch", "feature/other", "--existing", choice, "--json"], ctx, commands);
+      expect(code).toBe(0);
+      const res = JSON.parse(lines.join("\n"));
+      expect(res.repos.map((r: { repo: string }) => r.repo)).toEqual(["repo-a"]);
+      const file = JSON.parse(readFileSync(join(set.folder, ".aihub-set.json"), "utf8")) as { repos: { name: string; path: string; branch?: string }[] };
+      expect(file.repos.map((r) => r.name)).toEqual(["repo-a", "repo-b", "repo-c"]);
+      const a = file.repos.find((r) => r.name === "repo-a")!;
+      expect(a.branch).toBe("feature/other");
+      if (choice === "reuse") expect(fwd(a.path)).toBe(fwd(elsewhere));
+      else expect(fwd(a.path)).toBe(fwd(join(set.folder, "repo-a")));
+      expect(head(a.path)).toBe("feature/other");
+      // the workspace has three folders, none named after a variant
+      const ws = wsOf(set.workspace);
+      expect(ws.folders.map((f) => f.name)).toEqual(["repo-a (feature/other)", "repo-b (feature/123-search)", "repo-c (feature/123-search)"]);
+      expect(ws.folders.some((f) => f.path.includes("--"))).toBe(false);
+      // the old worktree was clean and its commits exist elsewhere: gone, not a second entry (nothing of it in the set folder)
+      expect(sh(repos[0].dir, ["worktree", "list", "--porcelain"]).split("\n").filter((l) => l.startsWith("branch refs/heads/feature/123-search")).length).toBe(0);
+    });
+  }
+
+  it("the old worktree with uncommitted work is not removed: it stays on disk as a loose folder next to the set", async () => {
+    const { parent, repos, set, inside } = await threeRepoSet();
+    const elsewhere = join(parent, "other", "repo-a-other");
+    sh(repos[0].dir, ["worktree", "add", elsewhere, "feature/other"]);
+    write(inside, "wip.txt", "half done\n");
+    const { ctx, lines } = ctxFor(inside, fakeFetch([]).fn);
+    const code = await main(["branch", "switch", "--repo", "repo-a", "--branch", "feature/other", "--existing", "move", "--json"], ctx, commands);
+    expect(code).toBe(0);
+    const res = JSON.parse(lines.join("\n"));
+    expect(res.repos[0].note).toContain("stays as a loose folder");
+    const loose = /loose folder: (.+)$/.exec(res.repos[0].note)![1];
+    expect(readFileSync(join(loose, "wip.txt"), "utf8")).toBe("half done\n");
+    expect(fwd(loose).startsWith(fwd(join(set.folder, "..")))).toBe(true);
+    expect(JSON.parse(readFileSync(join(set.folder, ".aihub-set.json"), "utf8")).repos).toHaveLength(3);
+  });
+});

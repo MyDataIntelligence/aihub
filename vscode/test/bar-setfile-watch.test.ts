@@ -9,12 +9,13 @@ const h = vi.hoisted(() => ({
   delay: 0,
   messages: [] as string[],
   buttons: [] as string[][],
+  answer: undefined as string | undefined,
   folder: "",
 }));
 
 vi.mock("vscode", () => ({
   window: {
-    showWarningMessage: async (m: string) => void h.messages.push(m),
+    showWarningMessage: async (m: string, _o?: unknown, ...b: string[]) => (h.messages.push(m), h.answer ? b.find((x) => x.startsWith(h.answer!)) : undefined),
     showInformationMessage: async (m: string, ...b: string[]) => void (h.messages.push(m), h.buttons.push(b)),
     showErrorMessage: async (m: string) => void h.messages.push(m),
   },
@@ -193,5 +194,68 @@ describe("the sentence after Remove Set is never empty (persona test)", () => {
     expect(removedText({ lines: ["removed repo-a", "removed repo-b", ""], kept: [] })).toBe("removed repo-b");
     expect(removedText({ lines: ["  ", ""], kept: [] })).toBe("the set is removed");
     expect(removedText({ lines: [], kept: ["repo-a"] })).toBe("the set stays, repo-a hold work");
+  });
+});
+
+import { openFacts } from "../src/bar/engine";
+describe("an unreadable set file keeps the set (persona 4)", () => {
+  it("the last good set stays with a problem flag, and a state event goes out when the file is readable again", async () => {
+    const w = world();
+    let changed = 0;
+    const watcher = new SetFileWatcher({ log: () => undefined, changed: () => void changed++ });
+    watcher.aim();
+    const dir = w.repos[0].path;
+    expect(openFacts(dir).set?.repos).toHaveLength(2);
+    expect(openFacts(dir).setFileProblem).toBeUndefined();
+    const good = readFileSync(join(w.folder, ".aihub-set.json"), "utf8");
+    // the user (or a tool) leaves half a file
+    writeFileSync(join(w.folder, ".aihub-set.json"), good.slice(0, 40));
+    const broken = openFacts(dir);
+    expect(broken.set?.repos.map((r) => r.name)).toEqual(["repo-a", "repo-b"]);
+    expect(broken.repo).toBeUndefined();
+    expect(broken.setFileProblem).toBe("not valid JSON");
+    const before = changed;
+    await watcher.apply();
+    expect(changed).toBeGreaterThan(before);
+    // readable again: no problem, and one more event
+    writeFileSync(join(w.folder, ".aihub-set.json"), good);
+    const mid = changed;
+    await watcher.apply();
+    expect(changed).toBeGreaterThan(mid);
+    expect(openFacts(dir).setFileProblem).toBeUndefined();
+    watcher.dispose();
+  });
+});
+
+describe("a branch typed by hand that git does not have (persona 4)", () => {
+  it("one question; Escape or Put the File Back keeps the repository where it is and puts only that line back; Create runs the switch; a remote branch is just switched to", async () => {
+    const w = world();
+    const watcher = new SetFileWatcher({ log: () => undefined, changed: () => undefined });
+    watcher.aim();
+    h.cliCalls.length = 0;
+    h.messages.length = 0;
+    h.answer = undefined;
+    w.write2([{ name: "repo-a", branch: "feature/5-typo" }]);
+    await watcher.apply();
+    expect(h.messages.some((m) => m.includes("feature/5-typo does not exist in repo-a"))).toBe(true);
+    expect(h.cliCalls).toEqual([]);
+    expect(sh(w.repos[0].path, "branch", "--show-current").trim()).toBe("feature/5-x");
+    expect(w.read().repos.find((r) => r.name === "repo-a")?.branch ?? "feature/5-x").toBe("feature/5-x");
+    // Create It: the switch runs
+    h.answer = "Create It";
+    w.write2([{ name: "repo-a", branch: "feature/5-typo" }]);
+    await watcher.apply();
+    expect(h.cliCalls.map((c) => c.args[3])).toEqual(["repo-a"]);
+    // a branch only the remote has: no question
+    h.answer = undefined;
+    h.cliCalls.length = 0;
+    h.messages.length = 0;
+    sh(w.repos[1].source, "push", "origin", "feature/5-y:refs/heads/only-remote");
+    sh(w.repos[1].source, "fetch", "origin");
+    w.write2([{ name: "repo-a" }, { name: "repo-b", branch: "only-remote" }]);
+    await watcher.apply();
+    expect(h.messages.some((m) => m.includes("does not exist"))).toBe(false);
+    expect(h.cliCalls.map((c) => c.args[3])).toEqual(["repo-b"]);
+    watcher.dispose();
   });
 });

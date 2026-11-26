@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import { notice } from "./bar/notice";
+import { plainPath } from "./bar/paths";
 import { offerSaveGroup, pickRepos } from "./repoPickerUi";
 import { plainWorkspace } from "./repoPickerModel";
 import * as os from "os";
@@ -150,6 +151,19 @@ export async function answerExisting(text: string, rerun: (extra: string[]) => P
     text = await rerun(choiceArgs(picked.choice!));
   }
   return text;
+}
+
+/**
+ * The branch is checked out in a CLONE (not a worktree): it cannot be moved into the set or made again. One short question with
+ * what can be done; no command line in it. True when that folder was opened in a window of its own.
+ */
+export async function askCloneCheckedOut(branch: string, path: string): Promise<boolean> {
+  const open = "Open That Folder in Its Own Window";
+  const detail = [plainPath(path), `A clone cannot be moved into a set; switch that clone to another branch first if you want ${branch} here.`].join(String.fromCharCode(10));
+  const go = await vscode.window.showWarningMessage(`AI Context Hub: ${branch} is checked out in the clone`, { modal: true, detail }, open);
+  if (go !== open) return false;
+  await openPath(path, "new");
+  return true;
 }
 
 export async function showOpened(res: OpenResultJson, window: "new" | "this", log: (l: string) => void, meta?: OpenMeta): Promise<boolean> {

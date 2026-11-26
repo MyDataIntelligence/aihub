@@ -14,6 +14,7 @@ import { findSet } from "./setInfo.js";
 import { linkBranch, currentOf, readStoryWorktrees, storyFolderFor, storyIdFromBranch, storyWorktreesFileFor, updateStoryWorktrees, variantOf, worktreePathFor } from "./storyWorktrees.js";
 import { defaultSetsRoot, removeWorktreeSafely, slugOfBranch } from "./worktree.js";
 import { readSetFile, repoBranch, saveSetMeta, writeSetFile, type SetKind, type SetMeta } from "./setFile.js";
+import { removeWorktreeSafely as removeSafely } from "./safeWorktree.js";
 
 /**
  * `aihub worktree open`: several repositories on the SAME branch at once, in one VS Code window.
@@ -353,6 +354,13 @@ function variantPath(folder: string, repo: string, branch: string, storyId?: num
   for (let i = 2; ; i++) if (!existsSync(`${first}-${i}`)) return `${first}-${i}`;
 }
 
+/** A free folder next to the set folder for a worktree that leaves the set but stays on disk: `<set>--<repo>-<variant>`. */
+function looseFolder(folder: string, repo: string, branch: string, storyId?: number): string {
+  const first = join(dirname(folder), `${basename(folder)}--${repo}-${variantOf(branch, storyId)}`);
+  if (!existsSync(first)) return first;
+  for (let i = 2; ; i++) if (!existsSync(`${first}-${i}`)) return `${first}-${i}`;
+}
+
 type SetRepo = SetMeta["repos"][number];
 export { repoBranch };
 
@@ -397,7 +405,41 @@ export function switchInSet(
   const elsewhere = (e: SetRepo) => (lists.get(e.source) ?? []).find((w) => w.branch === branch && !w.main && !isInside(folder, w.path));
   const added: SetRepo[] = [];
   const switched = new Set<string>();
+  // the answer to the question of a switch (--existing without --mode): the repository's own entry now stands on the chosen worktree;
+  // the set keeps exactly one entry per repository. (--mode worktree still adds a second worktree of the repository.)
+  const replace = !o.mode && !!o.existing;
+  const replaced = new Map<string, string>();
   const repos = entries.map((e): RepoResult => {
+    if (replace && how && elsewhere(e) && hasWorktree(e.path)) {
+      const oldBranch = repoBranch(meta, e);
+      const oldPath = e.path;
+      // the old worktree steps aside first (a move, reversible), so the chosen one can stand in its folder
+      let aside: string | undefined;
+      if (how !== "reuse") {
+        aside = looseFolder(folder, e.name, oldBranch, storyId);
+        const m = tryGit(e.source, ["worktree", "move", oldPath, aside]);
+        if (!m.ok) return { repo: e.name, ok: false, state: "failed", branch, note: `the folder of ${oldBranch} could not step aside (${m.err.split(String.fromCharCode(10))[0]}); nothing was changed` };
+      }
+      const r = openRepo({ name: e.name, dir: e.source }, { branch, from: o.from, mode: "worktree", folder, team, path: () => oldPath, existing: how, discardLocalWork: o.discardLocalWork, again, worktrees: lists.get(e.source) });
+      if (!r.ok || !r.path) {
+        if (aside) tryGit(e.source, ["worktree", "move", aside, oldPath]);
+        return r;
+      }
+      // the old worktree: removed by the safe rule (clean, its commits exist elsewhere), else it stays on disk as a loose folder
+      const old = aside ?? oldPath;
+      const rm = removeSafely(e.source, old, oldBranch, { env: o.env });
+      let left = "";
+      if (!rm.removed) {
+        left = old;
+        if (!aside) {
+          const to = looseFolder(folder, e.name, oldBranch, storyId);
+          if (tryGit(e.source, ["worktree", "move", old, to]).ok) left = to;
+        }
+      }
+      replaced.set(e.name, r.path);
+      if (storyId) linkLocally(r.path, storyId, branch, r.path);
+      return { ...r, repo: e.name, note: `${r.note}; ${left ? `the folder on ${oldBranch} stays as a loose folder: ${left}` : `the folder on ${oldBranch} was clean and its commits exist elsewhere: removed`}` };
+    }
     if (mode === "switch" && !(how && elsewhere(e))) {
       if (!hasWorktree(e.path)) return { repo: e.name, ok: false, state: "failed", branch, note: `in the set file without a worktree; make it first: aihub worktree repair` };
       const r = openRepo({ name: e.name, dir: e.path }, { branch, from: o.from, mode: "switch", folder, team, worktrees: lists.get(e.source) });
@@ -421,7 +463,7 @@ export function switchInSet(
   });
   const changed = repos.filter((r) => r.ok && r.state !== "already-on");
   // the set file keeps each repository's own branch (`repos[].branch`), so status, list and --all-repos show it
-  if (added.length || switched.size) writeSetFile(folder, kind, { ...meta, repos: [...meta.repos.map((r) => (switched.has(r.name) ? { ...r, branch } : r)), ...added] });
+  if (added.length || switched.size || replaced.size) writeSetFile(folder, kind, { ...meta, repos: [...meta.repos.map((r) => (replaced.has(r.name) ? { ...r, path: replaced.get(r.name)!, branch } : switched.has(r.name) ? { ...r, branch } : r)), ...added] });
   if (meta.workspace && changed.length) updateWorkspace(meta.workspace, folder, changed, kind);
   const total = meta.repos.length + added.length;
   const what = changed.map((r) => `${r.repo} ${added.some((a) => a.name === r.repo) ? "added" : "now"} on ${r.branch}`);
@@ -590,8 +632,14 @@ function updateWorkspace(file: string, folder: string, rows: RepoResult[], kind:
       // the same name form as the extension's Worktree Sets: "<repo> (<branch>)"
       const label = `${r.repo} (${r.branch})`;
       const had = folders.find((f) => samePath(resolve(folder, f.path), r.path!)) ?? folders.find((f) => f.name === r.repo || f.name?.startsWith(`${r.repo} (`));
-      if (had) had.name = label;
-      else {
+      if (had) {
+        had.name = label;
+        // a member that now stands in another folder (Reuse): the folder entry follows
+        if (!samePath(resolve(folder, had.path), r.path)) {
+          const rel = relative(folder, r.path);
+          had.path = norm(rel && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel) ? rel : r.path);
+        }
+      } else {
         const rel = relative(folder, r.path);
         folders.push({ name: label, path: norm(rel && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel) ? rel : r.path) });
       }
