@@ -280,20 +280,24 @@ export async function adoRepos(ctx: Ctx, o: { refresh?: boolean; now?: number } 
     }
   }
   const team = loadTeam(root) as TeamConfig & { projects?: string[] };
-  const projects = team.projects?.length ? team.projects : ((await client.getOrg<{ value?: { name: string; state?: string }[] }>("projects", { $top: 500 })).value ?? []).filter((p) => !p.state || p.state === "wellFormed").map((p) => p.name);
   const repos: Cache["repos"] = [];
+  type Raw = { id: string; name: string; remoteUrl?: string; defaultBranch?: string; isDisabled?: boolean; project?: { name?: string } };
+  const add = (project: string, r: Raw) => {
+    if (r.isDisabled) return;
+    const remoteUrl = (r.remoteUrl ?? "").replace(/^(https?:\/\/)[^@/]+@/, "$1");
+    repos.push({ project, name: r.name, id: r.id, remoteUrl, defaultBranch: (r.defaultBranch ?? "").replace(/^refs\/heads\//, ""), key: adoKey(remoteUrl) ?? `${org}/${project}/${r.name}`.toLowerCase() });
+  };
+  // without a project list: one call for every repository of the organisation you can see
+  const projects = team.projects?.length ? team.projects : [];
+  if (!projects.length) for (const r of (await client.getOrg<{ value?: Raw[] }>("git/repositories")).value ?? []) add(r.project?.name ?? "", r);
   for (const project of projects) {
-    let list: { id: string; name: string; remoteUrl?: string; defaultBranch?: string; isDisabled?: boolean }[] = [];
+    let list: Raw[] = [];
     try {
-      list = (await client.forProject(project).get<{ value?: typeof list }>("git/repositories")).value ?? [];
+      list = (await client.forProject(project).get<{ value?: Raw[] }>("git/repositories")).value ?? [];
     } catch {
       continue; // a project you cannot read is left out, the others still show
     }
-    for (const r of list) {
-      if (r.isDisabled) continue;
-      const remoteUrl = (r.remoteUrl ?? "").replace(/^(https?:\/\/)[^@/]+@/, "$1");
-      repos.push({ project, name: r.name, id: r.id, remoteUrl, defaultBranch: (r.defaultBranch ?? "").replace(/^refs\/heads\//, ""), key: adoKey(remoteUrl) ?? `${org}/${project}/${r.name}`.toLowerCase() });
-    }
+    for (const r of list) add(project, r);
   }
   repos.sort((a, b) => a.project.localeCompare(b.project) || a.name.localeCompare(b.name));
   mkdirSync(dirname(file), { recursive: true });

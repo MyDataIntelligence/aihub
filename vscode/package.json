@@ -620,6 +620,31 @@
         "command": "aihub.bar.refresh",
         "title": "Look Again for Repositories and Sets",
         "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.loadRemoteRepositories",
+        "title": "Search Azure DevOps Repositories",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.refreshRemoteRepositories",
+        "title": "Refresh the Azure DevOps Repositories of the Search",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.signInAzureDevOps",
+        "title": "Sign In to Azure DevOps",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.cloneRepository",
+        "title": "Clone Repository from Azure DevOps...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.openCheckout",
+        "title": "Open a Checked-Out Branch...",
+        "category": "AI Context Hub"
       }
     ],
     "configuration": {
@@ -1417,6 +1442,18 @@
         },
         {
           "command": "aihub.bar.refresh",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.loadRemoteRepositories",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.cloneRepository",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.openCheckout",
           "when": "false"
         }
       ],

@@ -13,7 +13,7 @@ import { buildState, setLabel, type OpenFacts } from "./state";
 import { isStoryBranch } from "./repoStatus";
 import { allPrsMerged, setKey, SizeMemo } from "./setSize";
 import { headSha, refSha } from "./behind";
-import type { BarPr, BarState, BarStoryBranch } from "./types";
+import type { BarPr, BarRemote, BarState, BarStoryBranch } from "./types";
 
 /**
  * What the buttons ask for: the state of this window and of the PC. No vscode here; the extension passes the folder
@@ -40,6 +40,8 @@ export interface EngineDeps {
   prsKnown?: () => boolean;
   /** is the branch linked to the story in Azure DevOps (answered from an earlier read, never a call) */
   linkedOf?: (story: number, repo: string, branch: string) => boolean | undefined;
+  /** the Azure DevOps repositories not on this PC, given the origin urls of every clone found (a file read, never a call) */
+  remote?: (localRemotes: (string | undefined)[]) => BarRemote;
   /** other places known to be in use (the older recent list of this extension): folders, or workspace files of sets */
   extraPlaces?: () => string[];
   now?: () => number;
@@ -184,6 +186,7 @@ export class BarEngine {
       prsMerged: (s) => (this.deps.prOf && this.deps.prsKnown?.() ? allPrsMerged(s, this.deps.prOf) : undefined),
       allMerged: (s) => merged.get(s.id) ?? (this.deps.prOf && !allPrsMerged(s, this.deps.prOf) ? false : undefined),
       scan,
+      remote: this.deps.remote?.(raw.repos.map((r) => r.remote)),
       recents: readRecentUse(this.deps.env),
       lookIn: folders,
       stories,

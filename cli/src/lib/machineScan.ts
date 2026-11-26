@@ -31,11 +31,34 @@ export interface ScanSet {
   repos: { name: string; path: string; branch: string; exists: boolean }[];
 }
 
+/** A place where a branch is checked out now: a clone (its main folder) or a linked worktree of it. */
+export interface ScanCheckout {
+  /** the name of the repository (the folder of its clone, or its name in a set) */
+  repo: string;
+  branch: string;
+  path: string;
+  /** the main folder of a clone (false: a linked worktree) */
+  main: boolean;
+  /** the clone a linked worktree belongs to, when the clone was walked */
+  clone?: string;
+}
+
+/** The branch names of a clone (local and origin), read from its ref files and packed-refs; at most MAX_REFS. */
+export interface ScanRefs {
+  repo: string;
+  path: string;
+  branches: string[];
+}
+
 export interface Scan {
   at: number;
   folders: string[];
   repos: ScanRepo[];
   sets: ScanSet[];
+  /** every place on this PC where a branch is checked out now (detached ones left out); absent in an older cache */
+  checkouts?: ScanCheckout[];
+  /** the branches each clone knows (local and origin); absent in an older cache */
+  refs?: ScanRefs[];
   /** the walk stopped at MAX_VISITED folders: not everything was looked at */
   truncated?: boolean;
   /** OneDrive and network folders that were skipped (they are only read when listed in "Folders to Look In") */
@@ -53,6 +76,8 @@ export function isRemoteFolder(dir: string, env: NodeJS.ProcessEnv = process.env
 export const SCAN_TTL_MS = 5 * 60_000;
 export const MAX_DEPTH = 3;
 const MAX_VISITED = 5000;
+const MAX_WORKTREES = 50;
+export const MAX_REFS = 300;
 const SKIP = new Set(["node_modules", "venv", "__pycache__", "dist", "build", "target", "out", "bin", "obj", "site-packages", "$recycle.bin", "system volume information", "appdata", "windows", "program files", "program files (x86)"]);
 const CACHE = "scan-cache.json";
 const LOOKIN = "lookin.json";
@@ -143,6 +168,60 @@ export function remoteOf(gitDir: string): string | undefined {
   }
 }
 
+/** The linked worktrees of a clone, from `.git/worktrees/<name>/{HEAD,gitdir}`: path and branch (detached and gone ones left out). */
+export function worktreesFromFiles(gitDir: string): { path: string; branch: string }[] {
+  const base = join(gitDir, "worktrees");
+  let names: string[];
+  try {
+    names = readdirSync(base);
+  } catch {
+    return [];
+  }
+  const out: { path: string; branch: string }[] = [];
+  for (const n of names.slice(0, MAX_WORKTREES)) {
+    try {
+      const branch = /^ref: refs\/heads\/(.+)$/m.exec(readFileSync(join(base, n, "HEAD"), "utf8"))?.[1].trim();
+      // gitdir holds "<worktree>/.git"
+      const path = dirname(resolve(base, n, readFileSync(join(base, n, "gitdir"), "utf8").trim()));
+      if (branch && existsSync(path)) out.push({ path, branch });
+    } catch {
+      /* a half removed worktree: left out */
+    }
+  }
+  return out;
+}
+
+/** The branch names a clone knows, local first, then origin's (without "origin/"); loose ref files and packed-refs, no git. */
+export function refsFromFiles(gitDir: string, max = MAX_REFS): string[] {
+  const names = new Set<string>();
+  const loose = (dir: string, prefix: string, depth: number) => {
+    if (depth > 6 || names.size >= max) return;
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (names.size >= max) return;
+      if (e.isDirectory()) loose(join(dir, e.name), `${prefix}${e.name}/`, depth + 1);
+      else if (!(depth === 0 && e.name === "HEAD")) names.add(prefix + e.name);
+    }
+  };
+  loose(join(gitDir, "refs", "heads"), "", 0);
+  loose(join(gitDir, "refs", "remotes", "origin"), "", 0);
+  try {
+    for (const l of readFileSync(join(gitDir, "packed-refs"), "utf8").split(/\r?\n/)) {
+      if (names.size >= max) break;
+      const m = /^[0-9a-f]{40,64} refs\/(?:heads|remotes\/origin)\/(.+)$/.exec(l);
+      if (m && m[1] !== "HEAD") names.add(m[1]);
+    }
+  } catch {
+    /* no packed-refs */
+  }
+  return [...names];
+}
+
 /** True when `dir` is a clone (not a linked worktree). */
 export const isClone = (dir: string): boolean => gitDirOf(dir)?.linked === false;
 
@@ -167,6 +246,8 @@ const skipped = (name: string) => name.startsWith(".") || SKIP.has(name.toLowerC
 export function walk(folders: string[], o: { allowRemote?: boolean; env?: NodeJS.ProcessEnv } = {}): Scan {
   const repos = new Map<string, ScanRepo>();
   const sets = new Map<string, ScanSet>();
+  const checkouts = new Map<string, ScanCheckout>();
+  const refs: ScanRefs[] = [];
   let visited = 0;
   let truncated = false;
   const skippedRemote: string[] = [];
@@ -179,7 +260,15 @@ export function walk(folders: string[], o: { allowRemote?: boolean; env?: NodeJS
     const g = gitDirOf(dir);
     if (g) {
       // a linked worktree belongs to a repository or a set: it is no clone of its own
-      if (!g.linked) repos.set(pathKey(dir), { name: basename(dir), path: dir, branch: headBranchOf(dir), ...(remoteOf(g.gitDir) ? { remote: remoteOf(g.gitDir) } : {}) });
+      if (!g.linked) {
+        const name = basename(dir);
+        const branch = headBranchOf(dir);
+        repos.set(pathKey(dir), { name, path: dir, branch, ...(remoteOf(g.gitDir) ? { remote: remoteOf(g.gitDir) } : {}) });
+        // where its branches are checked out, and which branches it knows: files only
+        if (branch) checkouts.set(pathKey(dir), { repo: name, branch, path: dir, main: true });
+        for (const w of worktreesFromFiles(g.gitDir)) if (!checkouts.has(pathKey(w.path))) checkouts.set(pathKey(w.path), { repo: name, branch: w.branch, path: w.path, main: false, clone: dir });
+        refs.push({ repo: name, path: dir, branches: refsFromFiles(g.gitDir) });
+      }
       return;
     }
     if (depth >= MAX_DEPTH) return;
@@ -193,8 +282,19 @@ export function walk(folders: string[], o: { allowRemote?: boolean; env?: NodeJS
   };
   // the folder itself may be a clone or a set; else its children are the usual case
   for (const f of folders) visit(f, 0);
+  // a worktree of a set whose clone is outside the folders to look in: its branch from its own HEAD; the set's name for it
+  for (const s of sets.values())
+    for (const r of s.repos) {
+      const known = checkouts.get(pathKey(r.path));
+      if (known) known.repo = r.name;
+      else if (r.exists) {
+        const branch = headBranchOf(r.path);
+        if (branch) checkouts.set(pathKey(r.path), { repo: r.name, branch, path: r.path, main: false });
+      }
+    }
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
-  return { at: Date.now(), folders, repos: [...repos.values()].sort(byName), sets: [...sets.values()].sort((a, b) => a.folder.localeCompare(b.folder) || a.branch.localeCompare(b.branch)), ...(truncated ? { truncated } : {}), ...(skippedRemote.length ? { skippedRemote } : {}) };
+  const byRepo = (a: { repo: string; path: string }, b: { repo: string; path: string }) => a.repo.localeCompare(b.repo) || a.path.localeCompare(b.path);
+  return { at: Date.now(), folders, repos: [...repos.values()].sort(byName), sets: [...sets.values()].sort((a, b) => a.folder.localeCompare(b.folder) || a.branch.localeCompare(b.branch)), checkouts: [...checkouts.values()].sort(byRepo), refs: refs.sort(byRepo), ...(truncated ? { truncated } : {}), ...(skippedRemote.length ? { skippedRemote } : {}) };
 }
 
 // ---- the cache ---------------------------------------------------------------------------------------------

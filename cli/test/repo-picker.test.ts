@@ -77,7 +77,22 @@ function world() {
 }
 
 const adoRoutes = (bareC: string, counter: { n: number }): Route[] => [
-  { match: /_apis\/projects\?/, respond: () => ((counter.n += 1), { body: { value: [{ name: "test-project", state: "wellFormed" }, { name: "other-project", state: "wellFormed" }] } }) },
+  // without projects in team.yaml: one call for every repository of the organisation
+  {
+    match: /dev\.azure\.com\/ferron-org\/_apis\/git\/repositories\?/,
+    respond: () => (
+      (counter.n += 1),
+      {
+        body: {
+          value: [
+            ...["repo-a", "repo-b"].map((n) => ({ id: n, name: n, project: { name: "test-project" }, remoteUrl: `https://ferron-org@dev.azure.com/ferron-org/test-project/_git/${n}`, defaultBranch: "refs/heads/main" })),
+            { id: "c", name: "repo-c", project: { name: "other-project" }, remoteUrl: bareC, defaultBranch: "refs/heads/main" },
+            { id: "d", name: "old", project: { name: "other-project" }, isDisabled: true },
+          ],
+        },
+      }
+    ),
+  },
   {
     match: /test-project\/_apis\/git\/repositories\?/,
     respond: () => ({ body: { value: ["repo-a", "repo-b"].map((n) => ({ id: n, name: n, remoteUrl: `https://ferron-org@dev.azure.com/ferron-org/test-project/_git/${n}`, defaultBranch: "refs/heads/main" })) } }),
