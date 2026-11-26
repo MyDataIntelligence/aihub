@@ -16,7 +16,7 @@ import { registerSetOps, SetFileWatcher } from "./setOps";
 import { registerBatchCommands, registerPullRequestCommand } from "./batchUi";
 import { registerUndoCommand, setCustomUndo, undoLabel, undoLast } from "./undoUi";
 import { BehindManager } from "./behindRun";
-import { FETCH_FRESH_MS, FetchGate, Told, openCheckDelay, type FetchStore } from "./behind";
+import { FETCH_FRESH_MS, FetchGate, Told, openCheckDelay, operationInProgress, type FetchStore } from "./behind";
 import { gitRaw } from "./ownWindow";
 import { configHome } from "../../../cli/src/lib/configHome";
 import { writeAtomic } from "../../../cli/src/lib/setFile";
@@ -201,6 +201,8 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       repoPath,
       setTimeout(() => {
         nameTimers.delete(repoPath);
+        // in the middle of a rebase or merge HEAD changes at every step: the names follow when it is over
+        if (operationInProgress(repoPath)) return;
         try {
           const ws = vscode.workspace.workspaceFile;
           const r = syncRepoName({ setFolder, workspaceFile: ws?.scheme === "file" ? ws.fsPath : undefined, repoPath });
