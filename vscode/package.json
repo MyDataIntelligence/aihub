@@ -355,6 +355,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.thread.applySuggestion",
+        "title": "Apply Suggestion",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.learn.open",
         "title": "Learn: Open a lesson",
         "category": "AI Context Hub"
@@ -552,6 +557,16 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.refreshComments",
+        "title": "Refresh Pull Request Comments",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.showComment",
+        "title": "Show Pull Request Comment",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.commitAll",
         "title": "Commit All Repositories of the Set...",
         "category": "AI Context Hub"
@@ -619,6 +634,31 @@
       {
         "command": "aihub.bar.refresh",
         "title": "Look Again for Repositories and Sets",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.loadRemoteRepositories",
+        "title": "Search Azure DevOps Repositories",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.refreshRemoteRepositories",
+        "title": "Refresh the Azure DevOps Repositories of the Search",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.signInAzureDevOps",
+        "title": "Sign In to Azure DevOps",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.cloneRepository",
+        "title": "Clone Repository from Azure DevOps...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.openCheckout",
+        "title": "Open a Checked-Out Branch...",
         "category": "AI Context Hub"
       }
     ],
@@ -804,6 +844,19 @@
           "type": "string",
           "default": "",
           "description": "Extra id of the PyCharm Git extension (publisher.name). Without that extension installed, AI Context Hub shows one status bar item with the story or set of the window; with it, PyCharm Git shows it in the title bar."
+        },
+        "aiContextHub.prComments": {
+          "type": "string",
+          "enum": [
+            "on",
+            "off"
+          ],
+          "default": "on",
+          "enumDescriptions": [
+            "Show the review comments of the pull requests of the set (or of the open repository) in the editor and as a count in the Explorer.",
+            "No review comments in the editor or the Explorer; nothing is read for them."
+          ],
+          "description": "Review comments of pull requests in the editor (Reply, Resolve, Apply Suggestion) and as a count in the Explorer. They are read with the pull requests (one aihub call for all of them): when a set opens, when the overview opens, when the window gets focus back after 5 minutes, and on a refresh. Opening a file reads nothing."
         }
       }
     },
@@ -1260,6 +1313,11 @@
           "command": "aihub.thread.reply",
           "group": "inline",
           "when": "commentController == aihub"
+        },
+        {
+          "command": "aihub.thread.resolve",
+          "group": "inline@2",
+          "when": "commentController == aihub && commentThread == aihubOpen"
         }
       ],
       "commandPalette": [
@@ -1418,6 +1476,26 @@
         {
           "command": "aihub.bar.refresh",
           "when": "false"
+        },
+        {
+          "command": "aihub.bar.loadRemoteRepositories",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.cloneRepository",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.openCheckout",
+          "when": "false"
+        },
+        {
+          "command": "aihub.thread.applySuggestion",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.showComment",
+          "when": "false"
         }
       ],
       "editor/title": [
@@ -1429,6 +1507,13 @@
           "command": "aihub.robot.run",
           "when": "resourceExtname == .robot",
           "group": "navigation@1"
+        }
+      ],
+      "comments/comment/title": [
+        {
+          "command": "aihub.thread.applySuggestion",
+          "group": "inline@1",
+          "when": "commentController == aihub && comment == aihubSuggestion"
         }
       ]
     },
@@ -1458,6 +1543,18 @@
         "key": "ctrl+alt+r",
         "mac": "cmd+alt+r",
         "when": "workbenchState == empty"
+      }
+    ],
+    "colors": [
+      {
+        "id": "aiContextHub.prComments.unreadForeground",
+        "description": "The count of a file or folder in the Explorer with a pull request comment you have not seen yet.",
+        "defaults": {
+          "dark": "#3794FF",
+          "light": "#1A85FF",
+          "highContrast": "#3794FF",
+          "highContrastLight": "#0F4A85"
+        }
       }
     ]
   },

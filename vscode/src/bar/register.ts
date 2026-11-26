@@ -8,7 +8,9 @@ import { syncRepoName } from "../../../cli/src/lib/workspaceNames";
 import { CliProblem } from "./cliCheck";
 import { BarEngine, openFacts } from "./engine";
 import { BACKGROUND_ENV, gitRun } from "./ownWindow";
-import { cli } from "./runner";
+import { cli, jsonOf } from "./runner";
+import { RemoteRepos } from "./remoteRepos";
+import { registerSearchCommands } from "./searchUi";
 import { SizeMemo } from "./setSize";
 import { BehindMemo, gitStatusOf, targetOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
 import { linkedOf, registerStoryCommands } from "./storyUi";
@@ -22,6 +24,8 @@ import { configHome } from "../../../cli/src/lib/configHome";
 import { writeAtomic } from "../../../cli/src/lib/setFile";
 import { openPath, windowIsEmpty } from "./window";
 import { BAR_COMMANDS, type BarApi, type BarState } from "./types";
+import { PrCommentsController } from "../comments/ui";
+import type { Seen, Target } from "../comments/model";
 
 /**
  * The buttons' engine in this extension: `activate()` returns `{ bar }`, the commands do the work. Nothing runs at
@@ -49,6 +53,8 @@ export interface BarDeps {
   log: (line: string) => void;
   /** places this extension knew before (its older recent list): workspace files of sets */
   extraPlaces?: () => string[];
+  /** puts a prompt in the chat ("Fix in chat" on a review thread) */
+  toChat?: (text: string) => Promise<void>;
 }
 
 export interface BarHandle {
@@ -56,6 +62,8 @@ export interface BarHandle {
   engine: BarEngine;
   /** a command changed what the buttons show */
   changed: () => void;
+  /** the review comments of the pull requests (the single-repository status bar hands it its pull request) */
+  comments: PrCommentsController;
 }
 
 export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHandle {
@@ -154,7 +162,21 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       },
     },
   });
+  // the Azure DevOps list for the search: read only when the search asks, once a day, never without focus
+  const remote = new RemoteRepos({
+    env: process.env,
+    focused: () => vscode.window.state.focused,
+    changed: () => changed(),
+    read: async ({ refresh }) => {
+      // the CLI needs one clone of Azure DevOps to know the organisation; its sign-in is the one the CLI already has
+      const cwd = engine.scan().repos.find((r) => /dev\.azure\.com|visualstudio\.com/i.test(r.remote ?? ""))?.path;
+      if (!cwd) throw new Error("no clone of Azure DevOps on this PC yet: the organisation is not known");
+      const out = await cli(["repos", "ado", "--json", ...(refresh ? ["--refresh"] : [])], cwd);
+      return (jsonOf<{ repos?: { name: string; project: string; remoteUrl: string }[] }>(out).repos ?? []).map((r) => ({ name: r.name, project: r.project, remoteUrl: r.remoteUrl }));
+    },
+  });
   const engine = new BarEngine({
+    remote: (local) => remote.get(local),
     unpushedOf,
     sizes,
     undoLabel,
@@ -168,6 +190,52 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     prOf: (repo, branch) => prOfBranch(prs.get(), repo, branch),
     prsKnown: () => prs.get().length > 0,
   });
+  // the review comments: read with the pull requests (one aihub for all of them), placed in a file only when it opens
+  const seenFile = join(configHome(process.env), "pr-comments-seen.json");
+  const comments = new PrCommentsController({
+    cli: (args, cwd) => cli(args, cwd),
+    log: deps.log,
+    changed: () => changed(),
+    enabled: () => cfg().get<string>("prComments", "on") !== "off",
+    toChat: deps.toChat,
+    isSet: () => !!openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set,
+    store: {
+      read: () => {
+        try {
+          const j = JSON.parse(readFileSync(seenFile, "utf8")) as Partial<Seen>;
+          return { threads: j.threads ?? {}, prs: j.prs ?? {}, told: j.told ?? {} };
+        } catch {
+          return { threads: {}, prs: {} };
+        }
+      },
+      write: (s) => {
+        mkdirSync(configHome(process.env), { recursive: true });
+        writeAtomic(seenFile, JSON.stringify(s));
+      },
+    },
+  }).register(ctx);
+  /** The repositories of the open set with an active pull request (from the pull request list that was read). */
+  const commentTargets = (): Target[] => {
+    const f = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+    return (f.set?.repos ?? []).flatMap((r) => {
+      const pr = prOfBranch(prs.get(), r.name, r.branch);
+      return pr && pr.status !== "merged" ? [{ repo: r.name, path: r.path, pr: pr.id, url: pr.url }] : [];
+    });
+  };
+  const readComments = (force = false) => {
+    if (openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set) comments.setTargets(commentTargets());
+    return comments.refresh(force);
+  };
+  /** The state with the review comments in it (counts per pull request, the list for the overview). */
+  const fullState = async (): Promise<BarState> => {
+    const s = await engine.state();
+    for (const r of s.repos) {
+      const c = r.pr && r.pr.status !== "merged" ? comments.countsOf(r.name, r.pr.id) : undefined;
+      if (c && r.pr) r.pr = { ...r.pr, comments: c };
+    }
+    const list = comments.list();
+    return list ? { ...s, openComments: list } : s;
+  };
   const emitter = new vscode.EventEmitter<void>();
   let debounce: NodeJS.Timeout | undefined;
   // what the last state the buttons read looked like: an event goes out only when the state really differs (every listener reads git again per event)
@@ -175,7 +243,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   const changed = () => {
     clearTimeout(debounce);
     debounce = setTimeout(() => {
-      void engine.state().then(
+      void fullState().then(
         (s) => {
           const now = JSON.stringify(s);
           if (now === lastState) return;
@@ -193,14 +261,14 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       attachGit();
       // opening a set (or its overview menu) reads the pull requests once, then they are remembered for minutes
       const f = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
-      if (f.set) void prs.refresh().then((read) => read && changed());
+      if (f.set) void prs.refresh().then((read) => (read && changed(), void readComments()));
       // the first state of a window with a set or a repository: look at the target branch once (a fetch per repository, never without focus)
       if ((f.set || f.repo) && !openedChecked) {
         openedChecked = true;
         // a few seconds after the window opened, never before: the first state and every click come first
         setTimeout(() => void behindMgr.run("open"), openCheckDelay(activatedAt, Date.now()));
       }
-      return engine.state().then((s) => ((lastState = JSON.stringify(s)), s));
+      return fullState().then((s) => ((lastState = JSON.stringify(s)), s));
     },
     onDidChangeState: emitter.event,
   };
@@ -306,14 +374,16 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   const askContinue = setTimeout(() => void offerContinue(deps), 6000);
   ctx.subscriptions.push({ dispose: () => clearTimeout(askContinue) });
 
-  registerCommands(ctx, engine, deps, changed, { prs, behind, mgr: behindMgr });
+  registerCommands(ctx, engine, deps, changed, { prs, behind, mgr: behindMgr, remote, readComments, comments });
   // the window gets focus back and the last successful fetch is over 30 minutes ago: look again (one fetch per repository)
   ctx.subscriptions.push(
     vscode.window.onDidChangeWindowState((s) => {
       if (s.focused && openedChecked && Date.now() - behindMgr.gate.lastOk() > FETCH_FRESH_MS) void behindMgr.run("focus");
+      // back in the window after more than 5 minutes: the comments may have new replies (never without focus)
+      if (s.focused) comments.focusBack();
     }),
   );
-  return { api, engine, changed };
+  return { api, engine, changed, comments };
 }
 
 /**
@@ -337,8 +407,8 @@ async function offerContinue(deps: BarDeps): Promise<void> {
 
 const idOf = (a: unknown): string | undefined => (typeof a === "string" ? a : a && typeof a === "object" && "id" in a ? String((a as { id: unknown }).id) : undefined);
 
-function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps: BarDeps, changed: () => void, memo: { prs: PrMemo; behind: BehindMemo; mgr: BehindManager }): void {
-  const { prs, behind, mgr } = memo;
+function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps: BarDeps, changed: () => void, memo: { prs: PrMemo; behind: BehindMemo; mgr: BehindManager; remote: RemoteRepos; readComments: (force?: boolean) => Promise<boolean>; comments: PrCommentsController }): void {
+  const { prs, behind, mgr, readComments, comments } = memo;
   const fail = (e: unknown) => {
     if (e instanceof CliProblem) {
       const copy = "Copy update command";
@@ -362,8 +432,17 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
     await prs.refresh(true);
     behind.forget();
     changed();
+    // the overview shows the open comments: read them with the pull requests
+    void readComments(true);
     // the overview menu opens: look at the target branch too
     void mgr.run("menu");
+  });
+
+  reg(BAR_COMMANDS.showComment, (arg?: { repo?: string; threadId?: number }) => comments.showComment(arg));
+  reg(BAR_COMMANDS.refreshComments, async () => {
+    // no pull request known yet (a set that just opened): read the pull requests first
+    if (!comments.hasTargets()) await prs.refresh(true);
+    await readComments(true);
   });
 
   // the left menu opens: measure the sets in the background, the state gets the sizes as they come in
@@ -449,6 +528,7 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   registerPullRequestCommand({ engine, log: deps.log, changed, reg, refreshPrs: () => prs.refresh(true).then(() => undefined) });
   registerUndoCommand({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerSetOps({ engine, log: deps.log, changed, reg });
+  registerSearchCommands({ engine, remote: memo.remote, log: deps.log, changed, reg });
 }
 
 async function pickRepository(engine: BarEngine): Promise<string | undefined> {

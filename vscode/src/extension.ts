@@ -20,7 +20,6 @@ import { statusItems, type BarError, type BarModel, type StatusItem, type Tone }
 import { Refresher, type Result } from "./refresher";
 import { registerGitCommands } from "./gitUi";
 import { SET_FILES, terminalRoot } from "./terminalRoot";
-import { ThreadsController } from "./threadsUi";
 import { LearnController } from "./learnUi";
 import { registerWorktreeCommands } from "./worktreeUi";
 import { clearTrackedTimeout, count, trackedTimeout, trackedWatcher } from "./perf/probe";
@@ -501,13 +500,9 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
     await bar.sendText(text);
   };
   ctx.subscriptions.push(vscode.commands.registerCommand("aihub.editor.ask", selection("Question about the code")), vscode.commands.registerCommand("aihub.editor.suggestFix", selection("Suggest a fix for the code")));
-  phase("review threads");
-  const threads = new ThreadsController(() => bar.runnerNow(), () => bar.cwdNow(), (t) => bar.sendText(t), (l) => bar.logLine(l), () => void bar.refresh());
-  threads.register(ctx);
   phase("learn view");
   const learn = new LearnController(ctx, () => bar.runnerNow(), () => bar.cwdNow(), (l) => bar.logLine(l));
   learn.register(ctx);
-  bar.onModel = (m) => void threads.sync(m.pr && m.pr.status === "active" ? m.pr.id : undefined, m.openThreads);
   phase("branch menu");
   registerGitCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
   phase("repos on branch");
@@ -534,7 +529,10 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   // the groups come from the CLI: ask again once the first status read is behind us
   trackedTimeout("worktreeSets.firstRefresh", () => refreshSets(), 4000);
   phase("bar commands");
-  return registerBar(ctx, { log: (l) => bar.logLine(l), extraPlaces: () => recents.get().sets.map((s) => s.id) }).api;
+  const handle = registerBar(ctx, { log: (l) => bar.logLine(l), extraPlaces: () => recents.get().sets.map((s) => s.id), toChat: (t) => bar.sendText(t) });
+  // a window with one repository: the review comments follow the pull request the status bar read (no read while it has no open thread)
+  bar.onModel = (m) => handle.comments.single(bar.cwdNow(), m.pr && m.pr.status === "active" && m.openThreads > 0 ? m.pr.id : undefined, m.pr?.url);
+  return handle.api;
 }
 
 export function deactivate(): Promise<void> {

@@ -16,6 +16,26 @@ export interface BarPr {
   url: string;
   /** the build policy of an active pull request; only known after the overview menu or Create Pull Requests asked for it (one policy read per active pull request) */
   build?: "succeeded" | "failed" | "running";
+  /** review threads of an active pull request: open ones, and of those the ones with a comment of someone else the user has not seen; absent until read or with aiContextHub.prComments off */
+  comments?: { open: number; unread: number };
+}
+
+/** One open review thread for the overview ("Open comments"). */
+export interface BarOpenComment {
+  repo: string;
+  pr: number;
+  /** repository path ("notebooks/orders.py"); absent: a general comment on the pull request */
+  file?: string;
+  /** 1-based line in the latest iteration */
+  line?: number;
+  /** who started the thread */
+  author: string;
+  /** the first sentence of the first comment, plain text */
+  firstLine: string;
+  /** ISO time of the newest comment */
+  when?: string;
+  unread: boolean;
+  threadId: number;
 }
 
 export interface BarRepo {
@@ -82,6 +102,52 @@ export interface BarRepository {
   otherClones?: number;
 }
 
+/**
+ * A place on this PC where a branch is checked out now, read from files (HEAD of every clone and every worktree): the
+ * search of the left menu lists one row per place. where: "set" a worktree of a story set, "own" a worktree outside every
+ * set, "clone" the main folder of a clone.
+ */
+export interface BarCheckout {
+  repo: string;
+  branch: string;
+  path: string;
+  where: "set" | "own" | "clone";
+  /** the set it is in (BarSet.id), only for where "set" */
+  setId?: string;
+  /** "#4698 Klantnummer valideren", only for where "set" */
+  setLabel?: string;
+}
+
+/** The branches a clone knows (local and origin, from its ref files and packed-refs; at most 300): the search offers a branch that is checked out nowhere. */
+export interface BarBranchRefs {
+  repo: string;
+  /** the clone */
+  path: string;
+  branches: string[];
+}
+
+/** A repository in Azure DevOps that is not on this PC (no clone with the same remote, however its url is written). */
+export interface BarRemoteRepository {
+  name: string;
+  project: string;
+  remoteUrl: string;
+}
+
+/**
+ * The repositories in Azure DevOps the user can see and that are not on this PC. Nothing is read until the search asks
+ * (aihub.bar.loadRemoteRepositories, on the first two typed characters); the list is read at most once a day and kept in a
+ * file, a failed read is remembered 5 minutes, and nothing is read while the window has no focus.
+ * idle: not asked yet; loading: reading now ("Searching Azure DevOps…"); ready: repos is the list; signedOut: not signed in
+ * ("Sign in to Azure DevOps to search your repositories", aihub.bar.signInAzureDevOps); failed: error says why.
+ */
+export interface BarRemote {
+  status: "idle" | "loading" | "ready" | "signedOut" | "failed";
+  repos: BarRemoteRepository[];
+  /** when the list was read (epoch ms) */
+  at?: number;
+  error?: string;
+}
+
 export interface BarState {
   /**
    * The hub is the one that tells the user a branch is behind its target (one question per stand, conflict check, auto, Undo, one
@@ -109,6 +175,14 @@ export interface BarState {
   totalSizeLowerBound?: boolean;
   /** OneDrive / network folders that were left out because they are not in "Folders to Look In" */
   scanSkipped?: string[];
+  /** every place where a branch is checked out now (from the scan, no git process) */
+  checkouts?: BarCheckout[];
+  /** the branches each clone knows (from the scan, no git process) */
+  branchRefs?: BarBranchRefs[];
+  /** the repositories in Azure DevOps that are not on this PC */
+  remote?: BarRemote;
+  /** the open review threads of the pull requests of this window, newest first, at most 50; absent until read or with aiContextHub.prComments off */
+  openComments?: BarOpenComment[];
 }
 
 export interface BarApi {
@@ -154,4 +228,18 @@ export const BAR_COMMANDS = {
   commitAll: "aihub.bar.commitAll",
   /** a pick with ticks (story branches without a pull request); one `aihub pr create` per ticked repository, linked to the story and to each other */
   createPullRequests: "aihub.bar.createPullRequests",
+  /** the search typed its first two characters: read the Azure DevOps list if it is not known (once a day, failure remembered 5 minutes, never without focus); the state gets remote */
+  loadRemoteRepositories: "aihub.bar.loadRemoteRepositories",
+  /** read the Azure DevOps list again now */
+  refreshRemoteRepositories: "aihub.bar.refreshRemoteRepositories",
+  /** the "Sign in to Azure DevOps" row: starts `az login` in a terminal, then reads the list again */
+  signInAzureDevOps: "aihub.bar.signInAzureDevOps",
+  /** `{ name, project, remoteUrl }`: a pick (Clone and Open, Clone and Add to the set of this window, Choose Another Folder…), then git clone with progress, Cancel and Undo */
+  cloneRepository: "aihub.bar.cloneRepository",
+  /** `{ repo, branch, path, where, setId? }` (a BarCheckout), or `{ repo, branch, path, where: "none" }` for a branch checked out nowhere (path: the clone): a pick, then the folder (or the whole set) opens in a new window; the set never changes */
+  openCheckout: "aihub.bar.openCheckout",
+  /** `{ repo, threadId }` (from openComments): opens the file on the line and unfolds the thread (counts as read); a general comment shows its text with Open Pull Request */
+  showComment: "aihub.bar.showComment",
+  /** read the review threads of the pull requests again now (one aihub process for all of them) */
+  refreshComments: "aihub.bar.refreshComments",
 } as const;

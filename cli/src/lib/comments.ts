@@ -3,6 +3,7 @@ import { type AdoClient } from "./ado.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { resolvePr } from "./pr.js";
+import { editorThreads } from "./prThreads.js";
 import { readUtf8 } from "./team.js";
 
 interface RawComment {
@@ -154,7 +155,7 @@ export function parseInlineReply(s: string, i = 0): Reply {
   return { threadId: Number(m[1]), text: text || undefined, status: status as Reply["status"] };
 }
 
-export async function commentsReply(ctx: Ctx, o: { pr?: string; repliesFile?: string; replies?: string[]; json?: boolean }): Promise<string> {
+export async function commentsReply(ctx: Ctx, o: { pr?: string; repliesFile?: string; replies?: string[]; json?: boolean; returnThreads?: boolean }): Promise<string> {
   const replies = [...(o.repliesFile ? parseReplies(readUtf8(o.repliesFile)) : []), ...(o.replies ?? []).map(parseInlineReply)];
   if (!replies.length) throw new AihubError("aihub comments reply needs --replies-file <file.yaml> or one or more --reply \"<threadId>:<status>:<text>\"");
   const { root, client } = repoClient(ctx);
@@ -166,7 +167,11 @@ export async function commentsReply(ctx: Ctx, o: { pr?: string; repliesFile?: st
     if (r.status) await client.patch(`${base}/${r.threadId}`, { status: r.status });
     done.push(`${r.threadId}${r.status ? `=${r.status}` : ""}`);
   }
+  // the editor shows the threads it changed as they are now: read back in the same process (no second aihub start)
+  const ids = new Set(replies.map((r) => r.threadId));
+  const repo = decodeURIComponent(client.repoPath().split("/").pop() ?? "");
+  const threads = o.returnThreads ? (await editorThreads(client, repo, pr.pullRequestId)).threads.filter((t) => ids.has(t.threadId)) : undefined;
   return o.json
-    ? JSON.stringify({ pr: pr.pullRequestId, replied: replies.map((r) => r.threadId) })
+    ? JSON.stringify({ pr: pr.pullRequestId, replied: replies.map((r) => r.threadId), ...(threads ? { threads } : {}) })
     : `!${pr.pullRequestId}: ${replies.length} repl${replies.length === 1 ? "y" : "ies"} posted (${done.join(", ")})`;
 }

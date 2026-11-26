@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import { pathKey, type RecentUse } from "../../../cli/src/lib/recentUse";
 import type { Scan, ScanSet } from "../../../cli/src/lib/machineScan";
 import { isClosedState, type SeenStory } from "../../../cli/src/lib/storyCache";
-import type { BarPr, BarRecent, BarRepo, BarRepository, BarSet, BarState, BarStoryBranch } from "./types";
+import type { BarCheckout, BarPr, BarRecent, BarRemote, BarRepo, BarRepository, BarSet, BarState, BarStoryBranch } from "./types";
 
 /**
  * BarState from what is already known: the folder this window shows, the scan of the PC, the recent list and the
@@ -51,6 +51,8 @@ export interface StateInput {
   undo?: string;
   /** the remembered size of a set (bytes) */
   size?: (s: ScanSet) => { bytes: number; at: number; lowerBound?: boolean } | undefined;
+  /** the Azure DevOps repositories that are not on this PC (BarState.remote) */
+  remote?: BarRemote;
   /** every repository of the set has a merged pull request, from the pull request list only; undefined when the list is not known */
   prsMerged?: (s: ScanSet) => boolean | undefined;
   /** every pull request merged and nothing to lose (worked out by the engine for the sets that can be offered) */
@@ -62,6 +64,17 @@ export interface StateInput {
 export const storyLabel = (id: number, stories: Record<number, SeenStory>): string => (stories[id]?.title ? `#${id} ${stories[id].title}` : `#${id}`);
 
 export const setLabel = (s: { story: number; group?: string; branch: string }, stories: Record<number, SeenStory>): string => (s.story ? storyLabel(s.story, stories) : s.group || s.branch);
+
+/** Every place where a branch is checked out (BarState.checkouts): in a set, in its own worktree, or the main folder of a clone. */
+export function checkoutsOf(scan: Scan, stories: Record<number, SeenStory>): BarCheckout[] {
+  const setOf = new Map<string, ScanSet>();
+  for (const s of scan.sets) for (const r of s.repos) setOf.set(pathKey(r.path), s);
+  return (scan.checkouts ?? []).map((c) => {
+    const s = setOf.get(pathKey(c.path));
+    if (s) return { repo: c.repo, branch: c.branch, path: c.path, where: "set" as const, setId: s.id, setLabel: setLabel(s, stories) };
+    return { repo: c.repo, branch: c.branch, path: c.path, where: c.main ? ("clone" as const) : ("own" as const) };
+  });
+}
 
 export function buildState(i: StateInput): BarState {
   const { open } = i;
@@ -102,7 +115,7 @@ export function buildState(i: StateInput): BarState {
     .filter((r) => i.exists(r.id))
     .map((r) => ({ kind: r.kind, id: r.id, label: r.label, ...(r.detail ? { detail: r.detail } : {}), lastUsed: r.lastUsed }));
 
-  const base = { handlesBehindTarget: true as const, ...(open.setFileProblem ? { setFileProblem: open.setFileProblem } : {}), recents, sets, repositories, lookIn, ...(i.undo ? { undo: { label: i.undo } } : {}), ...(sized.length ? { totalSizeBytes: sized.reduce((n, s) => n + s.sizeBytes!, 0), ...(sized.some((s) => s.sizeLowerBound) ? { totalSizeLowerBound: true } : {}) } : {}), ...(i.scan.truncated ? { scanTruncated: true } : {}), ...(i.scan.skippedRemote?.length ? { scanSkipped: i.scan.skippedRemote } : {}) };
+  const base = { handlesBehindTarget: true as const, ...(open.setFileProblem ? { setFileProblem: open.setFileProblem } : {}), recents, sets, repositories, lookIn, ...(i.undo ? { undo: { label: i.undo } } : {}), ...(sized.length ? { totalSizeBytes: sized.reduce((n, s) => n + s.sizeBytes!, 0), ...(sized.some((s) => s.sizeLowerBound) ? { totalSizeLowerBound: true } : {}) } : {}), ...(i.scan.truncated ? { scanTruncated: true } : {}), ...(i.scan.skippedRemote?.length ? { scanSkipped: i.scan.skippedRemote } : {}), checkouts: checkoutsOf(i.scan, i.stories), branchRefs: (i.scan.refs ?? []).map((r) => ({ repo: r.repo, path: r.path, branches: r.branches })), ...(i.remote ? { remote: i.remote } : {}) };
   if (open.set) {
     const story = open.set.story ? { id: open.set.story, title: i.stories[open.set.story]?.title ?? "", ...(i.stories[open.set.story]?.state ? { state: i.stories[open.set.story].state } : {}) } : undefined;
     const repos: BarRepo[] = open.set.repos.map((r) => {
