@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { gitDirFor, headBranchOf } from "./machineScan.js";
-import { readJsonText, readSetFile, repoBranch, writeAtomic, writeSetFile, type SetMeta } from "./setFile.js";
+import { readJsonText, readSetFile, repoBranch, setRepoBranchInPlace, writeAtomic, type SetMeta } from "./setFile.js";
 import { join } from "node:path";
 
 /**
@@ -47,9 +47,8 @@ export function syncRepoName(o: { setFolder: string; workspaceFile?: string; rep
   const entry = meta?.repos.find((r) => samePlace(r.path, o.repoPath));
   const name = entry?.name ?? o.repoPath.split(/[\\/]/).pop() ?? "";
   if (file && meta && entry && head.branch && repoBranch(meta, entry) !== head.branch) {
-    const { others: _o, ...own } = meta;
-    writeSetFile(o.setFolder, file.kind, { ...own, repos: own.repos.map((r) => (r === entry ? { ...r, branch: head.branch } : r)) });
-    res.setFile = true;
+    // only this repository's branch inside its own set: the other sets of the folder keep their place
+    res.setFile = setRepoBranchInPlace(o.setFolder, o.repoPath, head.branch);
   }
   const ws = o.workspaceFile ?? meta?.workspace;
   if (ws && existsSync(ws)) {

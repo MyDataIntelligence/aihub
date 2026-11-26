@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { storyIdFromBranch } from "./storyWorktrees.js";
 
@@ -65,9 +65,10 @@ export function writeAtomic(path: string, text: string): void {
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * (i + 1));
       }
     }
-  } catch {
+  } catch (e) {
+    // never half a file: the error is the answer and the old file stays as it was
     rmSync(tmp, { force: true });
-    writeFileSync(path, text, "utf8");
+    throw e;
   }
 }
 
@@ -112,10 +113,86 @@ function completeRepos(folder: string, raw: Partial<SetRepo>[]): SetRepo[] {
   return out;
 }
 
+const LOCK = ".aihub-set.lock";
+const held = new Set<string>();
+
+/**
+ * One writer at a time for the set files of a folder, across processes (the extension of every window and the CLI): a lock
+ * file created exclusively next to them. A lock older than 10 seconds is a crashed writer and is taken over. Re-entrant
+ * within this process. A folder that cannot hold the lock file (not there yet, read-only) runs without it; the write then
+ * says what is wrong.
+ */
+export function withSetLock<T>(folder: string, fn: () => T): T {
+  const k = resolve(folder).toLowerCase();
+  if (held.has(k)) return fn();
+  const p = join(folder, LOCK);
+  const deadline = Date.now() + 3000;
+  for (;;) {
+    try {
+      const fd = openSync(p, "wx");
+      writeSync(fd, `${process.pid} ${Date.now()}`);
+      closeSync(fd);
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") return fn();
+      try {
+        if (Date.now() - statSync(p).mtimeMs > 10_000) {
+          rmSync(p, { force: true });
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      if (Date.now() > deadline) throw new Error("the set file is being written by another window; try again in a moment");
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
+  held.add(k);
+  try {
+    return fn();
+  } finally {
+    held.delete(k);
+    rmSync(p, { force: true });
+  }
+}
+
+/**
+ * Changes the branch of ONE repository inside its own set, and nothing else: the other sets of the folder stay where they are
+ * (writeSetMeta would move the one it writes to the top), the order and the unknown fields stay. True when something changed.
+ */
+export function setRepoBranchInPlace(folder: string, repoPath: string, branch: string): boolean {
+  return withSetLock(folder, () => {
+    const found = readSetFile(folder);
+    if (!found) return false;
+    const same = (a: string, b: string) => resolve(a).toLowerCase() === resolve(b).toLowerCase();
+    if (found.kind === "maker") {
+      const entry = found.top.repos.find((r) => same(r.path, repoPath));
+      if (!entry || repoBranch(found.top, entry) === branch) return false;
+      writeSetFile(folder, "maker", { ...found.top, repos: found.top.repos.map((r) => (r === entry ? { ...r, branch } : r)) });
+      return true;
+    }
+    const top = JSON.parse(readJsonText(join(folder, AIHUB_SET))) as SetMeta;
+    for (const m of [top, ...(top.others ?? [])]) {
+      const r = (m.repos as { path?: string; branch?: string }[]).find((x) => typeof x.path === "string" && same(resolve(folder, x.path), repoPath));
+      if (!r) continue;
+      if ((r.branch || m.branch) === branch) return false;
+      if (branch === m.branch) delete r.branch;
+      else r.branch = branch;
+      writeAtomic(join(folder, AIHUB_SET), JSON.stringify(top, null, 2));
+      return true;
+    }
+    return false;
+  });
+}
+
 /** Writes `meta` back into the set file of its kind; `.aihub-set.json` keeps the other sets of the folder. */
 export function writeSetFile(folder: string, kind: SetKind, meta: SetMeta): void {
+  return withSetLock(folder, () => writeSetFileLocked(folder, kind, meta));
+}
+
+function writeSetFileLocked(folder: string, kind: SetKind, meta: SetMeta): void {
   const repos = meta.repos.map((r) => ({ ...r, branch: r.branch && r.branch !== meta.branch ? r.branch : undefined }));
-  if (kind === "aihub") return writeSetMeta(folder, { ...meta, repos });
+  if (kind === "aihub") return writeSetMetaLocked(folder, { ...meta, repos });
   const p = join(folder, MAKER_SET);
   const raw = JSON.parse(readJsonText(p)) as Record<string, unknown> & { repos?: Record<string, unknown>[] };
   const old = new Map((raw.repos ?? []).map((r) => [String(r.name), r]));
@@ -150,6 +227,10 @@ export function saveSetMeta(folder: string, meta: SetMeta): void {
 
 /** Writes `meta` as the newest set of `folder`, keeping the other sets there (one per story and branch). */
 export function writeSetMeta(folder: string, meta: SetMeta): void {
+  return withSetLock(folder, () => writeSetMetaLocked(folder, meta));
+}
+
+function writeSetMetaLocked(folder: string, meta: SetMeta): void {
   const p = join(folder, AIHUB_SET);
   let old: SetMeta[] = [];
   if (existsSync(p)) {
@@ -175,11 +256,13 @@ export function stampStoryTitle(folder: string, story: number, title: string): v
   const p = join(folder, AIHUB_SET);
   if (!story || !title || !existsSync(p)) return;
   try {
-    const top = JSON.parse(readJsonText(p)) as SetMeta;
-    const sets = [top, ...(top.others ?? [])];
-    let changed = false;
-    for (const m of sets) if (m.story === story && m.storyTitle !== title) (m.storyTitle = title), (changed = true);
-    if (changed) writeAtomic(p, JSON.stringify(top, null, 2));
+    withSetLock(folder, () => {
+      const top = JSON.parse(readJsonText(p)) as SetMeta;
+      const sets = [top, ...(top.others ?? [])];
+      let changed = false;
+      for (const m of sets) if (m.story === story && m.storyTitle !== title) (m.storyTitle = title), (changed = true);
+      if (changed) writeAtomic(p, JSON.stringify(top, null, 2));
+    });
   } catch {
     /* a broken set file is reported elsewhere */
   }
