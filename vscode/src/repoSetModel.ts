@@ -250,7 +250,7 @@ export interface OpenSummary {
 
 export function summarizeOpen(r: OpenResultJson): OpenSummary {
   const failed = r.repos.filter((x) => !x.ok).length;
-  const lines = r.repos.map((x) => `${x.ok ? "ok" : "FAIL"}  ${x.repo}: ${x.state} - ${plainPathsIn(x.note)}`);
+  const lines = r.repos.map((x) => `${x.ok ? "ok" : "FAIL"}  ${x.repo}: ${x.state} - ${plainPathsIn(x.note, 200)}`);
   const title = failed
     ? `${r.repos.length - failed} of ${r.repos.length} repositories are open on ${r.branch}; ${failed} need attention`
     : `${r.repos.length} repositories on ${r.branch} (${r.mode})`;

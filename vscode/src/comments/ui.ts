@@ -27,6 +27,7 @@ import {
   type Target,
   type ThreadsRead,
 } from "./model";
+import { showFailure } from "../bar/failureUi";
 
 /** Read no more often than the pull requests themselves: 5 minutes, a failed read too. */
 export const COMMENTS_TTL_MS = 5 * 60_000;
@@ -87,7 +88,7 @@ export class PrCommentsController implements vscode.Disposable, vscode.FileDecor
     const reg = (id: string, f: (...a: any[]) => unknown) =>
       this.subs.push(
         vscode.commands.registerCommand(id, (...a: unknown[]) =>
-          Promise.resolve(f(...a)).catch((e) => void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`)),
+          Promise.resolve(f(...a)).catch((e) => void showFailure(e)),
         ),
       );
     this.subs.push(

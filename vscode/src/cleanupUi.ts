@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { CliError, makeRunner, readJson, type Runner } from "./cli";
 import { mayCheck, pickItems, shouldAsk, size, type CleanupRow, type ReminderState } from "./cleanupModel";
 import { clearTrackedInterval, trackedInterval, trackedTimeout } from "./perf/probe";
+import { showFailure } from "./bar/failureUi";
 
 /**
  * Clean Up Worktrees: the list of `aihub worktree cleanup --json` (PR, story, local work, merged, size) as a pick list
@@ -38,7 +39,7 @@ export class CleanupController implements vscode.Disposable {
       rows = (await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Reading worktrees, pull requests and stories..." }, () => readJson<{ worktrees: CleanupRow[] }>(this.runner(), ["worktree", "cleanup"], cwd))).worktrees;
     } catch (e) {
       if (e instanceof CliError && /unknown command|usage: aihub worktree/i.test(e.message)) return false;
-      void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+      void showFailure(e);
       return true;
     }
     if (!rows.length) {
@@ -76,7 +77,7 @@ export class CleanupController implements vscode.Disposable {
         `Removed ${r.removed.length - kept.length} worktree(s), ${size(r.freedBytes) || "0 MB"} freed.${kept.length ? ` Kept: ${kept.map((k) => `${k.branch} (${k.note})`).join("; ")}` : ""}`,
       );
     } catch (e) {
-      void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+      void showFailure(e);
     }
     this.refreshViews();
     return true;

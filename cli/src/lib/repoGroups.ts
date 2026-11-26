@@ -87,7 +87,7 @@ export function resolveRepos(ctx: Ctx, specs: string[]): RepoDir[] {
   }
   if (names.length) {
     if (!root) throw new AihubError(`repositories ${names.join(", ")} are looked up next to the current repository; run this inside a clone, or pass absolute folders`);
-    out.push(...resolveRepoDirs(names, root, team as TeamConfig));
+    out.push(...resolveRepoDirs(names, root, team as TeamConfig, [], ctx.env));
   }
   return specs.map((s) => out.find((o) => o.name === s || resolve(o.dir) === resolve(s)) ?? out.find((o) => o.name.toLowerCase() === s.toLowerCase())!).filter(Boolean);
 }

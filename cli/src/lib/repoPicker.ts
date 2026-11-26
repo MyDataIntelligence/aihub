@@ -4,6 +4,7 @@ import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { repoRoot } from "./git.js";
 import { tryGit } from "./gitx.js";
+import { chooseClone, samePath } from "./cloneChoice.js";
 import { configHome } from "./notifyPolicy.js";
 import { loadTeam, type TeamConfig } from "./team.js";
 
@@ -77,7 +78,6 @@ export function joinAdoLocal(ado: Omit<AdoRepo, "path" | "branch">[], local: Loc
   });
 }
 
-const samePath = (a: string, b: string) => resolve(a).toLowerCase() === resolve(b).toLowerCase();
 
 /** One key per remote: the Azure DevOps key, else host/path of any URL (https and ssh alike), lower case. */
 export function remoteKey(url: string | undefined): string | undefined {
@@ -110,7 +110,7 @@ function usedAt(dir: string): number {
  * else the shortest path; the others go to `otherClones`. Clones without an origin stay apart. Worktrees never get
  * here (readLocal skips them).
  */
-export function dedupeClones(repos: LocalRepo[], prefer: Record<string, string> = {}, used: (dir: string) => number = usedAt): LocalRepo[] {
+export function dedupeClones(repos: LocalRepo[], prefer: Record<string, string> = {}, used: (dir: string) => number = usedAt, rank?: (dir: string) => number): LocalRepo[] {
   const groups = new Map<string, LocalRepo[]>();
   for (const r of repos) {
     const k = remoteKey(r.remoteUrl) ?? `path:${r.path.toLowerCase()}`;
@@ -125,7 +125,8 @@ export function dedupeClones(repos: LocalRepo[], prefer: Record<string, string> 
       if (list.length === 1) return list[0];
       const want = preferOf([k.split("/").pop()!, ...list.map((r) => r.name)]);
       const at = new Map(list.map((r) => [r, used(r.path)]));
-      const chosen = (want && list.find((r) => samePath(r.path, want))) || [...list].sort((a, b) => at.get(b)! - at.get(a)! || a.path.length - b.path.length || a.path.localeCompare(b.path))[0];
+      const chosenPath = chooseClone(list.map((r) => ({ path: r.path, lastUsed: at.get(r)!, rank: rank?.(r.path) })), want);
+      const chosen = list.find((r) => r.path === chosenPath)!;
       return { ...chosen, otherClones: list.filter((r) => r !== chosen).map((r) => r.path) };
     })
     .sort((a, b) => a.name.localeCompare(b.name));

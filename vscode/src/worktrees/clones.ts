@@ -2,6 +2,9 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Repo } from "./core";
+import { chooseClone } from "../../../cli/src/lib/cloneChoice";
+
+export { chooseClone };
 
 /**
  * One repository is one line in the repo pickers, however often it is cloned on this PC: the branch is chosen
@@ -68,18 +71,6 @@ async function lastUsed(folder: string): Promise<number> {
     }
   }
   return t;
-}
-
-const samePath = (a: string, b: string) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
-
-/** The clone to use: the preferred one, else the most recently used, else the shortest path. */
-export function chooseClone(clones: { path: string; lastUsed: number; rank?: number }[], preferred?: string): string {
-  if (preferred) {
-    const hit = clones.find((c) => samePath(c.path, preferred));
-    if (hit) return hit.path;
-  }
-  // the preferred one, else the last used, else the first in the folders to look in, else by path
-  return [...clones].sort((a, b) => b.lastUsed - a.lastUsed || (a.rank ?? 0) - (b.rank ?? 0) || a.path.localeCompare(b.path))[0].path;
 }
 
 /**

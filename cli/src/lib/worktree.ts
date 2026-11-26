@@ -55,7 +55,7 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
   const setsRoot = resolve(o.root ?? defaultSetsRoot(root));
-  const dirs = resolveRepoDirs(o.repos, root, team);
+  const dirs = resolveRepoDirs(o.repos, root, team, [], ctx.env);
   let folder = setFolder(setsRoot, o.story, o.branch ?? "");
   let metaPath = join(folder, META);
   const meta: SetMeta = existsSync(metaPath)

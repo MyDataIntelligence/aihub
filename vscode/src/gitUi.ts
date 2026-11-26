@@ -2,6 +2,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { branchChangedFiles, checkConflicts, commitsAhead, currentBranch, defaultTarget, filesDifferingFrom, pushedAlready, recentSubjects, refChoices, refExists, resetPathsToRef, revertToMergeBase, squashCommits, switchBranch, switchChoices, type ChangedFile } from "./gitActions";
 import { createGit, type Git } from "./worktrees/git";
+import { showFailure } from "./bar/failureUi";
 
 /**
  * The Branch menu of the old extension: Reset to Branch or Commit, Check for Merge Conflicts, Clean Up Unrelated
@@ -49,7 +50,7 @@ export function registerGitCommands(ctx: vscode.ExtensionContext, log: (line: st
         try {
           await fn(...a);
         } catch (e) {
-          void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+          void showFailure(e);
         }
       }),
     );
@@ -76,7 +77,7 @@ export function registerGitCommands(ctx: vscode.ExtensionContext, log: (line: st
     const yes = await vscode.window.showWarningMessage(`Reset ${differing.length} file(s) to ${ref}? Uncommitted changes in them are lost.\n\n${list(differing)}`, { modal: true }, "Reset");
     if (yes !== "Reset") return;
     const r = await resetPathsToRef(git, cwd, ref, differing);
-    void (r.ok ? vscode.window.showInformationMessage(r.message) : vscode.window.showErrorMessage(r.message));
+    void (r.ok ? vscode.window.showInformationMessage(r.message) : showFailure(r.message));
   });
 
   reg("aihub.git.checkMergeConflicts", async (...args) => {
@@ -114,7 +115,7 @@ export function registerGitCommands(ctx: vscode.ExtensionContext, log: (line: st
     const yes = await vscode.window.showWarningMessage(`Reset ${files.length} unrelated file(s) to ${t}?\n\n${list(files.map((f) => f.path))}`, { modal: true }, "Reset");
     if (yes !== "Reset") return;
     const r = await revertToMergeBase(git, cwd, t, files);
-    void (r.ok ? vscode.window.showInformationMessage(r.message) : vscode.window.showErrorMessage(r.message));
+    void (r.ok ? vscode.window.showInformationMessage(r.message) : showFailure(r.message));
   });
 
   reg("aihub.git.squash", async (...args) => {
@@ -134,7 +135,7 @@ export function registerGitCommands(ctx: vscode.ExtensionContext, log: (line: st
     const yes = await vscode.window.showWarningMessage(`Squash the newest ${count} commits into one?${wasPushed ? "\n\nThe branch was pushed before, so you must push again with --force-with-lease." : ""}\n\n${list(subjects)}`, { modal: true }, "Squash");
     if (yes !== "Squash") return;
     const r = await squashCommits(git, cwd, t, message, count);
-    if (!r.ok) return void vscode.window.showErrorMessage(r.message);
+    if (!r.ok) return void showFailure(r.message);
     const branch = (await currentBranch(git, cwd)) ?? "HEAD";
     const buttons = wasPushed ? ["Push (force with lease)"] : ["Create or update the PR"];
     const next = await vscode.window.showInformationMessage(r.message, ...buttons);
@@ -155,6 +156,6 @@ export function registerGitCommands(ctx: vscode.ExtensionContext, log: (line: st
     );
     if (!pick || pick.choice.name === current) return;
     const r = await switchBranch(git, cwd, pick.choice, REMOTE);
-    void (r.ok ? vscode.window.showInformationMessage(r.message) : vscode.window.showErrorMessage(r.message));
+    void (r.ok ? vscode.window.showInformationMessage(r.message) : showFailure(r.message));
   });
 }

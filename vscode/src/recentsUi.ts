@@ -19,6 +19,7 @@ import {
 } from "./recents";
 import type { OpenResultJson, PickItem } from "./repoSetModel";
 import { pick, setOpenRecorder, type RepoSetController } from "./repoSetUi";
+import { showFailure } from "./bar/failureUi";
 
 /**
  * Worktree sets and stories as one thing (a story set is a worktree set with a story link), recent ones first, and
@@ -94,7 +95,7 @@ export function registerRecents(ctx: vscode.ExtensionContext, store: RecentStore
     if (res.story) await store.update((r) => addStory(r, { id: res.story!, title: meta?.storyTitle ?? "" }, Date.now()));
   });
   const reg = (id: string, f: (...a: any[]) => unknown) =>
-    ctx.subscriptions.push(vscode.commands.registerCommand(id, (...a) => Promise.resolve(f(...a)).catch((e: Error) => void vscode.window.showErrorMessage(`AI Context Hub: ${e.message}`))));
+    ctx.subscriptions.push(vscode.commands.registerCommand(id, (...a) => Promise.resolve(f(...a)).catch((e: Error) => void showFailure(e))));
   const run = (v: MenuValue | undefined) => v && vscode.commands.executeCommand(v.command, v.args);
   const openStory = (s: StoryRef) => vscode.commands.executeCommand("aihub.stories.open", { kind: "story", story: { id: s.id, title: s.title, state: "", branches: [] } });
 
