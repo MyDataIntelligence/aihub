@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("vscode", () => ({ window: {} }));
 
-import { missingCloneRepo, whyNotTheClone } from "../src/bar/missingClone";
+import { lostCloneIn, missingCloneRepo, whyNotTheClone } from "../src/bar/missingClone";
 import { withCloneRecovery, type RecoveryUi } from "../src/bar/missingCloneUi";
 import { plainError } from "../src/bar/plainError";
 
@@ -83,5 +83,23 @@ describe("the clone of a repository cannot be found (bar action)", () => {
   it("everywhere else the failure is one plain sentence with the command, no raw CLI text", () => {
     const t = plainError(NOT_FOUND).text;
     expect(t).toBe('the clone of repo-one was not found; choose its folder when asked, or run: aihub repos prefer "repo-one" <folder>');
+  });
+
+  it("an open result that reports a lost clone per repository becomes the failure the recovery handles", async () => {
+    const note = NOT_FOUND;
+    expect(lostCloneIn([{ ok: true, note: "worktree" }, { ok: false, note }])).toBe(note);
+    expect(lostCloneIn([{ ok: false, note: "uncommitted changes" }])).toBeUndefined();
+    expect(lostCloneIn([{ ok: true, note }])).toBeUndefined();
+    const dir = clone("Repo One", "https://dev.azure.com/org-x/proj-y/_git/repo-one");
+    const { u, seen } = ui(dir);
+    let runs = 0;
+    const out = await withCloneRecovery(async () => {
+      const repos = ++runs === 1 ? [{ ok: false, note }] : [{ ok: true, note: "worktree" }];
+      const lost = lostCloneIn(repos);
+      if (lost) throw new Error(lost);
+      return "added";
+    }, u);
+    expect(out).toBe("added");
+    expect(seen.remembered).toEqual([["repo-one", dir]]);
   });
 });

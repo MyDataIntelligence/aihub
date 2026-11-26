@@ -1,3 +1,4 @@
+import { lostCloneIn } from "./bar/missingClone";
 import * as fs from "fs";
 import { notice } from "./bar/notice";
 import { plainPath } from "./bar/paths";
@@ -177,6 +178,9 @@ Smart Checkout carries them along to ${branch}; when they do not fit there, ever
 }
 
 export async function showOpened(res: OpenResultJson, window: "new" | "this", log: (l: string) => void, meta?: OpenMeta): Promise<boolean> {
+  // a repository whose clone cannot be found is no result to show: it fails the action like any other failure, so the bar can ask for the folder and repeat the action
+  const lost = lostCloneIn(res.repos);
+  if (lost) throw new Error(lost);
   const sum = summarizeOpen(res);
   const detail = sum.lines.join("\n");
   log(`${sum.title}\n${detail}`);
