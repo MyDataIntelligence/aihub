@@ -25,6 +25,12 @@ const h = vi.hoisted(() => ({
   gitChanges: {} as Record<string, number>,
   openListeners: [] as (() => void)[],
   focusListeners: [] as ((s: { focused: boolean }) => void)[],
+  // the review comments: pull requests of repositories a and b, the open documents, the comment threads made
+  prRows: [] as unknown[],
+  threads: "{}",
+  openDoc: [] as ((d: unknown) => void)[],
+  docs: [] as unknown[],
+  made: [] as { uri: { fsPath: string }; range: { start: { line: number } }; label?: string }[],
 }));
 
 vi.mock("node:child_process", async (orig) => {
@@ -57,7 +63,13 @@ vi.mock("../src/cli", async (orig) => {
 // `aihub repos ado --json` answers a synthetic list (the search of the left menu)
 const ADO = JSON.stringify({ repos: [{ name: "orders-api", project: "data-platform", remoteUrl: "https://dev.azure.com/org/data-platform/_git/orders-api" }, { name: "orders-reporting", project: "reporting", remoteUrl: "https://dev.azure.com/org/reporting/_git/orders-reporting" }] });
 vi.mock("../src/bar/runner", () => ({
-  cli: async (args: string[]) => (h.on && h.aihub.push(`aihub ${args.join(" ")}`), args[0] === "repos" && args[1] === "ado" ? ADO : "[]"),
+  cli: async (args: string[]) => {
+    if (h.on) h.aihub.push(`aihub ${args.join(" ")}`);
+    if (args[0] === "repos" && args[1] === "ado") return ADO;
+    if (args[0] === "pr" && args[1] === "list") return JSON.stringify(h.prRows);
+    if (args[0] === "comments") return h.threads;
+    return "[]";
+  },
   runner: () => async (args: string[]) => (h.on && h.aihub.push(`aihub ${args.join(" ")}`), "[]"),
   jsonOf: (t: string) => JSON.parse(t.slice(t.indexOf("{"))),
 }));
@@ -84,8 +96,29 @@ vi.mock("vscode", () => {
     QuickPickItemKind: { Separator: -1 },
     StatusBarAlignment: { Left: 1, Right: 2 },
     ThemeColor: class {},
-    MarkdownString: class {},
+    MarkdownString: class {
+      constructor(public value = "") {}
+    },
+    Range: class {
+      start: { line: number };
+      constructor(l: number) {
+        this.start = { line: l };
+      }
+    },
+    CommentMode: { Preview: 1 },
+    CommentThreadCollapsibleState: { Collapsed: 0, Expanded: 1 },
+    comments: {
+      createCommentController: () => ({
+        createCommentThread: (uri: { fsPath: string }, range: { start: { line: number } }) => {
+          const t = { uri, range, comments: [], dispose: () => undefined };
+          h.made.push(t);
+          return t;
+        },
+        dispose: () => undefined,
+      }),
+    },
     window: {
+      registerFileDecorationProvider: none,
       createOutputChannel: () => ({ appendLine: () => undefined, dispose: () => undefined }),
       createStatusBarItem: () => ({ show: () => undefined, hide: () => undefined, dispose: () => undefined }),
       registerWebviewViewProvider: none,
@@ -135,6 +168,11 @@ vi.mock("vscode", () => {
       getConfiguration: () => ({ get: (_k: string, d: unknown) => d, update: async () => undefined }),
       onDidChangeWorkspaceFolders: none,
       onDidChangeConfiguration: none,
+      onDidOpenTextDocument: (f: (d: unknown) => void) => (h.openDoc.push(f), none()),
+      onDidCloseTextDocument: none,
+      get textDocuments() {
+        return h.docs;
+      },
       getWorkspaceFolder: () => undefined,
       createFileSystemWatcher: (p: { base: { fsPath: string } | string; pattern: string }) => {
         const w = { base: typeof p.base === "string" ? p.base : p.base.fsPath, glob: p.pattern, change: [] as (() => void)[], create: [] as (() => void)[] };
@@ -189,10 +227,14 @@ describe("the real bar, every process counted (review: the measured 66 starts pe
     Object.assign(process.env, { AIHUB_CONFIG_HOME: cfg, AIHUB_COMMON_ROOTS: "" });
     h.folders = w.repos.map((r) => r.path);
     h.repoPaths = w.repos.map((r) => r.path);
+    // two repositories of the five have an active pull request with review comments
+    h.prRows = ["a", "b"].map((n, i) => ({ id: 812 + i, repo: n, source: "feature/5-x", status: "active", url: `https://example.invalid/pr/${812 + i}` }));
+    const commented = { threadId: 7, status: "active", open: true, file: "/x.txt", side: "right", line: 1, endLine: 1, outdated: false, original: ["1"], anchor: { start: 1, lines: ["1"] }, comments: [{ id: 1, author: "Sanne de Vries", authorId: "u-sanne", text: "Why 1?" }], suggestions: [] };
+    h.threads = JSON.stringify({ me: { id: "u-me", name: "Test User" }, prs: [{ repo: "a", pr: 812, threads: [commented] }, { repo: "b", pr: 813, threads: [{ ...commented, threadId: 8 }] }], failed: [] });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const subs: { dispose(): unknown }[] = [];
     const bar = registerBar({ subscriptions: subs } as never, { log: () => undefined } as never);
-    const rows: { phase: string; git: number; aihub: number; detail: string; events: number }[] = [];
+    const rows: { phase: string; git: number; aihub: number; detail: string; events: number; comments: number }[] = [];
     const phase = async (name: string, run: () => Promise<void>) => {
       h.starts.length = 0;
       h.aihub.length = 0;
@@ -207,7 +249,7 @@ describe("the real bar, every process counted (review: the measured 66 starts pe
         const k = s.split(" ").slice(0, 3).join(" ");
         by.set(k, (by.get(k) ?? 0) + 1);
       }
-      rows.push({ phase: name, git: h.starts.length, aihub: h.aihub.length, events: h.fired - fired, detail: [...by].map(([k, n]) => `${k} x${n}`).join(", ") });
+      rows.push({ phase: name, git: h.starts.length, aihub: h.aihub.length, comments: h.aihub.filter((a) => a.startsWith("aihub comments")).length, events: h.fired - fired, detail: [...by, ...h.aihub.map((a) => [a.split(" ").slice(0, 3).join(" "), 1] as const)].map(([k, n]) => `${k} x${n}`).join(", ") });
       return git;
     };
     // what the title bar does: read the state again on every change
@@ -273,6 +315,24 @@ describe("the real bar, every process counted (review: the measured 66 starts pe
       await h.commands.get("aihub.bar.refreshStatus")?.();
       await advance(1_000);
     });
+    // a file of repository b (pull request 813, one thread on line 1) opens: the threads that were read are placed, nothing starts
+    const doc = { uri: { fsPath: join(w.repos[1].path, "x.txt"), scheme: "file" }, getText: () => "1\n" };
+    await phase("a file with comments opens", async () => {
+      h.docs.push(doc);
+      h.openDoc.forEach((f) => f(doc));
+      await advance(1_000);
+    });
+    const placed = h.made.filter((t) => t.uri.fsPath === doc.uri.fsPath);
+    expect(placed.map((t) => t.range.start.line)).toEqual([0]);
+    await phase("a reply on that thread", async () => {
+      await h.commands.get("aihub.thread.reply")?.({ thread: placed[0], text: "Done." });
+      await advance(1_000);
+    });
+    await phase("focus back within 5 minutes", async () => {
+      focus(false);
+      focus(true);
+      await advance(1_000);
+    });
     // the search of the left menu: a clone of Azure DevOps (files only) tells the organisation; the folders to look in hold the world
     const ado = join(w.root, "zz-ado-clone");
     mkdirSync(join(ado, ".git"), { recursive: true });
@@ -332,6 +392,15 @@ describe("the real bar, every process counted (review: the measured 66 starts pe
     expect(state.remote?.repos.map((r) => r.name)).toEqual(["orders-api"]);
     expect(state.checkouts?.length).toBeGreaterThanOrEqual(5);
     expect(readFileSync(join(into, "x.txt"), "utf8")).toContain("1");
+    // the review comments: one read for both pull requests when the set opens and when the overview opens, never otherwise
+    expect(get("open the window").comments).toBe(1);
+    expect(get("overview menu opens").comments).toBe(1);
+    expect(rows.filter((r) => !/^(open the window|overview menu opens|a reply)/.test(r.phase)).reduce((n, r) => n + r.comments, 0)).toBe(0);
+    expect(get("a file with comments opens").git + get("a file with comments opens").aihub).toBe(0);
+    // a reply posts and gets its thread back in one process
+    expect(get("a reply on that thread").aihub).toBe(1);
+    expect(get("a reply on that thread").git).toBe(0);
+    expect(get("focus back within 5 minutes").aihub).toBe(0);
     subs.forEach((s) => s.dispose());
     vi.useRealTimers();
   }, 180_000);
