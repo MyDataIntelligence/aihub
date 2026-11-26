@@ -641,7 +641,7 @@ export interface RepoPage extends ReadMeta {
   ref: RefOut;
   readme: { path: string; markdown: string; truncated: boolean } | null;
   root: ItemRow[];
-  branches: { count: number; default: string };
+  branches: { count: number; default: string; items: TopBranch[] };
   pullRequests: { count: number; items: { id: number; title: string; by: Person; source: string; target: string; isDraft: boolean; createdAt: string | null; webUrl: string }[] };
   commits: (CommitInfo & { webUrl: string })[];
   pipelines: { runs: RunRow[] };
@@ -649,6 +649,52 @@ export interface RepoPage extends ReadMeta {
 }
 
 const README_MAX = 256 * 1024;
+
+export interface TopBranch {
+  name: string;
+  isDefault: boolean;
+  isMine: boolean;
+  /** the date of its newest commit */
+  at: string | null;
+  commit: string;
+  /** commits ahead of / behind the default branch */
+  ahead: number | null;
+  behind: number | null;
+}
+
+interface RawBranchStat {
+  name: string;
+  aheadCount?: number;
+  behindCount?: number;
+  commit?: RawCommit;
+}
+
+/** The three branches the repository page shows: the default one, then mine, then the most recently changed (newest first). */
+export function topBranches(heads: RawRef[], stats: RawBranchStat[], def: string, me: MeInfo, n = 3): TopBranch[] {
+  const byName = new Map(stats.map((s) => [s.name, s]));
+  const all = heads.map((r) => {
+    const name = r.name.replace(/^refs\/heads\//, "");
+    const s = byName.get(name);
+    return {
+      name,
+      isDefault: name === def,
+      isMine: !!r.creator && personOf(r.creator, me).isMe,
+      at: s?.commit?.committer?.date ?? s?.commit?.author?.date ?? null,
+      commit: r.objectId,
+      ahead: name === def ? 0 : (s?.aheadCount ?? null),
+      behind: name === def ? 0 : (s?.behindCount ?? null),
+    };
+  });
+  const newest = (a: TopBranch, b: TopBranch) => (b.at ?? "").localeCompare(a.at ?? "") || a.name.localeCompare(b.name);
+  const out: TopBranch[] = [];
+  const add = (x: TopBranch | undefined) => {
+    if (x && out.length < n && !out.includes(x)) out.push(x);
+  };
+  add(all.find((x) => x.isDefault));
+  add(all.filter((x) => x.isMine && !x.isDefault).sort(newest)[0]);
+  for (const x of all.filter((y) => !y.isDefault).sort(newest)) add(x);
+  return out;
+}
 
 export async function browseRepo(b: Browse, o: { project: string; repo: string; ref?: string }): Promise<RepoPage> {
   const { spec, row } = await refOrDefault(b, o.project, o.repo, o.ref);
@@ -674,7 +720,18 @@ export async function browseRepo(b: Browse, o: { project: string; repo: string; 
               null,
             )
           : Promise.resolve(null),
-        part(errors, "branches", () => rc.list<RawRef>(`${rc.repoPath()}/refs`, { filter: "heads/" }).then((x) => x.length), 0),
+        part(
+          errors,
+          "branches",
+          async () => {
+            const [heads, stats] = await Promise.all([
+              rc.list<RawRef>(`${rc.repoPath()}/refs`, { filter: "heads/" }),
+              rc.get<{ value?: RawBranchStat[] }>(`${rc.repoPath()}/stats/branches`).then((x) => x.value ?? []).catch(() => [] as RawBranchStat[]),
+            ]);
+            return { count: heads.length, items: topBranches(heads, stats, row.defaultBranch, me) };
+          },
+          { count: 0, items: [] as TopBranch[] },
+        ),
         part(
           errors,
           "pullRequests",
@@ -703,7 +760,7 @@ export async function browseRepo(b: Browse, o: { project: string; repo: string; 
         ref: { name: spec.name, kind: spec.kind, commit: commitId },
         readme,
         root,
-        branches: { count: refs, default: row.defaultBranch },
+        branches: { count: refs.count, default: row.defaultBranch, items: refs.items },
         pullRequests: { count: prItems.length, items: prItems.slice(0, 20) },
         commits: commits.map((c) => ({ ...commitOf(c, me), webUrl: webCommitUrl(b, row.project, row.repo, c.commitId) })),
         pipelines: { runs: builds.map((x) => rowOf(b.client.forProject(row.project), x, me.id || undefined, row.clone?.path ?? null, now)) },

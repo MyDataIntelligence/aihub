@@ -155,13 +155,13 @@ Cache (`<config>/aihub/cache/browse/`): projects and repositories 4 hours, proje
 
 `aihub browse repo --project P --repo R [--ref ...]`: the repository page. `parts` that can fail on their own: `root`, `readme`,
 `branches`, `pullRequests`, `commits`, `pipelines` (Retry = the same call with `--refresh`). `pipelines.runs` are the rows of
-`aihub pipeline list` (`repoDir` is the clone or `null`).
+`aihub pipeline list` (`repoDir` is the clone or `null`). `branches.items` are at most three: the default branch, then my newest, then the most recently changed (`at` = date of the newest commit, `ahead`/`behind` against the default branch; one extra call to the branch statistics).
 
 ```json
 {"repo":{"…":"as in projects"},"ref":{"name":"main","kind":"branch","commit":"<sha>"},"readAt":"…","cached":false,
  "readme":{"path":"/README.md","markdown":"# repo-a\n…","truncated":false},
  "root":[{"name":"dbt","path":"/dbt","kind":"folder","sizeBytes":null,"objectId":"<sha>","lastCommit":{"id":"…","short":"…","message":"…","at":"…","by":{…}}}],
- "branches":{"count":14,"default":"main"},
+ "branches":{"count":14,"default":"main","items":[{"name":"main","isDefault":true,"isMine":false,"at":"…","commit":"<sha>","ahead":0,"behind":0},{"name":"feature/4711-orderexport","isDefault":false,"isMine":true,"at":"…","commit":"<sha>","ahead":3,"behind":1}]},
  "pullRequests":{"count":2,"items":[{"id":42,"title":"…","by":{…},"source":"feature/4711-orderexport","target":"main","isDraft":false,"createdAt":"…","webUrl":"…"}]},
  "commits":[{"id":"…","short":"…","message":"…","at":"…","by":{…},"webUrl":"…"}],
  "pipelines":{"runs":[]},

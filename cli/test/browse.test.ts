@@ -235,7 +235,8 @@ describe("browse project and repository pages", () => {
     { match: /repo-a\/items\?path=%2FREADME\.md/, respond: () => ({ body: { ...item("/README.md", "blob"), content: "# repo-a\n\n[![badge](x)](y)\n\nOrders **export** for fixture_a.\n" } }) },
     { match: /repo-empty|repo-old/, respond: () => ({ status: 500 }) },
     { match: /repo-a\/items\?scopePath=%2F&/, respond: () => ({ body: { value: [item("/", "tree"), item("/README.md", "blob"), item("/src", "tree")] } }) },
-    { match: /repo-a\/refs\?filter=heads/, respond: () => ({ body: { value: [{ name: "refs/heads/main", objectId: C1 }, { name: "refs/heads/x", objectId: C1 }] } }) },
+    { match: /repo-a\/refs\?filter=heads/, respond: () => ({ body: { value: [{ name: "refs/heads/main", objectId: C1 }, { name: "refs/heads/x", objectId: C1 }, { name: "refs/heads/feature/4711-mine", objectId: C2, creator: { displayName: "Test User", id: "me-id" } }, { name: "refs/heads/staging", objectId: C3 }] } }) },
+    { match: /repo-a\/stats\/branches/, respond: () => ({ body: { value: [{ name: "x", aheadCount: 1, behindCount: 9, commit: { committer: { date: "2026-10-01T00:00:00Z" } } }, { name: "staging", aheadCount: 0, behindCount: 2, commit: { committer: { date: "2026-11-26T11:00:00Z" } } }, { name: "feature/4711-mine", aheadCount: 3, behindCount: 0, commit: { committer: { date: "2026-11-20T00:00:00Z" } } }] } }) },
     { match: /repo-a\/pullrequests\?/, respond: () => ({ body: { value: [{ pullRequestId: 42, title: "Export", createdBy: { displayName: "Test User", id: "me-id" }, sourceRefName: "refs/heads/feature/4711", targetRefName: "refs/heads/main", creationDate: "2026-11-24T10:00:00Z" }] } }) },
     { match: /build\/builds\?/, respond: () => ({ status: 500, body: { message: "pipelines are down" } }) },
   ];
@@ -260,7 +261,13 @@ describe("browse project and repository pages", () => {
     expect(r.readme?.markdown).toContain("Orders **export**");
     expect(r.root.map((x) => x.name)).toEqual(["src", "README.md"]);
     expect(r.ref).toEqual({ name: "main", kind: "branch", commit: C1 });
-    expect(r.branches).toEqual({ count: 2, default: "main" });
+    expect(r.branches.count).toBe(4);
+    expect(r.branches.items.map((x) => [x.name, x.isDefault, x.isMine, x.ahead])).toEqual([
+      ["main", true, false, 0],
+      ["feature/4711-mine", false, true, 3],
+      ["staging", false, false, 0],
+    ]);
+    expect(r.branches.items[2].at).toBe("2026-11-26T11:00:00Z");
     expect(r.pullRequests.items[0]).toMatchObject({ id: 42, source: "feature/4711", target: "main", by: { isMe: true }, webUrl: `${ORG}/test-project/_git/repo-a/pullrequest/42` });
     expect(r.commits).toHaveLength(3);
     expect(r.pipelines.runs).toEqual([]);
