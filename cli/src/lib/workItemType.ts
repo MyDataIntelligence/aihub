@@ -47,8 +47,8 @@ export function resolveType(team: TeamConfig, type: string | undefined): string 
 }
 
 /** The template of a Bug or Task in the fixed order (team.yaml path, repository files, the team's Azure DevOps template, built-in). */
-export async function findTypeTemplate(root: string, client: AdoClient | undefined, team: TeamConfig, type: string): Promise<FoundTemplate> {
+export async function findTypeTemplate(root: string, client: AdoClient | undefined, team: TeamConfig, type: string, refresh = false): Promise<FoundTemplate> {
   const configured = team.workItems?.templates?.[type];
   if (configured && !existsSync(join(root, configured))) throw new AihubError(`template for ${type} not found: ${configured} (workItems.templates.${type})`);
-  return findWorkItemTemplate({ root, client, team, type, configured, fileName: `${type.toLowerCase()}-template.md`, builtIn: DEFAULT_TEMPLATES[type] ?? "## Description\n" });
+  return findWorkItemTemplate({ root, client, team, type, refresh, configured, fileName: `${type.toLowerCase()}-template.md`, builtIn: DEFAULT_TEMPLATES[type] ?? "## Description\n" });
 }

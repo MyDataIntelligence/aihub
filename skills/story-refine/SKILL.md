@@ -22,7 +22,7 @@ aihub story refine --id 123 --body-file refined.md
 Example: "verfijn 123 en zet het er meteen in" is `aihub story show --id 123`, write `refined.md`, `aihub story refine --id 123 --body-file refined.md`: two calls.
 
 ## What the CLI fills
-Template of the item's type (story, Bug or Task), the field that holds its text (a Bug keeps it in Repro steps, not Description), history comment and links. Sections left out of `refined.md` stay as they are. `--id 123` and a bare `123` both work.
+Template of the item's type (story, Bug or Task), the field that holds its text (a Bug keeps it in Repro steps, not Description), history comment and links. Sections left out of `refined.md` stay as they are. `--id 123` and a bare `123` both work. The line says when the built-in template was used; if the team just added one in Azure DevOps, run again with `--refresh-template`.
 
 ## If it fails
 Unknown id or no access: run `aihub doctor`, report the error text. Never invent ids or links.

@@ -79,11 +79,12 @@ export function devopsTemplateText(fields: Record<string, unknown>, layout: Fiel
  * once per day per type (a failure once per ten minutes); no access or no network is skipped without a message.
  * Several templates: the one whose name contains the type or "story"; otherwise none is chosen and `note` says why.
  */
-export async function devopsTemplate(root: string, client: AdoClient, team: TeamConfig, type: string, now = Date.now()): Promise<{ text?: string; name?: string; note?: string }> {
+export async function devopsTemplate(root: string, client: AdoClient, team: TeamConfig, type: string, now = Date.now(), refresh = false): Promise<{ text?: string; name?: string; note?: string }> {
   const teamName = String((team.azureDevOps as { team?: string } | undefined)?.team ?? `${client.remote.project} Team`);
   const key = `${client.remote.org}/${client.remote.project}/${teamName}/${type}`;
   const hit = readCache(root)[key];
-  if (hit && now - hit.at < (hit.ok ? TTL_OK_MS : TTL_FAILED_MS)) return { text: hit.text, name: hit.name, note: hit.note };
+  // a found template is kept a day; "none found" and failures ten minutes, so a template added in Azure DevOps is seen soon
+  if (!refresh && hit && now - hit.at < (hit.ok && hit.text ? TTL_OK_MS : TTL_FAILED_MS)) return { text: hit.text, name: hit.name, note: hit.note };
   const tc = client.forTeam(teamName);
   let result: Cached;
   try {
@@ -113,14 +114,17 @@ export interface FindOpts {
   fileName: string;
   builtIn: string;
   now?: number;
+  /** Ask Azure DevOps again instead of using the cached answer (`--refresh-template`). */
+  refresh?: boolean;
 }
 
 /** The fixed order: (a) team.yaml path, (b) repository files, (c) the team's Azure DevOps template, (d) built-in. */
 export async function findWorkItemTemplate(o: FindOpts): Promise<FoundTemplate> {
   const local = localTemplate(o.root, o.configured, o.fileName);
   if (local) return local;
-  const d = o.client ? await devopsTemplate(o.root, o.client, o.team, o.type, o.now) : {};
+  const d = o.client ? await devopsTemplate(o.root, o.client, o.team, o.type, o.now, o.refresh) : {};
   if (d.text) return { text: d.text, source: `Azure DevOps "${d.name}"`, kind: "devops" };
   const why = d.note ?? "no team template found";
-  return { text: o.builtIn, source: `built-in (${why}; add ${TEMPLATE_ASSET_DIRS[0]}/${o.fileName} to use your own)`, kind: "built-in" };
+  const again = o.client && !o.refresh ? "; added one in Azure DevOps? run again with --refresh-template" : "";
+  return { text: o.builtIn, source: `built-in (${why}; add ${TEMPLATE_ASSET_DIRS[0]}/${o.fileName} to use your own${again})`, kind: "built-in" };
 }
