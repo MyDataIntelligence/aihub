@@ -168,7 +168,8 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   // the Azure DevOps list for the search: read only when the search asks, once a day, never without focus
   const remote = new RemoteRepos({
     env: process.env,
-    focused: () => vscode.window.state.focused,
+    // a minimised test window never has the focus; aiContextHub.searchWithoutFocus lets it read (test windows only)
+    focused: () => vscode.window.state.focused || vscode.workspace.getConfiguration("aiContextHub").get<boolean>("searchWithoutFocus", false) === true,
     changed: () => changed(),
     read: async ({ refresh }) => {
       // the CLI needs one clone of Azure DevOps to know the organisation; its sign-in is the one the CLI already has

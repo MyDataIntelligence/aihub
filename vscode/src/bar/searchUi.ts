@@ -3,7 +3,7 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 import { forgetScan, headBranchOf } from "../../../cli/src/lib/machineScan";
 import { readSeenStories } from "../../../cli/src/lib/storyCache";
-import { cloneParent, cloneWithProgress, folderName, removeFolder, untouched } from "./cloneRepo";
+import { cloneParent, cloneWithProgress, folderName, removeFolderPatiently, untouched } from "./cloneRepo";
 import { openFacts, type BarEngine } from "./engine";
 import { gitRun, openOwn } from "./ownWindow";
 import type { RemoteRepos } from "./remoteRepos";
@@ -11,6 +11,7 @@ import { cli } from "./runner";
 import { setLabel } from "./state";
 import { showFailure } from "./failureUi";
 import { BAR_COMMANDS } from "./types";
+import { plainPath, plainPathsIn } from "./paths";
 import { openPath } from "./window";
 
 /**
@@ -50,6 +51,12 @@ function pick(title: string, placeholder: string, rows: Row[], active: Row): Pro
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
+/** A path in a message: short enough for the collapsed notification, the folder name at the end always visible. */
+const msgPath = (p: string): string => plainPath(p, 36);
+/** A path in a row of a pick: the row is wider than a notification. */
+const rowPath = (p: string): string => plainPath(p, 48);
+/** An error of git or the CLI can hold paths too. */
+const why = (e: unknown): string => plainPathsIn(String((e as Error)?.message ?? e), 36);
 
 export function registerSearchCommands(h: SearchHost): void {
   h.reg(BAR_COMMANDS.loadRemoteRepositories, () => void h.remote.load().catch(() => undefined));
@@ -80,7 +87,7 @@ export function registerSearchCommands(h: SearchHost): void {
     let parent = cloneParent(h.engine.folders(), h.engine.scan().repos.map((r) => r.path));
     for (;;) {
       const into = parent ? join(parent, folderName(name)) : undefined;
-      const info: Row = { label: `$(folder) ${into ? `Clone into ${into}` : "Choose a folder to clone into"}`, description: project ? `from ${project}` : undefined, act: "folder" };
+      const info: Row = { label: `$(folder) ${into ? `Clone into ${rowPath(into)}` : "Choose a folder to clone into"}`, description: project ? `from ${project}` : undefined, act: "folder" };
       const open: Row = { label: "Clone and Open", description: "in a new window", act: "open" };
       const add: Row = { label: `Clone and Add to ${label}`, description: set ? `on ${set.branch}` : undefined, act: "add" };
       const other: Row = { label: "Choose Another Folder…", act: "folder" };
@@ -94,14 +101,14 @@ export function registerSearchCommands(h: SearchHost): void {
         continue;
       }
       if (existsSync(into)) {
-        const again = await vscode.window.showWarningMessage(`AI Context Hub: ${into} exists already; nothing was overwritten.`, "Choose Another Folder…");
+        const again = await vscode.window.showWarningMessage(`AI Context Hub: ${msgPath(into)} exists already; nothing was overwritten.`, "Choose Another Folder…");
         if (again !== "Choose Another Folder…") return;
         const dirs = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false, openLabel: "Clone into this folder" });
         if (!dirs?.[0]) return;
         parent = dirs[0].fsPath;
         continue;
       }
-      await cloneAndFinish(h, { name, remoteUrl, dir: into, addTo: chosen.act === "add" && set ? { first: set.repos[0]?.path ?? set.folder, label } : undefined });
+      await cloneAndFinish(h, { name, remoteUrl, dir: into, addTo: chosen.act === "add" && set ? { first: set.repos[0]?.path ?? set.folder, label, branch: set.branch } : undefined });
       return;
     }
   });
@@ -116,9 +123,9 @@ export function registerSearchCommands(h: SearchHost): void {
     if (!existsSync(path)) {
       forgetScan(process.env);
       h.changed();
-      return void vscode.window.showWarningMessage(`AI Context Hub: ${path} is gone; the list was refreshed.`);
+      return void vscode.window.showWarningMessage(`AI Context Hub: ${msgPath(path)} is gone; the list was refreshed.`);
     }
-    const info: Row = { label: `$(folder) ${path}`, act: where === "none" ? "own" : "open" };
+    const info: Row = { label: `$(folder) ${rowPath(path)}`, act: where === "none" ? "own" : "open" };
     if (where === "none") {
       const own: Row = { label: "Check Out in Its Own Folder and Open", description: "a worktree of its own, outside every set", act: "own" };
       const chosen = await pick(`${repo} · ${branch}`, "Enter checks it out in its own folder and opens it in a new window", [info, own], own);
@@ -148,14 +155,18 @@ export function registerSearchCommands(h: SearchHost): void {
   });
 }
 
-async function cloneAndFinish(h: SearchHost, o: { name: string; remoteUrl: string; dir: string; addTo?: { first: string; label: string } }): Promise<void> {
+async function cloneAndFinish(h: SearchHost, o: { name: string; remoteUrl: string; dir: string; addTo?: { first: string; label: string; branch: string } }): Promise<void> {
   const res = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Cloning ${o.name}`, cancellable: true }, (progress, token) => {
     let last = 0;
+    // where it goes, as in the design ("62 % · to C:\git\orders-api"); at once, before git says anything, so the message
+    // (with Cancel) is on screen while git still connects or signs in
+    const to = `to ${msgPath(o.dir)}`;
+    progress.report({ message: `connecting… · ${to}` });
     return cloneWithProgress({
       url: o.remoteUrl,
       dir: o.dir,
       onProgress: (pct) => {
-        progress.report({ increment: pct - last, message: `${pct}%` });
+        progress.report({ increment: pct - last, message: `${pct} % · ${to}` });
         last = pct;
       },
       onCancel: (stop) => token.onCancellationRequested(stop),
@@ -163,7 +174,7 @@ async function cloneAndFinish(h: SearchHost, o: { name: string; remoteUrl: strin
   });
   if (!res.ok) {
     if (res.cancelled) return void vscode.window.showInformationMessage(`AI Context Hub: the clone of ${o.name} was cancelled; the half clone was removed.`);
-    return void vscode.window.showErrorMessage(`AI Context Hub: ${o.name} could not be cloned: ${res.error}`);
+    return void vscode.window.showErrorMessage(`AI Context Hub: ${o.name} could not be cloned: ${plainPathsIn(String(res.error), 36)}`);
   }
   h.log(`cloned ${o.name} to ${o.dir}`);
   forgetScan(process.env);
@@ -177,11 +188,11 @@ async function cloneAndFinish(h: SearchHost, o: { name: string; remoteUrl: strin
       forgetScan(process.env);
       h.changed();
     } catch (e) {
-      showFailure(e, `${o.name} was cloned to ${o.dir}, but could not be added to ${o.addTo.label}`, "warning");
+      showFailure(e, `${o.name} was cloned to ${msgPath(o.dir)}, but could not be added to ${o.addTo.label}`, "warning");
     }
   }
   // one message with Undo; opening a new window comes after it, so this window keeps the message
-  void vscode.window.showInformationMessage(`${o.name} cloned to ${o.dir}${added ? ` and added to ${o.addTo!.label}` : ""}`, "Undo").then(async (b) => {
+  void vscode.window.showInformationMessage(`${o.name} cloned to ${msgPath(o.dir)}${added ? ` and added to ${o.addTo!.label}` : ""}`, "Undo").then(async (b) => {
     if (b !== "Undo") return;
     if (added) {
       try {
@@ -190,16 +201,18 @@ async function cloneAndFinish(h: SearchHost, o: { name: string; remoteUrl: strin
         return showFailure(e, `${o.name} stays: it could not be taken out of the set`, "warning");
       }
     }
-    const check = await untouched(gitRun, o.dir).catch((e: Error) => ({ ok: false, why: e.message }));
+    const check = await untouched(gitRun, o.dir, added ? { ours: o.addTo!.branch } : {}).catch((e: Error) => ({ ok: false, why: e.message }));
     if (!check.ok) {
       forgetScan(process.env);
       h.changed();
-      return void vscode.window.showWarningMessage(`AI Context Hub: ${o.dir} was kept: ${check.why}.`);
+      return void vscode.window.showWarningMessage(`AI Context Hub: ${msgPath(o.dir)} was kept: ${check.why}.`);
     }
-    removeFolder(o.dir);
+    // the worktree that just left the workspace can keep a file of the clone in use for some seconds: say so while it waits
+    const rm = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Removing the clone of ${o.name}…` }, () => removeFolderPatiently(o.dir));
+    h.log(`undo clone ${o.dir}: ${rm.gone ? "removed" : "kept"} after ${rm.ms} ms${rm.why ? ` (last error: ${rm.why})` : ""}`);
     forgetScan(process.env);
     h.changed();
-    if (existsSync(o.dir)) return void vscode.window.showWarningMessage(`AI Context Hub: ${o.dir} could not be removed completely (a file is in use); remove it by hand.`);
+    if (!rm.gone) return void vscode.window.showWarningMessage(`AI Context Hub: ${msgPath(o.dir)} could not be removed completely (a file is in use); remove it by hand.`);
     void vscode.window.showInformationMessage(`AI Context Hub: the clone of ${o.name} was removed.`);
   });
   if (!o.addTo) await openPath(o.dir, "new");
