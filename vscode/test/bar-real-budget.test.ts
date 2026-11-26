@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
   repoPaths: [] as string[],
   focused: true,
   fired: 0,
+  focusListeners: [] as ((s: { focused: boolean }) => void)[],
 }));
 
 vi.mock("node:child_process", async (orig) => {
@@ -37,6 +38,18 @@ vi.mock("node:child_process", async (orig) => {
   const plain = (...a: unknown[]) => new Promise((res, rej) => (m.execFile as never as (...x: unknown[]) => void)(...a, (e: Error | null, stdout: string, stderr: string) => (e ? rej(e) : res({ stdout, stderr }))));
   Object.defineProperty(execFile, promisify.custom, { value: (...a: unknown[]) => (count("execFile", a), plain(...a)) });
   return { ...m, execFile, execFileSync: wrap("execFileSync", m.execFileSync as never), spawn: wrap("spawn", m.spawn as never), spawnSync: wrap("spawnSync", m.spawnSync as never), exec: wrap("exec", m.exec as never), execSync: wrap("execSync", m.execSync as never), fork: wrap("fork", m.fork as never) };
+});
+
+// the old status bar reads `aihub bar` (one node process, which itself starts 9 git: measured on a repository with an Azure DevOps remote); counted as one aihub start
+vi.mock("../src/cli", async (orig) => {
+  const m = await orig<typeof import("../src/cli")>();
+  return {
+    ...m,
+    makeRunner: () => async (args: string[]) => {
+      if (h.on) h.aihub.push(`aihub(old status bar) ${args.join(" ")}`);
+      return args[0] === "--version" ? "99.0.0" : args[0] === "bar" ? JSON.stringify({ status: { branch: "feature/5-y", signedIn: true, pr: null }, checks: null, watching: false, events: [] }) : "{}";
+    },
+  };
 });
 
 vi.mock("../src/bar/runner", () => ({
@@ -65,11 +78,19 @@ vi.mock("vscode", () => {
     ProgressLocation: { Notification: 15 },
     ConfigurationTarget: { Global: 1 },
     QuickPickItemKind: { Separator: -1 },
+    StatusBarAlignment: { Left: 1, Right: 2 },
+    ThemeColor: class {},
+    MarkdownString: class {},
     window: {
+      createOutputChannel: () => ({ appendLine: () => undefined, dispose: () => undefined }),
+      createStatusBarItem: () => ({ show: () => undefined, hide: () => undefined, dispose: () => undefined }),
+      registerWebviewViewProvider: none,
+      onDidChangeActiveTextEditor: none,
+      activeTextEditor: undefined,
       get state() {
         return { focused: h.focused };
       },
-      onDidChangeWindowState: none,
+      onDidChangeWindowState: (f: (s: { focused: boolean }) => void) => (h.focusListeners.push(f), { dispose: () => undefined }),
       showInformationMessage: async () => undefined,
       showWarningMessage: async () => undefined,
       showErrorMessage: async () => undefined,
@@ -102,6 +123,8 @@ vi.mock("vscode", () => {
       workspaceFile: undefined,
       getConfiguration: () => ({ get: (_k: string, d: unknown) => d, update: async () => undefined }),
       onDidChangeWorkspaceFolders: none,
+      onDidChangeConfiguration: none,
+      getWorkspaceFolder: () => undefined,
       createFileSystemWatcher: (p: { base: { fsPath: string } | string; pattern: string }) => {
         const w = { base: typeof p.base === "string" ? p.base : p.base.fsPath, glob: p.pattern, change: [] as (() => void)[], create: [] as (() => void)[] };
         h.watchers.push(w);
@@ -113,6 +136,7 @@ vi.mock("vscode", () => {
 });
 
 import { registerBar } from "../src/bar/register";
+import { Bar } from "../src/extension";
 import { undoLast, withUndo } from "../src/bar/undoUi";
 
 function world() {
@@ -177,6 +201,13 @@ describe("the real bar, every process counted (review: the measured 66 starts pe
     };
     // what the title bar does: read the state again on every change
     bar.api.onDidChangeState(() => void bar.api.getState());
+    // the old status bar of the extension, on its own refresher (it reads `aihub bar`)
+    const old = new Bar({ subscriptions: subs, globalState: { get: () => undefined, update: async () => undefined }, extensionUri: { fsPath: "" } } as never);
+    old.start();
+    const focus = (on: boolean) => {
+      h.focused = on;
+      h.focusListeners.forEach((f) => f({ focused: on }));
+    };
     const advance = async (ms: number) => {
       for (let t = 0; t < ms; t += 250) {
         await vi.advanceTimersByTimeAsync(250);
@@ -190,32 +221,32 @@ describe("the real bar, every process counted (review: the measured 66 starts pe
       await wait(2500);
     });
     await phase("60 s rest, with focus", async () => advance(60_000));
-    h.focused = false;
+    focus(false);
     await phase("60 s rest, without focus", async () => advance(60_000));
-    h.focused = true;
+    focus(true);
 
     // one repository changes branch outside the window (git checkout in a terminal): the watchers fire like VS Code's
-    sh(w.repos[2].path, "switch", "feature/5-y");
+    sh(w.repos[0].path, "switch", "feature/5-y");
     await phase("one repository changes branch", async () => {
-      for (const x of h.watchers) if (/HEAD$/.test(x.glob) && x.base.includes(join(w.repos[2].source, ".git"))) x.change.forEach((f) => f());
-      for (const f of h.gitListeners.get(w.repos[2].path) ?? []) f();
+      for (const x of h.watchers) if (/HEAD$/.test(x.glob) && x.base.includes(join(w.repos[0].source, ".git"))) x.change.forEach((f) => f());
+      for (const f of h.gitListeners.get(w.repos[0].path) ?? []) f();
       await advance(5_000);
       await wait(1500);
     });
     // the same stand again (a saved file, a status event): nothing
     await phase("a saved file (git state event, no HEAD change)", async () => {
-      for (const f of h.gitListeners.get(w.repos[2].path) ?? []) f();
+      for (const f of h.gitListeners.get(w.repos[0].path) ?? []) f();
       await advance(3_000);
     });
     // one action through the bar, with its Undo snapshot, on the repository that switches; the switch itself is git's and not counted
     const hooks = { changed: () => undefined, log: () => undefined, afterGit: () => undefined };
     await phase("one action: the snapshot of one repository, the switch", async () => {
-      await withUndo(hooks, "Switch c to feature/5-x", w.folder, async () => {
+      await withUndo(hooks, "Switch c to feature/5-y", w.folder, async () => {
         h.on = false;
-        sh(w.repos[2].path, "switch", "feature/5-x");
+        sh(w.repos[2].path, "switch", "feature/5-y");
         h.on = true;
         return true;
-      }, { only: ["c"], message: () => "c is now on feature/5-x" });
+      }, { only: ["c"], message: () => "c is now on feature/5-y" });
       await advance(2_000);
     });
     await phase("Undo of that action", async () => {
@@ -235,7 +266,11 @@ describe("the real bar, every process counted (review: the measured 66 starts pe
     const get = (p: string) => rows.find((r) => r.phase.startsWith(p))!;
     expect(get("60 s rest").git).toBe(0);
     expect(get("a saved file").git).toBe(0);
-    expect(get("one repository changes branch").git).toBeLessThanOrEqual(2);
+    // the engine starts 1 git; the old status bar starts one `aihub bar` (9 git inside, measured separately): about 11 in all
+    expect(get("one repository changes branch").git + get("one repository changes branch").aihub * 10).toBeLessThanOrEqual(12);
+    expect(get("one repository changes branch").aihub).toBe(1);
+    expect(get("60 s rest, with focus").aihub + get("60 s rest, without focus").aihub).toBe(0);
+    expect(get("a saved file").aihub).toBe(0);
     expect(get("one repository changes branch").events).toBeLessThanOrEqual(2);
     expect(get("60 s rest").events).toBe(0);
     expect(get("one action").git).toBeLessThanOrEqual(2);

@@ -6,7 +6,7 @@ import { RecentStore, registerRecents, rememberStory } from "./recentsUi";
 import { AdvisorController } from "./advisorUi";
 import { CleanupController } from "./cleanupUi";
 import { RobotController } from "./robotUi";
-import { existsSync, promises as fs } from "node:fs";
+import { existsSync, promises as fs, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import * as vscode from "vscode";
@@ -23,10 +23,12 @@ import { SET_FILES, terminalRoot } from "./terminalRoot";
 import { ThreadsController } from "./threadsUi";
 import { LearnController } from "./learnUi";
 import { registerWorktreeCommands } from "./worktreeUi";
-import { clearTrackedInterval, clearTrackedTimeout, count, trackedInterval, trackedTimeout, trackedWatcher } from "./perf/probe";
+import { clearTrackedTimeout, count, trackedTimeout, trackedWatcher } from "./perf/probe";
 import { startPerf, stopPerf } from "./perfUi";
 import { registerBar } from "./bar/register";
 import { infoText, openFacts } from "./bar/engine";
+import { TEAM_YAML } from "./bar/repoStatus";
+import { gitDirFor } from "../../cli/src/lib/machineScan";
 import type { BarApi } from "./bar/types";
 
 const cfg = () => vscode.workspace.getConfiguration("aihub");
@@ -34,6 +36,16 @@ const cfg2 = () => vscode.workspace.getConfiguration("aiContextHub");
 
 /** Ids PyCharm Git is published under (setting aiContextHub.pycharmGitExtensionId adds one); installed or not, without activating it. */
 const pycharmGitInstalled = (): boolean => ["ferron.pycharm-git", "FerronHooi.pycharm-git", cfg2().get<string>("pycharmGitExtensionId", "")].some((id) => !!id && vscode.extensions.getExtension(id) !== undefined);
+
+/** Fabric is only read for a repository whose team.yaml has a `fabric:` section (a file read, no process). */
+function hasFabricConfig(dir: string | undefined): boolean {
+  if (!dir) return false;
+  try {
+    return /^fabric:/m.test(readFileSync(join(dir, TEAM_YAML), "utf8"));
+  } catch {
+    return false;
+  }
+}
 
 /** The folder whose repository the bar shows: the one of the active editor, else the first. */
 function repoFolder(): string | undefined {
@@ -57,7 +69,7 @@ function opencodeFolder(fallback: string | undefined): string | undefined {
   return root ?? fallback;
 }
 
-class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
+export class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   private log = vscode.window.createOutputChannel("AI Context Hub");
   private items = new Map<string, vscode.StatusBarItem>();
   /** The main entry for several repositories on one branch: next to the built-in branch item (priority 11000). */
@@ -69,7 +81,6 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   private loader!: BarLoader;
   private cliChecked = false;
   private cwd: string | undefined;
-  private timer: NodeJS.Timeout | undefined;
   private gitDebounce: NodeJS.Timeout | undefined;
   private subs: vscode.Disposable[] = [];
   /** Called after every successful read (the review threads follow the PR). */
@@ -146,9 +157,9 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     const quiet = { GCM_INTERACTIVE: "never", GIT_TERMINAL_PROMPT: "0" };
     this.runner = makeRunner({ command: this.cliCommand(), timeoutMs: Math.max(5, Number(cfg().get("timeoutSeconds", 30))) * 1000, env: quiet });
     this.cliChecked = false;
-    this.loader = new BarLoader(this.runner, { cwd: this.cwd ?? "", fabric: !!cfg().get("fabric.enabled", true), fabricTtlMs: Math.max(180_000, this.intervalMs() * 3), combined: "auto" });
-    clearTrackedInterval(this.timer);
-    this.timer = trackedInterval("bar.refresh", () => void this.refresher.request("timer"), this.intervalMs());
+    const cwd = this.cwd;
+    this.loader = new BarLoader(this.runner, { cwd: this.cwd ?? "", fabric: () => !!cfg().get("fabric.enabled", true) && hasFabricConfig(cwd), fabricTtlMs: Math.max(180_000, this.intervalMs() * 3), combined: "auto" });
+    // no timer: the bar reads once after the window opened, when the branch of the first folder changes, when the focus is back after 5 minutes, and after an action of its own
     this.watchGit();
   }
 
@@ -158,8 +169,11 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     this.gitWatcher?.dispose();
     this.gitWatcherStats?.dispose();
     if (!this.cwd) return;
-    const glob = ".git/{HEAD,refs/heads/**}";
-    this.gitWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(this.cwd, glob));
+    // only the file HEAD: a commit changes nothing the bar shows, a switch of branch does (a worktree's HEAD is in the clone's .git/worktrees)
+    const glob = "HEAD";
+    const gitDir = gitDirFor(this.cwd);
+    if (!gitDir) return;
+    this.gitWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(gitDir), glob));
     const stats = (this.gitWatcherStats = trackedWatcher("bar.gitBranch", glob));
     const fire = () => {
       stats.hit();
@@ -177,7 +191,8 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     this.renderReposetItem();
     void this.renderEarly();
     // Silent by default: no popup, no panel opening. The status bar is the entry; the first read is delayed so startup stays fast.
-    trackedTimeout("bar.firstRead", () => void this.refresher.request("start"), 2000);
+    // after the window was usable, not in activate(); without focus it waits for the focus
+    trackedTimeout("bar.firstRead", () => void this.refresher.request("start"), 5000);
   }
 
   /** The branch at once, from .git/HEAD (a file, no process): the full status follows when aihub answers. */
@@ -414,7 +429,6 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   dispose() {
-    clearTrackedInterval(this.timer);
     clearTrackedTimeout(this.gitDebounce);
     this.gitWatcher?.dispose();
     this.gitWatcherStats?.dispose();
