@@ -68,6 +68,8 @@ export class SetFileWatcher implements vscode.Disposable {
   private watcher?: vscode.Disposable;
   private timer?: NodeJS.Timeout;
   private busy = false;
+  /** the file changed while an apply was running */
+  private again = false;
   private key = "";
   private lastSaid = "";
   /** what the file said at the last read: only a change against it is an order */
@@ -115,13 +117,18 @@ export class SetFileWatcher implements vscode.Disposable {
   }
 
   async apply(): Promise<void> {
-    if (this.busy) return;
+    // a change that arrives while an apply is running is not lost: it is read again when this one is done
+    if (this.busy) {
+      this.again = true;
+      return;
+    }
     if (!this.key) return;
     this.busy = true;
     try {
       // a file that cannot be read makes this window "no set" for findSet, so the folder is the one aimed at, not looked up again
       const raw = [AIHUB_SET, MAKER_SET].map((n) => join(this.key, n)).find((p) => existsSync(p));
       if (!raw) return;
+      const startBytes = readFileSync(raw);
       const parsed = parseSetFile(readJsonText(raw));
       if (parsed.problem) return this.say(`Set file: ${parsed.problem}; nothing was applied.`, true);
       const here = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set;
@@ -171,16 +178,25 @@ export class SetFileWatcher implements vscode.Disposable {
         const p = meta.repos.find((r) => r.name === name)?.path;
         if (p) syncRepoName({ setFolder: here.folder, workspaceFile: wsFile?.scheme === "file" ? wsFile.fsPath : undefined, repoPath: p });
       }
-      const after = readSetFile(here.folder);
-      const now = after && [after.top, ...(after.top.others ?? [])].find((m) => m.branch === meta.branch || (metas.length === 1 && m === after.top));
-      this.previous = now ? snapshotOf(now) : this.previous;
-      this.prevBytes = raw0 && existsSync(raw0) ? readFileSync(raw0) : this.prevBytes;
+      // what the file said when this apply read it (not what it says now: an edit made while this ran is read next time),
+      // with the repositories that follow their HEAD at the value they now have
+      const next = snapshotOf(meta);
+      for (const name of plan.follow ?? []) {
+        const p = meta.repos.find((r) => r.name === name)?.path;
+        if (p) next.set(name, headBranchOf(p) || next.get(name) || "");
+      }
+      this.previous = next;
+      this.prevBytes = startBytes ?? this.prevBytes;
       forgetScan(process.env);
       this.h.changed();
       // a file that already matches the folders (our own write) is silent
       if (done.length || plan.notes.length) this.say(summarizePlan(done, plan.notes));
     } finally {
       this.busy = false;
+      if (this.again) {
+        this.again = false;
+        void this.apply().catch((e: Error) => this.say(`Set file: ${e.message}`));
+      }
     }
   }
 
