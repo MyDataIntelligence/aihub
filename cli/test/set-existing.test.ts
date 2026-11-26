@@ -187,8 +187,9 @@ describe("a branch whose worktree already exists elsewhere", { timeout: 30_000 }
     expect(r.err).toContain("aihub branch switch --repo repo-a --branch feature/x --existing move");
     expect(head(join(set.folder, "repo-a"))).toBe("feature/y");
     const m = JSON.parse((await run(join(set.folder, "repo-b"), ["branch", "switch", "--repo", "repo-a", "--branch", "feature/x", "--existing", "move", "--json"])).out);
-    expect(m.repos[0]).toMatchObject({ repo: "repo-a--x", state: "moved", ok: true });
-    expect(m.stays).toBe("the window stays as it is: 3 repositories, repo-a--x added on feature/x");
+    // the answer to a switch puts repo-a itself on the branch: still two repositories, one entry each (the old folder was clean and is gone)
+    expect(m.repos[0]).toMatchObject({ repo: "repo-a", state: "moved", ok: true });
+    expect(m.stays).toBe("the window stays as it is: 2 repositories, repo-a now on feature/x");
     expect(existsSync(w.old)).toBe(false);
   });
 });

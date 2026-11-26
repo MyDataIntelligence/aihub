@@ -52,6 +52,8 @@ export interface BarRepo {
   ahead?: number;
   /** commits the target branch has that this branch does not (from the refs already there, no fetch); absent when not known */
   behindTarget?: number;
+  /** the target branch behindTarget is counted against ("staging"): team.yaml, the set file, the branch this one was cut from, else staging/origin HEAD/main; absent when not known */
+  target?: string;
   /** the pull request of this branch; absent when there is none or it is not known yet */
   pr?: BarPr;
   /** this branch belongs to the story (linked, or the story number first in its name); false in a set without a story */
@@ -152,6 +154,8 @@ export interface BarState {
    * message for the set). Another extension (PyCharm Git) shows no message of its own about it while this is true.
    */
   handlesBehindTarget: true;
+  /** the set file of this window cannot be read right now (e.g. "not valid JSON"): the set shown is the last good one; absent when the file is fine. A state event goes out when it is readable again. */
+  setFileProblem?: string;
   mode: BarMode;
   story?: { id: number; title: string; state?: string };
   setFolder?: string;

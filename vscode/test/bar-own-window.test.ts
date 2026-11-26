@@ -21,7 +21,7 @@ vi.mock("vscode", () => ({
   EventEmitter: class {},
 }));
 
-import { answerExisting } from "../src/repoSetUi";
+import { answerExisting, askCloneCheckedOut } from "../src/repoSetUi";
 
 const existing = (repo: string, path: string) => ({ repo, branch: "feature/x", path, target: `C:/sets/story/${repo}`, state: "clean", dirty: 0, unpushed: 0 });
 const question = (rows: ReturnType<typeof existing>[]) =>
@@ -105,5 +105,24 @@ describe("the fourth choice of the question about an existing worktree: Open in 
     await answerExisting(question([existing("repo-a", "C:/o/a"), existing("repo-b", "C:/o/b")]), async () => "", { ownWindow: true });
     expect(h.shown[0].buttons).toEqual(["Move", "Reuse", "Recreate"]);
     expect(h.shown[1].buttons).toEqual(["Move", "Reuse", "Recreate"]);
+  });
+});
+
+describe("a branch that is checked out in the clone itself (persona 4)", () => {
+  beforeEach(() => {
+    h.shown.length = 0;
+    h.commands.length = 0;
+    h.answer = undefined;
+  });
+  it("one short question: the path once, what can be done, no command line; Own Window opens that folder, Escape nothing", async () => {
+    expect(await askCloneCheckedOut("main", "C:/git/repo-a")).toBe(false);
+    expect(h.shown[0].message).toBe("AI Context Hub: main is checked out in the clone");
+    expect(h.shown[0].buttons).toEqual(["Open That Folder in Its Own Window"]);
+    expect(h.shown[0].detail).toContain("A clone cannot be moved into a set; switch that clone to another branch first if you want main here.");
+    expect(h.shown[0].detail.includes("aihub ")).toBe(false);
+    expect(h.commands).toEqual([]);
+    h.answer = "Open That Folder in Its Own Window";
+    expect(await askCloneCheckedOut("main", "C:/git/repo-a")).toBe(true);
+    expect(h.commands).toEqual([["vscode.openFolder", { fsPath: "C:/git/repo-a" }, { forceNewWindow: true }]]);
   });
 });

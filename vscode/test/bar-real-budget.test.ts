@@ -434,7 +434,7 @@ describe("a window that never has the focus (the real window of the persona test
     const bar = registerBar({ subscriptions: subs } as never, { log: () => undefined } as never);
     const state = await bar.api.getState();
     expect(state.handlesBehindTarget).toBe(true);
-    expect(state.repos.map((r) => [r.name, r.behindTarget])).toEqual([["a", 1], ["b", 1], ["c", 0], ["d", 0], ["e", 0]]);
+    expect(state.repos.map((r) => [r.name, r.behindTarget, r.target])).toEqual([["a", 1, "staging"], ["b", 1, "staging"], ["c", 0, "staging"], ["d", 0, "staging"], ["e", 0, "staging"]]);
     await vi.advanceTimersByTimeAsync(1_000);
     await wait(500);
     const names = (JSON.parse(readFileSync(ws, "utf8")) as { folders: { name: string }[] }).folders.map((f) => f.name);

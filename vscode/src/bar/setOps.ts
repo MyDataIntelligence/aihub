@@ -3,7 +3,10 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 import { forgetScan, headBranchOf, setById } from "../../../cli/src/lib/machineScan";
 import { forgetUse, pathKey } from "../../../cli/src/lib/recentUse";
-import { AIHUB_SET, MAKER_SET, readJsonText, readSetFile, type SetMeta } from "../../../cli/src/lib/setFile";
+import { AIHUB_SET, MAKER_SET, readJsonText, readSetFile, setRepoBranchInPlace, type SetMeta } from "../../../cli/src/lib/setFile";
+import { refSha } from "./behind";
+import { targetOf } from "./repoStatus";
+import { localBranches } from "./undo";
 import type { OpenResultJson } from "../repoSetModel";
 import { answerExisting, showOpened } from "../repoSetUi";
 import { openFacts } from "./engine";
@@ -21,6 +24,11 @@ import { withUndo } from "./undoUi";
 export function removedText(r: { lines?: string[]; kept?: string[] }): string {
   if (r.kept?.length) return `the set stays, ${r.kept.join(", ")} hold work`;
   return [...(r.lines ?? [])].reverse().map((l) => l.trim()).find(Boolean) ?? "the set is removed";
+}
+
+/** Does git have this branch, here or as the remote's branch? Read from the refs, no process. */
+export function branchExists(repoPath: string, branch: string): boolean {
+  return localBranches(repoPath).has(branch) || !!refSha(repoPath, `refs/remotes/origin/${branch}`);
 }
 
 export function registerSetOps(h: StoryHooks): void {
@@ -137,7 +145,12 @@ export class SetFileWatcher implements vscode.Disposable {
       if (!raw) return;
       const startBytes = readFileSync(raw);
       const parsed = parseSetFile(readJsonText(raw));
-      if (parsed.problem) return this.say(`Set file: ${parsed.problem}; nothing was applied.`, true);
+      if (parsed.problem) {
+        // the state shows the problem (the set stays as it was); a state event goes out when the file is readable again
+        forgetScan(process.env);
+        this.h.changed();
+        return this.say(`Set file: ${parsed.problem}; nothing was applied.`, true);
+      }
       const here = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set;
       if (!here) return;
       // a readable file ends the "same line twice" rule: the next problem is new
@@ -152,6 +165,7 @@ export class SetFileWatcher implements vscode.Disposable {
       const plan = planSetFile(meta, [...actual, ...here.repos.filter((r) => !meta.repos.some((m) => m.name === r.name)).map((r) => ({ name: r.name, exists: true, branch: r.branch }))], this.previous);
       if (plan.problem) return this.say(`Set file: ${plan.problem}; nothing was applied.`, true);
       const done: string[] = [];
+      const putBack: string[] = [];
       const inside = here.repos[0]?.path ?? here.folder;
       // what was asked in the file can be undone: the file as it was at the last read, and the branches (one message with Undo)
       const runActions = async (): Promise<string | undefined> => {
@@ -165,6 +179,19 @@ export class SetFileWatcher implements vscode.Disposable {
             done.push(`made the worktree of ${a.repos.join(", ")}`);
           } else {
             const path = meta.repos.find((r) => r.name === a.repo)?.path ?? inside;
+            // a branch that git does not have (a typo): never made silently, never ignored silently; one question
+            if (!branchExists(path, a.branch)) {
+              const target = targetOf(path, a.repo, { setFolder: here.folder });
+              const create = `Create It from ${target}`;
+              const back = "Put the File Back";
+              const pick = await vscode.window.showWarningMessage(`AI Context Hub: ${a.branch} does not exist in ${a.repo}`, { modal: true, detail: `Neither here nor on the remote. ${a.repo} stays on ${headBranchOf(path) ?? "its branch"} until you choose.` }, create, back);
+              if (pick !== create) {
+                setRepoBranchInPlace(here.folder, path, headBranchOf(path) || a.branch);
+                putBack.push(a.repo);
+                done.push(`${a.repo} stays on ${headBranchOf(path) ?? "its branch"} (${a.branch} does not exist)`);
+                continue;
+              }
+            }
             const args = ["branch", "switch", "--repo", a.repo, "--branch", a.branch, "--json"];
             const first = await cli(args, path);
             const out = await answerExisting(first, (extra) => cli([...args, ...extra], path));
@@ -189,6 +216,11 @@ export class SetFileWatcher implements vscode.Disposable {
       // with the repositories that follow their HEAD at the value they now have
       const next = snapshotOf(meta);
       for (const name of plan.follow ?? []) {
+        const p = meta.repos.find((r) => r.name === name)?.path;
+        if (p) next.set(name, headBranchOf(p) || next.get(name) || "");
+      }
+      // a line put back after the question is what the file says now: the same typo typed again is a new order
+      for (const name of putBack) {
         const p = meta.repos.find((r) => r.name === name)?.path;
         if (p) next.set(name, headBranchOf(p) || next.get(name) || "");
       }
