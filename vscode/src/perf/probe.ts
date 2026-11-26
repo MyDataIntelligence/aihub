@@ -1,4 +1,5 @@
 import { execFile, type ChildProcess, type ExecFileOptions } from "node:child_process";
+import { isGitCommand, scrubGitOptions } from "../../../cli/src/lib/gitEnv";
 import { basename } from "node:path";
 import { monitorEventLoopDelay, performance, type IntervalHistogram } from "node:perf_hooks";
 import type { PerfLog } from "./log";
@@ -87,6 +88,7 @@ export function trackedExecFile(
   callback: (error: Error | null, stdout: string, stderr: string) => void,
   label: ProcLabel = { cmd: file, args },
 ): ChildProcess {
+  if (isGitCommand(file)) options = scrubGitOptions(options) as ExecFileOptions;
   if (!sink) return execFile(file, args, options, (e, so, se) => callback(e, String(so), String(se)));
   const t0 = performance.now();
   const parallel = ++active;

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as vscode from "vscode";
+import { gitEnvironment } from "../../../cli/src/lib/gitEnv";
 import { forgetScan, headBranchOf, setOfStory } from "../../../cli/src/lib/machineScan";
 import { pathKey, readRecentUse } from "../../../cli/src/lib/recentUse";
 import { divergenceKey, divergenceMessage, divergences, markDivergenceSeen, seenDivergence, type Divergence } from "../../../cli/src/lib/setDivergence";
@@ -323,7 +324,7 @@ function need(a: unknown): { set: SetContext; repo: SetContext["repos"][number] 
 }
 
 const gitBranch = (dir: string, args: string[]) =>
-  new Promise<void>((resolve, reject) => execFile("git", args, { cwd: dir, timeout: 30_000, windowsHide: true }, (err, _o, stderr) => (err ? reject(new Error(stderr.trim() || err.message)) : resolve())));
+  new Promise<void>((resolve, reject) => execFile("git", args, { cwd: dir, timeout: 30_000, windowsHide: true, env: gitEnvironment() }, (err, _o, stderr) => (err ? reject(new Error(stderr.trim() || err.message)) : resolve())));
 
 export function registerStoryCommands(h: StoryHooks): void {
   h.reg("aihub.bar.openStory", (arg?: unknown) => openStory(h, arg));

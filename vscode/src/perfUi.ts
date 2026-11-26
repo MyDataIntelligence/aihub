@@ -3,6 +3,7 @@ import { homedir, release, type } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import * as vscode from "vscode";
+import { gitEnvironment } from "../../cli/src/lib/gitEnv";
 import { logFiles, PerfLog, readEvents } from "./perf/log";
 import { clearTrackedInterval, perfEvent, perfLog, round, setPerfLog, startMonitor, trackedExecFile, trackedInterval, trackedTimeout, type Monitor, type PerfLevel } from "./perf/probe";
 import { Scrubber } from "./perf/scrub";
@@ -168,7 +169,7 @@ class PerfController implements vscode.Disposable {
       const now = Date.now();
       const s = given ?? summarize(await readEvents(this.dir, now - DAY, now), now - DAY, now);
       const common = await new Promise<string>((ok, bad) =>
-        trackedExecFile("git", ["rev-parse", "--git-common-dir"], { cwd, windowsHide: true, timeout: 10_000 }, (e, out) => (e ? bad(e) : ok(out.trim()))),
+        trackedExecFile("git", ["rev-parse", "--git-common-dir"], { cwd, windowsHide: true, timeout: 10_000, env: gitEnvironment() }, (e, out) => (e ? bad(e) : ok(out.trim()))),
       );
       const dir = join(isAbsolute(common) ? common : resolve(cwd, common), "aihub");
       await fs.mkdir(dir, { recursive: true });
