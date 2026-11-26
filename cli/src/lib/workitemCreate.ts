@@ -1,52 +1,10 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { sectionsToFields } from "./story.js";
 import { compose, DEFAULT_EMPTY, parseSections } from "./templates.js";
-import { loadTeam, readUtf8, type TeamConfig } from "./team.js";
-import type { AdoClient } from "./ado.js";
-import { findWorkItemTemplate, type FoundTemplate } from "./workItemTemplate.js";
-
-export const DEFAULT_TEMPLATES: Record<string, string> = {
-  Bug: `## Description
-<what is wrong, in one or two sentences>
-
-## Steps to reproduce
-1. <step>
-
-## Expected result
-<what should happen>
-
-## Actual result
-<what happens>
-`,
-  Task: `## Description
-<what has to be done and why>
-
-## Done when
-- [ ] <observable result>
-`,
-};
-
-const REPRO_FIELD = "Microsoft.VSTS.TCM.ReproSteps";
-
-/** Bug / Task, matched case-insensitively against the built-ins and the keys of `workItems.templates`. */
-export function resolveType(team: TeamConfig, type: string | undefined): string {
-  const t = (type ?? "").trim();
-  if (!t) throw new AihubError("aihub workitem create needs --type Bug|Task");
-  const known = [...Object.keys(DEFAULT_TEMPLATES), ...Object.keys(team.workItems?.templates ?? {})];
-  const hit = known.find((k) => k.toLowerCase() === t.toLowerCase());
-  if (!hit) throw new AihubError(`--type '${t}' is not supported here (${known.join(", ")}); stories go through 'aihub story create'`);
-  return hit;
-}
-
-/** The template of a Bug or Task in the fixed order (team.yaml path, repository files, the team's Azure DevOps template, built-in). */
-export async function findTypeTemplate(root: string, client: AdoClient | undefined, team: TeamConfig, type: string): Promise<FoundTemplate> {
-  const configured = team.workItems?.templates?.[type];
-  if (configured && !existsSync(join(root, configured))) throw new AihubError(`template for ${type} not found: ${configured} (workItems.templates.${type})`);
-  return findWorkItemTemplate({ root, client, team, type, configured, fileName: `${type.toLowerCase()}-template.md`, builtIn: DEFAULT_TEMPLATES[type] ?? "## Description\n" });
-}
+import { loadTeam, readUtf8 } from "./team.js";
+import { typeLayout } from "./fieldLayout.js";
+import { findTypeTemplate, resolveType } from "./workItemType.js";
 
 export interface CreateWorkItemOpts {
   type?: string;
@@ -66,12 +24,9 @@ export async function createWorkItem(ctx: Ctx, o: CreateWorkItemOpts): Promise<s
   const empty = wi.emptySection || team.pullRequest?.emptySection || DEFAULT_EMPTY;
   const found = await findTypeTemplate(root, client, team, type);
   const composed = compose({ template: found.text, body: readUtf8(o.bodyFile), code: {}, emptyText: empty });
-  // A Bug keeps its repro steps in the repro field unless the team maps the heading elsewhere.
-  const mapped: TeamConfig = {
-    ...team,
-    workItems: { ...wi, sectionFields: { ...(type === "Bug" ? { "Steps to reproduce": REPRO_FIELD, "Repro steps": REPRO_FIELD } : {}), ...(wi.sectionFields ?? {}) } },
-  };
-  const fields = sectionsToFields(mapped, parseSections(composed.text).sections);
+  // the text goes in the main field of the type: ReproSteps for a Bug that has no Description
+  const layout = await typeLayout(root, client, type);
+  const fields = sectionsToFields(team, parseSections(composed.text).sections, layout);
   const ops: unknown[] = [{ op: "add", path: "/fields/System.Title", value: o.title }];
   for (const [f, v] of Object.entries(fields)) ops.push({ op: "add", path: `/fields/${f}`, value: v });
   if (wi.areaPath) ops.push({ op: "add", path: "/fields/System.AreaPath", value: wi.areaPath });
