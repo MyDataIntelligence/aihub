@@ -4,7 +4,7 @@ import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { repoRoot } from "./git.js";
 import { tryGit } from "./gitx.js";
-import { chooseClone, samePath } from "./cloneChoice.js";
+import { chooseClone, samePath, usedAt } from "./cloneChoice.js";
 import { configHome } from "./notifyPolicy.js";
 import { loadTeam, type TeamConfig } from "./team.js";
 
@@ -90,19 +90,6 @@ export function remoteKey(url: string | undefined): string | undefined {
 }
 
 export { repoNameOfUrl } from "./repoName.js";
-
-/** When a clone was last used: the newest of .git/index and .git/HEAD (git writes them on status, commit, switch). */
-export function usedAt(dir: string): number {
-  let t = 0;
-  for (const f of ["index", "HEAD"]) {
-    try {
-      t = Math.max(t, statSync(join(dir, ".git", f)).mtimeMs);
-    } catch {
-      /* missing: never used */
-    }
-  }
-  return t;
-}
 
 /**
  * One repository is one entry, however often it is cloned: the branch is chosen afterwards, so which clone is used

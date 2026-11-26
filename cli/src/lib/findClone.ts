@@ -1,9 +1,8 @@
 import { existsSync, readdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { chooseClone, samePath } from "./cloneChoice.js";
+import { chooseClone, samePath, usedAt as lastUsedOf } from "./cloneChoice.js";
 import { remoteOf } from "./machineScan.js";
 import { repoNameOfUrl } from "./repoName.js";
-import { usedAt as lastUsedOf } from "./repoPicker.js";
 
 /** "Repo X", "repo_x" and "repo-x" are the same name: case, spaces, `_` and `-` do not count. */
 export const looseName = (s: string): string => s.toLowerCase().replace(/[\s_-]+/g, "");
