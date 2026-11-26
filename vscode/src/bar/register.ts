@@ -16,7 +16,7 @@ import { registerSetOps, SetFileWatcher } from "./setOps";
 import { registerBatchCommands, registerPullRequestCommand } from "./batchUi";
 import { registerUndoCommand, setCustomUndo, undoLabel, undoLast } from "./undoUi";
 import { BehindManager } from "./behindRun";
-import { FETCH_FRESH_MS, Told } from "./behind";
+import { FETCH_FRESH_MS, FetchGate, Told, openCheckDelay, type FetchStore } from "./behind";
 import { gitRaw } from "./ownWindow";
 import { configHome } from "../../../cli/src/lib/configHome";
 import { writeAtomic } from "../../../cli/src/lib/setFile";
@@ -85,12 +85,33 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   const sizes = new SizeMemo();
   // behind the target branch: a fetch of the target per repository after each other, the question or the update as aiContextHub.behindTarget says
   let openedChecked = false;
+  const activatedAt = Date.now();
+  // the times of the last fetches are kept in a file: a reload or a second window on the same set does not fetch again
+  const fetchFile = join(configHome(process.env), "fetched.json");
+  const fetchStore: FetchStore = {
+    read: () => {
+      try {
+        return JSON.parse(readFileSync(fetchFile, "utf8")) as Record<string, { ok: boolean; at: number }>;
+      } catch {
+        return {};
+      }
+    },
+    write: (rec) => {
+      try {
+        mkdirSync(configHome(process.env), { recursive: true });
+        writeAtomic(fetchFile, JSON.stringify(rec));
+      } catch {
+        /* a note that is not kept only means one more fetch */
+      }
+    },
+  };
   const toldFile = join(configHome(process.env), "behind-told.json");
   const behindMgr = new BehindManager({
     git: gitRun,
     raw: gitRaw,
     count: (path, name) => behind.behind(path, name),
     cli: (args, cwd) => cli(args, cwd),
+    gate: new FetchGate(gitRun, Date.now, fetchStore),
     told: new Told(
       () => {
         try {
@@ -160,7 +181,8 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       // the first state of a window with a set or a repository: look at the target branch once (a fetch per repository, never without focus)
       if ((f.set || f.repo) && !openedChecked) {
         openedChecked = true;
-        void behindMgr.run("open");
+        // a few seconds after the window opened, never before: the first state and every click come first
+        setTimeout(() => void behindMgr.run("open"), openCheckDelay(activatedAt, Date.now()));
       }
       return engine.state();
     },
@@ -289,6 +311,8 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
 
   // the left menu opens: measure the sets in the background, the state gets the sizes as they come in
   reg(BAR_COMMANDS.measureSets, () => void engine.measureSets(changed).catch(() => undefined));
+  // the clean-up dialog opens: now the uncommitted work of the sets that can be removed is looked at
+  reg(BAR_COMMANDS.checkClean, () => void engine.checkClean(changed).catch(() => undefined));
 
   reg(BAR_COMMANDS.refresh, async () => {
     engine.scan({ refresh: true });

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { forgetScan } from "../../../cli/src/lib/machineScan";
 import { createPullRequests, prOffers } from "./createPrs";
 import { targetOf } from "./repoStatus";
-import { commitOne, eachRepo, parseMessage, pushOne, summarize, updateOne, type RepoRef, type RepoResult } from "./batch";
+import { commitOne, eachRepo, offlineSummary, parseMessage, pushOne, summarize, updateOne, type RepoRef, type RepoResult } from "./batch";
 import { openFacts } from "./engine";
 import { gitRun } from "./ownWindow";
 import { cli } from "./runner";
@@ -24,6 +24,8 @@ async function report(h: StoryHooks, what: string, results: RepoResult[]): Promi
   h.afterGit?.();
   h.changed();
   const bad = results.filter((r) => !r.ok);
+  const offline = offlineSummary(what, results);
+  if (offline) return void vscode.window.showInformationMessage(`AI Context Hub: ${offline}`);
   if (!bad.length) return void vscode.window.showInformationMessage(`AI Context Hub: ${text.split("\n")[0]}`);
   const more = "Show Details";
   const pick = await vscode.window.showWarningMessage(`AI Context Hub: ${text.split("\n")[0]}. ${bad.map((r) => r.line).join("; ")}`, more);

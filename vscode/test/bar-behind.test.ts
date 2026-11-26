@@ -256,3 +256,68 @@ describe("behind the target branch", () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe("the look at the target branch stays out of the way", () => {
+  const store = () => {
+    let rec: Record<string, { ok: boolean; at: number }> = {};
+    return { read: () => rec, write: (r: Record<string, { ok: boolean; at: number }>) => void (rec = r) };
+  };
+
+  it("starts a few seconds after the window opened, never before", async () => {
+    const { openCheckDelay, OPEN_CHECK_AFTER_MS } = await import("../src/bar/behind");
+    expect(OPEN_CHECK_AFTER_MS).toBeGreaterThanOrEqual(3000);
+    expect(openCheckDelay(1000, 1000)).toBe(OPEN_CHECK_AFTER_MS);
+    expect(openCheckDelay(1000, 1000 + OPEN_CHECK_AFTER_MS - 1)).toBe(1);
+    expect(openCheckDelay(1000, 1000 + 60_000)).toBe(0);
+  });
+
+  it("a reload or a second window on the same set does not fetch again within the freshness term: the times are kept per repository", async () => {
+    const shared = store();
+    let fetches = 0;
+    let t = 5_000_000;
+    const git = async () => (fetches++, "");
+    const first = new FetchGate(git, () => t, shared);
+    expect(await first.fetch("/w/Repo A", "staging", "open")).toBe("fetched");
+    // the window is reloaded: a new gate, the same file
+    t += 2 * 60_000;
+    const second = new FetchGate(git, () => t, shared);
+    expect(second.has("/w/Repo A")).toBe(true);
+    expect(await second.fetch("/w/Repo A", "staging", "open")).toBe("skipped");
+    expect(await second.fetch("/w/Repo A", "staging", "menu")).toBe("skipped");
+    expect(fetches).toBe(1);
+    t += 4 * 60_000;
+    expect(await second.fetch("/w/Repo A", "staging", "open")).toBe("fetched");
+    expect(second.lastOk()).toBe(t);
+  });
+
+  it("offline: the first failure is the only one (no fetch per repository), and the manager says nothing", async () => {
+    const w = world(["a", "b", "c", "d", "e"]);
+    let fetches = 0;
+    const git = async (cwd: string, args: string[]) => {
+      if (args[0] === "fetch") {
+        fetches++;
+        throw new Error("fatal: unable to access 'https://dev.azure.com/x/': Could not resolve host: dev.azure.com");
+      }
+      return gitRun(cwd, args);
+    };
+    const { u, log } = ui(w.repos);
+    const m = manager(u, [], { git, gate: new FetchGate(git, () => 1_000_000, undefined) });
+    const r = await m.run("open");
+    expect(fetches).toBe(1);
+    expect(log.asked).toEqual([]);
+    expect(log.said).toEqual([]);
+    expect(r.messages).toEqual([]);
+    // later, still offline: nothing again within 10 minutes
+    await m.run("menu");
+    expect(fetches).toBe(1);
+  });
+
+  it("Push All offline is one quiet line, not one error per repository", async () => {
+    const { offlineSummary } = await import("../src/bar/batch");
+    const bad = (n: string) => ({ repo: n, ok: false, line: `${n}: not pushed, fatal: unable to access 'https://x/'`, detail: "fatal: unable to access 'https://x/': Could not resolve host: x" });
+    expect(offlineSummary("Push all", [bad("a"), bad("b")])).toBe("Push all: no network right now, nothing was changed on the remote; try again when you are online");
+    // one real failure among them: the normal lines
+    expect(offlineSummary("Push all", [bad("a"), { repo: "b", ok: false, line: "b: not pushed, rejected by policy" }])).toBeUndefined();
+    expect(offlineSummary("Push all", [{ repo: "a", ok: true, line: "a: pushed" }])).toBeUndefined();
+  });
+});

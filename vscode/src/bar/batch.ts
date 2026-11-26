@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { headBranchOf } from "../../../cli/src/lib/machineScan";
-import { operationInProgress } from "./behind";
+import { isOffline, operationInProgress } from "./behind";
 import type { GitRun } from "./ownWindow";
 
 /**
@@ -108,6 +108,12 @@ export async function commitOne(cli: (args: string[], cwd: string) => Promise<st
     if (/nothing to commit/i.test(t)) return { repo: r.name, ok: true, line: `${r.name}: nothing to commit` };
     return { repo: r.name, ok: false, line: `${r.name}: ${first(t, 1)}`, detail: t };
   }
+}
+
+/** Every repository that failed failed for lack of a network: one quiet sentence instead of one error per repository. */
+export function offlineSummary(what: string, results: RepoResult[]): string | undefined {
+  const bad = results.filter((r) => !r.ok);
+  return bad.length > 0 && bad.every((r) => isOffline(`${r.detail ?? ""} ${r.line}`)) ? `${what}: no network right now, nothing was changed on the remote; try again when you are online` : undefined;
 }
 
 /** One message for the user: how many went well, and the lines of those that did not. */
