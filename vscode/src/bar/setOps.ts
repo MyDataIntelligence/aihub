@@ -17,6 +17,12 @@ import { withUndo } from "./undoUi";
  * Remove a set, and the set file of this window changed by hand. Both do what the CLI does (`worktree remove --folder`,
  * `branch switch`, `worktree repair`), so the checks are the CLI's: work in a worktree is never thrown away.
  */
+/** The one sentence after Remove Set: what is kept, else the last line the CLI said that has words in it, else a plain sentence (never empty). */
+export function removedText(r: { lines?: string[]; kept?: string[] }): string {
+  if (r.kept?.length) return `the set stays, ${r.kept.join(", ")} hold work`;
+  return [...(r.lines ?? [])].reverse().map((l) => l.trim()).find(Boolean) ?? "the set is removed";
+}
+
 export function registerSetOps(h: StoryHooks): void {
   h.reg("aihub.bar.removeSet", (arg?: unknown) => removeSet(h, arg));
 }
@@ -47,7 +53,7 @@ async function removeSet(h: StoryHooks, arg: unknown): Promise<void> {
   const meta = file && [file.top, ...(file.top.others ?? [])].find((m) => m.branch === set.branch);
   // run in a source clone: never in a worktree that is about to go (Windows cannot remove a folder a process runs in)
   const cwd = meta?.repos.map((r) => r.source).find((s) => existsSync(s)) ?? set.folder;
-  const out = await withUndo(h, `Remove the set of ${label}`, set.folder, async () => vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Removing the set of ${label}...` }, () => cli(["worktree", "remove", "--folder", set.folder, "--branch", set.branch, ...(set.story ? ["--story", String(set.story)] : []), "--json"], cwd)), { backup: true, message: (o) => (o ? ((r) => (r.kept.length ? `the set stays, ${r.kept.join(", ")} hold work` : r.lines[r.lines.length - 1] ?? "set removed"))(jsonOf<{ lines: string[]; kept: string[] }>(o)) : ""), warn: (o) => !!o && jsonOf<{ kept: string[] }>(o).kept.length > 0 });
+  const out = await withUndo(h, `Remove the set of ${label}`, set.folder, async () => vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Removing the set of ${label}...` }, () => cli(["worktree", "remove", "--folder", set.folder, "--branch", set.branch, ...(set.story ? ["--story", String(set.story)] : []), "--json"], cwd)), { backup: true, message: (o) => (o ? removedText(jsonOf<{ lines: string[]; kept: string[] }>(o)) : ""), warn: (o) => !!o && jsonOf<{ kept: string[] }>(o).kept.length > 0 });
   const res = jsonOf<{ lines: string[]; kept: string[] }>(out);
   h.log(`remove set ${set.id}: ${res.lines.join(" | ")}`);
   forgetScan(process.env);

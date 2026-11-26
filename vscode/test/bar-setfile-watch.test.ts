@@ -186,3 +186,12 @@ describe("a change of the file while an apply is running is not lost (review G)"
     watcher.dispose();
   });
 });
+
+import { removedText } from "../src/bar/setOps";
+describe("the sentence after Remove Set is never empty (persona test)", () => {
+  it("the last line with words, what is kept, or a plain sentence", () => {
+    expect(removedText({ lines: ["removed repo-a", "removed repo-b", ""], kept: [] })).toBe("removed repo-b");
+    expect(removedText({ lines: ["  ", ""], kept: [] })).toBe("the set is removed");
+    expect(removedText({ lines: [], kept: ["repo-a"] })).toBe("the set stays, repo-a hold work");
+  });
+});

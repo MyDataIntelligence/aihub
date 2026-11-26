@@ -190,6 +190,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   const api: BarApi = {
     getState: () => {
       watchHeads();
+      attachGit();
       // opening a set (or its overview menu) reads the pull requests once, then they are remembered for minutes
       const f = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
       if (f.set) void prs.refresh().then((read) => read && changed());
@@ -250,23 +251,50 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       };
       w.onDidChange(onHead);
       w.onDidCreate(onHead);
-      // a commit, a merge or a pull in a terminal moves the branch, not the file HEAD: the git extension of VS Code says its state
-      // changed (no watcher of ours, no process); only a moved commit counts, a saved file does not
-      let lastHead = headSha(p);
-      const gr = gitRepos()?.find((x) => pathKey(x.rootUri.fsPath) === pathKey(p));
+      return [w];
+    });
+    gitSubs.forEach((s) => s.dispose());
+    gitSubs.clear();
+    attachGit();
+  }
+  // What the git extension of VS Code knows (changed files, commits ahead) and a commit, merge or pull in a terminal reach the bar through its
+  // state-change event: no watcher of ours, no process. An event goes out only when changes, ahead or the commit differ from what was last seen
+  // (the extension also says "changed" at every saved file). The extension may start after us and open repositories later: tried again at every
+  // state read and whenever it opens a repository.
+  const gitSubs = new Map<string, { dispose(): unknown }>();
+  const gitSeen = new Map<string, string>();
+  let openSub: { dispose(): unknown } | undefined;
+  function attachGit() {
+    const facts = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+    const paths = facts.set ? facts.set.repos.map((r) => r.path) : facts.repo ? [facts.repo.path] : [];
+    const repos = gitRepos();
+    if (!repos) return;
+    if (!openSub) {
+      const api = vscode.extensions.getExtension("vscode.git")?.exports?.getAPI?.(1) as { onDidOpenRepository?: (l: () => void) => { dispose(): unknown } } | undefined;
+      openSub = api?.onDidOpenRepository?.(() => (attachGit(), changed()));
+      if (openSub) ctx.subscriptions.push(openSub);
+    }
+    for (const p of paths) {
+      if (gitSubs.has(p)) continue;
+      const gr = repos.find((x) => pathKey(x.rootUri.fsPath) === pathKey(p));
       const sub = gr?.state.onDidChange?.(() => {
-        const now = headSha(p);
-        if (now === lastHead) return;
-        lastHead = now;
+        const st = gitStatusOf(gitRepos() ?? [], p);
+        const now = `${st?.changes}|${st?.ahead}|${headSha(p)}`;
+        if (gitSeen.get(p) === now) return;
+        gitSeen.set(p, now);
         changed();
       });
-      return sub ? [w, sub] : [w];
-    });
+      if (sub) {
+        gitSubs.set(p, sub);
+        const st = gitStatusOf(repos, p);
+        gitSeen.set(p, `${st?.changes}|${st?.ahead}|${headSha(p)}`);
+      }
+    }
   }
   ctx.subscriptions.push(
     emitter,
     setFile,
-    { dispose: () => (clearTimeout(debounce), nameTimers.forEach((t) => clearTimeout(t)), heads.forEach((h) => h.dispose())) },
+    { dispose: () => (clearTimeout(debounce), nameTimers.forEach((t) => clearTimeout(t)), heads.forEach((h) => h.dispose()), gitSubs.forEach((s) => s.dispose())) },
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       engine.noteOpen();
       changed();

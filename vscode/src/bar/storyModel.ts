@@ -57,7 +57,7 @@ export interface StoryRepoRow {
   linked?: boolean;
   /** how many other existing branches of the story this repository has */
   others?: number;
-  /** ticked at the start: only the linked ones */
+  /** ticked at the start: the ones that have a branch of the story (nothing is ticked when there is none) */
   picked: boolean;
   /** the repository is cloned on this PC (a linked repository that is not cannot be opened) */
   onThisPc: boolean;
@@ -76,8 +76,8 @@ export function storyRepoRows(rows: BranchRowJson[], clones: Pick<ScanRepo, "nam
   for (const [repo, c] of per) {
     const clone = byName.get(repo.toLowerCase());
     if (!clone) notOnThisPc.push(repo);
-    // an existing branch that is not linked yet is shown but not ticked; it is linked after opening, like a new one
-    else out.push({ repo: clone.name, path: clone.path, branch: c.row.branch, linked: c.linked, ...(c.others ? { others: c.others } : {}), picked: c.linked, onThisPc: true });
+    // a repository that has a branch of the story (linked, or found by its name) is ticked, so "number, Enter" works; one that is not linked yet is linked after opening
+    else out.push({ repo: clone.name, path: clone.path, branch: c.row.branch, linked: c.linked, ...(c.others ? { others: c.others } : {}), picked: true, onThisPc: true });
   }
   // ticked ones first, then the unlinked ones that already have a branch (the sort is stable)
   out.sort((a, b) => Number(b.picked) - Number(a.picked));

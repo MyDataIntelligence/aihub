@@ -22,6 +22,8 @@ const h = vi.hoisted(() => ({
   repoPaths: [] as string[],
   focused: true,
   fired: 0,
+  gitChanges: {} as Record<string, number>,
+  openListeners: [] as (() => void)[],
   focusListeners: [] as ((s: { focused: boolean }) => void)[],
 }));
 
@@ -102,10 +104,11 @@ vi.mock("vscode", () => {
         isActive: true,
         exports: {
           getAPI: () => ({
+            onDidOpenRepository: (l: () => void) => (h.openListeners.push(l), { dispose: () => undefined }),
             repositories: h.repoPaths.map((p) => ({
               rootUri: { fsPath: p },
               state: {
-                workingTreeChanges: [],
+                workingTreeChanges: Array.from({ length: h.gitChanges[p] ?? 0 }, (_x, i) => ({ uri: { fsPath: `${p}/f${i}.txt` } })),
                 indexChanges: [],
                 mergeChanges: [],
                 HEAD: { ahead: 0 },
@@ -317,3 +320,51 @@ describe("a window that never has the focus (the real window of the persona test
     vi.useRealTimers();
   }, 120_000);
 });
+
+describe("the state follows the git extension of VS Code (review: the overview stayed at none yet)", () => {
+  it("a repository the git extension opens later, and a change of changed files or commits ahead, reach the buttons as one event each; a saved file with the same numbers none", async () => {
+    const w = world();
+    const cfg = mkdtempSync(join(tmpdir(), "aihub-real-budget-cfg-"));
+    Object.assign(process.env, { AIHUB_CONFIG_HOME: cfg, AIHUB_COMMON_ROOTS: "" });
+    h.folders = w.repos.map((r) => r.path);
+    h.repoPaths = [];
+    h.gitChanges = {};
+    h.gitListeners.clear();
+    h.openListeners.length = 0;
+    h.focused = false;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const subs: { dispose(): unknown }[] = [];
+    const bar = registerBar({ subscriptions: subs } as never, { log: () => undefined } as never);
+    const read = async () => (await bar.api.getState()).repos.find((r) => r.name === "a")!;
+    // the git extension has no repository yet: the count comes from our one git status (the extension's numbers are not there)
+    expect((await read()).changes).toBe(0);
+    h.repoPaths = w.repos.map((r) => r.path);
+    h.gitChanges[w.repos[0].path] = 2;
+    h.openListeners.forEach((f) => f());
+    bar.api.onDidChangeState(() => void read());
+    const fired0 = h.fired;
+    await advanceBy(1_000);
+    expect(h.fired - fired0).toBe(1);
+    expect((await read()).changes).toBe(2);
+    // the same numbers again (a saved file): nothing
+    const fired1 = h.fired;
+    for (const f of h.gitListeners.get(w.repos[0].path) ?? []) f();
+    await advanceBy(1_000);
+    expect(h.fired - fired1).toBe(0);
+    // a new uncommitted file: one event, and the number is there
+    h.gitChanges[w.repos[0].path] = 3;
+    for (const f of h.gitListeners.get(w.repos[0].path) ?? []) f();
+    await advanceBy(1_000);
+    expect(h.fired - fired1).toBe(1);
+    expect((await read()).changes).toBe(3);
+    subs.forEach((s) => s.dispose());
+    vi.useRealTimers();
+  }, 120_000);
+});
+
+async function advanceBy(ms: number) {
+  for (let t = 0; t < ms; t += 250) {
+    await vi.advanceTimersByTimeAsync(250);
+    await wait(40);
+  }
+}

@@ -153,6 +153,9 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
   const picked: Picked | undefined = given ? { story: { id: given, title: readSeenStories(process.env)[given]?.title ?? "" } } : await pickStory(h.engine, cwd);
   if (!picked) return;
   const story = picked.story;
+  // the story of this window: nothing to open, one quiet line
+  const here = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set;
+  if (here && here.story === story.id) return void vscode.window.showInformationMessage(`AI Context Hub: #${story.id} is already open in this window.`);
   const scan = h.engine.scan({ refresh: true });
   const have = setOfStory(scan, story.id);
   const repositories = await h.engine.repositories();
@@ -471,9 +474,10 @@ export function registerStoryCommands(h: StoryHooks): void {
         const ok = await showOpened(res, "this", h.log);
         forgetScan(process.env);
         h.changed();
-        return ok;
+        // "nothing was changed" (the worktree holds work and stays) is said as it is, never as "taken out"
+        return ok ? (/^nothing was changed/.test(res.stays ?? "") ? `${n.repo.name} stays in the set: ${res.stays}` : `${n.repo.name} is out of the set`) : "";
       },
-      { backup: true, only: [n.repo.name], message: (ok) => (ok ? `${n.repo.name} is out of the set` : "") },
+      { backup: true, only: [n.repo.name], message: (m) => m },
     );
   });
 }
