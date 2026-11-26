@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { forgetScan, headBranchOf } from "../../../cli/src/lib/machineScan";
 import { gitRun } from "./ownWindow";
 import { holdNotices } from "./notice";
+import { plainPathsIn } from "./paths";
 import { finishSnapshot, newBackups, planUndo, runUndo, takeSnapshot, type Snapshot } from "./undo";
 import { clearUndo, loadUndo, saveUndo, undoLabelOf } from "./undoStore";
 import { openFacts } from "./engine";
@@ -48,7 +49,7 @@ export async function withUndo<T>(h: Pick<StoryHooks, "changed" | "log" | "after
   const say = (buttons: string[]): Thenable<string | undefined> | undefined => {
     const line = text || (o.message ? "" : heldLines[0] ?? "");
     if (!line) return undefined;
-    return (o.warn?.(result) ? vscode.window.showWarningMessage : vscode.window.showInformationMessage)(`AI Context Hub: ${line}`, ...buttons);
+    return (o.warn?.(result) ? vscode.window.showWarningMessage : vscode.window.showInformationMessage)(`AI Context Hub: ${plainPathsIn(line)}`, ...buttons);
   };
   for (const l of heldLines) h.log(l);
   // a set the action made: its folder is known only now
@@ -98,7 +99,7 @@ export async function undoLast(h: Pick<StoryHooks, "changed" | "log" | "afterGit
   if (custom) {
     const r = await custom();
     if (r.problem) {
-      void vscode.window.showWarningMessage(`AI Context Hub: cannot undo "${label}": ${r.problem}. Nothing was changed.`);
+      void vscode.window.showWarningMessage(`AI Context Hub: cannot undo "${label}": ${plainPathsIn(r.problem)}. Nothing was changed.`);
       return false;
     }
     done();
@@ -110,7 +111,7 @@ export async function undoLast(h: Pick<StoryHooks, "changed" | "log" | "afterGit
   }
   const plan = await planUndo(gitRun, snap!);
   if (plan.problem) {
-    void vscode.window.showWarningMessage(`AI Context Hub: cannot undo "${label}": ${plan.problem}. Nothing was changed.`);
+    void vscode.window.showWarningMessage(`AI Context Hub: cannot undo "${label}": ${plainPathsIn(plan.problem)}. Nothing was changed.`);
     return false;
   }
   const res = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Undoing ${label}...` }, () => runUndo(plan));
@@ -119,7 +120,7 @@ export async function undoLast(h: Pick<StoryHooks, "changed" | "log" | "afterGit
   if (res.ok) done();
   h.afterGit?.();
   h.changed();
-  void (res.ok ? vscode.window.showInformationMessage(`AI Context Hub: undone: ${label}.`) : vscode.window.showWarningMessage(`AI Context Hub: ${res.lines[res.lines.length - 1]}`));
+  void (res.ok ? vscode.window.showInformationMessage(`AI Context Hub: undone: ${label}.`) : vscode.window.showWarningMessage(`AI Context Hub: ${plainPathsIn(res.lines[res.lines.length - 1])}`));
   return res.ok;
 }
 

@@ -33,7 +33,9 @@ import {
   type PickItem,
   type PrJson,
   type SetModel,
+  existingFacts,
   existingOptions,
+  existingTitle,
 } from "./repoSetModel";
 
 /**
@@ -136,8 +138,8 @@ export async function answerExisting(text: string, rerun: (extra: string[]) => P
     const q = needsChoiceOf(text);
     if (!q) return text;
     const options = existingOptions(q, !!o.ownWindow);
-    const detail = [...q.existing.map((e) => `${e.repo}: ${e.branch} is in ${e.path} (${e.state})`), "", ...options.map((x) => x.line)].join("\n");
-    const go = await vscode.window.showWarningMessage("AI Context Hub: this branch already has a worktree elsewhere.", { modal: true, detail }, ...options.map((x) => x.button));
+    const detail = [...existingFacts(q), "", ...options.map((x) => x.line)].join("\n");
+    const go = await vscode.window.showWarningMessage(`AI Context Hub: ${existingTitle(q)}`, { modal: true, detail }, ...options.map((x) => x.button));
     const picked = options.find((x) => x.button === go);
     if (!picked) return undefined;
     if (picked.key === "own") {

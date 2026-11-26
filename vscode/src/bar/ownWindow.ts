@@ -1,3 +1,4 @@
+import { plainPath } from "./paths";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
@@ -152,5 +153,5 @@ export async function openOwn(o: { git: GitRun; source: string; setPath: string;
   if (known.local.has(branch)) await git(dir, ["worktree", "add", target, branch]);
   else if (known.remote.has(branch)) await git(dir, ["worktree", "add", "--track", "-b", branch, target, `origin/${branch}`]);
   else throw new Error(`the branch ${branch} does not exist in ${basename(o.source)}`);
-  return { path: target, note: `worktree of ${branch} made in ${target}` };
+  return { path: target, note: `worktree of ${branch} made in ${plainPath(target)}` };
 }
