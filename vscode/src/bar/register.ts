@@ -203,7 +203,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       read: () => {
         try {
           const j = JSON.parse(readFileSync(seenFile, "utf8")) as Partial<Seen>;
-          return { threads: j.threads ?? {}, prs: j.prs ?? {} };
+          return { threads: j.threads ?? {}, prs: j.prs ?? {}, told: j.told ?? {} };
         } catch {
           return { threads: {}, prs: {} };
         }

@@ -120,15 +120,15 @@ describe("suggestions", () => {
 
 describe("new and unread", () => {
   it("the first read of a pull request is taken as seen: no flood", () => {
-    const r = newSince(none, read([thread()]), new Set());
+    const r = newSince(none, read([thread()]));
     expect(r.fresh).toEqual([]);
     expect(isUnread(r.seen, "repo-a", 812, thread(), ME.id)).toBe(false);
   });
 
   it("a new comment of someone else after that: one notice with where and the first sentence, unread", () => {
-    const first = newSince(none, read([thread()]), new Set()).seen;
+    const first = newSince(none, read([thread()])).seen;
     const t = thread({ comments: [...thread().comments, { id: 2, author: "Tom Bakker", authorId: "u-tom", text: "Agreed. Also log it." }] });
-    const r = newSince(first, read([t]), new Set());
+    const r = newSince(first, read([t]));
     expect(r.fresh).toEqual([{ repo: "repo-a", pr: 812, threadId: 11, file: "notebooks/orders.py", line: 5, author: "Tom Bakker", firstLine: "Agreed." }]);
     expect(notice(r.fresh)).toEqual({ message: "New comment on pull request 812 · notebooks/orders.py:5", detail: "Tom Bakker: “Agreed.”" });
     expect(isUnread(r.seen, "repo-a", 812, t, ME.id)).toBe(true);
@@ -136,32 +136,34 @@ describe("new and unread", () => {
   });
 
   it("never for my own comment", () => {
-    const first = newSince(none, read([thread()]), new Set()).seen;
+    const first = newSince(none, read([thread()])).seen;
     const t = thread({ comments: [...thread().comments, { id: 2, author: "Test User", authorId: "u-me", text: "Done." }] });
-    const r = newSince(first, read([t]), new Set());
+    const r = newSince(first, read([t]));
     expect(r.fresh).toEqual([]);
     expect(isUnread(r.seen, "repo-a", 812, t, ME.id)).toBe(false);
   });
 
-  it("several new at once: one notice; the same comment is not told twice", () => {
-    const first = newSince(none, read([thread(), thread({ threadId: 12 })]), new Set()).seen;
+  it("several new at once: one notice; the same comment is not told twice, also not after a reload (kept in the store)", () => {
+    const first = newSince(none, read([thread(), thread({ threadId: 12 })])).seen;
     const plus = (t: PrThread) => ({ ...t, comments: [...t.comments, { id: 5, author: "Tom Bakker", authorId: "u-tom", text: "More." }] });
-    const told = new Set<string>();
     const next = read([plus(thread()), plus(thread({ threadId: 12 })), thread({ threadId: 13 })]);
-    const r = newSince(first, next, told);
+    const r = newSince(first, next);
     expect(notice(r.fresh)).toEqual({ message: "3 new comments on pull request 812" });
-    expect(newSince(r.seen, next, told).fresh).toEqual([]);
+    const reloaded = JSON.parse(JSON.stringify(r.seen)) as Seen;
+    expect(newSince(reloaded, next).fresh).toEqual([]);
+    // still unread: told is not read
+    expect(isUnread(reloaded, "repo-a", 812, plus(thread()), ME.id)).toBe(true);
   });
 
   it("read when the thread was shown: no longer unread", () => {
-    const first = newSince(none, read([thread()]), new Set()).seen;
+    const first = newSince(none, read([thread()])).seen;
     const t = thread({ comments: [...thread().comments, { id: 2, author: "Tom Bakker", authorId: "u-tom", text: "x" }] });
     expect(isUnread(markSeen(first, "repo-a", 812, t), "repo-a", 812, t, ME.id)).toBe(false);
   });
 
   it("two repositories each with a pull request: per repository", () => {
     const both: ThreadsRead = { me: ME, prs: [{ repo: "repo-a", pr: 812, threads: [thread()] }, { repo: "repo-c", pr: 813, threads: [thread({ threadId: 31, file: "/config/settings.yaml" })] }], failed: [] };
-    const seen = newSince(none, both, new Set()).seen;
+    const seen = newSince(none, both).seen;
     expect(prCounts(both, seen, "repo-a", 812)).toEqual({ open: 1, unread: 0 });
     expect(prCounts(both, seen, "REPO-C", 813)).toEqual({ open: 1, unread: 0 });
     expect(prCounts(both, seen, "repo-b", 1)).toBeUndefined();
@@ -174,7 +176,7 @@ describe("the Explorer and the title bar", () => {
 
   it("counts open threads per file and up to the repository folder; resolved and general ones count for no file", () => {
     const r = read([thread(), thread({ threadId: 12, line: 6 }), thread({ threadId: 13, file: "/notebooks/export.py" }), thread({ threadId: 14, open: false, status: "fixed" }), thread({ threadId: 15, file: undefined })]);
-    const c = fileCounts(targets, r, newSince(none, r, new Set()).seen, key);
+    const c = fileCounts(targets, r, newSince(none, r).seen, key);
     expect(c.get("c:/sets/4711/repo-a/notebooks/orders.py")).toMatchObject({ open: 2, unread: 0, pr: 812 });
     expect(c.get("c:/sets/4711/repo-a/notebooks")?.open).toBe(3);
     expect(c.get("c:/sets/4711/repo-a")?.open).toBe(3);

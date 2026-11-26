@@ -7,6 +7,7 @@ import {
   badgeOf,
   commentMarkdown,
   fileCounts,
+  firstSentence,
   markSeen,
   newSince,
   notice,
@@ -65,7 +66,6 @@ export class PrCommentsController implements vscode.Disposable, vscode.FileDecor
   private at = 0;
   private running?: Promise<boolean>;
   private seen: Seen;
-  private notified = new Set<string>();
   private controller?: vscode.CommentController;
   private byDoc = new Map<string, vscode.CommentThread[]>();
   private shown = new Map<vscode.CommentThread, Shown>();
@@ -181,13 +181,14 @@ export class PrCommentsController implements vscode.Disposable, vscode.FileDecor
   private take(read: ThreadsRead) {
     // a single repository is read by number: its name comes back with the answer
     for (const t of this.targets) if (!t.repo) t.repo = read.prs.find((p) => p.pr === t.pr)?.repo ?? "";
-    const { fresh, seen } = newSince(this.seen, read, this.notified);
+    const { fresh, seen } = newSince(this.seen, read);
     this.data = read;
     this.save(seen);
     this.redraw();
     const n = notice(fresh);
     if (n) {
-      void vscode.window.showInformationMessage(n.message, { detail: n.detail }, "Show", "Later").then((pick) => {
+      // a notification that is not modal shows no detail: who and the first sentence go in the message itself
+      void vscode.window.showInformationMessage(n.detail ? `${n.message} — ${n.detail}` : n.message, "Show", "Later").then((pick) => {
         if (pick !== "Show") return;
         if (fresh.length === 1) void this.showComment({ repo: fresh[0].repo, threadId: fresh[0].threadId });
         else void this.pickComment();
@@ -409,9 +410,11 @@ export class PrCommentsController implements vscode.Disposable, vscode.FileDecor
         await vscode.window.showTextDocument(doc, { selection: new vscode.Range(line, 0, line, 0) });
         if (th) th.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
       } else {
-        const text = t.comments.map((c) => `${c.author}: ${c.text}`).join("\n\n");
+        // not modal: a modal message is a native dialog on Windows that blocks the window; this one goes away by itself
+        const last = t.comments[t.comments.length - 1];
+        const said = `${t.comments[0].author}: “${firstSentence(t.comments[0].text)}”${t.comments.length > 1 ? ` · ${t.comments.length - 1} repl${t.comments.length === 2 ? "y" : "ies"}, last ${last.author}: “${firstSentence(last.text)}”` : ""}`;
         const open = "Open Pull Request";
-        const pick = await vscode.window.showInformationMessage(`Comment on pull request ${p.pr}${t.fileDeleted && t.file ? ` (${repoRel(t.file)}, removed)` : ""}`, { modal: true, detail: text }, ...(target.url ? [open] : []));
+        const pick = await vscode.window.showInformationMessage(`Comment on pull request ${p.pr}${t.fileDeleted && t.file ? ` (${repoRel(t.file)}, removed)` : ""} — ${said}`, ...(target.url ? [open] : []));
         if (pick === open && target.url) await vscode.env.openExternal(vscode.Uri.parse(target.url));
       }
       this.redraw();

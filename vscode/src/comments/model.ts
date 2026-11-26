@@ -129,6 +129,8 @@ export function suggestionRange(doc: string[], at: number, s: PrSuggestion): { s
 export interface Seen {
   threads: Record<string, number>;
   prs: Record<string, true>;
+  /** the last comment id that was told in a notification per thread: a reload or a second window does not tell it again */
+  told?: Record<string, number>;
 }
 
 export const threadKey = (repo: string, pr: number, threadId: number) => `${repo.toLowerCase()}#${pr}#${threadId}`;
@@ -156,8 +158,9 @@ export interface NewComment {
  * After a read: the comments that are new since the last read (to tell once), and the seen-store as it is now. A pull
  * request read for the first time is taken as seen: opening a set never floods the user with old comments.
  */
-export function newSince(seen: Seen, read: ThreadsRead, notified: Set<string>): { fresh: NewComment[]; seen: Seen } {
-  const next: Seen = { threads: { ...seen.threads }, prs: { ...seen.prs } };
+export function newSince(seen: Seen, read: ThreadsRead): { fresh: NewComment[]; seen: Seen } {
+  const next: Seen = { threads: { ...seen.threads }, prs: { ...seen.prs }, told: { ...seen.told } };
+  const told = next.told!;
   const fresh: NewComment[] = [];
   const me = read.me?.id;
   for (const p of read.prs) {
@@ -170,8 +173,8 @@ export function newSince(seen: Seen, read: ThreadsRead, notified: Set<string>): 
         continue;
       }
       const last = lastOther(t, me);
-      if (!t.open || !isUnread(next, p.repo, p.pr, t, me) || notified.has(`${key}#${last}`)) continue;
-      notified.add(`${key}#${last}`);
+      if (!t.open || !isUnread(next, p.repo, p.pr, t, me) || (told[key] ?? 0) >= last) continue;
+      told[key] = last;
       const c = [...t.comments].reverse().find((x) => !(x.authorId && x.authorId === me))!;
       fresh.push({ repo: p.repo, pr: p.pr, threadId: t.threadId, file: t.file && repoRel(t.file), line: t.line, author: c.author, firstLine: firstSentence(c.text) });
     }
@@ -181,7 +184,7 @@ export function newSince(seen: Seen, read: ThreadsRead, notified: Set<string>): 
 
 export function markSeen(seen: Seen, repo: string, pr: number, t: PrThread): Seen {
   const last = t.comments.reduce((m, c) => Math.max(m, c.id), 0);
-  return { threads: { ...seen.threads, [threadKey(repo, pr, t.threadId)]: last }, prs: seen.prs };
+  return { ...seen, threads: { ...seen.threads, [threadKey(repo, pr, t.threadId)]: last } };
 }
 
 /** The first sentence of a comment, without code blocks or markdown marks, at most 120 characters. */
@@ -282,7 +285,8 @@ export function commentMarkdown(text: string, old: string[]): string {
   return text.replace(/```suggestion[^\n]*\n([\s\S]*?)```/g, (_m, body: string) => {
     const lines = body.replace(/\r\n/g, "\n").replace(/\n$/, "");
     const neu = lines === "" ? [] : lines.split("\n");
-    return `**Suggested change**\n\`\`\`diff\n${[fence(old, "-"), fence(neu, "+")].filter(Boolean).join("\n")}\n\`\`\``;
+    // a blank line first: the heading is a paragraph of its own, not the end of the sentence before it
+    return `\n\n**Suggested change**\n\`\`\`diff\n${[fence(old, "-"), fence(neu, "+")].filter(Boolean).join("\n")}\n\`\`\``;
   });
 }
 
