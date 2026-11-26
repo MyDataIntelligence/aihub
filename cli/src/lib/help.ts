@@ -144,7 +144,7 @@ export const USAGES: Record<string, Load> = {
       "aihub pr explain|complete --pr <n|url> [--json]",
     ),
   comments: async () =>
-    'aihub comments get [--pr <url|N>] [--json]\naihub comments reply [--pr <url|N>] --reply "<threadId>:<status>:<text>" [--reply ...] | reply [--pr <url|N>] --replies-file replies.yaml\n    status: fixed|wontFix|closed|active; replies.yaml is a list of {threadId, text, status}.',
+    'aihub comments get [--pr <url|N>] [--json]\naihub comments reply [--pr <url|N>] --reply "<threadId>:<status>:<text>" [--reply ...] | reply [--pr <url|N>] --replies-file replies.yaml\n    status: fixed|wontFix|closed|active; replies.yaml is a list of {threadId, text, status}; --return-threads --json gives the changed threads back.\naihub comments threads [--pr <N|repo:N> ...]\n    for editors: every thread (also resolved) as JSON, positions tracked to the latest iteration, outdated, suggestions; one call for several pull requests.',
   init: async () => "aihub init [--repo .] [--no-pr] [--language nl|en] [--into-repo] [--no-instructions] [--no-agents-md]\n    No team.yaml yet: runs aihub team setup first. Then proposes the team pack as a pull request (--no-pr: only writes the files).",
   skills: async () => "aihub skills install|update|diff|uninstall [--client opencode|github-copilot|codex|claude|all] [--into-repo] [--no-agents]",
   doctor: async () => "aihub doctor [--json]   (sign-in, remote, team.yaml, templates, skills per client)\naihub doctor --perf [--json] [--paths a,b] | --perf --apply <id> [--elevate] [--dry-run] | --perf --undo <id>",
