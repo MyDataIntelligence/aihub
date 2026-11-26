@@ -1,6 +1,5 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "../proc.js";
 import { adoKey, localRepos } from "../repoPicker.js";
-import { gitEnvironment } from "../gitEnv.js";
 import { rowOf, type RawBuild, type RunRow } from "../pipelineView.js";
 import {
   BrowseError,
@@ -627,7 +626,7 @@ export async function browseBlame(b: Browse, o: { project: string; repo: string;
   if (!row.clone) return { readAt, cached: false, available: false, reason: "not available for remote repositories: clone it to see who changed each line", clone: null };
   const rev = spec.kind === "branch" ? `origin/${spec.name}` : spec.kind === "tag" ? `refs/tags/${spec.name}` : spec.name;
   const me = await meOf(b);
-  const r = spawnSync("git", ["blame", "--porcelain", rev, "--", path.slice(1)], { cwd: row.clone.path, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, windowsHide: true, env: gitEnvironment(b.env) });
+  const r = spawnSync("git", ["blame", "--porcelain", rev, "--", path.slice(1)], { cwd: row.clone.path, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   if (r.status !== 0) {
     const why = (r.stderr || "").split("\n")[0];
     return { readAt, cached: false, available: false, reason: /no such path|no such ref|bad revision|unknown revision/i.test(why) ? `the clone does not have this version yet (fetch first): ${why}` : `git blame failed: ${why}`, clone: row.clone.path };
