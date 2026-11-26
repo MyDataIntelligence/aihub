@@ -272,7 +272,7 @@ export function countOf(states: RunState[]): Counts {
 const matchesStatus = (s: RunState, f: string) =>
   f === "running" ? s === "running" || s === "cancelling" : f === "succeeded" ? s === "succeeded" || s === "partiallySucceeded" : s === f;
 
-function rowOf(client: AdoClient, b: RawBuild, meId: string | undefined, repoDir: string | null, now: number): RunRow {
+export function rowOf(client: AdoClient, b: RawBuild, meId: string | undefined, repoDir: string | null, now: number): RunRow {
   const state = runState(b);
   return {
     id: b.id,
