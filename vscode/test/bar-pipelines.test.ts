@@ -8,6 +8,7 @@ describe("pipelines in the bar: arguments", () => {
     expect(runsArgs({}, ["C:/s/repo-a", "C:/s/repo-b"])).toEqual(["pipeline", "list", "--mine", "--repo-dir", "C:/s/repo-a", "--repo-dir", "C:/s/repo-b"]);
     expect(runsArgs({ mine: false, today: true, status: "failed", branch: "feature/4711-x", top: 3 }, ["d"])).toEqual(["pipeline", "list", "--today", "--status", "failed", "--branch", "feature/4711-x", "--top", "3", "--repo-dir", "d"]);
     expect(runsArgs({ top: -1 }, [])).toEqual(["pipeline", "list", "--mine"]);
+    expect(runsArgs({ branch: "b", top: 3, rowsRepoDir: "C:/s/repo-a" }, ["C:/s/repo-a", "C:/s/repo-b"]).slice(-2)).toEqual(["--rows-repo-dir", "C:/s/repo-a"]);
   });
 
   it("log: step, tail and the line to read from", () => {

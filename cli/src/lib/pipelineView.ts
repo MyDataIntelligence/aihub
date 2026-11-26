@@ -224,6 +224,10 @@ export interface RunRow {
   finishedAt: string | null;
   durationSeconds: number | null;
   currentStage: string | null;
+  /** a finished red run: the stage and step it stopped at, and its tests; null otherwise (kept per run, a finished run is read once) */
+  failedStage: string | null;
+  failedStep: string | null;
+  tests: { failed: number; total: number } | null;
   webUrl: string;
 }
 
@@ -286,8 +290,38 @@ function rowOf(client: AdoClient, b: RawBuild, meId: string | undefined, repoDir
     finishedAt: b.finishTime ?? null,
     durationSeconds: seconds(b.startTime, b.finishTime, isFinished(state) ? undefined : now),
     currentStage: null,
+    failedStage: null,
+    failedStep: null,
+    tests: null,
     webUrl: b._links?.web?.href ?? runUrl(client, b.id),
   };
+}
+
+type RedFacts = Pick<RunRow, "failedStage" | "failedStep" | "tests">;
+const redFile = (env: NodeJS.ProcessEnv) => join(env.AIHUB_HOME || join(homedir(), ".aihub"), "pipeline-red-runs.json");
+
+/** Where a finished red run stopped and its tests. A finished run does not change (a retry gives it a new finish time), so the answer is kept in a file. */
+async function redFacts(ctx: Ctx, client: AdoClient, row: RunRow): Promise<RedFacts> {
+  const key = `${client.remote.orgUrl}|${row.id}|${row.finishedAt ?? ""}`.toLowerCase();
+  let kept: Record<string, RedFacts> = {};
+  try {
+    kept = JSON.parse(readFileSync(redFile(ctx.env), "utf8")) as Record<string, RedFacts>;
+  } catch {
+    kept = {};
+  }
+  if (kept[key]) return kept[key];
+  const recs = (await client.get<{ records?: Rec[] }>(`build/builds/${row.id}/timeline`)).records ?? [];
+  const stop = stoppedAt(treeOf(recs, () => ""));
+  const t = await testFacts(client, row.id, false);
+  const facts: RedFacts = { failedStage: stop ? (stop.stage.identifier === "__default" ? null : stop.stage.name) : null, failedStep: stop?.step.name ?? null, tests: t ? { failed: t.failed, total: t.total } : null };
+  try {
+    const entries = Object.entries({ ...kept, [key]: facts }).slice(-300);
+    mkdirSync(dirname(redFile(ctx.env)), { recursive: true });
+    writeFileSync(redFile(ctx.env), JSON.stringify(Object.fromEntries(entries)), "utf8");
+  } catch {
+    /* read again next time */
+  }
+  return facts;
 }
 
 /**
@@ -296,7 +330,7 @@ function rowOf(client: AdoClient, b: RawBuild, meId: string | undefined, repoDir
  */
 export async function pipelineList(
   ctx: Ctx,
-  o: { mine?: boolean; today?: boolean; status?: string; branch?: string; top?: number; repoDirs?: string[] },
+  o: { mine?: boolean; today?: boolean; status?: string; branch?: string; top?: number; repoDirs?: string[]; rowsRepoDir?: string },
 ): Promise<ListResult> {
   if (o.status && !(STATUS_FILTERS as readonly string[]).includes(o.status)) throw new AihubError(`--status must be one of ${STATUS_FILTERS.join(", ")}`);
   const now = ctx.now?.() ?? Date.now();
@@ -318,6 +352,9 @@ export async function pipelineList(
   }
   let meInfo: Me | null = null;
   const rows: { row: RunRow; client: AdoClient }[] = [];
+  // today's counts are over every run read of the given repositories, whatever --branch, --status or --rows-repo-dir say
+  const all: RunState[] = [];
+  const rowsDir = o.rowsRepoDir ? resolve(o.rowsRepoDir).toLowerCase() : undefined;
   let capped = false;
   const FETCH = 100;
   for (const g of groups.values()) {
@@ -340,6 +377,8 @@ export async function pipelineList(
       for (const b of value) {
         const dir = g.repos.get((b.repository?.name ?? "").toLowerCase());
         if (dir === undefined) continue;
+        if ((b.queueTime ?? "") >= since) all.push(runState(b));
+        if (rowsDir && resolve(dir).toLowerCase() !== rowsDir) continue;
         if (ref && b.sourceBranch !== ref && b.triggerInfo?.["pr.sourceBranch"] !== ref) continue;
         rows.push({ row: rowOf(g.client, b, my?.id, dir, now), client: g.client });
       }
@@ -348,10 +387,17 @@ export async function pipelineList(
     }
   }
   rows.sort((a, b) => (b.row.queuedAt ?? "").localeCompare(a.row.queuedAt ?? "") || b.row.id - a.row.id);
-  const todays = rows.filter((r) => (r.row.queuedAt ?? "") >= since);
   const picked = rows.filter((r) => (!o.today || (r.row.queuedAt ?? "") >= since) && (!o.status || matchesStatus(r.row.state, o.status))).slice(0, o.top ?? 50);
   // the stage that runs now, only for the few running rows that are shown
   for (const p of picked) {
+    if (p.row.state === "failed") {
+      try {
+        Object.assign(p.row, await redFacts(ctx, p.client, p.row));
+      } catch {
+        /* the row still shows without them */
+      }
+      continue;
+    }
     if (p.row.state !== "running" && p.row.state !== "queued") continue;
     try {
       const t = await p.client.get<{ records?: Rec[] }>(`build/builds/${p.row.id}/timeline`);
@@ -360,7 +406,7 @@ export async function pipelineList(
       /* the row still shows without its stage */
     }
   }
-  return { me: meInfo, since, runs: picked.map((p) => p.row), today: { ...countOf(todays.map((r) => r.row.state)), capped }, errors };
+  return { me: meInfo, since, runs: picked.map((p) => p.row), today: { ...countOf(all), capped }, errors };
 }
 
 // ---- the stage/job/step tree ------------------------------------------------------------------------------------------
