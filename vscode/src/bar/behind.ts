@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { gitDirFor } from "../../../cli/src/lib/machineScan";
+import { gitDirFor, headBranchOf } from "../../../cli/src/lib/machineScan";
 import type { GitRaw, GitRun } from "./ownWindow";
 
 /**
@@ -191,21 +191,29 @@ export interface UpdateResult {
   line: string;
   /** commit before the update: Undo puts the branch back there (only while nothing is pushed) */
   before?: string;
+  /** the commit the update made: Undo only goes back while HEAD is exactly this one */
+  after?: string;
 }
 
 /** The team's way (merge or rebase after team.yaml): `aihub branch update`, in that repository. */
 export async function updateRepo(cli: (args: string[], cwd: string) => Promise<string>, git: GitRun, f: BehindFacts): Promise<UpdateResult> {
   try {
-    await cli(["branch", "update", "--target", f.target], f.path);
-    const now = (await git(f.path, ["rev-parse", "HEAD"]).catch(() => "")).trim();
-    return { name: f.name, ok: true, before: f.head, line: `${f.name} updated from ${f.target} (${commits(f.behind)})${now === f.head ? " (nothing changed)" : ""}` };
+    await cli(["branch", "update", "--no-push", "--target", f.target], f.path);
+    const now = headSha(f.path) ?? (await git(f.path, ["rev-parse", "HEAD"]).catch(() => "")).trim();
+    return { name: f.name, ok: true, before: f.head, after: now, line: `${f.name} updated from ${f.target} (${commits(f.behind)})${now === f.head ? " (nothing changed)" : ""}` };
   } catch (e) {
     return { name: f.name, ok: false, line: `${f.name}: not updated, ${(e as Error).message.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0] ?? "failed"}` };
   }
 }
 
 /** Undo of an update: only while the new commits are not pushed; `git reset --keep` keeps what is uncommitted and refuses when that would be lost. */
-export async function undoUpdate(git: GitRun, r: { name: string; path: string; branch: string; before: string }): Promise<{ problem?: string }> {
+export async function undoUpdate(git: GitRun, r: { name: string; path: string; branch: string; before: string; after: string }): Promise<{ problem?: string }> {
+  // only this very update, on this very branch: never another branch, never a commit of the user
+  if (!existsSync(r.path)) return { problem: `${r.name} is not there any more` };
+  if (headBranchOf(r.path) !== r.branch) return { problem: `${r.name} is not on ${r.branch} any more; the update stays` };
+  const busy = operationInProgress(r.path);
+  if (busy) return { problem: `${busy} is in progress in ${r.name}; finish or abort it first` };
+  if ((headSha(r.path) ?? (await git(r.path, ["rev-parse", "HEAD"]).catch(() => "")).trim()) !== r.after) return { problem: `${r.name} has new commits since the update; they would be lost, so the update stays` };
   const pushed = await git(r.path, ["merge-base", "--is-ancestor", "HEAD", `origin/${r.branch}`]).then(() => true, () => false);
   if (pushed) return { problem: `${r.name} is pushed since; the update stays` };
   try {

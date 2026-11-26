@@ -241,3 +241,58 @@ describe("pr changes", () => {
     expect(sh(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("main");
   });
 });
+
+describe("branch update without a push, and a refused push", () => {
+  function onFeature() {
+    const r = repo();
+    sh(r.dir, ["checkout", "-q", "-b", "feature/1-x"]);
+    commit(r.dir, "x.txt", "x\n", "feat: x");
+    sh(r.dir, ["push", "origin", "feature/1-x"]);
+    sh(r.dir, ["checkout", "-q", "main"]);
+    commit(r.dir, "m.txt", "m\n", "feat: main moved");
+    sh(r.dir, ["push", "origin", "main"]);
+    sh(r.dir, ["checkout", "-q", "feature/1-x"]);
+    return r;
+  }
+
+  it("--no-push merges and leaves the remote branch where it was", async () => {
+    const { dir, bare } = onFeature();
+    const remoteBefore = sh(bare, ["rev-parse", "feature/1-x"]);
+    // a commit of the user that is not pushed yet: it must not be published either
+    commit(dir, "mine.txt", "mine\n", "feat: mine");
+    const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
+    expect(await main(["branch", "update", "--no-push", "--json"], ctx, commands)).toBe(0);
+    expect(JSON.parse(lines[0])).toMatchObject({ result: "updated" });
+    expect(lines[0]).toContain("not pushed");
+    expect(readFileSync(join(dir, "m.txt"), "utf8").trim()).toBe("m");
+    expect(sh(bare, ["rev-parse", "feature/1-x"])).toBe(remoteBefore);
+  });
+
+  it("a refused push puts the branch back with --keep, and keeps what was saved meanwhile", async () => {
+    const { dir } = onFeature();
+    const before = sh(dir, ["rev-parse", "HEAD"]);
+    // the push hook refuses, and on its way somebody saves a tracked file
+    const hook = join(dir, ".git", "hooks", "pre-push");
+    const { writeFileSync, chmodSync } = await import("node:fs");
+    writeFileSync(hook, "#!/bin/sh\necho saved-meanwhile > x.txt\nexit 1\n");
+    chmodSync(hook, 0o755);
+    const { ctx, errs } = ctxFor(dir, fakeFetch([]).fn);
+    expect(await main(["branch", "update"], ctx, commands)).toBe(1);
+    expect(errs.join("\n")).toContain("local branch restored");
+    expect(sh(dir, ["rev-parse", "HEAD"])).toBe(before);
+    // old code: reset --hard threw the saved change away
+    expect(readFileSync(join(dir, "x.txt"), "utf8").trim()).toBe("saved-meanwhile");
+  });
+
+  it("a refused push leaves the branch alone when the user committed meanwhile", async () => {
+    const { dir } = onFeature();
+    const hook = join(dir, ".git", "hooks", "pre-push");
+    const { writeFileSync, chmodSync } = await import("node:fs");
+    writeFileSync(hook, "#!/bin/sh\necho later > later.txt\ngit add later.txt\ngit -c user.name=T -c user.email=t@e.x commit -q -m 'feat: while pushing'\nexit 1\n");
+    chmodSync(hook, 0o755);
+    const { ctx, errs } = ctxFor(dir, fakeFetch([]).fn);
+    await main(["branch", "update"], ctx, commands);
+    expect(errs.join("\n")).toContain("left as it is");
+    expect(sh(dir, ["log", "-1", "--format=%s"])).toBe("feat: while pushing");
+  });
+});

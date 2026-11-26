@@ -74,9 +74,10 @@ export class BehindManager {
         const res = await updateRepo(this.d.cli, this.d.git, f);
         out.updated.push(res);
         ui.changed(f.path);
-        if (res.ok && res.before) {
+        if (res.ok && res.before && res.after && res.after !== res.before) {
           const before = res.before;
-          ui.said(`${res.line} · Undo`, { label: `Update ${f.name} from ${f.target}`, run: () => undoUpdate(this.d.git, { name: f.name, path: f.path, branch: f.branch, before }) });
+          const after = res.after;
+          ui.said(`${res.line} · Undo`, { label: `Update ${f.name} from ${f.target}`, run: () => undoUpdate(this.d.git, { name: f.name, path: f.path, branch: f.branch, before, after }) });
           out.messages.push(`${res.line} · Undo`);
         } else {
           ui.said(res.line);
