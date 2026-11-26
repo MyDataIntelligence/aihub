@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as vscode from "vscode";
-import { forgetScan, setOfStory } from "../../../cli/src/lib/machineScan";
+import { forgetScan, headBranchOf, setOfStory } from "../../../cli/src/lib/machineScan";
 import { pathKey, readRecentUse } from "../../../cli/src/lib/recentUse";
 import { divergenceKey, divergenceMessage, divergences, markDivergenceSeen, seenDivergence, type Divergence } from "../../../cli/src/lib/setDivergence";
 import { readSetFile, stampStoryTitle } from "../../../cli/src/lib/setFile";
@@ -11,7 +11,8 @@ import { readSeenStories } from "../../../cli/src/lib/storyCache";
 import { readJson } from "../cli";
 import { cli, runner } from "./runner";
 import type { OpenResultJson } from "../repoSetModel";
-import { answerExisting, askCloneCheckedOut, showOpened } from "../repoSetUi";
+import { answerExisting, askCloneCheckedOut, askSmartCheckout, showOpened } from "../repoSetUi";
+import { dirtyFiles, fileList, smartCheckout } from "./smartCheckout";
 import type { StoryJson } from "../storyModel";
 import { BarEngine, openFacts, storyBranchesOf, titleFromFiles } from "./engine";
 import { nextStoryBranch, openStoryArgs, rowDescription, storyNumberOf, storyPickRows, storyRepoRows, type StoryRef, type StoryRepoRow } from "./storyModel";
@@ -259,7 +260,26 @@ async function switchInRun(h: StoryHooks, repo: string, branch: string, path: st
   const first = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `${repo}: switching to ${branch}...` }, () => cli(args, path));
   const out = await answerExisting(first, (extra) => cli([...args, ...extra], path), { ownWindow: true });
   if (out === undefined) return false;
-  const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
+  let res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
+  // local changes in the way: the question PyCharm asks (which files, Smart Checkout or not), never a command line
+  const blocked = res.repos.find((r) => r.state === "skipped" && /uncommitted/.test(r.note));
+  if (blocked) {
+    const files = await dirtyFiles(gitRun, path);
+    if (!(await askSmartCheckout(branch, files, fileList))) return false;
+    const done = await smartCheckout(gitRun, {
+      path,
+      oldBranch: headBranchOf(path) ?? "",
+      run: async () => {
+        const again = await cli(args, path);
+        res = JSON.parse(again.slice(again.indexOf("{"))) as OpenResultJson;
+        return res.repos.every((r) => r.ok);
+      },
+    }).catch((e: Error) => ({ ok: false, problem: e.message }));
+    if (!done.ok) {
+      void vscode.window.showWarningMessage(`AI Context Hub: ${done.problem ?? "the switch did not happen"}.`);
+      return false;
+    }
+  }
   // the branch is checked out in the clone itself: nothing changed; a short question, never a command line
   const clone = res.repos.find((r) => r.checkedOutIn);
   if (clone?.checkedOutIn) {

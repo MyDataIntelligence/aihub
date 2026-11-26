@@ -166,6 +166,15 @@ export async function askCloneCheckedOut(branch: string, path: string): Promise<
   return true;
 }
 
+/** The question PyCharm asks when local changes are in the way of a checkout: which files, Smart Checkout or not. */
+export async function askSmartCheckout(branch: string, files: string[], fileList: (f: string[]) => string): Promise<boolean> {
+  const smart = "Smart Checkout";
+  const go = await vscode.window.showWarningMessage(`AI Context Hub: your local changes would be in the way of ${branch}`, { modal: true, detail: `${fileList(files)}
+
+Smart Checkout carries them along to ${branch}; when they do not fit there, everything goes back as it was.` }, smart, "Don't Checkout");
+  return go === smart;
+}
+
 export async function showOpened(res: OpenResultJson, window: "new" | "this", log: (l: string) => void, meta?: OpenMeta): Promise<boolean> {
   const sum = summarizeOpen(res);
   const detail = sum.lines.join("\n");

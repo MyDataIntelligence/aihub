@@ -12,6 +12,7 @@ import { cli, jsonOf } from "./runner";
 import { RemoteRepos } from "./remoteRepos";
 import { registerSearchCommands } from "./searchUi";
 import { SizeMemo } from "./setSize";
+import { plainError } from "./plainError";
 import { hideClone, setPreferredClone } from "./hiddenClones";
 import { BehindMemo, gitStatusOf, targetOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
 import { registerCloneCommands } from "./cloneUi";
@@ -425,7 +426,10 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
       });
       return;
     }
-    void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+    const plain = plainError((e as Error).message);
+    void vscode.window.showErrorMessage(`AI Context Hub: ${plain.text}.`, "Show Details").then((pick) => {
+      if (pick === "Show Details") void vscode.window.showErrorMessage("AI Context Hub: details", { modal: true, detail: plain.details });
+    });
   };
   const reg = (id: string, f: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, (...a) => Promise.resolve(f(...a)).catch(fail)));
 
