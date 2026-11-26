@@ -82,7 +82,8 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     unpushed.set(path, { at: Date.now(), n });
     return n;
   };
-  const sizes = new SizeMemo();
+  // the sizes are kept in a file with their time (a set is measured at most once a day), never measured while the window has no focus
+  const sizes = new SizeMemo(undefined, { file: join(configHome(process.env), "sizes.json"), focused: () => vscode.window.state.focused });
   // behind the target branch: a fetch of the target per repository after each other, the question or the update as aiContextHub.behindTarget says
   let openedChecked = false;
   const activatedAt = Date.now();
@@ -165,6 +166,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     // behind the target is only counted after the target was fetched in this window (no count of a stale ref, no extra process before)
     statusOf: async (path, name) => ({ ...(gitStatusOf(gitRepos() ?? [], path) ?? {}), ...(behindMgr.gate.has(path) ? await behind.behind(path, name).then((n) => (n === undefined ? {} : { behindTarget: n })) : {}) }),
     prOf: (repo, branch) => prOfBranch(prs.get(), repo, branch),
+    prsKnown: () => prs.get().length > 0,
   });
   const emitter = new vscode.EventEmitter<void>();
   let debounce: NodeJS.Timeout | undefined;
@@ -323,7 +325,7 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   });
 
   // the left menu opens: measure the sets in the background, the state gets the sizes as they come in
-  reg(BAR_COMMANDS.measureSets, () => void engine.measureSets(changed).catch(() => undefined));
+  reg(BAR_COMMANDS.measureSets, (arg?: { force?: boolean }) => void engine.measureSets(changed, { force: arg?.force === true }).catch(() => undefined));
   // the clean-up dialog opens: now the uncommitted work of the sets that can be removed is looked at
   reg(BAR_COMMANDS.checkClean, () => void engine.checkClean(changed).catch(() => undefined));
 
