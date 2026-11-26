@@ -617,6 +617,76 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.browseProjects",
+        "title": "Repositories: Projects",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseProject",
+        "title": "Repositories: Project Page",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseRepo",
+        "title": "Repositories: Repository Page",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseItems",
+        "title": "Repositories: Folder",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseFile",
+        "title": "Repositories: File",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseBranches",
+        "title": "Repositories: Branches",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseHistory",
+        "title": "Repositories: History",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseDiff",
+        "title": "Repositories: Commit Diff",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseBlame",
+        "title": "Repositories: Annotate",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseFind",
+        "title": "Repositories: Go to File",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseSearch",
+        "title": "Repositories: Search Code",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseSuggestBranch",
+        "title": "Repositories: Suggest Branch Name",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browsePush",
+        "title": "Repositories: Save to a New Branch",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseRetryNow",
+        "title": "Repositories: Try Again Now",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.commitAll",
         "title": "Commit All Repositories of the Set...",
         "category": "AI Context Hub"
@@ -1590,6 +1660,62 @@
         },
         {
           "command": "aihub.bar.pipelineRetryNow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseProjects",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseProject",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseRepo",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseItems",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseFile",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseBranches",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseHistory",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseDiff",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseBlame",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseFind",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseSearch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseSuggestBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browsePush",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseRetryNow",
           "when": "false"
         }
       ],

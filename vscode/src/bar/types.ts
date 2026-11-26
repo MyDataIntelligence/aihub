@@ -281,4 +281,35 @@ export const BAR_COMMANDS = {
   pipelineFix: "aihub.bar.pipelineFix",
   /** forget the remembered failures (after az login or a CLI update) */
   pipelineRetryNow: "aihub.bar.pipelineRetryNow",
+  // ---- repository browser (one aihub process each, JSON as in docs/cli-json.md "Repository browser"; a failure is
+  // `{ error: { kind, message } }`, kind signedOut|noAccess|notFound|searchUnavailable|protectedBranch|branchExists|offline|badInput|
+  // failed|cliMissing|cliTooOld, never a popup; the lasting kinds are remembered 5 minutes; nothing polls) ----
+  /** `{ org?, refresh? }` -> `aihub browse projects`: every project and repository you can read, with the clone on this PC */
+  browseProjects: "aihub.bar.browseProjects",
+  /** `{ project, days?, org?, refresh? }` -> `aihub browse project`: repositories with language and last activity, recent files, active authors */
+  browseProject: "aihub.bar.browseProject",
+  /** `{ project, repo, ref?, org?, refresh? }` -> `aihub browse repo`: README, root with last commits, branches, open PRs, commits, pipelines; `errors[]` per failed part */
+  browseRepo: "aihub.bar.browseRepo",
+  /** `{ project, repo, path?, ref?, lastCommit? }` -> `aihub browse items`: one folder level; `ref.commit` is the stable key */
+  browseItems: "aihub.bar.browseItems",
+  /** `{ project, repo, path, ref?, maxBytes? }` -> `aihub browse file`: content (null when binary or too large), objectId, lastCommit, webUrl */
+  browseFile: "aihub.bar.browseFile",
+  /** `{ project, repo, filter?, top? }` -> `aihub browse branches`: default, mine, the rest; tags */
+  browseBranches: "aihub.bar.browseBranches",
+  /** `{ project, repo, path?, ref?, top?, skip? }` -> `aihub browse history`: commits newest first, `more` */
+  browseHistory: "aihub.bar.browseHistory",
+  /** `{ project, repo, commit, path }` -> `aihub browse diff`: before, after and hunks of one file in one commit */
+  browseDiff: "aihub.bar.browseDiff",
+  /** `{ project, repo, path, ref? }` -> `aihub browse blame`: per line its commit (only for a clone on this PC; otherwise `available: false`) */
+  browseBlame: "aihub.bar.browseBlame",
+  /** `{ query, top?, repos? }` -> `aihub browse find` (Ctrl+P): file names over all repositories, `route` codeSearch or treeCache */
+  browseFind: "aihub.bar.browseFind",
+  /** `{ text, project?, repo?, path?, ext?, top? }` -> `aihub browse search`: matching lines per file; `searchUnavailable` without Code Search */
+  browseSearch: "aihub.bar.browseSearch",
+  /** `{ story?, path, title? }` -> `aihub browse suggest-branch`: `{ branch }` (no network) */
+  browseSuggestBranch: "aihub.bar.browseSuggestBranch",
+  /** `{ project, repo, path, baseCommit, baseBranch, content, branch, message, pr?, target?, story?, prTitle?, draft?, rebase? }` -> `aihub browse push`: `status: pushed` or `status: conflict` (rebase: true = Rebase my change); protectedBranch and branchExists are errors */
+  browsePush: "aihub.bar.browsePush",
+  /** forget the remembered failures (after az login or a CLI update) */
+  browseRetryNow: "aihub.bar.browseRetryNow",
 } as const;
