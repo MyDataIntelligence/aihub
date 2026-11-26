@@ -279,3 +279,23 @@ export class PrMemo {
 /** A branch of the story: linked in the story's files or named after it (the story number first in the name). */
 export const isStoryBranch = (story: number, branch: string, linked: string[]): boolean => !!story && (linked.includes(branch) || branchNamedForStory(branch, story));
 
+
+/** `branches.protected` of team.yaml (an inline list or a block list): branches nothing here pushes. Files only. */
+export function protectedBranches(path: string): string[] {
+  try {
+    const lines = readFileSync(join(path, TEAM_YAML), "utf8").replace(/\r\n/g, "\n").split("\n");
+    const i = lines.findIndex((l) => /^\s+protected:/.test(l));
+    if (i < 0) return [];
+    const inline = /^\s+protected:\s*\[(.*)\]/.exec(lines[i]);
+    if (inline) return inline[1].split(",").map((x) => x.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+    const out: string[] = [];
+    for (let k = i + 1; k < lines.length; k++) {
+      const m = /^\s+-\s+(\S+)/.exec(lines[k]);
+      if (!m) break;
+      out.push(m[1].replace(/^["']|["']$/g, ""));
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}

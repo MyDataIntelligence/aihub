@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { forgetScan } from "../../../cli/src/lib/machineScan";
 import { createPullRequests, prOffers } from "./createPrs";
-import { targetInfo, targetOf } from "./repoStatus";
+import { protectedBranches, targetInfo } from "./repoStatus";
 
 /** The target to pass as --target: only when team.yaml or the set file names it; else the CLI derives its own. */
 const sureTarget = (path: string, name: string): string | undefined => {
@@ -49,22 +49,46 @@ export function registerBatchCommands(h: StoryHooks): void {
   });
 
   h.reg("aihub.bar.pushAll", async (arg?: { repos?: string[] }) => {
-    const repos = reposOf(arg?.repos);
-    if (!repos.length) return [];
-    const results = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Pushing ${repos.length} ${repos.length === 1 ? "repository" : "repositories"}...` }, () => eachRepo(repos, (r) => pushOne(gitRun, r, targetOf(r.path, r.name))));
+    // only the repositories that are on a story branch of the set, each pushed as <its branch> -> origin/<its branch>; never main, master, the target or a protected branch
+    const state = await h.engine.state();
+    const story = new Set(state.repos.filter((r) => r.storyBranch).map((r) => r.name.toLowerCase()));
+    const all = reposOf(arg?.repos);
+    const repos = all.filter((r) => story.has(r.name.toLowerCase()));
+    const left = all.filter((r) => !story.has(r.name.toLowerCase())).map((r) => ({ repo: r.name, ok: true, line: `${r.name}: not on a story branch of the set, left alone` }));
+    if (!all.length) return [];
+    const setFolder = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.folder;
+    const done = repos.length
+      ? await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Pushing ${repos.length} ${repos.length === 1 ? "repository" : "repositories"}...` }, () =>
+          eachRepo(repos, (r) => pushOne(gitRun, r, { protect: ["main", "master", targetInfo(r.path, r.name, { setFolder }).target, ...protectedBranches(r.path)] })),
+        )
+      : [];
+    const results = [...done, ...left];
     await report(h, "Push all", results);
     return results;
   });
 
-  h.reg("aihub.bar.commitAll", async (arg?: { message?: string; repos?: string[]; push?: boolean }) => {
-    const repos = reposOf(arg?.repos);
+  h.reg("aihub.bar.commitAll", async (arg?: { message?: string; repos?: (string | { name: string; files?: string[] })[]; push?: boolean }) => {
+    // only what is named: a repository that is not in the list is never touched; without a list the user ticks the repositories that have changes
+    let named = (arg?.repos ?? []).map((x) => (typeof x === "string" ? { name: x } : x));
+    if (!named.length) {
+      const state = await h.engine.state();
+      const changed = state.repos.filter((r) => (r.changes ?? r.dirty ?? 0) > 0);
+      if (!changed.length) return void vscode.window.showInformationMessage("AI Context Hub: no repository of this window has changes to commit.");
+      type Row = vscode.QuickPickItem & { name: string };
+      const rows: Row[] = changed.map((r) => ({ label: r.name, description: `${r.changes ?? r.dirty} changed file${(r.changes ?? r.dirty) === 1 ? "" : "s"} on ${r.branch}`, picked: true, name: r.name }));
+      const chosen = await vscode.window.showQuickPick(rows, { title: "Commit: which repositories?", placeHolder: "Tick the repositories to commit; every change of a ticked repository is committed", canPickMany: true });
+      named = (chosen ?? []).map((c) => ({ name: c.name }));
+      if (!named.length) return [];
+    }
+    const byName = new Map(named.map((n) => [n.name.toLowerCase(), n.files]));
+    const repos = reposOf(named.map((n) => n.name)).map((r) => ({ ...r, files: byName.get(r.name.toLowerCase()) }));
     if (!repos.length) return [];
     let message = arg?.message?.trim();
     if (!message) {
       message = (await vscode.window.showInputBox({ title: `Commit ${repos.length} ${repos.length === 1 ? "repository" : "repositories"}`, prompt: "One message for every ticked repository (feat: what changed)", validateInput: (v) => (v.trim() ? undefined : "Enter a message") }))?.trim();
       if (!message) return [];
     }
-    const results = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Committing..." }, () => eachRepo(repos, (r) => commitOne(cli, r, message!, !!arg?.push), 1));
+    const results = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Committing..." }, () => eachRepo(repos, (r) => commitOne(cli, r, message!, !!arg?.push, gitRun), 1));
     await report(h, arg?.push ? "Commit and push all" : "Commit all", results);
     return results;
   });

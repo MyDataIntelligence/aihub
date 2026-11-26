@@ -10,6 +10,8 @@ import type { GitRun } from "./ownWindow";
 export interface RepoRef {
   name: string;
   path: string;
+  /** commit exactly these files (relative paths); absent: every change of this repository */
+  files?: string[];
 }
 
 export interface RepoResult {
@@ -70,15 +72,19 @@ export async function updateOne(git: GitRun, r: RepoRef): Promise<RepoResult> {
 }
 
 /** `git push` in one repository; a branch without a remote branch gets one (`--set-upstream origin HEAD`). */
-export async function pushOne(git: GitRun, r: RepoRef, target?: string): Promise<RepoResult> {
-  // the target branch (staging, main) is never pushed from here: it goes through a pull request
-  if (target && headBranchOf(r.path) === target) return { repo: r.name, ok: true, line: `${r.name}: on ${target}, the target branch: left alone` };
+export async function pushOne(git: GitRun, r: RepoRef, o: { protect?: string[] } = {}): Promise<RepoResult> {
+  const branch = headBranchOf(r.path);
+  if (!branch) return { repo: r.name, ok: false, line: `${r.name}: detached HEAD, nothing was pushed (check out a branch first)` };
+  // the target and the protected branches (main, master, staging, team.yaml) are never pushed from here: they go through a pull request
+  if ((o.protect ?? []).some((p) => p.toLowerCase() === branch.toLowerCase())) return { repo: r.name, ok: true, line: `${r.name}: on ${branch}, a protected or target branch: left alone` };
   try {
-    const hasUpstream = await git(r.path, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).then(() => true, () => false);
-    const ahead = hasUpstream ? Number((await git(r.path, ["rev-list", "--count", "@{u}..HEAD"])).trim()) : 1;
-    if (hasUpstream && ahead === 0) return { repo: r.name, ok: true, line: `${r.name}: nothing to push` };
-    const out = await git(r.path, hasUpstream ? ["push"] : ["push", "--set-upstream", "origin", "HEAD"]);
-    return { repo: r.name, ok: true, line: hasUpstream ? `${r.name}: pushed ${ahead} commit${ahead === 1 ? "" : "s"}` : `${r.name}: pushed, new remote branch`, detail: first(out) };
+    // the branch itself, spelled out: never what push.default would pick (upstream, matching), never another branch
+    const remote = await git(r.path, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}`]).then((o) => o.trim(), () => "");
+    const ahead = remote ? Number((await git(r.path, ["rev-list", "--count", `origin/${branch}..HEAD`])).trim()) : 1;
+    if (remote && ahead === 0) return { repo: r.name, ok: true, line: `${r.name}: nothing to push` };
+    const tracked = await git(r.path, ["config", "--get", `branch.${branch}.merge`]).then(() => true, () => false);
+    const out = await git(r.path, ["push", ...(tracked ? [] : ["--set-upstream"]), "origin", `HEAD:refs/heads/${branch}`]);
+    return { repo: r.name, ok: true, line: remote ? `${r.name}: pushed ${ahead} commit${ahead === 1 ? "" : "s"}` : `${r.name}: pushed, new remote branch`, detail: first(out) };
   } catch (e) {
     const t = errText(e);
     return { repo: r.name, ok: false, line: `${r.name}: not pushed, ${first(t, 1)}`, detail: t };
@@ -95,9 +101,21 @@ export function parseMessage(message: string): { type?: string; scope?: string; 
  * One commit with `aihub commit` in one repository: the CLI stages, builds the message from the team's format, runs the
  * hooks and explains a failing hook with its choices; that explanation is this repository's line. `cli` runs in the repository.
  */
-export async function commitOne(cli: (args: string[], cwd: string) => Promise<string>, r: RepoRef, message: string, push: boolean): Promise<RepoResult> {
+export async function commitOne(cli: (args: string[], cwd: string) => Promise<string>, r: RepoRef, message: string, push: boolean, git?: GitRun): Promise<RepoResult> {
   const m = parseMessage(message);
-  const args = ["commit", ...(m.type ? ["--type", m.type] : []), ...(m.scope ? ["--scope", m.scope] : []), "--subject", m.subject, ...(push ? ["--push"] : []), "--json"];
+  // exactly the listed files: they are added by name, nothing else is added, and files that are staged already but not listed stop it
+  const only = r.files?.length && git ? r.files : undefined;
+  if (only && git) {
+    try {
+      await git(r.path, ["add", "--", ...only]);
+      const staged = (await git(r.path, ["diff", "--cached", "--name-only", "-z"])).split(String.fromCharCode(0)).filter(Boolean);
+      const extra = staged.filter((f) => !only.includes(f));
+      if (extra.length) return { repo: r.name, ok: false, line: `${r.name}: ${extra.length} other file${extra.length === 1 ? " is" : "s are"} staged already (${extra.slice(0, 3).join(", ")}); unstage ${extra.length === 1 ? "it" : "them"} or leave the file list out`, detail: extra.join("\n") };
+    } catch (e) {
+      return { repo: r.name, ok: false, line: `${r.name}: ${first(errText(e), 1)}`, detail: errText(e) };
+    }
+  }
+  const args = ["commit", ...(m.type ? ["--type", m.type] : []), ...(m.scope ? ["--scope", m.scope] : []), "--subject", m.subject, ...(only ? ["--no-add"] : []), ...(push ? ["--push"] : []), "--json"];
   try {
     const out = await cli(args, r.path);
     const j = JSON.parse(out.slice(out.indexOf("{"))) as { sha?: string; files?: number; pushed?: boolean };
