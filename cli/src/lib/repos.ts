@@ -9,9 +9,10 @@ import { mustGit, refSha, tryGit } from "./gitx.js";
 import type { TeamConfig } from "./team.js";
 import { findStoryBranchName } from "./branches.js";
 import { samePath } from "./cloneChoice.js";
-import { remoteOf } from "./machineScan.js";
+import { readLookIn, remoteOf } from "./machineScan.js";
 import { repoNameOfUrl } from "./repoName.js";
 import { readPreferredClones } from "./repoPicker.js";
+import { cloneNotFoundMessage, findCloneByIdentity } from "./findClone.js";
 
 export interface RepoDir {
   name: string;
@@ -71,7 +72,17 @@ export function resolveRepoDirs(names: string[], currentRoot: string, team: Team
       }
       if (found) break;
     }
-    if (!found) throw new AihubError(`repository '${n}' not found next to ${currentRoot}; clone it there, or set repositories[].path in team.yaml`);
+    // no folder with exactly that name: the clone whose remote is that repository, then a loose folder-name match (Repo X = repo_x)
+    if (!found) {
+      const names = aliasOf(n);
+      const lookIn = (readLookIn(env) ?? []).map((r) => resolve(r));
+      const known = [currentRoot, ...Object.values(prefer)];
+      for (const cand of names) {
+        found = findCloneByIdentity(cand, [...searchRoots, ...lookIn], known);
+        if (found) break;
+      }
+    }
+    if (!found) throw new AihubError(cloneNotFoundMessage(n, currentRoot));
     out.push({ name: n, dir: found });
   }
   return out;
