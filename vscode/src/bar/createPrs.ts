@@ -1,3 +1,4 @@
+import { unfit } from "./batch";
 import type { BarRepo } from "./types";
 
 /**
@@ -45,6 +46,11 @@ type Cli = (args: string[], cwd: string) => Promise<string>;
 export async function createPullRequests(cli: Cli, picked: { name: string; path: string; target?: string }[], story: number): Promise<{ results: PrResult[]; linked?: string }> {
   const results: PrResult[] = [];
   for (const r of picked) {
+    const why = unfit(r.path);
+    if (why) {
+      results.push({ repo: r.name, ok: false, line: `${r.name}: ${why}` });
+      continue;
+    }
     try {
       const out = await cli(["pr", "create", "--work-item", String(story), ...(r.target ? ["--target", r.target] : []), "--json"], r.path);
       const j = JSON.parse(out.slice(out.indexOf("{"))) as { id?: number; url?: string; action?: string };

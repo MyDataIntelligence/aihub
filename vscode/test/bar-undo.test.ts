@@ -280,3 +280,15 @@ describe("Undo never throws away commits", () => {
     expect(sh(w.repos[1].source, "branch", "--list", "feature/5-new")).toContain("feature/5-new");
   });
 });
+
+describe("Undo during a merge or a rebase", () => {
+  it("is refused with the name of the repository, nothing done", async () => {
+    const w = world();
+    const snap = await takeSnapshot(gitRun, w.folder, "Switch Repo A to feature/5-y");
+    sh(w.repos[0].path, "switch", "feature/5-y");
+    writeFileSync(join(sh(w.repos[0].path, "rev-parse", "--git-dir").trim().replace(/^(?!.*:)/, w.repos[0].path + "/"), "MERGE_HEAD"), sh(w.repos[0].path, "rev-parse", "HEAD"));
+    const plan = await planUndo(gitRun, snap);
+    expect(plan.problem).toBe("a merge is in progress in Repo A; finish or abort it first");
+    expect(plan.steps).toEqual([]);
+  });
+});

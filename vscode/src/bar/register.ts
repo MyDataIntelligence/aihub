@@ -19,6 +19,7 @@ import { BehindManager } from "./behindRun";
 import { FETCH_FRESH_MS, Told } from "./behind";
 import { gitRaw } from "./ownWindow";
 import { configHome } from "../../../cli/src/lib/configHome";
+import { writeAtomic } from "../../../cli/src/lib/setFile";
 import { openPath, windowIsEmpty } from "./window";
 import { BAR_COMMANDS, type BarApi, type BarState } from "./types";
 
@@ -101,7 +102,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       (keys) => {
         try {
           mkdirSync(configHome(process.env), { recursive: true });
-          writeFileSync(toldFile, JSON.stringify({ keys }));
+          writeAtomic(toldFile, JSON.stringify({ keys }));
         } catch {
           /* a note that is not kept only means the same stand is told again */
         }

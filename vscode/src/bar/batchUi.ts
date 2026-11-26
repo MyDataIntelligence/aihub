@@ -43,7 +43,7 @@ export function registerBatchCommands(h: StoryHooks): void {
   h.reg("aihub.bar.pushAll", async (arg?: { repos?: string[] }) => {
     const repos = reposOf(arg?.repos);
     if (!repos.length) return [];
-    const results = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Pushing ${repos.length} ${repos.length === 1 ? "repository" : "repositories"}...` }, () => eachRepo(repos, (r) => pushOne(gitRun, r)));
+    const results = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Pushing ${repos.length} ${repos.length === 1 ? "repository" : "repositories"}...` }, () => eachRepo(repos, (r) => pushOne(gitRun, r, targetOf(r.path, r.name))));
     await report(h, "Push all", results);
     return results;
   });

@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { headBranchOf } from "../../../cli/src/lib/machineScan";
 import { AIHUB_SET, MAKER_SET, readSetFile } from "../../../cli/src/lib/setFile";
 import { gitCommonDir } from "../../../cli/src/lib/storyWorktrees";
-import { headSha } from "./behind";
+import { headSha, operationInProgress } from "./behind";
 import { branchesOf, worktreesOf, type GitRun } from "./ownWindow";
 
 /**
@@ -136,6 +136,10 @@ export async function planUndo(git: GitRun, s: Snapshot): Promise<UndoPlan> {
   for (const src of sources) now.set(src, await worktreesOf(git, src).catch(() => []));
   const clean = async (p: string) => (await git(p, ["status", "--porcelain", "--untracked-files=no"]).catch(() => "x")).trim() === "";
 
+  for (const r of s.repos) {
+    const busy = existsSync(r.path) ? operationInProgress(r.path) : undefined;
+    if (busy) return nothing(`${busy} is in progress in ${r.name}; finish or abort it first`);
+  }
   for (const r of s.repos) {
     const list = now.get(r.source) ?? [];
     const here = list.find((w) => key(w.path) === key(r.path));
