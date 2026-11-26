@@ -18,14 +18,14 @@ export interface FieldLayout {
 export const DEFAULT_LAYOUT: FieldLayout = { primary: DESCRIPTION, acceptance: ACCEPTANCE_FIELD };
 
 /**
- * The one rule: a type whose form has no System.Description but has Microsoft.VSTS.TCM.ReproSteps (a Bug) keeps its text in
- * ReproSteps. `typeFields` are the reference names of the type's fields; without them (API unavailable) a Bug is assumed to be
+ * The one rule: a type that has Microsoft.VSTS.TCM.ReproSteps (a Bug) keeps its text in ReproSteps, also when its field list
+ * holds System.Description (a core field of nearly every type that the Bug form does not show). `typeFields` are the reference names of the type's fields; without them (API unavailable) a Bug is assumed to be
  * such a type, and acceptance criteria stay in the main text because the field may not exist.
  */
 export function layoutFor(type: string, typeFields: string[] | undefined): FieldLayout {
   if (typeFields) {
     const has = (f: string) => typeFields.some((x) => x.toLowerCase() === f.toLowerCase());
-    const primary = !has(DESCRIPTION) && has(REPRO_FIELD) ? REPRO_FIELD : DESCRIPTION;
+    const primary = has(REPRO_FIELD) ? REPRO_FIELD : DESCRIPTION;
     return { primary, acceptance: has(ACCEPTANCE_FIELD) ? ACCEPTANCE_FIELD : primary };
   }
   return /^bug$/i.test(type) ? { primary: REPRO_FIELD, acceptance: REPRO_FIELD } : DEFAULT_LAYOUT;

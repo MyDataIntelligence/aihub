@@ -22,10 +22,10 @@ function repo(team = "") {
 }
 
 describe("one rule for the main text field of a type", () => {
-  it("a type without Description but with ReproSteps keeps its text in ReproSteps", () => {
+  it("a type with ReproSteps keeps its text in ReproSteps", () => {
     expect(layoutFor("Bug", BUG_FIELDS.map((f) => f.referenceName)).primary).toBe(REPRO);
     expect(layoutFor("Task", TASK_FIELDS.map((f) => f.referenceName))).toEqual({ primary: "System.Description", acceptance: "System.Description" });
-    expect(layoutFor("Bug", ["System.Description", REPRO]).primary).toBe("System.Description");
+    expect(layoutFor("Bug", ["System.Description", REPRO]).primary).toBe(REPRO); // as the API really answers: Description is in the list although the form hides it
   });
   it("without the type fields a Bug is assumed to use ReproSteps and everything else Description", () => {
     expect(layoutFor("bug", undefined).primary).toBe(REPRO);
