@@ -53,6 +53,8 @@ export interface StateInput {
   size?: (s: ScanSet) => { bytes: number; at: number; lowerBound?: boolean } | undefined;
   /** the Azure DevOps repositories that are not on this PC (BarState.remote) */
   remote?: BarRemote;
+  /** the source clone of the worktree at this path is gone */
+  sourceMissing?: (path: string) => boolean;
   /** every repository of the set has a merged pull request, from the pull request list only; undefined when the list is not known */
   prsMerged?: (s: ScanSet) => boolean | undefined;
   /** every pull request merged and nothing to lose (worked out by the engine for the sets that can be offered) */
@@ -107,7 +109,7 @@ export function buildState(i: StateInput): BarState {
     sets.unshift({ id: open.set.folder, ...(open.set.story ? { story: open.set.story } : {}), label: setLabel(open.set, i.stories), repos: open.set.repos.length, open: true });
   }
 
-  const repositories: BarRepository[] = i.scan.repos.map((r) => ({ name: r.name, path: r.path, branch: r.branch, ...(r.otherClones?.length ? { otherClones: r.otherClones.length } : {}) }));
+  const repositories: BarRepository[] = i.scan.repos.map((r) => ({ name: r.name, path: r.path, branch: r.branch, ...(r.otherClones?.length ? { otherClones: r.otherClones.length, ...(r.clones ? { clones: r.clones.map((c) => ({ path: c.path, branch: c.branch, chosen: pathKey(c.path) === pathKey(r.path) })) } : {}) } : {}) }));
   if (open.repo && !repositories.some((r) => pathKey(r.path) === pathKey(open.repo!.path))) repositories.push({ ...open.repo });
   repositories.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -128,6 +130,7 @@ export function buildState(i: StateInput): BarState {
         name: r.name,
         path: r.path,
         branch: r.branch,
+        ...(i.sourceMissing?.(r.path) ? { sourceMissing: true as const } : {}),
         ...(linked !== undefined ? { linked } : {}),
         ...(dirty !== undefined ? { dirty, changes: dirty } : {}),
         ...(st?.ahead !== undefined ? { ahead: st.ahead } : {}),

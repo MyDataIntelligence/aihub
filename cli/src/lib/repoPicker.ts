@@ -89,6 +89,8 @@ export function remoteKey(url: string | undefined): string | undefined {
   return m ? `${m[1]}/${m[2]}`.toLowerCase() : undefined;
 }
 
+export { repoNameOfUrl } from "./repoName.js";
+
 /** When a clone was last used: the newest of .git/index and .git/HEAD (git writes them on status, commit, switch). */
 function usedAt(dir: string): number {
   let t = 0;
