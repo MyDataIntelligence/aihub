@@ -170,9 +170,21 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   });
   const emitter = new vscode.EventEmitter<void>();
   let debounce: NodeJS.Timeout | undefined;
+  // what the last state the buttons read looked like: an event goes out only when the state really differs (every listener reads git again per event)
+  let lastState: string | undefined;
   const changed = () => {
     clearTimeout(debounce);
-    debounce = setTimeout(() => emitter.fire(), 300);
+    debounce = setTimeout(() => {
+      void engine.state().then(
+        (s) => {
+          const now = JSON.stringify(s);
+          if (now === lastState) return;
+          lastState = now;
+          emitter.fire();
+        },
+        () => emitter.fire(),
+      );
+    }, 300);
   };
   const setFile = new SetFileWatcher({ log: deps.log, changed });
   const api: BarApi = {
@@ -180,14 +192,14 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       watchHeads();
       // opening a set (or its overview menu) reads the pull requests once, then they are remembered for minutes
       const f = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
-      if (f.set) void prs.refresh().then(changed);
+      if (f.set) void prs.refresh().then((read) => read && changed());
       // the first state of a window with a set or a repository: look at the target branch once (a fetch per repository, never without focus)
       if ((f.set || f.repo) && !openedChecked) {
         openedChecked = true;
         // a few seconds after the window opened, never before: the first state and every click come first
         setTimeout(() => void behindMgr.run("open"), openCheckDelay(activatedAt, Date.now()));
       }
-      return engine.state();
+      return engine.state().then((s) => ((lastState = JSON.stringify(s)), s));
     },
     onDidChangeState: emitter.event,
   };
@@ -404,7 +416,7 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   registerStoryCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   // after an own Update or Push the stand against the target is looked at again
   registerBatchCommands({ engine, log: deps.log, changed, reg, afterGit: () => (behind.forget(), void mgr.run("own")) });
-  registerPullRequestCommand({ engine, log: deps.log, changed, reg, refreshPrs: () => prs.refresh(true) });
+  registerPullRequestCommand({ engine, log: deps.log, changed, reg, refreshPrs: () => prs.refresh(true).then(() => undefined) });
   registerUndoCommand({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerSetOps({ engine, log: deps.log, changed, reg });
 }

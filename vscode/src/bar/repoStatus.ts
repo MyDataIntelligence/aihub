@@ -191,7 +191,7 @@ export const targetOf = (path: string, name: string, o: { setFolder?: string } =
 
 /** How far behind the target each repository is: one `git rev-list --count` after a HEAD change, then remembered until forget(). */
 export class BehindMemo {
-  private seen = new Map<string, { at: string; n: Promise<number | undefined> }>();
+  private seen = new Map<string, { at: string; n: Promise<number | undefined>; failed?: boolean }>();
   constructor(private git: GitRun) {}
 
   /**
@@ -208,14 +208,19 @@ export class BehindMemo {
       (out) => Number(out.trim()) || 0,
       () => undefined,
     );
-    this.seen.set(k, { at, n: p });
+    const entry: { at: string; n: Promise<number | undefined>; failed?: boolean } = { at, n: p };
+    void p.then((v) => void (entry.failed = v === undefined));
+    this.seen.set(k, entry);
     return p;
   }
 
-  /** HEAD of this repository moved (or everything: a refresh). */
+  /**
+   * One repository forgets its count. Without a path only the counts that failed are dropped: a good count is tied to the pair
+   * of commits it was made at, so a fetch, an update or an action changes the pair by itself and nothing is counted again for nothing.
+   */
   forget(path?: string): void {
     if (path) this.seen.delete(key(path));
-    else this.seen.clear();
+    else for (const [k, e] of this.seen) if (e.failed) this.seen.delete(k);
   }
 }
 
@@ -268,10 +273,10 @@ export class PrMemo {
     return this.rows;
   }
 
-  /** Reads again unless it was read less than PR_TTL_MS ago (`force`: the overview menu or a refresh asks). Never throws. */
-  refresh(force = false): Promise<void> {
-    if (this.running) return this.running;
-    if (!force && this.at && this.now() - this.at < PR_TTL_MS) return Promise.resolve();
+  /** Reads again unless it was read less than PR_TTL_MS ago (`force`: the overview menu or a refresh asks). Never throws. Resolves true when it read, false when the memory was still fresh (nothing changed, nobody needs telling). */
+  refresh(force = false): Promise<boolean> {
+    if (this.running) return this.running.then(() => false);
+    if (!force && this.at && this.now() - this.at < PR_TTL_MS) return Promise.resolve(false);
     // the build policies cost one read per active pull request: only when asked for (the overview menu, Create Pull Requests), never when a set opens
     this.running = this.fetch(force)
       .then((r) => void (this.rows = r))
@@ -280,7 +285,8 @@ export class PrMemo {
         this.at = this.now();
         this.running = undefined;
       });
-    return this.running;
+    const run = this.running;
+    return run.then(() => true);
   }
 }
 
