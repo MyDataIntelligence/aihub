@@ -25,3 +25,8 @@ export function whyNotTheClone(dir: string, repo: string): string | undefined {
   if (looseName(remote) !== looseName(repo)) return `That clone belongs to ${remote}, not to ${repo}.`;
   return undefined;
 }
+
+/** The failure text of the first repository of an open result whose clone could not be found (the CLI reports it per repository, not as an error); undefined when there is none. */
+export function lostCloneIn(repos: { ok: boolean; note: string }[]): string | undefined {
+  return repos.find((r) => !r.ok && missingCloneRepo(r.note))?.note;
+}
