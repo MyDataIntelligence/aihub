@@ -6,6 +6,7 @@ import { sh, write } from "./gitHelpers";
 
 const h = vi.hoisted(() => ({
   cliCalls: [] as { args: string[]; cwd: string }[],
+  delay: 0,
   messages: [] as string[],
   folder: "",
 }));
@@ -35,6 +36,7 @@ vi.mock("vscode", () => ({
 vi.mock("../src/bar/runner", () => ({
   cli: async (args: string[], cwd: string) => {
     h.cliCalls.push({ args, cwd });
+    if (h.delay) await new Promise((r) => setTimeout(r, h.delay));
     return JSON.stringify({ branch: "x", mode: "worktree", folder: "f", repos: [{ repo: args[args.indexOf("--repo") + 1], ok: true, state: "switched", branch: args[args.indexOf("--branch") + 1], note: "" }], opened: false, stays: "ok" });
   },
   runner: () => async () => "",
@@ -145,6 +147,27 @@ describe("the set file watcher acts only on what changed in the file", () => {
     await watcher.apply();
     expect(h.cliCalls).toEqual([]);
     expect(sh(w.repos[1].path, "branch", "--show-current").trim()).toBe("feature/5-y");
+    watcher.dispose();
+  });
+});
+
+describe("a change of the file while an apply is running is not lost (review G)", () => {
+  it("the second edit is read again when the first apply is done", async () => {
+    const w = world();
+    h.cliCalls.length = 0;
+    const watcher = new SetFileWatcher({ log: () => undefined, changed: () => undefined });
+    watcher.aim();
+    h.delay = 300;
+    w.write2([{ name: "repo-a", branch: "feature/5-x-2" }]);
+    const first = watcher.apply();
+    // while the switch of repo-a runs, the user edits repo-b in the file
+    await new Promise((r) => setTimeout(r, 50));
+    w.write2([{ name: "repo-a", branch: "feature/5-x-2" }, { name: "repo-b", branch: "feature/5-y" }]);
+    await watcher.apply();
+    await first;
+    await new Promise((r) => setTimeout(r, 1200));
+    h.delay = 0;
+    expect(h.cliCalls.map((c) => c.args[3])).toEqual(["repo-a", "repo-b"]);
     watcher.dispose();
   });
 });
