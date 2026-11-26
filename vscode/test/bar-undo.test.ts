@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { patchOfWork } from "../../cli/src/lib/workBackup";
 import { gitRun } from "../src/bar/ownWindow";
-import { newBackups, planUndo, runUndo, takeSnapshot } from "../src/bar/undo";
+import { finishSnapshot, newBackups, planUndo, runUndo, takeSnapshot } from "../src/bar/undo";
 import { sh, write } from "./gitHelpers";
 
 const NAMES = ["Repo A", "Repo B"];
@@ -53,6 +53,7 @@ function fingerprint(w: W, extra: string[] = []) {
 }
 
 async function undo(snap: Awaited<ReturnType<typeof takeSnapshot>>) {
+  finishSnapshot(snap);
   const plan = await planUndo(gitRun, snap);
   expect(plan.problem).toBeUndefined();
   const res = await runUndo(plan);
@@ -236,6 +237,7 @@ describe("Undo for a hand edit of the set file and for Open Story", () => {
     writeFileSync(join(folder, ".aihub-set.json"), JSON.stringify({ story: 7, branch: "feature/7-new", workspace: join(folder, "story-7.code-workspace"), repos: [{ name: "Repo A", source: w.repos[0].source, path: a }, { name: "Repo B", source: w.repos[1].source, path: b }] }));
     writeFileSync(join(folder, "story-7.code-workspace"), "{}");
     snap.setFolder = folder;
+    finishSnapshot(snap);
     return { snap, folder, a, b };
   }
 
@@ -260,7 +262,10 @@ describe("Undo for a hand edit of the set file and for Open Story", () => {
     sh(o.b, "add", "-A");
     sh(o.b, "commit", "-m", "later");
     const plan = await planUndo(gitRun, o.snap);
-    expect(plan.problem).toBe("feature/7-new has commits of its own since; they would be lost");
+    expect(plan.problem).toBe("the set changed since this action, in another window or by hand");
+    // without the stamp the made branch is still protected
+    delete o.snap.after;
+    expect((await planUndo(gitRun, o.snap)).problem).toBe("feature/7-new has commits of its own since; they would be lost");
     expect(plan.steps).toEqual([]);
     expect(existsSync(o.b)).toBe(true);
   });
@@ -275,6 +280,12 @@ describe("Undo never throws away commits", () => {
     sh(w.repos[1].path, "add", "-A");
     sh(w.repos[1].path, "commit", "-m", "later");
     w.writeSet([w.repos[0], { ...w.repos[1], branch: "feature/5-new" }]);
+    finishSnapshot(snap);
+    write(w.repos[1].path, "more.txt", "y");
+    sh(w.repos[1].path, "add", "-A");
+    sh(w.repos[1].path, "commit", "-m", "more");
+    expect((await planUndo(gitRun, snap)).problem).toBe("the set changed since this action, in another window or by hand");
+    delete snap.after;
     const plan = await planUndo(gitRun, snap);
     expect(plan.problem).toBe("feature/5-new has commits of its own since; they would be lost");
     expect(sh(w.repos[1].source, "branch", "--list", "feature/5-new")).toContain("feature/5-new");
@@ -290,5 +301,93 @@ describe("Undo during a merge or a rebase", () => {
     const plan = await planUndo(gitRun, snap);
     expect(plan.problem).toBe("a merge is in progress in Repo A; finish or abort it first");
     expect(plan.steps).toEqual([]);
+  });
+});
+
+describe("Undo is careful with what the user keeps in the set (review C)", () => {
+  it("ignored local files of a worktree that Undo takes out are saved first, by the rule of a removal", async () => {
+    const w = world();
+    const snap = await takeSnapshot(gitRun, w.folder, "Add Repo A--z to the set");
+    const added = join(w.folder, "Repo A--z");
+    sh(w.repos[0].source, "worktree", "add", "-b", "feature/5-z", added, "main");
+    w.writeSet([...w.repos, { name: "Repo A--z", source: w.repos[0].source, path: added, branch: "feature/5-z" }]);
+    finishSnapshot(snap);
+    // build output is ignored for good (as in every real project), like .env here
+    writeFileSync(join(w.repos[0].source, ".git", "info", "exclude"), "node_modules/\n");
+    write(added, ".env", "KEY=1\n");
+    write(added, "node_modules/x/index.js", "1");
+    const plan = await planUndo(gitRun, snap);
+    expect(plan.problem).toBeUndefined();
+    const res = await runUndo(plan);
+    expect(res.ok).toBe(true);
+    expect(existsSync(added)).toBe(false);
+    const backups = readdirSync(join(w.repos[0].source, ".git", "aihub", "backup"));
+    expect(backups).toHaveLength(1);
+    expect(readFileSync(join(w.repos[0].source, ".git", "aihub", "backup", backups[0], ".env"), "utf8")).toBe("KEY=1\n");
+    expect(existsSync(join(w.repos[0].source, ".git", "aihub", "backup", backups[0], "node_modules"))).toBe(false);
+    expect(res.lines.join(" ")).toContain("saved in");
+  });
+
+  it("too much to save: said before anything is done", async () => {
+    const w = world();
+    const snap = await takeSnapshot(gitRun, w.folder, "Add Repo A--z to the set");
+    const added = join(w.folder, "Repo A--z");
+    sh(w.repos[0].source, "worktree", "add", "-b", "feature/5-z", added, "main");
+    w.writeSet([...w.repos, { name: "Repo A--z", source: w.repos[0].source, path: added, branch: "feature/5-z" }]);
+    finishSnapshot(snap);
+    writeFileSync(join(added, ".env"), Buffer.alloc(51 * 1024 * 1024));
+    const plan = await planUndo(gitRun, snap);
+    expect(plan.problem).toContain("Repo A--z holds 1 ignored local file");
+    expect(plan.problem).toContain("too big to save");
+    expect(plan.steps).toEqual([]);
+    expect(existsSync(added)).toBe(true);
+  });
+
+  it("a branch the user made after the action is not the action's: it stays", async () => {
+    const w = world();
+    const snap = await takeSnapshot(gitRun, w.folder, "Switch Repo A to feature/5-new");
+    sh(w.repos[0].path, "switch", "-c", "feature/5-new");
+    w.writeSet([{ ...w.repos[0], branch: "feature/5-new" }, w.repos[1]]);
+    finishSnapshot(snap);
+    // later the user marks a spot with a branch of their own, on a commit that exists
+    sh(w.repos[0].source, "branch", "reserve", "main");
+    const plan = await planUndo(gitRun, snap);
+    expect(plan.problem).toBeUndefined();
+    expect((await runUndo(plan)).ok).toBe(true);
+    expect(sh(w.repos[0].source, "branch", "--list", "reserve")).toContain("reserve");
+    expect(sh(w.repos[0].source, "branch", "--list", "feature/5-new").trim()).toBe("");
+  });
+
+  it("the branch to go back to is checked out elsewhere now: said, nothing done", async () => {
+    const w = world();
+    const snap = await takeSnapshot(gitRun, w.folder, "Switch Repo A to feature/5-y");
+    sh(w.repos[0].path, "switch", "feature/5-y");
+    w.writeSet([{ ...w.repos[0], branch: "feature/5-y" }, w.repos[1]]);
+    finishSnapshot(snap);
+    // feature/5-x is taken by another worktree of the same clone
+    sh(w.repos[0].source, "worktree", "add", join(w.root, "elsewhere", "x"), "feature/5-x");
+    const plan = await planUndo(gitRun, snap);
+    expect(plan.problem).toContain("feature/5-x is checked out in");
+    expect(plan.steps).toEqual([]);
+  });
+
+  it("the set changed since (another window, a hand edit): refused with one sentence, nothing done", async () => {
+    const w = world();
+    const snap = await takeSnapshot(gitRun, w.folder, "Switch Repo A to feature/5-y");
+    sh(w.repos[0].path, "switch", "feature/5-y");
+    w.writeSet([{ ...w.repos[0], branch: "feature/5-y" }, w.repos[1]]);
+    finishSnapshot(snap);
+    // another window adds a set to the same file
+    const j = JSON.parse(readFileSync(w.setFile, "utf8"));
+    writeFileSync(w.setFile, JSON.stringify({ ...j, others: [{ story: 6, branch: "feature/6-a", repos: [] }] }, null, 2));
+    const plan = await planUndo(gitRun, snap);
+    expect(plan.problem).toBe("the set changed since this action, in another window or by hand");
+    expect(plan.steps).toEqual([]);
+    expect(sh(w.repos[0].path, "branch", "--show-current").trim()).toBe("feature/5-y");
+  });
+
+  it("a step that fails says what was done and what was not (nothing is guessed back)", async () => {
+    const res = await runUndo({ steps: [{ what: "one", run: async () => undefined }, { what: "two", run: async () => { throw new Error("locked"); } }, { what: "three", run: async () => undefined }] });
+    expect(res).toEqual({ ok: false, lines: ["one", "stopped at \"two\": locked", "not done: three"] });
   });
 });

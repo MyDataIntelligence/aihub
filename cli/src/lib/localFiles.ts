@@ -1,7 +1,7 @@
 import { copyFileSync, lstatSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { tryGit } from "./gitx.js";
-import { configHome } from "./notifyPolicy.js";
+import { configHome } from "./configHome.js";
 import { gitCommonDir } from "./storyWorktrees.js";
 
 /**
@@ -96,6 +96,14 @@ const count = (n: number) => `${n} ignored local file${n === 1 ? "" : "s"}`;
 
 /** What a question or a message says about them: "2 ignored local files (.env, notes/todo.txt)", or "". */
 export const describeLocal = (inv: LocalInventory): string => (inv.files.length ? `${count(inv.files.length)} (${names(inv.files)})` : "");
+
+/** Why the ignored local files of a worktree cannot be saved (too big or too many), or undefined when they can; the text a removal says. */
+export function localFilesProblem(inv: LocalInventory): string | undefined {
+  const big = inv.files.filter((f) => f.bytes > MAX_FILE_BYTES);
+  if (!big.length && inv.bytes <= MAX_TOTAL_BYTES && !inv.tooMany) return undefined;
+  const why = big.length ? `${big.length} over ${mb(MAX_FILE_BYTES)} (${names(big)})` : inv.tooMany ? `more than ${MAX_FILES} files` : `${mb(inv.bytes)} in all`;
+  return `${describeLocal(inv)}, too big to save: ${why}`;
+}
 
 export type Guarded = { ok: true; note: string; backup?: string } | { ok: false; note: string };
 
