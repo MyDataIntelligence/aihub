@@ -1,7 +1,13 @@
 import * as vscode from "vscode";
 import { forgetScan } from "../../../cli/src/lib/machineScan";
 import { createPullRequests, prOffers } from "./createPrs";
-import { targetOf } from "./repoStatus";
+import { targetInfo, targetOf } from "./repoStatus";
+
+/** The target to pass as --target: only when team.yaml or the set file names it; else the CLI derives its own. */
+const sureTarget = (path: string, name: string): string | undefined => {
+  const t = targetInfo(path, name, { setFolder: openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.folder });
+  return t.sure ? t.target : undefined;
+};
 import { commitOne, eachRepo, offlineSummary, parseMessage, pushOne, summarize, updateOne, type RepoRef, type RepoResult } from "./batch";
 import { openFacts } from "./engine";
 import { gitRun } from "./ownWindow";
@@ -82,7 +88,7 @@ export function registerPullRequestCommand(h: StoryHooks): void {
     ];
     if (!offers.some((o) => o.enabled)) return void vscode.window.showInformationMessage(`AI Context Hub: no pull request to make. ${offers.map((o) => `${o.repo}: ${o.reason}`).join("; ")}`);
     const chosen = await vscode.window.showQuickPick(rows, { title: `Create Pull Requests for #${state.story.id}`, placeHolder: "Tick the repositories; Enter creates one pull request each", canPickMany: true });
-    const picked = (chosen ?? []).filter((c) => c.offer?.enabled).map((c) => ({ name: c.offer!.repo, path: c.offer!.path, target: targetOf(c.offer!.path, c.offer!.repo) }));
+    const picked = (chosen ?? []).filter((c) => c.offer?.enabled).map((c) => ({ name: c.offer!.repo, path: c.offer!.path, target: sureTarget(c.offer!.path, c.offer!.repo) }));
     if (!picked.length) return [];
     const { results, linked } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Creating ${picked.length} pull request${picked.length === 1 ? "" : "s"}...` }, () => createPullRequests(cli, picked, state.story!.id));
     await report(h, "Create pull requests", results.map((r) => ({ repo: r.repo, ok: r.ok, line: r.line, detail: r.url })));

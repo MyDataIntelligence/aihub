@@ -68,7 +68,8 @@ function ui(repos: R[], answers: Record<string, string | undefined> = {}, mode: 
 /** the stub of `aihub branch update --target T`: the team's way here is a merge */
 const cliMerge = (calls: { args: string[]; cwd: string }[] = []) => async (args: string[], cwd: string) => {
   calls.push({ args, cwd });
-  const t = args[args.indexOf("--target") + 1];
+  // like the CLI: --target when given, else the branch it was cut from (here: staging when origin has it, else main)
+  const t = args.includes("--target") ? args[args.indexOf("--target") + 1] : sh(cwd, "rev-parse", "--verify", "--quiet", "origin/staging") ? "staging" : "main";
   sh(cwd, "merge", "--no-edit", `origin/${t}`);
   return "";
 };
@@ -76,7 +77,7 @@ const cliMerge = (calls: { args: string[]; cwd: string }[] = []) => async (args:
 const manager = (u: BehindUi, calls: { args: string[]; cwd: string }[] = [], extra: Partial<ConstructorParameters<typeof BehindManager>[0]> = {}) => new BehindManager({ git: gitRun, raw: gitRaw, cli: cliMerge(calls), ui: u, ...extra });
 
 describe("behind the target branch: the decision", () => {
-  const f = (o: Partial<Parameters<typeof decide>[1]> = {}) => ({ name: "a", path: "/a", branch: "b", target: "staging", behind: 3, targetSha: "x", head: "h", conflicts: [] as string[] | "unknown", overlap: [] as string[], tracked: 0, ...o });
+  const f = (o: Partial<Parameters<typeof decide>[1]> = {}) => ({ name: "a", path: "/a", branch: "b", target: "staging", behind: 3, targetSha: "x", head: "h", conflicts: [] as string[] | "unknown", overlap: [] as string[], tracked: 0, sure: false, ...o });
   it("off does nothing; conflicts or no way to check always ask; auto only without overlap", () => {
     expect(decide("off", f())).toBe("none");
     expect(decide("ask", f())).toBe("ask");
@@ -98,7 +99,7 @@ describe("behind the target branch", () => {
     const calls: { args: string[]; cwd: string }[] = [];
     const r = await manager(u, calls).run("open");
     expect(log.asked).toEqual([{ message: "Repo A is 2 commits behind staging · no conflicts", buttons: ["Update", "Always Update Automatically", "Later"] }]);
-    expect(calls).toEqual([{ args: ["branch", "update", "--no-push", "--target", "staging"], cwd: w.repos[0].path }]);
+    expect(calls).toEqual([{ args: ["branch", "update", "--no-push"], cwd: w.repos[0].path }]);
     expect(r.updated.map((x) => x.line)).toEqual(["Repo A updated from staging (2 commits)"]);
     expect(sh(w.repos[0].path, "rev-list", "--count", "HEAD..origin/staging").trim()).toBe("0");
   });
@@ -437,5 +438,70 @@ describe("auto only when nothing tracked has changed (review D)", () => {
     await manager(u, calls).run("open");
     expect(calls).toEqual([]);
     expect(log.asked[0].message).toBe("Repo A is 1 commit behind staging · no conflicts, but your uncommitted changes touch 1 of the changed files");
+  });
+});
+
+describe("the target branch per repository (review E)", () => {
+  it("a hotfix branch cut from main is measured against main, not staging; --target is not passed for a derived target", async () => {
+    const w = world(["Repo A"]);
+    const { path } = w.repos[0];
+    sh(path, "switch", "-c", "hotfix/9-x", "main");
+    // main moves on the remote
+    write(w.repos[0].other, "m.txt", "m\n");
+    sh(w.repos[0].other, "switch", "main");
+    sh(w.repos[0].other, "add", "-A");
+    sh(w.repos[0].other, "commit", "-m", "main moved");
+    sh(w.repos[0].other, "push", "origin", "main");
+    const { targetInfo } = await import("../src/bar/repoStatus");
+    expect(targetInfo(path, "Repo A")).toEqual({ target: "main", sure: false });
+    const { u, log } = ui(w.repos, {}, "ask");
+    const calls: { args: string[]; cwd: string }[] = [];
+    await manager(u, calls).run("open");
+    expect(log.asked[0].message).toBe("Repo A is 1 commit behind main · no conflicts");
+  });
+
+  it("team.yaml first, then the base of the set file, both sure; then what the branch was cut from; then staging, origin/HEAD, main", async () => {
+    const { targetInfo, derivedTarget } = await import("../src/bar/repoStatus");
+    const w = world(["Repo A"]);
+    const { path } = w.repos[0];
+    // cut from staging (the world's branch): derived, not sure
+    expect(targetInfo(path, "Repo A")).toEqual({ target: "staging", sure: false });
+    expect(derivedTarget(path, "feature/5-x")).toBe("staging");
+    // the set file names a base for this repository: sure
+    const folder = mkdtempSync(join(tmpdir(), "aihub-setbase-"));
+    writeFileSync(join(folder, ".worktree-set.json"), JSON.stringify({ branch: "feature/5-x", repos: [{ name: "Repo A", source: path, path, base: "origin/release/1.2" }] }));
+    expect(targetInfo(path, "Repo A", { setFolder: folder })).toEqual({ target: "release/1.2", sure: true });
+    writeFileSync(join(folder, ".worktree-set.json"), JSON.stringify({ branch: "feature/5-x", base: "develop", repos: [{ name: "Repo A", source: path, path }] }));
+    expect(targetInfo(path, "Repo A", { setFolder: folder })).toEqual({ target: "develop", sure: true });
+    // team.yaml wins over the set file
+    mkdirSync(join(path, ".agents", "skills", "_shared", "references"), { recursive: true });
+    writeFileSync(join(path, ".agents", "skills", "_shared", "references", "team.yaml"), "repositories:\n  - name: Repo A\n    defaultTarget: trunk\n");
+    expect(targetInfo(path, "Repo A", { setFolder: folder })).toEqual({ target: "trunk", sure: true });
+  });
+
+  it("the upstream and the HEAD reflog also say where a branch came from; a branch that origin does not have is no target", async () => {
+    const { derivedTarget } = await import("../src/bar/repoStatus");
+    const w = world(["Repo A"], { onlyMain: true });
+    const { path } = w.repos[0];
+    sh(path, "branch", "local-only", "main");
+    sh(path, "switch", "-c", "feature/6-y", "local-only");
+    // cut from a branch origin does not have: no candidate from the reflog
+    expect(derivedTarget(path, "feature/6-y")).toBeUndefined();
+    sh(path, "branch", "--set-upstream-to=origin/main", "feature/6-y");
+    expect(derivedTarget(path, "feature/6-y")).toBe("main");
+  });
+
+  it("the update passes --target only when team.yaml or the set file named it", async () => {
+    const w = world(["Repo A"]);
+    w.advance(w.repos[0], "new.txt", "n");
+    const { path } = w.repos[0];
+    mkdirSync(join(path, ".agents", "skills", "_shared", "references"), { recursive: true });
+    writeFileSync(join(path, ".agents", "skills", "_shared", "references", "team.yaml"), "repositories:\n  - name: Repo A\n    defaultTarget: staging\n");
+    sh(path, "add", "-A");
+    sh(path, "commit", "-m", "team.yaml");
+    const { u } = ui(w.repos, { Update: "Update" });
+    const calls: { args: string[]; cwd: string }[] = [];
+    await manager(u, calls).run("open");
+    expect(calls[0].args).toEqual(["branch", "update", "--no-push", "--target", "staging"]);
   });
 });

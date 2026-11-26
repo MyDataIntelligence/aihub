@@ -138,6 +138,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
         const changes = (p: string) => gitStatusOf(gitRepos() ?? [], p)?.changes;
         return f.set ? f.set.repos.map((r) => ({ name: r.name, path: r.path, branch: r.branch, changes: changes(r.path) })) : f.repo ? [{ name: f.repo.name, path: f.repo.path, branch: f.repo.branch, changes: changes(f.repo.path) }] : [];
       },
+      setFolder: () => openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.folder,
       ask: async (message, buttons) => vscode.window.showInformationMessage(`AI Context Hub: ${message}`, ...buttons),
       said: (line, undo) => {
         void vscode.window.showInformationMessage(`AI Context Hub: ${line}`, ...(undo ? ["Undo"] : [])).then((pick) => {
