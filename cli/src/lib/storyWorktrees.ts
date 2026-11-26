@@ -147,7 +147,7 @@ export function storyIdFromBranch(branch: string, pattern?: string): number | un
  * ticket prefix (`US-4711`), on a word boundary (4711 is not 47110, 14711 or 4711a).
  */
 export function branchNamedForStory(branch: string, id: number): boolean {
-  return new RegExp(`(?:^|/)(?:[A-Z]+[-_])?${id}(?![0-9A-Za-z])`).test(branch);
+  return new RegExp(`(?:^|/)(?:[A-Z]+[-_])?${id}(?![0-9A-Za-z.])`).test(branch);
 }
 
 // ---- folder layout -----------------------------------------------------------------------------------------
