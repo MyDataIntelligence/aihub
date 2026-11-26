@@ -158,11 +158,15 @@ export function registerSearchCommands(h: SearchHost): void {
 async function cloneAndFinish(h: SearchHost, o: { name: string; remoteUrl: string; dir: string; addTo?: { first: string; label: string; branch: string } }): Promise<void> {
   const res = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Cloning ${o.name}`, cancellable: true }, (progress, token) => {
     let last = 0;
+    // where it goes, as in the design ("62 % · to C:\git\orders-api"); at once, before git says anything, so the message
+    // (with Cancel) is on screen while git still connects or signs in
+    const to = `to ${msgPath(o.dir)}`;
+    progress.report({ message: `connecting… · ${to}` });
     return cloneWithProgress({
       url: o.remoteUrl,
       dir: o.dir,
       onProgress: (pct) => {
-        progress.report({ increment: pct - last, message: `${pct}%` });
+        progress.report({ increment: pct - last, message: `${pct} % · ${to}` });
         last = pct;
       },
       onCancel: (stop) => token.onCancellationRequested(stop),
