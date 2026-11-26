@@ -89,7 +89,7 @@ export function cloneWithProgress(o: { url: string; dir: string; onProgress?: (p
       done = true;
       if (error === undefined) return resolve({ ok: true });
       // after Cancel the git processes under the starter may still hold a file for a moment
-      await removeFolderPatiently(o.dir);
+      await removeFolderPatiently(o.dir, { tries: 20 });
       const line = error.split(/\r?\n/).map((l) => l.trim()).find((l) => /^(fatal|error):/i.test(l)) ?? "";
       const login = /terminal prompts disabled|could not read Username|Authentication failed|credential/i.test(error);
       resolve({ ok: false, cancelled, error: cancelled ? "cancelled" : login ? SIGN_IN_HINT : line.replace(/^fatal:\s*/i, "") || "git clone failed" });
@@ -98,19 +98,29 @@ export function cloneWithProgress(o: { url: string; dir: string; onProgress?: (p
 }
 
 /**
- * Removes a folder and tries again for up to 20 seconds while a file in it is still in use (a git process that is ending, the
- * git extension or a watcher of VS Code that lets go of the worktree that just left the workspace). True when the folder is gone.
+ * Removes a folder and tries again for up to a minute while a file in it is still in use (a git process that is ending, the
+ * git extension or a watcher of VS Code that lets go of the worktree that just left the workspace). `gone` says whether the
+ * folder is gone, `ms` how long it took, `why` the last error of a removal that did not succeed.
  */
-export async function removeFolderPatiently(dir: string, o: { tries?: number; waitMs?: number; remove?: (dir: string) => void; exists?: (dir: string) => boolean } = {}): Promise<boolean> {
-  const tries = o.tries ?? 40;
-  const remove = o.remove ?? removeFolder;
+export async function removeFolderPatiently(dir: string, o: { tries?: number; waitMs?: number; remove?: (dir: string) => void; exists?: (dir: string) => boolean } = {}): Promise<{ gone: boolean; ms: number; why?: string }> {
+  const tries = o.tries ?? 120;
   const exists = o.exists ?? existsSync;
+  const t0 = Date.now();
+  let why: string | undefined;
   for (let i = 0; i < tries; i++) {
-    remove(dir);
-    if (!exists(dir)) return true;
+    try {
+      (o.remove ?? removeFolderOrThrow)(dir);
+    } catch (e) {
+      why = (e as Error).message;
+    }
+    if (!exists(dir)) return { gone: true, ms: Date.now() - t0, why };
     await new Promise((r) => setTimeout(r, o.waitMs ?? 500));
   }
-  return !exists(dir);
+  return { gone: !exists(dir), ms: Date.now() - t0, why };
+}
+
+function removeFolderOrThrow(dir: string): void {
+  rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
 }
 
 /** Removes a folder git made (read-only pack files included); quiet when it is gone already. */

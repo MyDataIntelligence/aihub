@@ -221,15 +221,19 @@ describe("cloning from the search", () => {
 describe("removing a clone while a file in it is still in use (Undo, Cancel)", () => {
   it("tries again until the folder is gone, and says so", async () => {
     let calls = 0;
-    const gone = await removeFolderPatiently("x", { waitMs: 1, remove: () => void calls++, exists: () => calls < 3 });
-    expect(gone).toBe(true);
+    const r = await removeFolderPatiently("x", { waitMs: 1, remove: () => {
+      calls++;
+      if (calls < 3) throw new Error("EBUSY: resource busy or locked");
+    }, exists: () => calls < 3 });
+    expect(r.gone).toBe(true);
+    expect(r.why).toMatch(/EBUSY/);
     expect(calls).toBe(3);
   });
 
   it("gives up after its tries and says the folder is still there", async () => {
     let calls = 0;
-    const gone = await removeFolderPatiently("x", { tries: 4, waitMs: 1, remove: () => void calls++, exists: () => true });
-    expect(gone).toBe(false);
+    const r = await removeFolderPatiently("x", { tries: 4, waitMs: 1, remove: () => void calls++, exists: () => true });
+    expect(r.gone).toBe(false);
     expect(calls).toBe(4);
   });
 });

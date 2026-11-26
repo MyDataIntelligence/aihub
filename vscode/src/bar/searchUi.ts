@@ -208,10 +208,11 @@ async function cloneAndFinish(h: SearchHost, o: { name: string; remoteUrl: strin
       return void vscode.window.showWarningMessage(`AI Context Hub: ${msgPath(o.dir)} was kept: ${check.why}.`);
     }
     // the worktree that just left the workspace can keep a file of the clone in use for some seconds: say so while it waits
-    const gone = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Removing the clone of ${o.name}…` }, () => removeFolderPatiently(o.dir));
+    const rm = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Removing the clone of ${o.name}…` }, () => removeFolderPatiently(o.dir));
+    h.log(`undo clone ${o.dir}: ${rm.gone ? "removed" : "kept"} after ${rm.ms} ms${rm.why ? ` (last error: ${rm.why})` : ""}`);
     forgetScan(process.env);
     h.changed();
-    if (!gone) return void vscode.window.showWarningMessage(`AI Context Hub: ${msgPath(o.dir)} could not be removed completely (a file is in use); remove it by hand.`);
+    if (!rm.gone) return void vscode.window.showWarningMessage(`AI Context Hub: ${msgPath(o.dir)} could not be removed completely (a file is in use); remove it by hand.`);
     void vscode.window.showInformationMessage(`AI Context Hub: the clone of ${o.name} was removed.`);
   });
   if (!o.addTo) await openPath(o.dir, "new");
