@@ -84,16 +84,33 @@ export function cloneWithProgress(o: { url: string; dir: string; onProgress?: (p
     p.on("error", (e) => finish(e.message));
     p.on("close", (code) => finish(code === 0 && !cancelled ? undefined : err));
     let done = false;
-    function finish(error: string | undefined) {
+    async function finish(error: string | undefined) {
       if (done) return;
       done = true;
       if (error === undefined) return resolve({ ok: true });
-      removeFolder(o.dir);
+      // after Cancel the git processes under the starter may still hold a file for a moment
+      await removeFolderPatiently(o.dir);
       const line = error.split(/\r?\n/).map((l) => l.trim()).find((l) => /^(fatal|error):/i.test(l)) ?? "";
       const login = /terminal prompts disabled|could not read Username|Authentication failed|credential/i.test(error);
       resolve({ ok: false, cancelled, error: cancelled ? "cancelled" : login ? SIGN_IN_HINT : line.replace(/^fatal:\s*/i, "") || "git clone failed" });
     }
   });
+}
+
+/**
+ * Removes a folder and tries again for a few seconds while a file in it is still in use (a git process that is ending, a
+ * watcher of VS Code that let go of it). True when the folder is gone.
+ */
+export async function removeFolderPatiently(dir: string, o: { tries?: number; waitMs?: number; remove?: (dir: string) => void; exists?: (dir: string) => boolean } = {}): Promise<boolean> {
+  const tries = o.tries ?? 10;
+  const remove = o.remove ?? removeFolder;
+  const exists = o.exists ?? existsSync;
+  for (let i = 0; i < tries; i++) {
+    remove(dir);
+    if (!exists(dir)) return true;
+    await new Promise((r) => setTimeout(r, o.waitMs ?? 500));
+  }
+  return !exists(dir);
 }
 
 /** Removes a folder git made (read-only pack files included); quiet when it is gone already. */

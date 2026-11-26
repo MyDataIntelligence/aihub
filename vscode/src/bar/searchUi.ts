@@ -3,7 +3,7 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 import { forgetScan, headBranchOf } from "../../../cli/src/lib/machineScan";
 import { readSeenStories } from "../../../cli/src/lib/storyCache";
-import { cloneParent, cloneWithProgress, folderName, removeFolder, untouched } from "./cloneRepo";
+import { cloneParent, cloneWithProgress, folderName, removeFolderPatiently, untouched } from "./cloneRepo";
 import { openFacts, type BarEngine } from "./engine";
 import { gitRun, openOwn } from "./ownWindow";
 import type { RemoteRepos } from "./remoteRepos";
@@ -207,10 +207,10 @@ async function cloneAndFinish(h: SearchHost, o: { name: string; remoteUrl: strin
       h.changed();
       return void vscode.window.showWarningMessage(`AI Context Hub: ${msgPath(o.dir)} was kept: ${check.why}.`);
     }
-    removeFolder(o.dir);
+    const gone = await removeFolderPatiently(o.dir);
     forgetScan(process.env);
     h.changed();
-    if (existsSync(o.dir)) return void vscode.window.showWarningMessage(`AI Context Hub: ${msgPath(o.dir)} could not be removed completely (a file is in use); remove it by hand.`);
+    if (!gone) return void vscode.window.showWarningMessage(`AI Context Hub: ${msgPath(o.dir)} could not be removed completely (a file is in use); remove it by hand.`);
     void vscode.window.showInformationMessage(`AI Context Hub: the clone of ${o.name} was removed.`);
   });
   if (!o.addTo) await openPath(o.dir, "new");

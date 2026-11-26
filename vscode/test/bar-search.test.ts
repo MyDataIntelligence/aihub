@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { refsFromFiles, walk } from "../../cli/src/lib/machineScan";
-import { cloneParent, cloneWithProgress, folderName, progressOf, stopTree, untouched } from "../src/bar/cloneRepo";
+import { cloneParent, cloneWithProgress, folderName, progressOf, removeFolderPatiently, stopTree, untouched } from "../src/bar/cloneRepo";
 import { gitRun } from "../src/bar/ownWindow";
 import { isSignInError, notOnThisPc, REMOTE_FAILURE_MS, REMOTE_TTL_MS, RemoteRepos } from "../src/bar/remoteRepos";
 import { checkoutsOf } from "../src/bar/state";
@@ -215,5 +215,21 @@ describe("cloning from the search", () => {
     for (let i = 0; i < 100 && (alive(child) || alive(parent.pid!)); i++) await new Promise((r) => setTimeout(r, 50));
     expect(alive(child)).toBe(false);
     expect(alive(parent.pid!)).toBe(false);
+  });
+});
+
+describe("removing a clone while a file in it is still in use (Undo, Cancel)", () => {
+  it("tries again until the folder is gone, and says so", async () => {
+    let calls = 0;
+    const gone = await removeFolderPatiently("x", { waitMs: 1, remove: () => void calls++, exists: () => calls < 3 });
+    expect(gone).toBe(true);
+    expect(calls).toBe(3);
+  });
+
+  it("gives up after its tries and says the folder is still there", async () => {
+    let calls = 0;
+    const gone = await removeFolderPatiently("x", { tries: 4, waitMs: 1, remove: () => void calls++, exists: () => true });
+    expect(gone).toBe(false);
+    expect(calls).toBe(4);
   });
 });
