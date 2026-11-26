@@ -232,7 +232,7 @@ describe("branches that only have the story number in their name", () => {
   it("the rule: the story number is the first number after an optional prefix, on a word boundary", async () => {
     const { branchNamedForStory } = await import("../src/lib/storyWorktrees.js");
     for (const yes of ["feature/4711-x", "bugfix/4711_x", "4711-x", "users/me/feature/4711", "feature/US-4711-x", "feature/4711"]) expect(branchNamedForStory(yes, 4711), yes).toBe(true);
-    for (const no of ["feature/47110-x", "feature/14711-x", "feature/4711a", "feature/x-4711", "main", "feature/4712-x"]) expect(branchNamedForStory(no, 4711), no).toBe(false);
+    for (const no of ["feature/47110-x", "feature/14711-x", "feature/4711a", "feature/4711.5-x", "release/4711.5", "feature/x-4711", "main", "feature/4712-x"]) expect(branchNamedForStory(no, 4711), no).toBe(false);
   });
 
   it("are listed as linked: name, from the refs (local and remote only), mixed with the linked ones; none for other numbers", async () => {
