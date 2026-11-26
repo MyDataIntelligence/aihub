@@ -98,11 +98,11 @@ export function cloneWithProgress(o: { url: string; dir: string; onProgress?: (p
 }
 
 /**
- * Removes a folder and tries again for a few seconds while a file in it is still in use (a git process that is ending, a
- * watcher of VS Code that let go of it). True when the folder is gone.
+ * Removes a folder and tries again for up to 20 seconds while a file in it is still in use (a git process that is ending, the
+ * git extension or a watcher of VS Code that lets go of the worktree that just left the workspace). True when the folder is gone.
  */
 export async function removeFolderPatiently(dir: string, o: { tries?: number; waitMs?: number; remove?: (dir: string) => void; exists?: (dir: string) => boolean } = {}): Promise<boolean> {
-  const tries = o.tries ?? 10;
+  const tries = o.tries ?? 40;
   const remove = o.remove ?? removeFolder;
   const exists = o.exists ?? existsSync;
   for (let i = 0; i < tries; i++) {
