@@ -1,7 +1,7 @@
 import { getPr, type AdoClient } from "./ado.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
-import { fallbackKindOf, editSection, parseSections } from "./templates.js";
+import { checkDescriptionLength, fallbackKindOf, editSection, parseSections } from "./templates.js";
 import { resolvePr } from "./pr.js";
 import { loadTeam, readUtf8 } from "./team.js";
 
@@ -101,13 +101,17 @@ export function addTestRow(description: string, ev: Evidence, lang: string | und
   const result = `${w[ev.result]}${ev.detail ? ` (${ev.detail})` : ""}`;
   const body = sec?.body ?? "";
   const lines = body.split("\n");
-  const first = lines.findIndex((l) => l.trim().startsWith("|"));
+  const first = lines.findIndex((line, index) => {
+    if (!line.trim().startsWith("|") || !isSeparator(lines[index + 1] ?? "")) return false;
+    const roles = rowCells(line).map(columnRole);
+    return roles.includes("result") && (roles.includes("name") || roles.includes("link"));
+  });
   const linkText = `[${cell(ev.name)}](${ev.link})`;
 
   if (first < 0) {
-    const kept = lines.filter((l) => l.trim() && !NOT_RUN.test(l.trim()));
+    const kept = body.replace(/^\s*(?:not run(?: yet)?|nog niet uitgevoerd)\.?\s*$/i, "").trimEnd();
     const table = [`| Test | ${nl ? "Resultaat" : "Result"} | ${nl ? "Duur" : "Duration"} |`, "|---|---|---|", `| ${linkText} | ${cell(result)} | ${duration(ev.durationMs)} |`];
-    return { description: editSection(description, heading, { replace: [...kept, ...(kept.length ? [""] : []), ...table].join("\n") }), heading, replaced: false };
+    return { description: editSection(description, heading, { replace: [...(kept ? [kept, ""] : []), ...table].join("\n") }), heading, replaced: false };
   }
   let last = first;
   while (last + 1 < lines.length && lines[last + 1].trim().startsWith("|")) last++;
@@ -126,7 +130,7 @@ export function addTestRow(description: string, ev: Evidence, lang: string | und
   for (const l of body2) {
     const cells = rowCells(l);
     if (isPlaceholderRow(cells)) continue; // the template's "<test that was really run>" row or a bare "-" row
-    if (l.includes(ev.link)) {
+    if (l.includes(`](${ev.link})`)) {
       out.push(make());
       replaced = true;
     } else out.push(l);
@@ -203,6 +207,7 @@ export async function prTestsAdd(ctx: Ctx, o: TestsAddOpts): Promise<string> {
   if (o.name) ev.name = o.name;
   const full = await getPr(client, pr.pullRequestId);
   const out = addTestRow(full.description ?? "", ev, (team as { language?: string }).language);
+  checkDescriptionLength(out.description);
   await client.patch(`${client.repoPath()}/pullrequests/${pr.pullRequestId}`, { description: out.description });
   return o.json
     ? JSON.stringify({ pr: pr.pullRequestId, section: out.heading, replaced: out.replaced, evidence: ev })

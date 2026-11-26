@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { parse } from "yaml";
 import { branchRef, findActivePr, getPr, shortBranch, type AdoClient } from "./ado.js";
 import { repoClient, type Ctx } from "./context.js";
@@ -17,6 +18,7 @@ export interface Build {
   finishTime?: string;
   definition?: { id: number; name: string };
   sourceVersion?: string;
+  templateParameters?: Record<string, unknown>;
 }
 
 interface TimelineRecord {
@@ -328,7 +330,7 @@ export async function pipelineRerun(ctx: Ctx, o: { run?: string }): Promise<{ id
   const failed = o.run ? await client.get<Build>(`build/builds/${parseRunRef(o.run)}`) : builds.find((b) => b.status === "completed" && b.result === "failed");
   if (!failed?.definition) throw new AihubError(`no failed run on ${branch} to run again; pass --run <id>`);
   const pipeline = failed.definition.name;
-  const ownOf = (list: Build[]) => list.find((b) => b.definition?.id === failed.definition!.id && b.sourceVersion === head && b.id !== failed.id);
+  const ownOf = (list: Build[]) => list.find((b) => b.definition?.id === failed.definition!.id && b.sourceVersion === head && b.id !== failed.id && isDeepStrictEqual(b.templateParameters ?? {}, failed.templateParameters ?? {}));
   let own = ownOf(builds);
   // a CI trigger needs a few seconds after the push to create its run: look twice more before queuing a second one
   const sleep = ctx.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
@@ -337,7 +339,12 @@ export async function pipelineRerun(ctx: Ctx, o: { run?: string }): Promise<{ id
     own = ownOf((await selectBuilds(client, root, { branch })).builds);
   }
   if (own) return { id: own.id, pipeline, branch, queued: false };
-  const b = await client.post<Build>("build/builds", { definition: { id: failed.definition.id }, sourceBranch: branchRef(branch) });
+  const b = await client.post<Build>("build/builds", {
+    definition: { id: failed.definition.id },
+    sourceBranch: branchRef(branch),
+    sourceVersion: head,
+    ...(failed.templateParameters ? { templateParameters: failed.templateParameters } : {}),
+  });
   return { id: b.id, pipeline, branch, queued: true };
 }
 

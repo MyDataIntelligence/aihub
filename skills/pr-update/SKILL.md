@@ -1,34 +1,29 @@
 ---
 name: pr-update
-description: "Use when an open pull request needs new content: 'update de PR', 'werk de PR bij', 'voeg onder <sectie> toe', a dev.azure.com pullrequest link, '/pr-update'. The whole task is one command: aihub pr update --pr <url|N> --section \"<heading>\" --append-text \"<text>\"."
+description: "Use when an open pull request needs new content: 'update de PR', 'werk de PR bij', 'voeg onder <sectie> toe', a dev.azure.com pullrequest link, '/pr-update'."
 ---
 # Update a pull request
 
 ## When
-Something must be added to or changed in an open PR description.
+Update a PR section or verify existing criteria.
 
 ## Steps
-To add or change ONE section run this single command. Never resend or rewrite the whole description:
+For an explicit edit to one named section, apply it directly. For evidence against existing criteria, reviewer feedback or linked results, first read the current description with `aihub pr explain --pr 42` and the referenced source. Preserve numbering, team headings, manual prose and existing evidence links. Check which revision each result covers after a push.
+
+Pair each relevant change with its expected behavior and the observation or artifact that proves it. A sentence is enough for a small change. For several independent points, use one row per point. Distinguish local, component and integration results; mark missing evidence. Keep the current run status in one place.
+
+Compose the edited section in a file, retaining its other entries. Example:
 
 ```sh
-aihub pr update --pr <url|N> --section "<heading>" --append-text "<short text>"
+aihub pr update --pr 42 --section "Verification" --replace-file evidence.md
 ```
 
-`--pr` takes the dev.azure.com link or the number (omit it for the PR of the current branch). Use `--replace-text` to replace the section, `--append-file f.md` / `--replace-file f.md` for long prose.
+For a short literal addition use `--append-text`; long additions take `--append-file`. Use the actual team heading. For an actual run record, `aihub pr tests add --from-run 123` adds a sourced row; reference existing rows when updating criteria.
 
-After a data-changing push and when `team.yaml` has `dataChecks:`, refresh the numbers with `aihub pr data-diff --write`.
-
-Test evidence: `aihub pr tests add --from-run <build id>` (or `--from-robot`, `--from-fabric-job <ws>/<item>/<job>`) adds an honest row from the real run. 
-Do not run `git status`, `aihub pr changes`, `--help` or read the template first. Do not ask questions.
-
-Example: "voeg onder Testen toe: handmatig getest" with a link -> `aihub pr update --pr https://dev.azure.com/org/proj/_git/repo/pullrequest/42 --section "Testen" --append-text "Handmatig getest."`
-
-## Actions for the platform's users
-First run `aihub pr impact`. The section for the platform's users (user actions, migration, breaking changes) says what changes for THEM in THEIR files (the template's own heading). Start with one line "Who is affected" unless everyone is. Per action: their files (names or pattern + count, from the impact output), the field old -> new or the new required field with an example, and how to check. Internal changes stay out; contract untouched: the empty text only. Never "compare", "review", "migrate" or "ensure" without saying what. The CLI refuses vague text; `--as-is` only when the user says so.
-Good: "- jobs/orders_ingest.yaml: rename target_table -> destination.table; check: make validate-jobs"
+For user actions run `aihub pr impact`, then specify affected files, old and new fields and how to check. Check instructions against the current contract. Use `--as-is` only when requested. With configured dataChecks refresh figures after a data-changing push using `aihub pr data-diff --write`. Keep detail in linked artifacts if the description is full.
 
 ## What the CLI fills
-Edits only that section; the rest stays byte for byte. New commits: `git push` first.
+The PR and its current sections.
 
 ## If it fails
-Run `aihub doctor`. Never invent ids or links.
+On an authentication error run `aihub doctor`.
