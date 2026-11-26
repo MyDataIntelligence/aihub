@@ -16,6 +16,26 @@ export interface BarPr {
   url: string;
   /** the build policy of an active pull request; only known after the overview menu or Create Pull Requests asked for it (one policy read per active pull request) */
   build?: "succeeded" | "failed" | "running";
+  /** review threads of an active pull request: open ones, and of those the ones with a comment of someone else the user has not seen; absent until read or with aiContextHub.prComments off */
+  comments?: { open: number; unread: number };
+}
+
+/** One open review thread for the overview ("Open comments"). */
+export interface BarOpenComment {
+  repo: string;
+  pr: number;
+  /** repository path ("notebooks/orders.py"); absent: a general comment on the pull request */
+  file?: string;
+  /** 1-based line in the latest iteration */
+  line?: number;
+  /** who started the thread */
+  author: string;
+  /** the first sentence of the first comment, plain text */
+  firstLine: string;
+  /** ISO time of the newest comment */
+  when?: string;
+  unread: boolean;
+  threadId: number;
 }
 
 export interface BarRepo {
@@ -157,6 +177,8 @@ export interface BarState {
   branchRefs?: BarBranchRefs[];
   /** the repositories in Azure DevOps that are not on this PC */
   remote?: BarRemote;
+  /** the open review threads of the pull requests of this window, newest first, at most 50; absent until read or with aiContextHub.prComments off */
+  openComments?: BarOpenComment[];
 }
 
 export interface BarApi {
@@ -212,4 +234,8 @@ export const BAR_COMMANDS = {
   cloneRepository: "aihub.bar.cloneRepository",
   /** `{ repo, branch, path, where, setId? }` (a BarCheckout), or `{ repo, branch, path, where: "none" }` for a branch checked out nowhere (path: the clone): a pick, then the folder (or the whole set) opens in a new window; the set never changes */
   openCheckout: "aihub.bar.openCheckout",
+  /** `{ repo, threadId }` (from openComments): opens the file on the line and unfolds the thread (counts as read); a general comment shows its text with Open Pull Request */
+  showComment: "aihub.bar.showComment",
+  /** read the review threads of the pull requests again now (one aihub process for all of them) */
+  refreshComments: "aihub.bar.refreshComments",
 } as const;
