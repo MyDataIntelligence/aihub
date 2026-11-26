@@ -227,4 +227,9 @@ the newest version and pushed from there (`rebased: true`); otherwise the same c
 `--pr` opens a pull request to `--target` (default: the default branch) with the template of the target branch on the remote, the story
 linked (`AB#N`, title `<N> <story title>`) and the commit; a failed PR leaves the push and says why in `prError`.
 
+`aihub browse pr --project P --repo R --branch B [--target T] [--story N] [--pr-title t] [--draft]` (Create Pull Request after a push):
+a pull request from the head of `B` to `--target` (default: the default branch), with the template of the target on the remote; the story
+is `--story` or the number in the branch name (`feature/4711-...`). An active pull request of the branch is returned as it is:
+`{"pr":{"id":77,"title":"4711 Orderexport","webUrl":"…"},"existing":false}`.
+
 `aihub browse suggest-branch [--story N] --path /file [--title t]`: `{"branch":"feature/4711-orders-export"}` (no network).

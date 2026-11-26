@@ -311,5 +311,7 @@ export const BAR_COMMANDS = {
   /** `{ project, repo, path, baseCommit, baseBranch, content, branch, message, pr?, target?, story?, prTitle?, draft?, rebase? }` -> `aihub browse push`: `status: pushed` or `status: conflict` (rebase: true = Rebase my change); protectedBranch and branchExists are errors */
   browsePush: "aihub.bar.browsePush",
   /** forget the remembered failures (after az login or a CLI update) */
+  /** `{ project, repo, branch, target?, story?, prTitle?, draft? }` -> `aihub browse pr`: Create Pull Request after a push; `{ pr: { id, title, webUrl }, existing }` (an active PR of the branch is returned, not a second one) */
+  browseCreatePr: "aihub.bar.browseCreatePr",
   browseRetryNow: "aihub.bar.browseRetryNow",
 } as const;

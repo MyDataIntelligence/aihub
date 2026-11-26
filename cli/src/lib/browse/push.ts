@@ -180,6 +180,31 @@ export async function browsePush(b: Browse, o: PushInput): Promise<PushResult> {
   return out;
 }
 
+/**
+ * "Create Pull Request" after a push (the notification of the Done board): a PR from an existing branch to `target`
+ * (default: the default branch), titled after the story or the newest commit of the branch. An active PR of the branch is
+ * returned as it is (`existing: true`), never a second one.
+ */
+export async function browsePr(b: Browse, o: { project: string; repo: string; branch: string; target?: string; story?: number; prTitle?: string; draft?: boolean }): Promise<{ pr: { id: number; title: string; webUrl: string }; existing: boolean }> {
+  const branch = o.branch.trim().replace(/^refs\/heads\//, "");
+  const rc = repoClientOf(b, o.project, o.repo);
+  const repoInfo = await rc.get<{ defaultBranch?: string }>(rc.repoPath());
+  const target = (o.target || (repoInfo.defaultBranch ?? "").replace(/^refs\/heads\//, "") || "main").replace(/^refs\/heads\//, "");
+  if (target.toLowerCase() === branch.toLowerCase()) throw new BrowseError("badInput", `the branch '${branch}' is the target branch; choose another target`);
+  const head = await headOf(b, o.project, o.repo, branch);
+  if (!head) throw new BrowseError("notFound", `branch '${branch}' not found in ${o.repo}`);
+  const open = await rc.get<{ value?: { pullRequestId: number; title: string }[] }>(`${rc.repoPath()}/pullrequests`, { "searchCriteria.sourceRefName": `refs/heads/${branch}`, "searchCriteria.status": "active" });
+  const first = open.value?.[0];
+  if (first) return { pr: { id: first.pullRequestId, title: first.title, webUrl: `${webRepoUrl(b, o.project, o.repo)}/pullrequest/${first.pullRequestId}` }, existing: true };
+  const c = await rc.get<{ comment?: string; changes?: unknown }>(`${rc.repoPath()}/commits/${head}`);
+  const changes = await rc.get<{ changes?: { item?: { path?: string; isFolder?: boolean } }[] }>(`${rc.repoPath()}/commits/${head}/changes`, { $top: 20 }).catch(() => ({ changes: [] }));
+  const path = (changes.changes ?? []).find((x) => x.item?.path && !x.item.isFolder)?.item?.path ?? "";
+  const team = await teamOf(b, o.project, o.repo, target);
+  const story = o.story ?? (Number(/(?:^|\/)(\d{2,})(?:-|$)/.exec(branch)?.[1]) || undefined);
+  const pr = await createRemotePr(b, { project: o.project, repo: o.repo, branch, target, path, message: c.comment ?? branch, story, prTitle: o.prTitle, draft: o.draft, commitId: head, team });
+  return { pr, existing: false };
+}
+
 /** A pull request from a pushed branch without a clone: the template of the target branch on the remote, the story linked. */
 export async function createRemotePr(b: Browse, o: { project: string; repo: string; branch: string; target: string; path: string; message: string; story?: number; prTitle?: string; draft?: boolean; commitId: string; team: TeamConfig }): Promise<{ id: number; title: string; webUrl: string }> {
   const rc = repoClientOf(b, o.project, o.repo);
