@@ -163,8 +163,8 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     dirtyOf,
     linkedOf,
     extraPlaces: deps.extraPlaces,
-    // behind the target is only counted after the target was fetched in this window (no count of a stale ref, no extra process before)
-    statusOf: async (path, name) => ({ ...(gitStatusOf(gitRepos() ?? [], path) ?? {}), ...(behindMgr.gate.has(path) ? await behind.behind(path, name).then((n) => (n === undefined ? {} : { behindTarget: n })) : {}) }),
+    // behind the target is counted from the refs that are there (one rev-list per repository, remembered per pair of commits), also without focus and before any fetch; only the fetch waits for focus
+    statusOf: async (path, name) => ({ ...(gitStatusOf(gitRepos() ?? [], path) ?? {}), ...(await behind.behind(path, name).then((n) => (n === undefined ? {} : { behindTarget: n }))) }),
     prOf: (repo, branch) => prOfBranch(prs.get(), repo, branch),
     prsKnown: () => prs.get().length > 0,
   });
@@ -236,6 +236,8 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     if (key === watched) return;
     watched = key;
     heads.forEach((h) => h.dispose());
+    // the folder names in the Explorer are right when a set is opened, not only after a switch (files only, written only when they differ)
+    if (facts.set) for (const p of paths) syncName(p, facts.set.folder);
     heads = paths.flatMap((p) => {
       // a worktree's HEAD is in the main clone's .git/worktrees/<name>; a clone's in its own .git
       const gitDir = gitDirFor(p);

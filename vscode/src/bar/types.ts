@@ -81,6 +81,11 @@ export interface BarRepository {
 }
 
 export interface BarState {
+  /**
+   * The hub is the one that tells the user a branch is behind its target (one question per stand, conflict check, auto, Undo, one
+   * message for the set). Another extension (PyCharm Git) shows no message of its own about it while this is true.
+   */
+  handlesBehindTarget: true;
   mode: BarMode;
   story?: { id: number; title: string; state?: string };
   setFolder?: string;
