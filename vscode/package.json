@@ -567,6 +567,56 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.pipelineRuns",
+        "title": "Pipeline Runs",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.pipelineRun",
+        "title": "Pipeline Run Details",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.pipelineLog",
+        "title": "Pipeline Step Log",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.pipelineStatus",
+        "title": "Pipeline Run Status",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.pipelineRerunPlan",
+        "title": "Rerun Pipeline: Read the Form",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.pipelineRerun",
+        "title": "Rerun Pipeline...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.pipelineRerunFailed",
+        "title": "Rerun Failed Jobs",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.pipelineCancel",
+        "title": "Cancel Pipeline Run",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.pipelineFix",
+        "title": "Fix Pipeline with Agent",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.pipelineRetryNow",
+        "title": "Pipelines: Try Again Now",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.commitAll",
         "title": "Commit All Repositories of the Set...",
         "category": "AI Context Hub"
@@ -1500,6 +1550,46 @@
         },
         {
           "command": "aihub.bar.showComment",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pipelineRuns",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pipelineRun",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pipelineLog",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pipelineStatus",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pipelineRerunPlan",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pipelineRerun",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pipelineRerunFailed",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pipelineCancel",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pipelineFix",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pipelineRetryNow",
           "when": "false"
         }
       ],

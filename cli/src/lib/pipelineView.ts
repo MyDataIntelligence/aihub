@@ -590,6 +590,7 @@ export function paramValues(tp: Record<string, unknown> | undefined): Record<str
 
 interface TestRun {
   id: number;
+  name?: string;
   totalTests?: number;
   passedTests?: number;
   incompleteTests?: number;
@@ -602,6 +603,17 @@ interface TestResult {
   automatedTestStorage?: string;
   errorMessage?: string;
   stackTrace?: string;
+}
+
+/** A retried stage publishes its tests again under the same name: only the newest test run per name counts. */
+export function latestTestRuns<T extends { id: number; name?: string }>(runs: T[]): T[] {
+  const best = new Map<string, T>();
+  for (const r of runs) {
+    const k = r.name ?? `#${r.id}`;
+    const had = best.get(k);
+    if (!had || r.id > had.id) best.set(k, r);
+  }
+  return [...best.values()].sort((a, b) => a.id - b.id);
 }
 
 export interface FirstFailure {
@@ -630,7 +642,7 @@ export function firstFailureOf(r: TestResult): FirstFailure {
 
 async function testFacts(client: AdoClient, run: number, wantFailure: boolean): Promise<{ total: number; failed: number; first: FirstFailure | null } | null> {
   try {
-    const runs = (await client.get<{ value?: TestRun[] }>("test/runs", { buildUri: `vstfs:///Build/Build/${run}` })).value ?? [];
+    const runs = latestTestRuns((await client.get<{ value?: TestRun[] }>("test/runs", { buildUri: `vstfs:///Build/Build/${run}` })).value ?? []);
     if (!runs.length) return null;
     let total = 0;
     let failed = 0;
