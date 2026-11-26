@@ -31,6 +31,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     today: { type: "boolean" },
     status: { type: "string" },
     "repo-dir": { type: "string", multiple: true },
+    "rows-repo-dir": { type: "string" },
     "from-line": { type: "string" },
     plan: { type: "boolean" },
     commit: { type: "string" },
@@ -43,7 +44,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     return sel.run;
   };
   // the reads behind the bar: always JSON
-  if (sub === "list") return void ctx.out(JSON.stringify(await pipelineList(ctx, { mine: v.mine, today: v.today, status: v.status, branch: v.branch, top: sel.top, repoDirs: v["repo-dir"] })));
+  if (sub === "list") return void ctx.out(JSON.stringify(await pipelineList(ctx, { mine: v.mine, today: v.today, status: v.status, branch: v.branch, top: sel.top, repoDirs: v["repo-dir"], rowsRepoDir: v["rows-repo-dir"] })));
   if (sub === "show") return void ctx.out(JSON.stringify(await pipelineShow(ctx, { run: needRun(), repoDir })));
   if (sub === "poll") return void ctx.out(JSON.stringify(await pipelinePoll(ctx, { run: needRun(), repoDir })));
   if (sub === "log") return void ctx.out(JSON.stringify(await pipelineLog(ctx, { run: needRun(), step: v.step, tail: num(v.tail, "--tail"), fromLine: num(v["from-line"], "--from-line"), repoDir })));

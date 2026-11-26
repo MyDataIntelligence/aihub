@@ -84,6 +84,8 @@ export interface RunsArg {
   status?: "running" | "queued" | "failed" | "succeeded" | "canceled";
   branch?: string;
   top?: number;
+  /** rows of this repository only (the menu of one repository); today's counts stay over all repoDirs */
+  rowsRepoDir?: string;
 }
 
 export interface RunArg {
@@ -119,6 +121,7 @@ export function runsArgs(a: RunsArg, dirs: string[]): string[] {
   const top = posInt(a.top);
   if (top) out.push("--top", String(top));
   for (const d of dirs) out.push("--repo-dir", d);
+  if (a.rowsRepoDir) out.push("--rows-repo-dir", a.rowsRepoDir);
   return out;
 }
 

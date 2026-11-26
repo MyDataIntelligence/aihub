@@ -257,7 +257,11 @@ export const BAR_COMMANDS = {
   // ---- pipelines in the bar (one aihub process each, JSON as in docs/cli-json.md "Pipelines in the bar"; a failure is
   // `{ error: { kind: "signedOut"|"cliMissing"|"cliTooOld"|"notARepository"|"failed", message } }`, never a popup; the
   // lasting kinds are remembered 5 minutes per folder; the bar does the timing, nothing polls by itself) ----
-  /** `{ repoDirs?, mine? (default true), today?, status?, branch?, top? }` -> `aihub pipeline list` (default repoDirs: the repositories of this window) */
+  /**
+   * `{ repoDirs?, mine? (default true), today?, status?, branch?, top?, rowsRepoDir? }` -> `aihub pipeline list` (default repoDirs: the
+   * repositories of this window). `today` counts all runs read of all repoDirs, whatever branch/status/rowsRepoDir say; a red row
+   * carries failedStage, failedStep and tests. The menu of one repository: `{ branch, top: 3, rowsRepoDir: <its path> }`.
+   */
   pipelineRuns: "aihub.bar.pipelineRuns",
   /** `{ run, repoDir? }` -> `aihub pipeline show`: tree, trigger, parameters, variables, summary */
   pipelineRun: "aihub.bar.pipelineRun",

@@ -261,6 +261,9 @@ describe("aihub pipeline list", () => {
     expect(r.runs[0]).toMatchObject({ number: "20261126.2049", pipeline: { id: 7, name: "orders-ci" }, branch: "feature/4711-orderexport", reason: "manual", requestedFor: { name: "Test User", isMe: true }, durationSeconds: 240, repoDir: w.dir });
     expect(r.runs[0].webUrl).toBe("https://dev.azure.com/ferron-org/test-project/_build/results?buildId=2049");
     expect(r.today).toMatchObject({ total: 3, running: 1, failed: 1, succeeded: 1, capped: false });
+    // a red row says where it stopped and how many tests failed, without another call by the bar
+    expect(r.runs[1]).toMatchObject({ failedStage: "Test", failedStep: "Run pytest", tests: { failed: 2, total: 148 } });
+    expect(r.runs[0]).toMatchObject({ failedStage: null, failedStep: null, tests: null });
     const listCalls = w.f.calls.filter((c) => /build\/builds\?/.test(c.url));
     expect(listCalls).toHaveLength(1); // two repositories of one project: one call
     expect(listCalls[0].url).toContain(`requestedFor=${ME}`);
@@ -281,7 +284,25 @@ describe("aihub pipeline list", () => {
       [3, "manual", "feature/4711-orderexport"],
       [2, "manual", "feature/4711-orderexport"],
     ]);
-    expect(r.today.total).toBe(4);
+    // today counts every run of mine in the repositories, also those of other branches (the menu's "All My Runs Today")
+    expect(r.today.total).toBe(5);
+  });
+
+  it("--rows-repo-dir: the rows of one repository of the set, today's counts over all of them; a red run is read once", async () => {
+    const other = makeRepo().dir;
+    sh(other, ["config", "remote.origin.url", "https://dev.azure.com/ferron-org/test-project/_git/repo-b"]);
+    const runs = [build(2046, { result: "failed", queueTime: "2026-11-26T14:02:00Z" }), build(77, { repository: { name: "repo-b" }, queueTime: "2026-11-26T14:00:00Z" })];
+    const w = world([...baseRoutes(build(2046)), { match: /build\/builds\?/, respond: () => ({ body: { value: runs } }) }]);
+    const args = ["pipeline", "list", "--mine", "--top", "3", "--repo-dir", w.dir, "--repo-dir", other, "--rows-repo-dir", other];
+    const r = await json(args, w);
+    expect(r.runs.map((x: any) => x.id)).toEqual([77]);
+    expect(r.today.total).toBe(2);
+    const both = ["pipeline", "list", "--mine", "--repo-dir", w.dir];
+    w.lines.length = 0;
+    expect((await json(both, w)).runs[0].failedStep).toBe("Run pytest");
+    w.lines.length = 0;
+    expect((await json(both, w)).runs[0].failedStep).toBe("Run pytest");
+    expect(w.f.calls.filter((c) => /2046\/timeline/.test(c.url))).toHaveLength(1);
   });
 
   it("--today and --status filter; a repository that cannot be read is reported, the rest still arrives", async () => {

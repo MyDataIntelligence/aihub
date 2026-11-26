@@ -47,9 +47,12 @@ Always JSON (no `--json` needed). Times are ISO UTC, durations seconds; the call
 step carries `webUrl` (Open in Browser, Copy Link). States: `queued`, `running`, `cancelling`, `succeeded`, `partiallySucceeded`,
 `failed`, `canceled`; stages, jobs and steps also `skipped` and `pending`.
 
-`aihub pipeline list [--mine] [--today] [--status running|queued|failed|succeeded|canceled] [--branch B] [--top N] [--repo-dir D]...`:
+`aihub pipeline list [--mine] [--today] [--status running|queued|failed|succeeded|canceled] [--branch B] [--top N] [--repo-dir D]... [--rows-repo-dir D]`:
 runs of one or more repositories, newest first; repositories of one project cost one REST call together. `--branch` also matches the
-pull request runs of that branch. `today` counts all of today's runs read, whatever `--status` says; `capped` means there were more.
+pull request runs of that branch; `--rows-repo-dir` keeps the rows of one of the repositories (the menu of one repository). `today`
+counts all of today's runs read of all `--repo-dir`s, whatever `--branch`, `--status` and `--rows-repo-dir` say; `capped` means there
+were more. A finished red row carries `failedStage`, `failedStep` and `tests {failed,total}` (null otherwise); they are read once per
+run and finish time and kept in `~/.aihub/pipeline-red-runs.json`.
 
 ```json
 {"me":{"id":"<guid>","name":"Test User"},"since":"2026-11-25T23:00:00.000Z",
