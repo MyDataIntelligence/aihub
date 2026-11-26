@@ -2,37 +2,20 @@
 name: pipeline-fix
 description: "Use when a build or pipeline failed: 'waarom is de pipeline rood', 'waarom faalt de build', '/fix <run url>', 'pipeline is rood', 'fix the build', 'de build faalt', 'tests falen in CI', a failed check on a pull request."
 ---
-# Explain or fix a failing run
+# Diagnose or fix a failing run
 
 ## When
-A build is red. First decide what the user asked; do not read `team.yaml` (the CLI applies it).
-- **Why is it red?** ("waarom", "wat is de oorzaak", "what broke"): read only, answer, done.
-- **Fix it** ("fix", "repareer", "maak groen", `/fix`): the loop below.
+Explain, repair or monitor a failed run.
 
-## Steps: why is it red (one call)
-1. `aihub pipeline logs --failed` (add `--run <url|id>` when given).
-2. Answer in 2-3 sentences: quote its `error (quote it as is):` line word for word, then the file or test. End with one statement, never a question: "Repareren is een aparte vraag: zeg 'fix de pipeline'." Change nothing.
-
-## Steps: fix it (four calls)
-1. `aihub pipeline logs --failed`. On a protected branch the fix goes on a topic branch with a pull request.
-2. Fix the cause in the code with your own tools; never weaken a test.
-3. `aihub commit --type fix --subject "<what>" --push`
-4. `aihub pipeline rerun`: the new run of that pipeline for your commit (started by the push, or queued now) and a background watch with a toast. Report the run id in one line and end your turn.
-
-No `--help`, no `timeline`, `tests`, `runs` or `watch` calls: the commands above already give what they would. Flaky or infrastructure (agent offline, quota, timeout): change no code, `aihub pipeline rerun` once.
-
-```sh
-aihub pipeline logs --failed --run 123
-aihub commit --type fix --subject "add missing column" --push
-aihub pipeline rerun
-```
-
-Example: "waarom is de pipeline rood?" is the first command and a short answer that quotes the error line.
+## Steps
+1. Read the failing step: `aihub pipeline logs --failed --run 123`. Follow a wrapper failure to its child activity, exception or artifact. For an explanation, report the observed error and location and stop.
+2. For a repair, inspect an existing working implementation. Choose the smallest check that answers the open question: an existing test, a temporary probe using the real helper, or one scenario. Match the failing input, runtime, dependency features and identity where relevant. Reproduce the failure and rerun that check after the fix when feasible. Keep tests meaningful. Use a topic branch and PR for protected branches.
+3. Commit the fix with `aihub commit --type fix --subject "handle empty input"`. Add `--push` when ready. Check whether the push already triggered the intended run. Before queuing an expensive run inspect `aihub pipeline run-again --run 123 --plan`: verify repositories, branch, revision, parameters and scope against the request. Record actual checked-out revisions from the run where available. Broaden validation when the remaining question involves several components.
+4. For example, after verifying the latest commit and the original parameters, run `aihub pipeline run-again --run 123 --commit latest`. For a requested replay of the same revision use `--commit same`. Retry transient infrastructure once without code changes.
+5. For "monitor until finished", use `aihub pipeline follow --run 124` with the returned ID. Report changed state, evidence and remaining uncertainty. Resume authorized repairs after side requests.
 
 ## What the CLI fills
-Branch, protected flag, red rounds, the real error line, log tail, the pipeline to run again, the watch.
+Run context, log tail, queue result.
 
 ## If it fails
-Not signed in: `aihub doctor`. Red again: fix again, one line per round. Red runs never block other work; the user decides when to stop. Never push to main, staging or release, never force-push.
-
-Rules: done is done; never end with a question when the task is done. Commit messages follow the team language.
+After a timeout or stopped watcher, check run status and resume.

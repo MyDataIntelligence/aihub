@@ -1,16 +1,21 @@
 ## Samenvatting
-<wat is er veranderd en waarom, in twee of drie zinnen>
+<wat verandert er, waarom en voor wie>
 
-## Wijzigingen
-- <wijziging 1>
-- <wijziging 2>
+## Validatie
+<één wijziging: verwacht gedrag en waarneming of openstaande controle>
+<meerdere wijzigingen: één rij per wijziging, verwachting en waarneming of bewijslink>
 
-## Tests
-| Test | Resultaat |
-|---|---|
-| <test die echt is uitgevoerd> | <geslaagd of mislukt> |
+## Gebruikersacties
+<!-- aihub:optional -->
+<betrokken gebruikers en bestanden, oude en nieuwe situatie en controle>
 
-Niet uitgevoerd: <wat niet is getest en waarom>
+## Uitrol
+<!-- aihub:optional -->
+<gerelateerde wijzigingen, vereiste versies of uitrolvolgorde>
+
+## Open reviewpunten
+<!-- aihub:optional -->
+<onbevestigd gedrag, reden en resterende beslissing>
 
 ## Gerelateerd
 Story: <link naar het werkitem>

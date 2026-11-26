@@ -199,6 +199,15 @@ describe("aihub pr update", () => {
     expect(lines[0]).toContain("PR !42 updated");
   });
 
+  it("rejects oversized evidence before patching the pull request", async () => {
+    const { dir } = setup();
+    const { fn, calls } = fakeFetch([{ match: /pullrequests\/42/, respond: () => ({ body: existing }) }]);
+    const { ctx, errs } = ctxFor(dir, fn);
+    expect(await main(["pr", "update", "--pr", "42", "--section", "Tests", "--replace-text", "x".repeat(4000)], ctx)).toBe(1);
+    expect(errs.join(" ")).toMatch(/exceeds 4000/);
+    expect(calls.some((call) => call.method === "PATCH")).toBe(false);
+  });
+
   it("rejects an update without changes", async () => {
     const dir = tmp();
     sh(dir, ["init", "-b", "main"]);

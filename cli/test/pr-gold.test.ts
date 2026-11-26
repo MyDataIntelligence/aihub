@@ -67,6 +67,14 @@ describe("aihub pr comment", () => {
 });
 
 describe("addTestRow", () => {
+  it("keeps criterion evidence even when it links to the same build", () => {
+    const evidence = `| Change | Expected | Observation |\n|---|---|---|\n| Export | one row | [sample](${EV.link}) |`;
+    const original = "## Verification\n\n" + evidence;
+    const added = addTestRow(original, EV, "en").description;
+    expect(added).toContain(evidence);
+    expect(addTestRow(added, EV, "en").description).toBe(added);
+  });
+
   it("replaces the template's placeholder row and keeps the rest of the table and the section", () => {
     const d = "## Summary\n\nWhy.\n\n## Tests\n\n| Test | Result |\n|---|---|\n| <test that was really run> | <pass or fail> |\n\nNot run: integration tests.\n";
     const r = addTestRow(d, EV, "en");

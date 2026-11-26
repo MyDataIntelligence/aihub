@@ -22,7 +22,7 @@ import {
   workItemFromBranch,
   git,
 } from "./git.js";
-import { compose, DEFAULT_EMPTY, editSection, mergeSections, parseSections, resolveTemplate, templateSourceText, type CodeValues } from "./templates.js";
+import { compose, DEFAULT_EMPTY, checkDescriptionLength, editSection, mergeSections, parseSections, resolveTemplate, templateSourceText, type CodeValues } from "./templates.js";
 import { CONTEXT_RE, notesText, readNotes, unwovenNotes, weaveNotes } from "./notes.js";
 import { loadTeam, readUtf8 } from "./team.js";
 import { checkActionSections } from "./prActions.js";
@@ -253,7 +253,10 @@ export async function updatePr(ctx: Ctx, o: UpdateOpts): Promise<string> {
     checkActionSections({ description, only: touched, configured: team.pullRequest?.actionSections, emptyText: team.pullRequest?.emptySection || DEFAULT_EMPTY, verb: "updated" });
   }
   const patch: Record<string, unknown> = {};
-  if (changed.length) patch.description = description;
+  if (changed.length) {
+    checkDescriptionLength(description);
+    patch.description = description;
+  }
   if (o.title) (patch.title = o.title), changed.push("title");
   if (o.draft !== undefined) (patch.isDraft = o.draft), changed.push(o.draft ? "draft" : "ready");
   if (o.target) (patch.targetRefName = branchRef(o.target)), changed.push(`target ${shortBranch(branchRef(o.target))}`);
