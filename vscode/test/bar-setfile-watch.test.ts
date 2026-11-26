@@ -8,13 +8,14 @@ const h = vi.hoisted(() => ({
   cliCalls: [] as { args: string[]; cwd: string }[],
   delay: 0,
   messages: [] as string[],
+  buttons: [] as string[][],
   folder: "",
 }));
 
 vi.mock("vscode", () => ({
   window: {
     showWarningMessage: async (m: string) => void h.messages.push(m),
-    showInformationMessage: async (m: string) => void h.messages.push(m),
+    showInformationMessage: async (m: string, ...b: string[]) => void (h.messages.push(m), h.buttons.push(b)),
     showErrorMessage: async (m: string) => void h.messages.push(m),
   },
   commands: { executeCommand: async () => undefined },
@@ -82,6 +83,7 @@ describe("the set file watcher acts only on what changed in the file", () => {
   beforeEach(() => {
     h.cliCalls.length = 0;
     h.messages.length = 0;
+    h.buttons.length = 0;
   });
 
   it("repo-b switched outside aihub, then repo-a switched through aihub: repo-b stays where it is, the file follows it", async () => {
@@ -118,6 +120,19 @@ describe("the set file watcher acts only on what changed in the file", () => {
     expect(w.read().repos.find((r) => r.name === "repo-b")?.branch).toBe("feature/5-y");
     watcher.dispose();
   });
+  it("one action gives one message: what was done in plain words, with Undo (review L)", async () => {
+    const w = world();
+    const watcher = new SetFileWatcher({ log: () => undefined, changed: () => undefined });
+    watcher.aim();
+    h.messages.length = 0;
+    w.write2([{ name: "repo-a", branch: "feature/5-x-2" }]);
+    await watcher.apply();
+    expect(h.messages).toHaveLength(1);
+    expect(h.messages[0]).toContain("repo-a switched to feature/5-x-2");
+    expect(h.buttons[0]).toContain("Undo");
+    watcher.dispose();
+  });
+
   it("the window was closed while repo-b was switched: the first change in the file afterwards does not switch it back", async () => {
     const w = world();
     // closed window: nobody watched; git switch in a terminal

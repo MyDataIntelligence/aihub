@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import * as vscode from "vscode";
 import { forgetScan, headBranchOf } from "../../../cli/src/lib/machineScan";
 import { gitRun } from "./ownWindow";
+import { holdNotices } from "./notice";
 import { finishSnapshot, newBackups, planUndo, runUndo, takeSnapshot, type Snapshot } from "./undo";
 import { clearUndo, loadUndo, saveUndo, undoLabelOf } from "./undoStore";
 import { openFacts } from "./engine";
@@ -32,12 +33,30 @@ function differs(s: Snapshot): boolean {
  * Runs `run` (an action that changes the set) with a snapshot before it. When something changed, one message with Undo
  * (and, after a removal, Show Backup) follows, and the state offers "Undo: <label>" until the next action.
  */
-export async function withUndo<T>(h: Pick<StoryHooks, "changed" | "log" | "afterGit">, label: string, setFolder: string | undefined, run: () => Promise<T>, o: { backup?: boolean; files?: { path: string; bytes?: Buffer }[]; sources?: string[]; created?: (result: T) => string | undefined } = {}): Promise<T> {
+export async function withUndo<T>(h: Pick<StoryHooks, "changed" | "log" | "afterGit">, label: string, setFolder: string | undefined, run: () => Promise<T>, o: { backup?: boolean; files?: { path: string; bytes?: Buffer }[]; sources?: string[]; created?: (result: T) => string | undefined; message?: (result: T) => string; warn?: (result: T) => boolean } = {}): Promise<T> {
   const snap = setFolder !== undefined ? await takeSnapshot(gitRun, setFolder, label, { files: o.files, sources: o.sources }).catch(() => undefined) : undefined;
-  const result = await run();
+  const release = holdNotices();
+  let result: T;
+  let heldLines: string[] = [];
+  try {
+    result = await run();
+  } finally {
+    heldLines = release();
+  }
+  // one message per action, in plain words: what the open result said goes to the log
+  const text = o.message?.(result) ?? "";
+  const say = (buttons: string[]): Thenable<string | undefined> | undefined => {
+    const line = text || (o.message ? "" : heldLines[0] ?? "");
+    if (!line) return undefined;
+    return (o.warn?.(result) ? vscode.window.showWarningMessage : vscode.window.showInformationMessage)(`AI Context Hub: ${line}`, ...buttons);
+  };
+  for (const l of heldLines) h.log(l);
   // a set the action made: its folder is known only now
   if (snap && o.created) snap.setFolder = o.created(result) ?? snap.setFolder;
-  if (!snap || (snap.setFolder ? !differs(snap) && !(o.created && existsSync(snap.setFolder)) : true)) return result;
+  if (!snap || (snap.setFolder ? !differs(snap) && !(o.created && existsSync(snap.setFolder)) : true)) {
+    void say([]);
+    return result;
+  }
   // how the set looks right after the action, and the branches the action made: Undo only goes back to exactly this
   finishSnapshot(snap);
   last = { label, at: Date.now(), snap };
@@ -51,7 +70,9 @@ export async function withUndo<T>(h: Pick<StoryHooks, "changed" | "log" | "after
   const undo = "Undo";
   const show = "Show Backup";
   const backups = o.backup ? newBackups(snap) : [];
-  void vscode.window.showInformationMessage(`AI Context Hub: ${label}.`, undo, ...(backups.length ? [show] : [])).then((pick) => {
+  const buttons = [undo, ...(backups.length ? [show] : [])];
+  const shown = o.message || heldLines.length ? say(buttons) : vscode.window.showInformationMessage(`AI Context Hub: ${label}.`, ...buttons);
+  void shown?.then((pick) => {
     if (pick === undo) void undoLast(h);
     if (pick === show) void vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(backups[0].dir));
   });

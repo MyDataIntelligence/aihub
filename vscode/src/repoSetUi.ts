@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import { notice } from "./bar/notice";
 import { offerSaveGroup, pickRepos } from "./repoPickerUi";
 import { plainWorkspace } from "./repoPickerModel";
 import * as os from "os";
@@ -156,7 +157,9 @@ export async function showOpened(res: OpenResultJson, window: "new" | "this", lo
   const to = openTarget(res, window);
   // some repositories of the set this window shows switched in place: nothing to open, the window stays
   if ("stays" in to) {
-    void (sum.ok ? vscode.window.showInformationMessage(`AI Context Hub: ${to.stays}`) : vscode.window.showWarningMessage(`AI Context Hub: ${to.stays}\n${detail}`, { modal: true }));
+    // inside an action with Undo the sentence only goes to the log: the action says one thing
+    if (sum.ok) notice(to.stays, (t) => void vscode.window.showInformationMessage(`AI Context Hub: ${t}`));
+    else void vscode.window.showWarningMessage(`AI Context Hub: ${to.stays}\n${detail}`, { modal: true });
     return sum.ok;
   }
   if ("error" in to) {
