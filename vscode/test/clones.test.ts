@@ -23,11 +23,11 @@ describe("one repository is one line, however often it is cloned", () => {
     expect(remoteKey("git@example.com:team/repo-a.git")).toBe(remoteKey("https://example.com/Team/repo-a"));
   });
 
-  it("the preferred clone wins, else the most recently used, else the shortest path", () => {
+  it("the preferred clone wins, else the most recently used, else the first folder to look in", () => {
     const clones = [
       { path: "C:\\work\\old\\repo-a", lastUsed: 10 },
-      { path: "C:\\src\\repo-a", lastUsed: 20 },
-      { path: "C:\\x\\repo-a", lastUsed: 20 },
+      { path: "C:\\src\\repo-a", lastUsed: 20, rank: 1 },
+      { path: "C:\\x\\repo-a", lastUsed: 20, rank: 0 },
     ];
     expect(chooseClone(clones)).toBe("C:\\x\\repo-a");
     expect(chooseClone(clones, "c:\\work\\OLD\\repo-a")).toBe("C:\\work\\old\\repo-a");

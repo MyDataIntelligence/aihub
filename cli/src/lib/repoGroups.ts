@@ -6,6 +6,8 @@ import { AihubError } from "./errors.js";
 import { repoRoot } from "./git.js";
 import { configHome } from "./notifyPolicy.js";
 import { resolveRepoDirs, type RepoDir } from "./repos.js";
+import { remoteOf } from "./machineScan.js";
+import { repoNameOfUrl } from "./repoName.js";
 import { loadTeam, TEAM_FILE, type TeamConfig } from "./team.js";
 
 /**
@@ -79,7 +81,8 @@ export function resolveRepos(ctx: Ctx, specs: string[]): RepoDir[] {
   for (const s of specs) {
     if (isAbsolute(s) || /^[A-Za-z]:[\/]/.test(s)) {
       if (!gitFolder(s)) throw new AihubError(`${s} is not a git clone`);
-      out.push({ name: basename(s), dir: resolve(s) });
+      // the repository is its remote, not its folder name: a clone in `repo-a-copy` is still repo-a
+      out.push({ name: repoNameOfUrl(remoteOf(join(resolve(s), ".git"))) ?? basename(s), dir: resolve(s) });
     } else names.push(s);
   }
   if (names.length) {

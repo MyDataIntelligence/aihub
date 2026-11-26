@@ -185,6 +185,24 @@ export function setRepoBranchInPlace(folder: string, repoPath: string, branch: s
   });
 }
 
+/** Points ONE repository of its own set at another source clone (it was moved or deleted); nothing else in the file changes. True when something changed. */
+export function setRepoSourceInPlace(folder: string, repoPath: string, source: string): boolean {
+  return withSetLock(folder, () => {
+    if (!existsSync(join(folder, AIHUB_SET))) return false;
+    const same = (a: string, b: string) => resolve(a).toLowerCase() === resolve(b).toLowerCase();
+    const top = JSON.parse(readJsonText(join(folder, AIHUB_SET))) as SetMeta;
+    for (const m of [top, ...(top.others ?? [])]) {
+      const r = (m.repos as { path?: string; source?: string }[]).find((x) => typeof x.path === "string" && same(resolve(folder, x.path), repoPath));
+      if (!r) continue;
+      if (r.source && same(r.source, source)) return false;
+      r.source = source;
+      writeAtomic(join(folder, AIHUB_SET), JSON.stringify(top, null, 2));
+      return true;
+    }
+    return false;
+  });
+}
+
 /** Writes `meta` back into the set file of its kind; `.aihub-set.json` keeps the other sets of the folder. */
 export function writeSetFile(folder: string, kind: SetKind, meta: SetMeta): void {
   return withSetLock(folder, () => writeSetFileLocked(folder, kind, meta));

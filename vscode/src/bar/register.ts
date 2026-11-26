@@ -12,7 +12,9 @@ import { cli, jsonOf } from "./runner";
 import { RemoteRepos } from "./remoteRepos";
 import { registerSearchCommands } from "./searchUi";
 import { SizeMemo } from "./setSize";
+import { hideClone, setPreferredClone } from "./hiddenClones";
 import { BehindMemo, gitStatusOf, targetOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
+import { registerCloneCommands } from "./cloneUi";
 import { linkedOf, registerStoryCommands } from "./storyUi";
 import { registerSetOps, SetFileWatcher } from "./setOps";
 import { registerBatchCommands, registerPullRequestCommand } from "./batchUi";
@@ -447,6 +449,19 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
 
   // the left menu opens: measure the sets in the background, the state gets the sizes as they come in
   reg(BAR_COMMANDS.measureSets, (arg?: { force?: boolean }) => void engine.measureSets(changed, { force: arg?.force === true }).catch(() => undefined));
+  // which clone of a repository is used, and which are taken out of the list (personal, files in the aihub config home)
+  reg(BAR_COMMANDS.useClone, (arg?: { name?: string; path?: string }) => {
+    if (!arg?.path || !arg.name) return;
+    setPreferredClone(process.env, arg.name, arg.path);
+    forgetScan(process.env);
+    changed();
+  });
+  reg(BAR_COMMANDS.removeClone, (arg?: { path?: string }) => {
+    if (!arg?.path) return;
+    hideClone(process.env, arg.path);
+    forgetScan(process.env);
+    changed();
+  });
   // the clean-up dialog opens: now the uncommitted work of the sets that can be removed is looked at
   reg(BAR_COMMANDS.checkClean, () => void engine.checkClean(changed).catch(() => undefined));
 
@@ -526,6 +541,7 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   // after an own Update or Push the stand against the target is looked at again
   registerBatchCommands({ engine, log: deps.log, changed, reg, afterGit: () => (behind.forget(), void mgr.run("own")) });
   registerPullRequestCommand({ engine, log: deps.log, changed, reg, refreshPrs: () => prs.refresh(true).then(() => undefined) });
+  registerCloneCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerUndoCommand({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerSetOps({ engine, log: deps.log, changed, reg });
   registerSearchCommands({ engine, remote: memo.remote, log: deps.log, changed, reg });

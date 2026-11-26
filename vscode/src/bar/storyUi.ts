@@ -448,7 +448,9 @@ export function registerStoryCommands(h: StoryHooks): void {
       name = (await vscode.window.showQuickPick(rows, { title: `Add Repository to ${set.story ? `#${set.story}` : "the set"}`, placeHolder: `It joins on ${set.branch}`, matchOnDetail: true }))?.label;
     }
     if (!name) return;
-    const args = ["worktree", "add", "--repos", name, "--json"];
+    // the clone the list shows is the clone that is added (a folder, not a name looked up next to the set)
+    const known = (await h.engine.repositories()).find((r) => r.name.toLowerCase() === name!.toLowerCase());
+    const args = ["worktree", "add", "--repos", known?.path ?? name, "--json"];
     await withUndo(
       h,
       `Add ${name} to the set`,

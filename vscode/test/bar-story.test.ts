@@ -82,9 +82,9 @@ describe("Open Story: which repositories are ticked", () => {
   it("the command: linked ones on their branch, the new ones on feature/<id>-<slug>, the set on the first linked branch, no window", () => {
     const { rows: out } = storyRepoRows(rows, clones);
     const args = openStoryArgs({ id: 4711, title: "Order export" }, out, "staging");
-    expect(args).toEqual(["worktree", "open", "--repos", "repo-a,repo-b,repo-c,repo-d", "--branch", "feature/4711-x-2", "--branch-for", "repo-a=feature/4711-x-2,repo-b=feature/4711-y,repo-c=feature/4711-order-export,repo-d=feature/4711-order-export", "--story", "4711", "--from", "staging", "--window", "none"]);
+    expect(args).toEqual(["worktree", "open", "--repos", "/c/repo-a,/c/repo-b,/c/repo-c,/c/repo-d", "--branch", "feature/4711-x-2", "--branch-for", "repo-a=feature/4711-x-2,repo-b=feature/4711-y,repo-c=feature/4711-order-export,repo-d=feature/4711-order-export", "--story", "4711", "--from", "staging", "--window", "none"]);
     // nothing linked: every repository gets the new branch
-    expect(openStoryArgs({ id: 4711, title: "Order export" }, [{ repo: "repo-d", path: "/c/repo-d", picked: true, onThisPc: true }])).toEqual(["worktree", "open", "--repos", "repo-d", "--branch", "feature/4711-order-export", "--branch-for", "repo-d=feature/4711-order-export", "--story", "4711", "--window", "none"]);
+    expect(openStoryArgs({ id: 4711, title: "Order export" }, [{ repo: "repo-d", path: "/c/repo-d", picked: true, onThisPc: true }])).toEqual(["worktree", "open", "--repos", "/c/repo-d", "--branch", "feature/4711-order-export", "--branch-for", "repo-d=feature/4711-order-export", "--story", "4711", "--window", "none"]);
   });
 });
 

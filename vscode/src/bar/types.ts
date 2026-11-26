@@ -42,6 +42,8 @@ export interface BarRepo {
   name: string;
   path: string;
   branch: string;
+  /** the source clone this worktree belongs to is gone (moved or deleted): the worktree cannot be used by git until it is found again. Choose with aihub.bar.locateClone, aihub.bar.useAnotherClone or aihub.bar.removeRepository */
+  sourceMissing?: true;
   /** the branch is linked to the story in Azure DevOps (a set only; absent when not known) */
   linked?: boolean;
   /** changed files; absent when not known */
@@ -98,8 +100,10 @@ export interface BarRepository {
   name: string;
   path: string;
   branch: string;
-  /** other clones of the same remote (one line per remote in the menu) */
+  /** other clones of the same remote (one line per remote in the menu: "· 2 other clones") */
   otherClones?: number;
+  /** every clone of the repository on this PC when there is more than one (the one in use is `chosen`); the name is the repository's (its remote), the path the clone. Choose with aihub.bar.useClone, take out of the list with aihub.bar.removeClone */
+  clones?: { path: string; branch: string; chosen: boolean }[];
 }
 
 /**
@@ -218,6 +222,14 @@ export const BAR_COMMANDS = {
   measureSets: "aihub.bar.measureSets",
   /** looks at the uncommitted work of the other sets that can be removed (at most 8 worktrees, git status each, remembered 5 minutes); the clean-up dialog calls it when it opens, the state gets clean and allMerged as they come in */
   checkClean: "aihub.bar.checkClean",
+  /** `{ name, path }`: use this clone of the repository from now on (the same preference as `aihub repos prefer`); the list and every action follow */
+  useClone: "aihub.bar.useClone",
+  /** `{ path }` (the worktree whose source clone is missing): pick the folder of the clone; accepted only when its remote is the repository's; the worktree is repaired and the set file points at it */
+  locateClone: "aihub.bar.locateClone",
+  /** `{ path }`: the same with another clone of the repository that is on this PC (the pick lists them) */
+  useAnotherClone: "aihub.bar.useAnotherClone",
+  /** `{ path }`: take this clone out of the list ("Remove from List"); the folder stays where it is */
+  removeClone: "aihub.bar.removeClone",
   /** puts the set back as it was before the last action (branches, folders, set file, workspace file), or says in one sentence why not and does nothing */
   undoLast: "aihub.bar.undoLast",
   /** pull (fast-forward) in every repository of the set; one result line per repository */

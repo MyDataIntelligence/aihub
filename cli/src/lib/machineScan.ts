@@ -19,6 +19,8 @@ export interface ScanRepo {
   remote?: string;
   /** the other clones of the same remote on this PC (set when the list is made one-per-remote) */
   otherClones?: string[];
+  /** every clone of the remote on this PC, the one in use included (set when there is more than one) */
+  clones?: { path: string; branch: string }[];
 }
 
 export interface ScanSet {

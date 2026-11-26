@@ -73,19 +73,20 @@ async function lastUsed(folder: string): Promise<number> {
 const samePath = (a: string, b: string) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 
 /** The clone to use: the preferred one, else the most recently used, else the shortest path. */
-export function chooseClone(clones: { path: string; lastUsed: number }[], preferred?: string): string {
+export function chooseClone(clones: { path: string; lastUsed: number; rank?: number }[], preferred?: string): string {
   if (preferred) {
     const hit = clones.find((c) => samePath(c.path, preferred));
     if (hit) return hit.path;
   }
-  return [...clones].sort((a, b) => b.lastUsed - a.lastUsed || a.path.length - b.path.length || a.path.localeCompare(b.path))[0].path;
+  // the preferred one, else the last used, else the first in the folders to look in, else by path
+  return [...clones].sort((a, b) => b.lastUsed - a.lastUsed || (a.rank ?? 0) - (b.rank ?? 0) || a.path.localeCompare(b.path))[0].path;
 }
 
 /**
  * One entry per remote. `prefer` maps a repository name (the last part of the remote, or the folder name) to the clone
  * the user wants (`aihub repos prefer <name> <path>`). Order follows the first clone of each remote in `repos`.
  */
-export async function uniqueRepos(repos: Repo[], prefer: Record<string, string> = {}, info?: (folder: string) => Promise<{ url?: string; lastUsed: number }>): Promise<UniqueRepo[]> {
+export async function uniqueRepos(repos: Repo[], prefer: Record<string, string> = {}, info?: (folder: string) => Promise<{ url?: string; lastUsed: number }>, rank?: (folder: string) => number): Promise<UniqueRepo[]> {
   const read = info ?? (async (folder: string) => ({ url: await originUrl(folder), lastUsed: await lastUsed(folder) }));
   const groups = new Map<string, { repos: Repo[]; used: number[]; name: string }>();
   for (const r of repos) {
@@ -102,7 +103,7 @@ export async function uniqueRepos(repos: Repo[], prefer: Record<string, string> 
   };
   return [...groups.values()].map((g) => {
     if (g.repos.length === 1) return g.repos[0];
-    const chosen = chooseClone(g.repos.map((r, i) => ({ path: r.path, lastUsed: g.used[i] })), preferOf(g.name, path.basename(g.repos[0].path)));
+    const chosen = chooseClone(g.repos.map((r, i) => ({ path: r.path, lastUsed: g.used[i], rank: rank?.(r.path) })), preferOf(g.name, path.basename(g.repos[0].path)));
     const main = g.repos.find((r) => r.path === chosen)!;
     return { ...main, otherClones: g.repos.filter((r) => r !== main).map((r) => r.path) };
   });
