@@ -59,14 +59,14 @@ describe("Open Story: which repositories are ticked", () => {
     expect(out.map((r) => [r.repo, r.branch ?? "new", r.picked])).toEqual([["repo-a", "feature/4711-r", true], ["repo-b", "new", false]]);
   });
 
-  it("an existing branch without a link is shown, not ticked, and linked after opening; N other is information only", () => {
+  it("an existing branch without a link is shown, ticked, and linked after opening; N other is information only", () => {
     const { rows: out } = storyRepoRows(
       [row("repo-a", "feature/4711-x", { linked: "ado" }), row("repo-b", "feature/4711-z", { linked: "local" }), row("repo-b", "feature/4711-w", { linked: "local", status: "old" })],
       [{ name: "repo-a", path: "/c/repo-a" }, { name: "repo-b", path: "/c/repo-b" }, { name: "repo-c", path: "/c/repo-c" }],
     );
     expect(out.map((r) => [r.repo, r.branch ?? "new", r.picked, r.linked, r.others])).toEqual([
       ["repo-a", "feature/4711-x", true, true, undefined],
-      ["repo-b", "feature/4711-z", false, false, 1],
+      ["repo-b", "feature/4711-z", true, false, 1],
       ["repo-c", "new", false, undefined, undefined],
     ]);
     expect(out.map(rowDescription)).toEqual(["feature/4711-x", "feature/4711-z · 1 other", "new branch from the target"]);
@@ -151,7 +151,7 @@ describe("the story links another branch", () => {
 });
 
 describe("Open Story with branches known only by their name", () => {
-  it("a repository whose only branch of the story is found by name shows it (unticked), not new branch; linked and local links go first", () => {
+  it("a repository whose only branch of the story is found by name shows it (ticked), not new branch; linked and local links go first", () => {
     const { rows: out } = storyRepoRows(
       [
         row("repo-a", "feature/4711-x", { linked: "ado" }),
@@ -164,9 +164,9 @@ describe("Open Story with branches known only by their name", () => {
     );
     expect(out.map((r) => [r.repo, r.branch ?? "new", r.picked, r.linked, r.others])).toEqual([
       ["repo-a", "feature/4711-x", true, true, undefined],
-      ["repo-b", "feature/4711-by-name", false, false, undefined],
-      ["repo-c", "feature/4711-local", false, false, 1],
-      ["repo-d", "feature/4711-remote", false, false, undefined],
+      ["repo-b", "feature/4711-by-name", true, false, undefined],
+      ["repo-c", "feature/4711-local", true, false, 1],
+      ["repo-d", "feature/4711-remote", true, false, undefined],
       ["repo-e", "new", false, undefined, undefined],
     ]);
   });
