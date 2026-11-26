@@ -1,3 +1,4 @@
+import { plainError } from "./plainError";
 import { existsSync } from "node:fs";
 import { headBranchOf } from "../../../cli/src/lib/machineScan";
 import { isOffline, operationInProgress } from "./behind";
@@ -66,7 +67,7 @@ export async function updateOne(git: GitRun, r: RepoRef): Promise<RepoResult> {
     return { repo: r.name, ok: true, line: `${r.name}: ${n} new commit${n === "1" ? "" : "s"}`, detail: first(out) };
   } catch (e) {
     const t = errText(e);
-    const why = /diverg|not possible to fast-forward|Not possible/i.test(t) ? "has commits of its own and the remote has others: update from the target or rebase it yourself" : /no tracking|no upstream/i.test(t) ? "has no remote branch yet" : first(t, 1);
+    const why = /diverg|not possible to fast-forward|Not possible/i.test(t) ? "has commits of its own and the remote has others: update from the target or rebase it yourself" : /no tracking|no upstream/i.test(t) ? "has no remote branch yet" : plainError(t).text;
     return { repo: r.name, ok: false, line: `${r.name}: not updated, ${why}`, detail: t };
   }
 }
