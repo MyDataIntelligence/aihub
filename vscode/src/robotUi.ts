@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { makeRunner, readJson, type Runner } from "./cli";
 import { resultMessage, robotTestLines, type RobotResult } from "./robotModel";
+import { showFailure } from "./bar/failureUi";
 
 /**
  * "Run Robot Test": pick a suite, a test and (when team.yaml has several) a test environment, run it locally in a
@@ -60,7 +61,7 @@ export class RobotController {
     try {
       d = await readJson<Discovery>(this.runner(), ["robot", "local"], cwd);
     } catch (e) {
-      return void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+      return void showFailure(e);
     }
     // what to run: the clicked test, the clicked file or folder, else a pick
     let file = arg instanceof vscode.Uri ? arg.fsPath : arg?.file;
@@ -90,7 +91,7 @@ export class RobotController {
     try {
       c = await readJson<LocalCommand>(this.runner(), ["robot", "local", "--command", ...(file ? ["--file", file] : []), ...(test ? ["--test", test] : []), ...(env ? ["--env", env] : [])], cwd);
     } catch (e) {
-      return void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+      return void showFailure(e);
     }
     await this.execute(c, cwd, test ?? suite?.rel ?? "all suites", env);
   }

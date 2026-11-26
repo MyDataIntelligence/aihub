@@ -9,6 +9,7 @@ import { gitRun, openOwn } from "./ownWindow";
 import type { RemoteRepos } from "./remoteRepos";
 import { cli } from "./runner";
 import { setLabel } from "./state";
+import { showFailure } from "./failureUi";
 import { BAR_COMMANDS } from "./types";
 import { openPath } from "./window";
 
@@ -130,7 +131,7 @@ export function registerSearchCommands(h: SearchHost): void {
         h.changed();
         await openPath(res.path, "new");
       } catch (e) {
-        void vscode.window.showErrorMessage(`AI Context Hub: could not check out ${branch} of ${repo}: ${(e as Error).message}`);
+        showFailure(e, `could not check out ${branch} of ${repo}`);
       }
       return;
     }
@@ -171,12 +172,12 @@ async function cloneAndFinish(h: SearchHost, o: { name: string; remoteUrl: strin
   let added = false;
   if (o.addTo) {
     try {
-      await cli(["worktree", "add", "--repos", o.name, "--json"], o.addTo.first);
+      await cli(["worktree", "add", "--repos", o.dir, "--json"], o.addTo.first);
       added = true;
       forgetScan(process.env);
       h.changed();
     } catch (e) {
-      void vscode.window.showWarningMessage(`AI Context Hub: ${o.name} was cloned to ${o.dir}, but could not be added to ${o.addTo.label}: ${(e as Error).message}`);
+      showFailure(e, `${o.name} was cloned to ${o.dir}, but could not be added to ${o.addTo.label}`, "warning");
     }
   }
   // one message with Undo; opening a new window comes after it, so this window keeps the message
@@ -186,7 +187,7 @@ async function cloneAndFinish(h: SearchHost, o: { name: string; remoteUrl: strin
       try {
         await cli(["worktree", "drop", "--repos", o.name, "--json"], o.addTo!.first);
       } catch (e) {
-        return void vscode.window.showWarningMessage(`AI Context Hub: ${o.name} stays: it could not be taken out of the set (${(e as Error).message}).`);
+        return showFailure(e, `${o.name} stays: it could not be taken out of the set`, "warning");
       }
     }
     const check = await untouched(gitRun, o.dir).catch((e: Error) => ({ ok: false, why: e.message }));

@@ -175,7 +175,7 @@ describe("aihub.bar.openInOwnWindow", () => {
     h.choose = (rows) => rows.find((r) => r.label === "feature/5-other");
     await command()({ repo: "Repo With Spaces", path: w.wt });
     expect(h.commands).toEqual([]);
-    expect(h.errors[0]).toContain("Nothing in the set was changed");
+    expect(h.errors[0]).toContain("nothing in the set was changed");
     expect(w.files().every((b, i) => b.equals(before[i]))).toBe(true);
   });
 

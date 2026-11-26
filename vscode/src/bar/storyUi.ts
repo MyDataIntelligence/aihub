@@ -12,6 +12,7 @@ import { readJson } from "../cli";
 import { cli, runner } from "./runner";
 import type { OpenResultJson } from "../repoSetModel";
 import { answerExisting, askCloneCheckedOut, askSmartCheckout, showOpened } from "../repoSetUi";
+import { showFailure } from "./failureUi";
 import { dirtyFiles, fileList, smartCheckout } from "./smartCheckout";
 import type { StoryJson } from "../storyModel";
 import { BarEngine, openFacts, storyBranchesOf, titleFromFiles } from "./engine";
@@ -454,7 +455,7 @@ export function registerStoryCommands(h: StoryHooks): void {
       forgetScan(process.env);
       await openPath(res.path, "new");
     } catch (e) {
-      void vscode.window.showErrorMessage(`AI Context Hub: could not open ${one.name} in its own window: ${(e as Error).message}. Nothing in the set was changed.`);
+      showFailure(e, `could not open ${one.name} in its own window (nothing in the set was changed)`);
     }
   });
 

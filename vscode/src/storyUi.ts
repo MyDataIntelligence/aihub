@@ -20,6 +20,7 @@ import { makeRunner, readJson, type Runner } from "./cli";
 import { openWays, type OpenResultJson, type OpenWay } from "./repoSetModel";
 import { answerExisting, pick, showOpened } from "./repoSetUi";
 import { itemView, lastReflog, overlay, starQuestion, storyChildren, STAR_ANSWERS, type AutoMark, type BranchRowJson, type StoryJson, type StoryNode } from "./storyModel";
+import { showFailure } from "./bar/failureUi";
 
 /**
  * "My Stories" (Explorer view) and the star that follows where you work. The view reads `aihub story branches --json`
@@ -91,7 +92,7 @@ export class StoriesView implements vscode.TreeDataProvider<StoryNode> {
       (r) => r.stories,
       (e: Error) => {
         this.deps.log(`story branches: ${e.message}`);
-        if (!quiet) void vscode.window.showWarningMessage(`AI Context Hub: could not read your stories: ${e.message}`);
+        if (!quiet) void showFailure(e, "could not read your stories", "warning");
         this.data = undefined;
         return [];
       },
@@ -383,7 +384,7 @@ export function registerStories(ctx: vscode.ExtensionContext, deps: StoryDeps): 
   const tracker = new StarTracker(deps);
   tracker.onChange = () => view.redraw();
   const cwd = () => deps.cwd() ?? "";
-  const fail = (e: unknown) => void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+  const fail = (e: unknown) => void showFailure(e);
   const cli = (args: string[], dir = cwd()) => slowRunner()([...args, "--json"], dir);
   /** the clone of a repository next to the current one, for local changes */
   const repoDirOf = (repo: string) => path.join(path.dirname(mainCheckout(cwd())), repo);

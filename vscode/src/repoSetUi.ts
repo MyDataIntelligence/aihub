@@ -38,6 +38,7 @@ import {
   existingOptions,
   existingTitle,
 } from "./repoSetModel";
+import { showFailure } from "./bar/failureUi";
 
 /**
  * "Open Repo Set": group or repositories -> branch -> how. It is a local action: the quick pick runs
@@ -201,7 +202,7 @@ export async function showOpened(res: OpenResultJson, window: "new" | "this", lo
   try {
     await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(to.file), to.options);
   } catch (e) {
-    void vscode.window.showErrorMessage(`AI Context Hub: the set is ready, but VS Code could not open ${to.file}: ${(e as Error).message}`);
+    void showFailure(e, `the set is ready, but VS Code could not open ${to.file}`);
     return false;
   }
   if (window === "new") void vscode.window.showInformationMessage(sum.title);
@@ -304,7 +305,7 @@ export class RepoSetController {
     const items = this.branches(target).then(
       (rows) => withPlain(branchItems(rows.branches, rows.repos.length || total, preferredBranch(rows.branches, rows.current, here)), plain),
       (e: Error) => {
-        void vscode.window.showWarningMessage(`Could not read the branches: ${e.message}`);
+        void showFailure(e, "could not read the branches", "warning");
         return withPlain(branchItems([], total), plain);
       },
     );
@@ -323,7 +324,7 @@ export class RepoSetController {
       return branch ? { branch: branch.trim() } : undefined;
     }
     const prs = readJson<PrJson[]>(slowRunner(), ["pr", "list", "--mine"], this.cwd()).catch((e: Error) => {
-      void vscode.window.showWarningMessage(`Could not read your pull requests: ${e.message}`);
+      void showFailure(e, "could not read your pull requests", "warning");
       return [] as PrJson[];
     });
     const p = await pick(
@@ -394,7 +395,7 @@ export class RepoSetController {
     try {
       out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Opening ${b.branch} (${way.mode === "worktree" ? "worktrees" : "switching the checkouts"})...` }, () => slowRunner()([...args, "--json"], this.cwd()));
     } catch (e) {
-      return void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+      return void showFailure(e);
     }
     // a branch with a worktree elsewhere: ask move / reuse / recreate, then run again with the answer
     const answered = await answerExisting(out, (extra) => slowRunner()([...args, ...extra, "--json"], this.cwd()));
@@ -415,8 +416,8 @@ export class RepoSetController {
 
   register(): void {
     this.ctx.subscriptions.push(
-      vscode.commands.registerCommand("aihub.reposet.open", (branch?: unknown) => this.open(undefined, typeof branch === "string" ? branch : undefined).catch((e) => vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`))),
-      vscode.commands.registerCommand("aihub.reposet.openGroup", (n?: { group?: GroupJson }) => this.open(n?.group?.name).catch((e) => vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`))),
+      vscode.commands.registerCommand("aihub.reposet.open", (branch?: unknown) => this.open(undefined, typeof branch === "string" ? branch : undefined).catch((e) => showFailure(e))),
+      vscode.commands.registerCommand("aihub.reposet.openGroup", (n?: { group?: GroupJson }) => this.open(n?.group?.name).catch((e) => showFailure(e))),
     );
   }
 }
