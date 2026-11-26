@@ -11,6 +11,7 @@ import { BACKGROUND_ENV, gitRun } from "./ownWindow";
 import { cli, jsonOf } from "./runner";
 import { RemoteRepos } from "./remoteRepos";
 import { registerSearchCommands } from "./searchUi";
+import { registerPipelineCommands } from "./pipelinesUi";
 import { SizeMemo } from "./setSize";
 import { showFailure } from "./failureUi";
 import { withCloneRecovery } from "./missingCloneUi";
@@ -431,6 +432,9 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
     showFailure(e);
   };
   const reg = (id: string, f: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, (...a) => withCloneRecovery(async () => f(...a)).catch(fail)));
+
+  // pipelines in the bar: one aihub process per call, only when the bar asks
+  registerPipelineCommands(reg, (t) => deps.toChat?.(t));
 
   // the overview menu opens: read the pull requests again (at most once per call, a failed call is remembered like a good one)
   reg(BAR_COMMANDS.refreshStatus, async () => {

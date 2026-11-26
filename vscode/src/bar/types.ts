@@ -254,4 +254,27 @@ export const BAR_COMMANDS = {
   showComment: "aihub.bar.showComment",
   /** read the review threads of the pull requests again now (one aihub process for all of them) */
   refreshComments: "aihub.bar.refreshComments",
+  // ---- pipelines in the bar (one aihub process each, JSON as in docs/cli-json.md "Pipelines in the bar"; a failure is
+  // `{ error: { kind: "signedOut"|"cliMissing"|"cliTooOld"|"notARepository"|"failed", message } }`, never a popup; the
+  // lasting kinds are remembered 5 minutes per folder; the bar does the timing, nothing polls by itself) ----
+  /** `{ repoDirs?, mine? (default true), today?, status?, branch?, top? }` -> `aihub pipeline list` (default repoDirs: the repositories of this window) */
+  pipelineRuns: "aihub.bar.pipelineRuns",
+  /** `{ run, repoDir? }` -> `aihub pipeline show`: tree, trigger, parameters, variables, summary */
+  pipelineRun: "aihub.bar.pipelineRun",
+  /** `{ run, repoDir?, step?, tail?, fromLine? }` -> `aihub pipeline log` (default step: the failed one) */
+  pipelineLog: "aihub.bar.pipelineLog",
+  /** `{ run, repoDir? }` -> `aihub pipeline poll`: the cheap read for the bar's 15 s timer while a run of mine runs */
+  pipelineStatus: "aihub.bar.pipelineStatus",
+  /** `{ run, repoDir? }` -> `aihub pipeline run-again --plan`: the rerun dialog (types, values, settable variables, skippable stages, newer commit) */
+  pipelineRerunPlan: "aihub.bar.pipelineRerunPlan",
+  /** `{ run, repoDir?, commit?: "same"|"latest", parameters?, variables?, skipStages? }` (only what changed; a secret only when typed) -> the new run */
+  pipelineRerun: "aihub.bar.pipelineRerun",
+  /** `{ run, repoDir?, stage? }` -> `aihub pipeline retry`: the failed stages of the same run again ("Rerun Failed Jobs") */
+  pipelineRerunFailed: "aihub.bar.pipelineRerunFailed",
+  /** `{ run, repoDir? }` -> `aihub pipeline cancel`: `{ run, cancelled }` (false: already finished) */
+  pipelineCancel: "aihub.bar.pipelineCancel",
+  /** `{ run, pipeline?, branch? }`: puts the pipeline-fix text in the chat (the user presses Enter) */
+  pipelineFix: "aihub.bar.pipelineFix",
+  /** forget the remembered failures (after az login or a CLI update) */
+  pipelineRetryNow: "aihub.bar.pipelineRetryNow",
 } as const;

@@ -3,6 +3,7 @@ import { commands, main } from "../src/router.js";
 import {
   checkSkips,
   firstFailureOf,
+  latestTestRuns,
   mergeParameters,
   mergeVariables,
   planStages,
@@ -181,6 +182,10 @@ describe("pipeline view: mappings", () => {
       { name: "locked", value: "x", isSecret: false, settable: false },
       { name: "system.debug", value: "true", isSecret: false, settable: true },
     ]);
+  });
+
+  it("a retried stage's tests count once: the newest test run per name", () => {
+    expect(latestTestRuns([{ id: 156, name: "pytest" }, { id: 158, name: "pytest" }, { id: 157, name: "lint" }, { id: 9 }]).map((r) => r.id)).toEqual([9, 157, 158]);
   });
 
   it("the first failed test with its file:line from the stack trace", () => {
