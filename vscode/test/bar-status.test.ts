@@ -56,6 +56,47 @@ describe("behind the target: one git call after a HEAD change, then remembered",
   });
 });
 
+describe("behind the target after a commit, merge or pull in a terminal", () => {
+  it("counts again when HEAD or origin/<target> moved, without forget(); asks nothing when neither moved", async () => {
+    const root = mkdtempSync(join(tmpdir(), "aihub-behind-moved-"));
+    const origin = join(root, "origin.git");
+    mkdirSync(origin);
+    sh(origin, "init", "--bare", "-b", "main");
+    const a = join(root, "repo-a");
+    sh(root, "clone", origin, a);
+    sh(a, "switch", "-c", "main");
+    write(a, "x.txt", "1");
+    sh(a, "add", "-A");
+    sh(a, "commit", "-m", "one");
+    sh(a, "push", "-u", "origin", "main");
+    sh(a, "switch", "-c", "feature/5-x");
+    const b = join(root, "other");
+    sh(root, "clone", origin, b);
+    write(b, "2.txt", "2");
+    sh(b, "add", "-A");
+    sh(b, "commit", "-m", "2");
+    sh(b, "push", "origin", "HEAD:main");
+    sh(a, "fetch", "origin");
+    let calls = 0;
+    const memo = new BehindMemo(async (cwd, args) => (calls++, gitRun(cwd, args)));
+    expect(await memo.behind(a, "repo-a")).toBe(1);
+    expect(await memo.behind(a, "repo-a")).toBe(1);
+    expect(calls).toBe(1);
+    // a merge in a terminal moves HEAD: the next question counts again, nobody called forget()
+    sh(a, "merge", "--no-edit", "origin/main");
+    expect(await memo.behind(a, "repo-a")).toBe(0);
+    expect(calls).toBe(2);
+    // a fetch that brings a new commit moves origin/main
+    write(b, "3.txt", "3");
+    sh(b, "add", "-A");
+    sh(b, "commit", "-m", "3");
+    sh(b, "push", "origin", "HEAD:main");
+    sh(a, "fetch", "origin");
+    expect(await memo.behind(a, "repo-a")).toBe(1);
+    expect(calls).toBe(3);
+  });
+});
+
 const row = (o: Partial<PrRow> = {}): PrRow => ({ id: 812, repo: "repo-a", source: "feature/5-x", status: "active", url: "https://x/pr/812", reviewers: [], ...o });
 
 describe("the pull request of a branch", () => {

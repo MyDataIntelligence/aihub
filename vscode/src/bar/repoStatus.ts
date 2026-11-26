@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitDirFor, headBranchOf } from "../../../cli/src/lib/machineScan";
+import { headSha, refSha } from "./behind";
 import { branchNamedForStory } from "../../../cli/src/lib/storyWorktrees";
 import type { GitRun } from "./ownWindow";
 import type { BarPr } from "./types";
@@ -19,6 +20,8 @@ export interface GitRepoLike {
     indexChanges: { uri: { fsPath: string } }[];
     mergeChanges: { uri: { fsPath: string } }[];
     HEAD?: { ahead?: number };
+    /** fires when the status of the repository changed (a commit, a pull, a saved file) */
+    onDidChange?: (listener: () => void) => { dispose(): void };
   };
 }
 
@@ -188,19 +191,24 @@ export const targetOf = (path: string, name: string, o: { setFolder?: string } =
 
 /** How far behind the target each repository is: one `git rev-list --count` after a HEAD change, then remembered until forget(). */
 export class BehindMemo {
-  private seen = new Map<string, Promise<number | undefined>>();
+  private seen = new Map<string, { at: string; n: Promise<number | undefined> }>();
   constructor(private git: GitRun) {}
 
+  /**
+   * The count is remembered for the pair of commits it was made at (HEAD and origin/<target>, read from the files, no
+   * process): a commit, a merge or a pull in a terminal, or a fetch, changes the pair and the next question counts again.
+   */
   behind(path: string, name: string): Promise<number | undefined> {
     const k = key(path);
-    const had = this.seen.get(k);
-    if (had) return had;
     const target = targetOf(path, name);
+    const at = `${headSha(path)}|${refSha(path, `refs/remotes/origin/${target}`)}|${target}`;
+    const had = this.seen.get(k);
+    if (had && had.at === at) return had.n;
     const p = this.git(path, ["rev-list", "--count", `HEAD..origin/${target}`]).then(
       (out) => Number(out.trim()) || 0,
       () => undefined,
     );
-    this.seen.set(k, p);
+    this.seen.set(k, { at, n: p });
     return p;
   }
 

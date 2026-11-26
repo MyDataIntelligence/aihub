@@ -16,7 +16,7 @@ import { registerSetOps, SetFileWatcher } from "./setOps";
 import { registerBatchCommands, registerPullRequestCommand } from "./batchUi";
 import { registerUndoCommand, setCustomUndo, undoLabel, undoLast } from "./undoUi";
 import { BehindManager } from "./behindRun";
-import { FETCH_FRESH_MS, FetchGate, Told, openCheckDelay, operationInProgress, type FetchStore } from "./behind";
+import { FETCH_FRESH_MS, FetchGate, Told, headSha, openCheckDelay, operationInProgress, type FetchStore } from "./behind";
 import { gitRaw } from "./ownWindow";
 import { configHome } from "../../../cli/src/lib/configHome";
 import { writeAtomic } from "../../../cli/src/lib/setFile";
@@ -234,7 +234,17 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       };
       w.onDidChange(onHead);
       w.onDidCreate(onHead);
-      return [w];
+      // a commit, a merge or a pull in a terminal moves the branch, not the file HEAD: the git extension of VS Code says its state
+      // changed (no watcher of ours, no process); only a moved commit counts, a saved file does not
+      let lastHead = headSha(p);
+      const gr = gitRepos()?.find((x) => pathKey(x.rootUri.fsPath) === pathKey(p));
+      const sub = gr?.state.onDidChange?.(() => {
+        const now = headSha(p);
+        if (now === lastHead) return;
+        lastHead = now;
+        changed();
+      });
+      return sub ? [w, sub] : [w];
     });
   }
   ctx.subscriptions.push(
