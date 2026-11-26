@@ -6,7 +6,8 @@ import { RecentStore, registerRecents, rememberStory } from "./recentsUi";
 import { AdvisorController } from "./advisorUi";
 import { CleanupController } from "./cleanupUi";
 import { RobotController } from "./robotUi";
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import * as vscode from "vscode";
 import { ACTIONS, actionById, actionsFor, isOpencodeTerminalName, pickTarget, type ChatSetting, type ChatTarget } from "./actions";
@@ -18,13 +19,32 @@ import { popupFor } from "./popups";
 import { statusItems, type BarError, type BarModel, type StatusItem, type Tone } from "./model";
 import { Refresher, type Result } from "./refresher";
 import { registerGitCommands } from "./gitUi";
-import { ThreadsController } from "./threadsUi";
+import { SET_FILES, terminalRoot } from "./terminalRoot";
 import { LearnController } from "./learnUi";
 import { registerWorktreeCommands } from "./worktreeUi";
-import { clearTrackedInterval, clearTrackedTimeout, count, trackedInterval, trackedTimeout, trackedWatcher } from "./perf/probe";
+import { clearTrackedTimeout, count, trackedTimeout, trackedWatcher } from "./perf/probe";
 import { startPerf, stopPerf } from "./perfUi";
+import { registerBar } from "./bar/register";
+import { infoText, openFacts } from "./bar/engine";
+import { TEAM_YAML } from "./bar/repoStatus";
+import { gitDirFor } from "../../cli/src/lib/machineScan";
+import type { BarApi } from "./bar/types";
 
 const cfg = () => vscode.workspace.getConfiguration("aihub");
+const cfg2 = () => vscode.workspace.getConfiguration("aiContextHub");
+
+/** Ids PyCharm Git is published under (setting aiContextHub.pycharmGitExtensionId adds one); installed or not, without activating it. */
+const pycharmGitInstalled = (): boolean => ["ferron.pycharm-git", "FerronHooi.pycharm-git", cfg2().get<string>("pycharmGitExtensionId", "")].some((id) => !!id && vscode.extensions.getExtension(id) !== undefined);
+
+/** Fabric is only read for a repository whose team.yaml has a `fabric:` section (a file read, no process). */
+function hasFabricConfig(dir: string | undefined): boolean {
+  if (!dir) return false;
+  try {
+    return /^fabric:/m.test(readFileSync(join(dir, TEAM_YAML), "utf8"));
+  } catch {
+    return false;
+  }
+}
 
 /** The folder whose repository the bar shows: the one of the active editor, else the first. */
 function repoFolder(): string | undefined {
@@ -33,7 +53,22 @@ function repoFolder(): string | undefined {
   return f?.uri.fsPath;
 }
 
-class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
+/** Where opencode starts: the set folder of a worktree set, else the common root of the folders (terminalRoot), else the repo folder. */
+function opencodeFolder(fallback: string | undefined): string | undefined {
+  const file = vscode.workspace.workspaceFile;
+  const active = vscode.window.activeTextEditor?.document.uri;
+  const root = terminalRoot({
+    folders: (vscode.workspace.workspaceFolders ?? []).filter((f) => f.uri.scheme === "file").map((f) => f.uri.fsPath),
+    workspaceFile: file?.scheme === "file" ? file.fsPath : undefined,
+    activeFile: active?.scheme === "file" ? active.fsPath : undefined,
+    platform: process.platform,
+    home: homedir(),
+    isSetFolder: (dir) => SET_FILES.some((f) => existsSync(join(dir, f))),
+  });
+  return root ?? fallback;
+}
+
+export class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   private log = vscode.window.createOutputChannel("AI Context Hub");
   private items = new Map<string, vscode.StatusBarItem>();
   /** The main entry for several repositories on one branch: next to the built-in branch item (priority 11000). */
@@ -45,7 +80,6 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   private loader!: BarLoader;
   private cliChecked = false;
   private cwd: string | undefined;
-  private timer: NodeJS.Timeout | undefined;
   private gitDebounce: NodeJS.Timeout | undefined;
   private subs: vscode.Disposable[] = [];
   /** Called after every successful read (the review threads follow the PR). */
@@ -122,9 +156,9 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     const quiet = { GCM_INTERACTIVE: "never", GIT_TERMINAL_PROMPT: "0" };
     this.runner = makeRunner({ command: this.cliCommand(), timeoutMs: Math.max(5, Number(cfg().get("timeoutSeconds", 30))) * 1000, env: quiet });
     this.cliChecked = false;
-    this.loader = new BarLoader(this.runner, { cwd: this.cwd ?? "", fabric: !!cfg().get("fabric.enabled", true), fabricTtlMs: Math.max(180_000, this.intervalMs() * 3), combined: "auto" });
-    clearTrackedInterval(this.timer);
-    this.timer = trackedInterval("bar.refresh", () => void this.refresher.request("timer"), this.intervalMs());
+    const cwd = this.cwd;
+    this.loader = new BarLoader(this.runner, { cwd: this.cwd ?? "", fabric: () => !!cfg().get("fabric.enabled", true) && hasFabricConfig(cwd), fabricTtlMs: Math.max(180_000, this.intervalMs() * 3), combined: "auto" });
+    // no timer: the bar reads once after the window opened, when the branch of the first folder changes, when the focus is back after 5 minutes, and after an action of its own
     this.watchGit();
   }
 
@@ -134,8 +168,11 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     this.gitWatcher?.dispose();
     this.gitWatcherStats?.dispose();
     if (!this.cwd) return;
-    const glob = ".git/{HEAD,refs/heads/**}";
-    this.gitWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(this.cwd, glob));
+    // only the file HEAD: a commit changes nothing the bar shows, a switch of branch does (a worktree's HEAD is in the clone's .git/worktrees)
+    const glob = "HEAD";
+    const gitDir = gitDirFor(this.cwd);
+    if (!gitDir) return;
+    this.gitWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(gitDir), glob));
     const stats = (this.gitWatcherStats = trackedWatcher("bar.gitBranch", glob));
     const fire = () => {
       stats.hit();
@@ -153,7 +190,8 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     this.renderReposetItem();
     void this.renderEarly();
     // Silent by default: no popup, no panel opening. The status bar is the entry; the first read is delayed so startup stays fast.
-    trackedTimeout("bar.firstRead", () => void this.refresher.request("start"), 2000);
+    // after the window was usable, not in activate(); without focus it waits for the focus
+    trackedTimeout("bar.firstRead", () => void this.refresher.request("start"), 5000);
   }
 
   /** The branch at once, from .git/HEAD (a file, no process): the full status follows when aihub answers. */
@@ -187,6 +225,8 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   private renderReposetItem() {
+    // the story or set of this window belongs in the title bar of PyCharm Git; without that extension this is the one info item
+    if (!cfg2().get<boolean>("sidebarViews", false)) return this.renderInfoItem();
     const it = (this.reposetItem ??= vscode.window.createStatusBarItem("aihub.reposet", vscode.StatusBarAlignment.Left, 10999));
     it.name = "AI Context Hub: Worktree Sets";
     // a set is local: also without an `aihub status` answer (no Azure DevOps remote, offline) it shows its branch
@@ -207,13 +247,30 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     }
   }
 
+  /** One info item with the text PyCharm Git shows, only when PyCharm Git is not installed (checked without activating it). */
+  private renderInfoItem() {
+    if (pycharmGitInstalled()) return void this.reposetItem?.hide();
+    const f = openFacts(this.cwd);
+    const text = infoText(f);
+    if (!text) return void this.reposetItem?.hide();
+    const it = (this.reposetItem ??= vscode.window.createStatusBarItem("aihub.reposet", vscode.StatusBarAlignment.Left, 10999));
+    it.name = "AI Context Hub: story or set";
+    it.text = text;
+    it.tooltip = f.set ? `Worktree set on ${f.set.branch}: ${f.set.repos.map((r) => r.name).join(", ")}` : undefined;
+    it.command = undefined;
+    it.show();
+  }
+
   private renderStatusBar() {
     this.renderReposetItem();
     const r = this.last;
     if (!r) return;
     const wanted: StatusItem[] = r.ok
       ? statusItems(r.model)
-      : [{ id: "story", text: r.error.kind === "no-repo" ? "$(git-branch) AI Hub" : `$(warning) aihub: ${r.error.kind === "missing" ? "not installed" : r.error.kind === "old" ? "update needed" : "no status"}`, tooltip: r.error.message, tone: "warn", command: "aihub.showBar" }];
+      : // an item only when it says something: the CLI is missing or old (the user can fix that); "no status" says nothing
+        r.error.kind === "missing" || r.error.kind === "old"
+        ? [{ id: "story", text: `$(warning) aihub: ${r.error.kind === "missing" ? "not installed" : "update needed"}`, tooltip: r.error.message, tone: "warn", command: "aihub.showBar" }]
+        : [];
     const keep = new Set(wanted.map((w) => w.id));
     for (const [id, item] of this.items) if (!keep.has(id as StatusItem["id"])) (item.dispose(), this.items.delete(id));
     wanted.forEach((w, i) => {
@@ -362,7 +419,7 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
       return vscode.window.activeTerminal;
     }
     const name = String(cfg().get("chatAgentName", "aihub"));
-    const t = vscode.window.createTerminal({ name: "opencode", cwd: this.cwd });
+    const t = vscode.window.createTerminal({ name: "opencode", cwd: opencodeFolder(this.cwd) });
     t.show(false);
     t.sendText(`opencode --agent ${name}`, true);
     // give the TUI time to start before the text goes to its prompt
@@ -371,7 +428,6 @@ class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   dispose() {
-    clearTrackedInterval(this.timer);
     clearTrackedTimeout(this.gitDebounce);
     this.gitWatcher?.dispose();
     this.gitWatcherStats?.dispose();
@@ -403,11 +459,13 @@ export function activate(ctx: vscode.ExtensionContext) {
   bar = new Bar(ctx);
   bar.onPublish = (ok) => act.firstRefresh(ok);
   act.phase("commands");
-  activateRest(ctx, bar, act.phase);
+  const barApi = activateRest(ctx, bar, act.phase);
   act.done();
+  // the buttons in the title bar (another extension) read the state and call the aihub.bar.* commands
+  return { bar: barApi };
 }
 
-function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: string) => void) {
+function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: string) => void): BarApi {
   ctx.subscriptions.push(
     bar,
     vscode.commands.registerCommand("aihub.refresh", () => bar.refresh()),
@@ -442,13 +500,9 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
     await bar.sendText(text);
   };
   ctx.subscriptions.push(vscode.commands.registerCommand("aihub.editor.ask", selection("Question about the code")), vscode.commands.registerCommand("aihub.editor.suggestFix", selection("Suggest a fix for the code")));
-  phase("review threads");
-  const threads = new ThreadsController(() => bar.runnerNow(), () => bar.cwdNow(), (t) => bar.sendText(t), (l) => bar.logLine(l), () => void bar.refresh());
-  threads.register(ctx);
   phase("learn view");
   const learn = new LearnController(ctx, () => bar.runnerNow(), () => bar.cwdNow(), (l) => bar.logLine(l));
   learn.register(ctx);
-  bar.onModel = (m) => void threads.sync(m.pr && m.pr.status === "active" ? m.pr.id : undefined, m.openThreads);
   phase("branch menu");
   registerGitCommands(ctx, (l) => bar.logLine(l), (id) => bar.sendToChat(id));
   phase("repos on branch");
@@ -474,6 +528,11 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   bar.start();
   // the groups come from the CLI: ask again once the first status read is behind us
   trackedTimeout("worktreeSets.firstRefresh", () => refreshSets(), 4000);
+  phase("bar commands");
+  const handle = registerBar(ctx, { log: (l) => bar.logLine(l), extraPlaces: () => recents.get().sets.map((s) => s.id), toChat: (t) => bar.sendText(t) });
+  // a window with one repository: the review comments follow the pull request the status bar read (no read while it has no open thread)
+  bar.onModel = (m) => handle.comments.single(bar.cwdNow(), m.pr && m.pr.status === "active" && m.openThreads > 0 ? m.pr.id : undefined, m.pr?.url);
+  return handle.api;
 }
 
 export function deactivate(): Promise<void> {

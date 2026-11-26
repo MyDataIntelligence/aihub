@@ -27,6 +27,10 @@ export interface PrListItem {
   reviewers: Reviewer[];
   url: string;
   created: string;
+  /** Azure DevOps' merge check: succeeded, conflicts, failure, queued (absent when it did not say) */
+  mergeStatus?: string;
+  /** the build policy of an active pull request (only with --builds: one policy read per active pull request) */
+  build?: "succeeded" | "failed" | "running";
 }
 
 interface RawIdentity {
@@ -77,6 +81,7 @@ function itemOf(client: AdoClient, pr: RawPr): PrListItem {
     reviewers: reviewersOf(pr),
     url: prUrl(client, repo, pr.pullRequestId),
     created: pr.creationDate ?? "",
+    ...(pr.mergeStatus ? { mergeStatus: pr.mergeStatus } : {}),
   };
 }
 
@@ -87,6 +92,8 @@ export interface PrListOpts {
   status?: string;
   repo?: string;
   json?: boolean;
+  /** add the build policy of each active pull request (one policy read per active pull request) */
+  builds?: boolean;
 }
 
 const STATUSES = ["active", "completed", "abandoned", "all"];
@@ -108,6 +115,21 @@ export async function prList(ctx: Ctx, o: PrListOpts): Promise<string> {
   const only = o.repo ? [o.repo] : teamRepos;
   if (only.length) list = list.filter((p) => only.some((n) => n.toLowerCase() === (p.repository?.name ?? "").toLowerCase()));
   const items = list.map((p) => itemOf(client, p)).sort((a, b) => b.created.localeCompare(a.created));
+  if (o.builds) {
+    await Promise.all(
+      items
+        .filter((i) => i.status === "active")
+        .map(async (i) => {
+          try {
+            const b = (await evaluations(client, i.id)).filter((e) => e.kind === "build");
+            if (!b.length) return;
+            i.build = b.some((e) => e.status === "rejected" || e.status === "broken") ? "failed" : b.some((e) => e.status === "queued" || e.status === "running") ? "running" : "succeeded";
+          } catch {
+            /* the build is a hint: the pull request is still listed */
+          }
+        }),
+    );
+  }
   if (o.json) return JSON.stringify(items);
   if (!items.length) return `no ${status === "all" ? "" : `${status} `}pull requests found`;
   return [

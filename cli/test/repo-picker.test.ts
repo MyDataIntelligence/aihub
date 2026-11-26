@@ -1,8 +1,8 @@
-import { mkdirSync, readFileSync } from "node:fs";
+﻿import { mkdirSync, readFileSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { commands, main } from "../src/router.js";
-import { adoKey, branchFromHead, joinAdoLocal, originFromConfig, scanLocal } from "../src/lib/repoPicker.js";
+import { adoKey, branchFromHead, dedupeClones, joinAdoLocal, originFromConfig, remoteKey, scanLocal, type LocalRepo } from "../src/lib/repoPicker.js";
 import { ctxFor, fakeFetch, sh, tmp, write, type Route } from "./helpers.js";
 import { makeNamedRepo, newParent } from "./parity-helpers.js";
 
@@ -26,6 +26,9 @@ describe("the repo opener: pure parts", () => {
     const k = "ferron-org/test-project/repo-a";
     expect(adoKey("https://user@dev.azure.com/ferron-org/test-project/_git/repo-a")).toBe(k);
     expect(adoKey("git@ssh.dev.azure.com:v3/ferron-org/test-project/repo-a")).toBe(k);
+    expect(adoKey("ssh://git@ssh.dev.azure.com/v3/ferron-org/test-project/repo-a")).toBe(k);
+    // a stray % must not throw: one odd clone would otherwise fail the whole list
+    expect(() => adoKey("https://dev.azure.com/ferron-org/test-project/_git/100%")).not.toThrow();
     expect(adoKey("https://ferron-org.visualstudio.com/DefaultCollection/test-project/_git/repo-a")).toBe(k);
     expect(adoKey("https://dev.azure.com/ferron-org/test%20project/_git/repo-a.git")).toBe("ferron-org/test project/repo-a");
     expect(adoKey("https://example.invalid/x.git")).toBeUndefined();
@@ -74,7 +77,22 @@ function world() {
 }
 
 const adoRoutes = (bareC: string, counter: { n: number }): Route[] => [
-  { match: /_apis\/projects\?/, respond: () => ((counter.n += 1), { body: { value: [{ name: "test-project", state: "wellFormed" }, { name: "other-project", state: "wellFormed" }] } }) },
+  // without projects in team.yaml: one call for every repository of the organisation
+  {
+    match: /dev\.azure\.com\/ferron-org\/_apis\/git\/repositories\?/,
+    respond: () => (
+      (counter.n += 1),
+      {
+        body: {
+          value: [
+            ...["repo-a", "repo-b"].map((n) => ({ id: n, name: n, project: { name: "test-project" }, remoteUrl: `https://ferron-org@dev.azure.com/ferron-org/test-project/_git/${n}`, defaultBranch: "refs/heads/main" })),
+            { id: "c", name: "repo-c", project: { name: "other-project" }, remoteUrl: bareC, defaultBranch: "refs/heads/main" },
+            { id: "d", name: "old", project: { name: "other-project" }, isDisabled: true },
+          ],
+        },
+      }
+    ),
+  },
   {
     match: /test-project\/_apis\/git\/repositories\?/,
     respond: () => ({ body: { value: ["repo-a", "repo-b"].map((n) => ({ id: n, name: n, remoteUrl: `https://ferron-org@dev.azure.com/ferron-org/test-project/_git/${n}`, defaultBranch: "refs/heads/main" })) } }),
@@ -141,6 +159,73 @@ describe("aihub repos local / ado / clone", () => {
     const f = JSON.parse(broken.out)[0];
     expect(f.status).toBe("failed");
     expect(f.error).toMatch(/does not exist|not found|repository/i);
+  });
+});
+
+describe("one repository is one line, however often it is cloned", () => {
+  it("every spelling of one remote has one key: https and ssh, dev.azure.com and visualstudio.com, case, .git", () => {
+    const k = remoteKey("https://dev.azure.com/ferron-org/test-project/_git/repo-a");
+    expect(remoteKey("git@ssh.dev.azure.com:v3/ferron-org/test-project/repo-a")).toBe(k);
+    expect(remoteKey("https://Ferron-Org.visualstudio.com/Test-Project/_git/Repo-A.git")).toBe(k);
+    expect(remoteKey("git@example.com:team/repo-a.git")).toBe(remoteKey("https://user@example.com/Team/repo-a"));
+    expect(remoteKey(undefined)).toBeUndefined();
+  });
+
+  const clone = (path: string, remoteUrl?: string): LocalRepo => ({ name: path.split("/").pop()!, path, branch: "main", remoteUrl });
+  const A = "https://dev.azure.com/ferron-org/test-project/_git/repo-a";
+
+  it("keeps the most recently used clone, else the shortest path; the others are otherClones", () => {
+    const repos = [clone("/r/old/repo-a", A), clone("/r/repo-a", "git@ssh.dev.azure.com:v3/ferron-org/test-project/repo-a"), clone("/r/repo-b"), clone("/r/x/repo-b")];
+    const used = (d: string) => (d === "/r/old/repo-a" ? 20 : 10);
+    const out = dedupeClones(repos, {}, used);
+    expect(out.map((r) => [r.path, r.otherClones])).toEqual([
+      ["/r/old/repo-a", ["/r/repo-a"]],
+      ["/r/repo-b", undefined], // no origin: two different repositories, both stay
+      ["/r/x/repo-b", undefined],
+    ]);
+    // a tie: the shortest path
+    expect(dedupeClones(repos.slice(0, 2), {}, () => 5)[0].path).toBe("/r/repo-a");
+  });
+
+  it("a preference by repository name wins over recency", () => {
+    const repos = [clone("/r/old/repo-a", A), clone("/r/repo-a", A)];
+    expect(dedupeClones(repos, { "REPO-A": "/r/old/repo-a" }, (d) => (d === "/r/repo-a" ? 99 : 1))[0].path).toBe("/r/old/repo-a");
+  });
+
+  it("repos local: two clones and a worktree of one remote are one line; --all shows both; prefer picks the other", async () => {
+    const { parent, a } = world();
+    const second = join(parent, "old", "repo-a");
+    mkdirSync(join(parent, "old"), { recursive: true });
+    sh(parent, ["clone", "-q", join(parent, "_remotes", "repo-a.git"), second]);
+    sh(second, ["remote", "set-url", "origin", "git@ssh.dev.azure.com:v3/ferron-org/test-project/repo-a"]);
+    sh(a.dir, ["worktree", "add", "-q", "-b", "feature/1", join(parent, "repo-a-wt")]);
+    const old = new Date(Date.now() - 86_400_000);
+    for (const f of ["HEAD", "index"]) utimesSync(join(second, ".git", f), old, old);
+    utimesSync(join(a.dir, ".git", "index"), new Date(), new Date());
+
+    const r = await run(a.dir, [], ["repos", "local", "--json"]);
+    const j = JSON.parse(r.out) as { repos: LocalRepo[] };
+    expect(j.repos.map((x) => [x.name, x.path, x.otherClones])).toEqual([
+      ["repo-a", a.dir, [second]],
+      ["repo-b", join(parent, "repo-b"), undefined],
+    ]);
+    const text = await run(a.dir, [], ["repos", "local"], { AIHUB_CONFIG_HOME: r.ctx.env.AIHUB_CONFIG_HOME! });
+    expect(text.out).toMatch(/repo-a .*\(\+1 more: --all\)/);
+    expect((await run(a.dir, [], ["repos", "local", "--all", "--json"])).out.match(/"name":"repo-a"/g)).toHaveLength(2);
+
+    const cfg = { AIHUB_CONFIG_HOME: r.ctx.env.AIHUB_CONFIG_HOME! };
+    expect((await run(a.dir, [], ["repos", "prefer", "repo-a", second], cfg)).out).toBe(`repo-a: uses ${second}`);
+    const p = JSON.parse((await run(a.dir, [], ["repos", "local", "--json"], cfg)).out) as { repos: LocalRepo[] };
+    expect(p.repos[0]).toMatchObject({ path: second, otherClones: [a.dir] });
+    expect(JSON.parse(readFileSync(join(cfg.AIHUB_CONFIG_HOME, "repos.json"), "utf8")).prefer).toEqual({ "repo-a": second });
+    expect((await run(a.dir, [], ["repos", "prefer", "repo-a", "--remove"], cfg)).out).toBe("repo-a: no preferred clone");
+    expect((await run(a.dir, [], ["repos", "prefer"], cfg)).out).toMatch(/no preferred clones/);
+  });
+
+  it("ado: the Azure DevOps row of a repository cloned twice points at the one chosen clone and lists the other", () => {
+    const ado = [{ project: "test-project", name: "repo-a", id: "1", remoteUrl: A, defaultBranch: "main", key: "ferron-org/test-project/repo-a" }];
+    const local = dedupeClones([{ ...clone("/r/repo-a", A), key: adoKey(A) }, { ...clone("/r/old/repo-a", A), key: adoKey(A) }], {}, () => 1);
+    expect(joinAdoLocal(ado, local)[0]).toMatchObject({ path: "/r/repo-a", otherClones: ["/r/old/repo-a"] });
   });
 });
 

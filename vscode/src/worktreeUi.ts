@@ -3,6 +3,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { GroupJson } from "./repoSetModel";
 import { findRepos, validateBranchName, type Repo } from "./worktrees/core";
+import { cloneItem, readPreferredClones, uniqueRepos } from "./worktrees/clones";
 import { deleteGroup, listGroups, saveGroup } from "./worktrees/extras";
 import { createGit } from "./worktrees/git";
 import { timed } from "./perf/probe";
@@ -149,7 +150,9 @@ export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (lin
       preselect = g.group?.repoPaths ?? [];
       if (g.group) return found.filter((r) => preselect.includes(r.path));
     }
-    const picks = await vscode.window.showQuickPick(found.map((r) => ({ label: r.name, description: r.path, repo: r })), { canPickMany: true, placeHolder: "Repositories for the set" });
+    // one line per repository, however often it is cloned (a saved group above keeps its own clones)
+    const unique = await uniqueRepos(found, readPreferredClones());
+    const picks = await vscode.window.showQuickPick(unique.map((r) => ({ ...cloneItem(r), repo: r as Repo })), { canPickMany: true, placeHolder: "Repositories for the set" });
     return picks?.map((p) => p.repo);
   };
 
@@ -279,7 +282,8 @@ export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (lin
     const found = await findRepos(repoRoots(), Number(cfg().get("scanDepth", 2)));
     const name = await vscode.window.showInputBox({ prompt: "Name of the repo group", ignoreFocusOut: true });
     if (!name) return;
-    const picks = await vscode.window.showQuickPick(found.map((r) => ({ label: r.name, description: r.path, r })), { canPickMany: true, placeHolder: "Repositories in this group" });
+    const unique = await uniqueRepos(found, readPreferredClones());
+    const picks = await vscode.window.showQuickPick(unique.map((r) => ({ ...cloneItem(r), r: r as Repo })), { canPickMany: true, placeHolder: "Repositories in this group" });
     if (picks?.length) await saveGroup(ctx.globalState, { name, repoPaths: picks.map((p) => p.r.path) });
   });
 

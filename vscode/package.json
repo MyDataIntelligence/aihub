@@ -2,7 +2,7 @@
   "name": "ai-context-hub",
   "displayName": "AI Context Hub",
   "description": "A thin status bar and panel over the aihub CLI: story, branch, pull request, pipeline, review threads, Fabric runs and watch events. Actions open in your chat (Copilot Chat or opencode).",
-  "version": "3.5.0",
+  "version": "3.6.0",
   "publisher": "FerronHooi",
   "license": "MIT",
   "private": true,
@@ -39,12 +39,14 @@
         {
           "id": "aihub.worktreeSets",
           "name": "Worktree Sets",
-          "visibility": "collapsed"
+          "visibility": "collapsed",
+          "when": "config.aiContextHub.sidebarViews"
         },
         {
           "id": "aihub.myStories",
           "name": "My Stories",
-          "visibility": "collapsed"
+          "visibility": "collapsed",
+          "when": "config.aiContextHub.sidebarViews"
         },
         {
           "id": "aihub.learn",
@@ -353,6 +355,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.thread.applySuggestion",
+        "title": "Apply Suggestion",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.learn.open",
         "title": "Learn: Open a lesson",
         "category": "AI Context Hub"
@@ -503,6 +510,156 @@
         "title": "Run Robot Test...",
         "category": "AI Context Hub",
         "icon": "$(play)"
+      },
+      {
+        "command": "aihub.bar.openStory",
+        "title": "Open Story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.openRepository",
+        "title": "Open Repository...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.openRecent",
+        "title": "Open Recent (item)",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.openSet",
+        "title": "Open Worktree Set (item)",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.removeSet",
+        "title": "Remove Worktree Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.switchBranch",
+        "title": "Switch Branch of a Repository in the Set",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.newStoryBranch",
+        "title": "New Branch for the Story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.openInOwnWindow",
+        "title": "Open in Own Window...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.refreshStatus",
+        "title": "Refresh Pull Requests of the Set",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.refreshComments",
+        "title": "Refresh Pull Request Comments",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.showComment",
+        "title": "Show Pull Request Comment",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.commitAll",
+        "title": "Commit All Repositories of the Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.createPullRequests",
+        "title": "Create Pull Requests for the Story...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.measureSets",
+        "title": "Measure the Sets on This PC",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.checkClean",
+        "title": "Check Which Sets Can Be Removed",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.undoLast",
+        "title": "Undo the Last Change to the Set",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.pushAll",
+        "title": "Push All Repositories of the Set",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.updateAll",
+        "title": "Update All Repositories of the Set",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.otherBranch",
+        "title": "Other Branch...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.linkBranch",
+        "title": "Link Branch to the Story",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.addRepository",
+        "title": "Add Repository to the Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.removeRepository",
+        "title": "Remove Repository from the Set...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.lookIn",
+        "title": "Folders to Look In...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.reopenLast",
+        "title": "Continue Where You Were",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.refresh",
+        "title": "Look Again for Repositories and Sets",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.loadRemoteRepositories",
+        "title": "Search Azure DevOps Repositories",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.refreshRemoteRepositories",
+        "title": "Refresh the Azure DevOps Repositories of the Search",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.signInAzureDevOps",
+        "title": "Sign In to Azure DevOps",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.cloneRepository",
+        "title": "Clone Repository from Azure DevOps...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.openCheckout",
+        "title": "Open a Checked-Out Branch...",
+        "category": "AI Context Hub"
       }
     ],
     "configuration": {
@@ -648,6 +805,58 @@
           "type": "string",
           "default": "",
           "markdownDescription": "The folder with your clones for the repo opener (New Worktree Set, Repositories on a branch). A repository that is not cloned yet is cloned here. Empty: team.yaml `reposRoot`, else the folder the current repository is in."
+        },
+        "aiContextHub.sidebarViews": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the Worktree Sets and My Stories views in the Explorer sidebar. Off by default: the title bar buttons (Open Story, Open Repository, Recent) do the same."
+        },
+        "aiContextHub.behindTarget": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "auto",
+            "off"
+          ],
+          "default": "ask",
+          "enumDescriptions": [
+            "Ask once per new stand when a repository is behind its target branch (team.yaml, else staging, else main).",
+            "Update by itself when there are no conflicts and no uncommitted work in the way; otherwise ask. A line with Undo follows.",
+            "Never look at the target branch."
+          ],
+          "description": "What to do when a repository of the set is behind its target branch. Looking costs one git fetch per repository: when the set opens, after an Update or Push, when the overview menu opens, and when the window gets focus back after 30 minutes."
+        },
+        "aiContextHub.openIn": {
+          "type": "string",
+          "enum": [
+            "new",
+            "this"
+          ],
+          "default": "new",
+          "description": "Where a set or repository from the buttons opens. An empty window is always reused."
+        },
+        "aiContextHub.continueWhereYouWere": {
+          "type": "boolean",
+          "default": true,
+          "description": "In a window with no folder, offer to open the set or repository you worked in last."
+        },
+        "aiContextHub.pycharmGitExtensionId": {
+          "type": "string",
+          "default": "",
+          "description": "Extra id of the PyCharm Git extension (publisher.name). Without that extension installed, AI Context Hub shows one status bar item with the story or set of the window; with it, PyCharm Git shows it in the title bar."
+        },
+        "aiContextHub.prComments": {
+          "type": "string",
+          "enum": [
+            "on",
+            "off"
+          ],
+          "default": "on",
+          "enumDescriptions": [
+            "Show the review comments of the pull requests of the set (or of the open repository) in the editor and as a count in the Explorer.",
+            "No review comments in the editor or the Explorer; nothing is read for them."
+          ],
+          "description": "Review comments of pull requests in the editor (Reply, Resolve, Apply Suggestion) and as a count in the Explorer. They are read with the pull requests (one aihub call for all of them): when a set opens, when the overview opens, when the window gets focus back after 5 minutes, and on a refresh. Opening a file reads nothing."
         }
       }
     },
@@ -1104,6 +1313,11 @@
           "command": "aihub.thread.reply",
           "group": "inline",
           "when": "commentController == aihub"
+        },
+        {
+          "command": "aihub.thread.resolve",
+          "group": "inline@2",
+          "when": "commentController == aihub && commentThread == aihubOpen"
         }
       ],
       "commandPalette": [
@@ -1186,6 +1400,102 @@
         {
           "command": "aihub.recentStories",
           "when": "false"
+        },
+        {
+          "command": "aihub.bar.openRecent",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.openSet",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.removeSet",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.switchBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.newStoryBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.openInOwnWindow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.refreshStatus",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.commitAll",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.createPullRequests",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.measureSets",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.checkClean",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.undoLast",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.pushAll",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.updateAll",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.otherBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.linkBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.addRepository",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.removeRepository",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.refresh",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.loadRemoteRepositories",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.cloneRepository",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.openCheckout",
+          "when": "false"
+        },
+        {
+          "command": "aihub.thread.applySuggestion",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.showComment",
+          "when": "false"
         }
       ],
       "editor/title": [
@@ -1198,6 +1508,13 @@
           "when": "resourceExtname == .robot",
           "group": "navigation@1"
         }
+      ],
+      "comments/comment/title": [
+        {
+          "command": "aihub.thread.applySuggestion",
+          "group": "inline@1",
+          "when": "commentController == aihub && comment == aihubSuggestion"
+        }
       ]
     },
     "viewsWelcome": [
@@ -1208,6 +1525,11 @@
       {
         "view": "aihub.learn",
         "contents": "No lessons yet.\nAsk your chat for /leer on a pull request or branch: it explains the change with pictures and saves it here, in your personal store."
+      },
+      {
+        "view": "explorer",
+        "contents": "[Continue where you were](command:aihub.bar.reopenLast)\n[Open Story...](command:aihub.bar.openStory)\n[Open Repository...](command:aihub.bar.openRepository)",
+        "when": "workbenchState == empty"
       }
     ],
     "keybindings": [
@@ -1215,6 +1537,24 @@
         "command": "aihub.reposet.open",
         "key": "ctrl+alt+b",
         "mac": "cmd+alt+b"
+      },
+      {
+        "command": "aihub.bar.reopenLast",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "workbenchState == empty"
+      }
+    ],
+    "colors": [
+      {
+        "id": "aiContextHub.prComments.unreadForeground",
+        "description": "The count of a file or folder in the Explorer with a pull request comment you have not seen yet.",
+        "defaults": {
+          "dark": "#3794FF",
+          "light": "#1A85FF",
+          "highContrast": "#3794FF",
+          "highContrastLight": "#0F4A85"
+        }
       }
     ]
   },

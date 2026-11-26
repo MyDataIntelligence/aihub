@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.6.0
+
+- The engine behind the story-set buttons of PyCharm Git 0.28.0 (`exports.bar`, `BarState`, `aihub.bar.*`): Open Story with existing story branches, the four-choice question for a branch with a worktree elsewhere, Update All / Commit All / Push All / Create Pull Requests, Open in Own Window, Undo after every set action (one message per action), behind the target branch (`aiContextHub.behindTarget`: ask, auto, off; never pushes), set sizes and "all merged". The set never resets another repository by itself. A set file that cannot be read keeps the last good set (`BarState.setFileProblem`); a branch checked out in the clone itself and a hand-edited branch that git does not have each get one plain question.
+- Pull request comments inline in the code and as counts in the Explorer (`aiContextHub.prComments`, default on): Reply, Resolve, Apply Suggestion (an edit, never saved), one notification for a new comment of someone else.
+- The status bar has no timer: it reads after opening, on a branch switch of the first folder, and on focus after 5 minutes; never without focus; Fabric only with a team.yaml `fabric:` section.
+- A CLI that is too old or missing gives a plain sentence with Copy update command / Update now. The buttons need aihub 1.7.0. Notes: docs/releases/3.6.0.md.
+
 ## 3.5.0
 
 - A branch whose worktree already exists elsewhere: Open Repo Set, New Worktree Set and My Stories "Open story" ask the same three choices as the CLI in a dialog (Move it into this set, recommended; Reuse it where it is; Recreate it) and run the command again with the answer. Needs aihub 1.6.0; with an older CLI nothing changes.

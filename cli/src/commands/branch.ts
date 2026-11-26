@@ -6,14 +6,14 @@ import { AihubError } from "../lib/errors.js";
 import { againOf, branchSwitch, formatOpenSet, type OpenMode } from "../lib/repoSet.js";
 import { existingFlag, orChoice } from "../lib/existingWorktree.js";
 
-export const USAGE = "usage: aihub branch update [--branch B] [--target T] [--rebase] | branch switch [--repo r[,s]] --branch X [--from T] [--mode worktree] [--existing move|reuse|recreate [--discard-local-work]] [--json]";
+export const USAGE = "usage: aihub branch update [--branch B] [--target T] [--rebase] [--no-push] | branch switch [--repo r[,s]] --branch X [--from T] [--mode worktree] [--existing move|reuse|recreate [--discard-local-work]] [--json]";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
   if (sub === "switch") return switchBranch(rest, ctx);
   if (sub !== "update") throw new AihubError(USAGE);
-  const v = parse(rest, { branch: { type: "string" }, target: { type: "string" }, rebase: { type: "boolean" }, json: { type: "boolean" } }).values;
-  ctx.out(await branchUpdate(ctx, { branch: v.branch, target: v.target, rebase: v.rebase, json: v.json }));
+  const v = parse(rest, { branch: { type: "string" }, target: { type: "string" }, rebase: { type: "boolean" }, "no-push": { type: "boolean" }, json: { type: "boolean" } }).values;
+  ctx.out(await branchUpdate(ctx, { branch: v.branch, target: v.target, rebase: v.rebase, noPush: v["no-push"], json: v.json }));
 }
 
 /** One repository (of the set you are in) on another branch; the window stays. */

@@ -60,7 +60,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     if (!status && v.label === undefined) throw new AihubError("give --status current|old|parked and/or --label <text>");
     return say(markStoryBranch(ctx, { branch: need(v.branch), status, label: v.label as string | undefined, id: optInt(v.id, "--id"), repo }));
   }
-  if (action === "remove") return say(removeStoryBranch(ctx, { branch: need(v.branch), repo, deleteBranch: !!v["delete-branch"] }));
+  if (action === "remove") return say(removeStoryBranch(ctx, { branch: need(v.branch), repo, deleteBranch: !!v["delete-branch"], discardLocalWork: !!v["discard-local-work"] }));
   if (action === "place") {
     const move = v.move === "all" ? "all" : list(v.move);
     const r = placeWorktrees(ctx, { root: v.root as string | undefined, move: move === "all" || move.length ? move : undefined });

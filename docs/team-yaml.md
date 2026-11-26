@@ -46,6 +46,13 @@ pullRequest:                                                    # pull request s
   template: .azuredevops/pull_request_template.md               # PR template path
   title: "{storyId}: {storyTitle}"                              # PR title pattern
   emptySection: "Niet van toepassing"                           # text for an empty template section
+  actionSections: ["Acties voor gebruikers"]                    # optional: template headings listing what readers must do after the merge; `aihub pr create/update` refuses vague text there (files, fields old -> new, how to check); --as-is skips the check. Headings like "Required user actions", "Migration", "Breaking changes", "Acties", "Handmatige stappen" count without this key
+  userImpact:                                                   # optional: lets `aihub pr impact` give the facts for the actions section
+    audience: "developers who write job YAML for this platform"   # who the section is for
+    contractPaths: ["schema/*.yaml", "templates/**"]              # globs of the public contract: a change here touches users
+    userFiles:                                                  # where users keep their files; other repositories are searched only when cloned locally (entry path or a sibling folder)
+      - repository: jobs-repo
+        paths: ["jobs/*.yaml"]
 
 workItems:                                                      # work item settings
   storyType: User Story                                         # work item type of a story

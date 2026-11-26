@@ -1,11 +1,15 @@
 import * as fs from "fs";
+import { notice } from "./bar/notice";
+import { plainPath } from "./bar/paths";
 import { offerSaveGroup, pickRepos } from "./repoPickerUi";
 import { plainWorkspace } from "./repoPickerModel";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import { openPath } from "./bar/window";
 import { makeRunner, readJson, type Runner } from "./cli";
 import { findRepos, type Repo } from "./worktrees/core";
+import { cloneItem, readPreferredClones, uniqueRepos } from "./worktrees/clones";
 import { listGroups as listLocalGroups } from "./worktrees/extras";
 import {
   branchItems,
@@ -30,6 +34,9 @@ import {
   type PickItem,
   type PrJson,
   type SetModel,
+  existingFacts,
+  existingOptions,
+  existingTitle,
 } from "./repoSetModel";
 
 /**
@@ -127,18 +134,36 @@ export function setOpenRecorder(f: (res: OpenResultJson, meta?: OpenMeta) => Pro
  * The CLI stopped because a branch already has a worktree elsewhere: the same three choices as a dialog (move first),
  * then the command runs again with the chosen one. Undefined when the user cancels; else the final output.
  */
-export async function answerExisting(text: string, rerun: (extra: string[]) => Promise<string>): Promise<string | undefined> {
+export async function answerExisting(text: string, rerun: (extra: string[]) => Promise<string>, o: { ownWindow?: boolean } = {}): Promise<string | undefined> {
   for (let i = 0; i < 3; i++) {
     const q = needsChoiceOf(text);
     if (!q) return text;
-    const labels = q.choices.map((c) => c.label.charAt(0).toUpperCase() + c.label.slice(1));
-    const detail = q.existing.map((e) => `${e.repo}: ${e.branch} is in ${e.path} (${e.state})`).join("\n");
-    const go = await vscode.window.showWarningMessage("AI Context Hub: this branch already has a worktree elsewhere.", { modal: true, detail }, ...labels);
-    const c = go ? q.choices[labels.indexOf(go)] : undefined;
-    if (!c) return undefined;
-    text = await rerun(choiceArgs(c));
+    const options = existingOptions(q, !!o.ownWindow);
+    const detail = [...existingFacts(q), "", ...options.map((x) => x.line)].join("\n");
+    const go = await vscode.window.showWarningMessage(`AI Context Hub: ${existingTitle(q)}`, { modal: true, detail }, ...options.map((x) => x.button));
+    const picked = options.find((x) => x.button === go);
+    if (!picked) return undefined;
+    if (picked.key === "own") {
+      // nothing changes: no CLI call, the set file and this window stay; that worktree opens in a window of its own
+      await openPath(q.existing[0].path, "new");
+      return undefined;
+    }
+    text = await rerun(choiceArgs(picked.choice!));
   }
   return text;
+}
+
+/**
+ * The branch is checked out in a CLONE (not a worktree): it cannot be moved into the set or made again. One short question with
+ * what can be done; no command line in it. True when that folder was opened in a window of its own.
+ */
+export async function askCloneCheckedOut(branch: string, path: string): Promise<boolean> {
+  const open = "Open That Folder in Its Own Window";
+  const detail = [plainPath(path), `A clone cannot be moved into a set; switch that clone to another branch first if you want ${branch} here.`].join(String.fromCharCode(10));
+  const go = await vscode.window.showWarningMessage(`AI Context Hub: ${branch} is checked out in the clone`, { modal: true, detail }, open);
+  if (go !== open) return false;
+  await openPath(path, "new");
+  return true;
 }
 
 export async function showOpened(res: OpenResultJson, window: "new" | "this", log: (l: string) => void, meta?: OpenMeta): Promise<boolean> {
@@ -148,7 +173,9 @@ export async function showOpened(res: OpenResultJson, window: "new" | "this", lo
   const to = openTarget(res, window);
   // some repositories of the set this window shows switched in place: nothing to open, the window stays
   if ("stays" in to) {
-    void (sum.ok ? vscode.window.showInformationMessage(`AI Context Hub: ${to.stays}`) : vscode.window.showWarningMessage(`AI Context Hub: ${to.stays}\n${detail}`, { modal: true }));
+    // inside an action with Undo the sentence only goes to the log: the action says one thing
+    if (sum.ok) notice(to.stays, (t) => void vscode.window.showInformationMessage(`AI Context Hub: ${t}`));
+    else void vscode.window.showWarningMessage(`AI Context Hub: ${to.stays}\n${detail}`, { modal: true });
     return sum.ok;
   }
   if ("error" in to) {
@@ -215,10 +242,11 @@ export class RepoSetController {
     const roots = (cfg().get<string[]>("worktrees.repoRoots", []) ?? []).filter(Boolean);
     const search = roots.length ? roots : [...new Set((vscode.workspace.workspaceFolders ?? []).map((f) => path.dirname(f.uri.fsPath)))];
     if (!search.length) return void vscode.window.showWarningMessage("Open a folder, or set aihub.worktrees.repoRoots, so repositories can be found.");
-    const found = await findRepos(search, Number(cfg().get("worktrees.scanDepth", 2)));
+    // one line per repository, however often it is cloned
+    const found = await uniqueRepos(await findRepos(search, Number(cfg().get("worktrees.scanDepth", 2))), readPreferredClones());
     if (!found.length) return void vscode.window.showWarningMessage(`No git repositories found in ${search.join(", ")}.`);
     const picks = await vscode.window.showQuickPick(
-      found.map((r) => ({ label: r.name, description: r.path, repo: r })),
+      found.map((r) => ({ ...cloneItem(r), repo: r as Repo })),
       { canPickMany: true, title: stepTitle(1, [], this.flow), placeHolder: "Tick the repositories" },
     );
     if (!picks?.length) return;

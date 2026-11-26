@@ -25,6 +25,8 @@ import {
 import { compose, DEFAULT_EMPTY, editSection, mergeSections, parseSections, resolveTemplate, templateSourceText, type CodeValues } from "./templates.js";
 import { CONTEXT_RE, notesText, readNotes, unwovenNotes, weaveNotes } from "./notes.js";
 import { loadTeam, readUtf8 } from "./team.js";
+import { checkActionSections } from "./prActions.js";
+import { impactWarning } from "./prImpact.js";
 import { derivedNote, targetFor } from "./baseBranch.js";
 
 export interface CreateOpts {
@@ -37,6 +39,8 @@ export interface CreateOpts {
   workItem?: number;
   dryRun?: boolean;
   noNotes?: boolean;
+  /** skip the check of the sections that list actions for the reader */
+  asIs?: boolean;
   json?: boolean;
 }
 
@@ -117,8 +121,11 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
     description = [body.trim(), extra].filter(Boolean).join("\n\n") + "\n";
     summary = tplSource;
   }
+  if (!o.asIs) checkActionSections({ description, configured: team.pullRequest?.actionSections, emptyText, template: tpl?.content, verb: "created" });
   const note = derivedNote(derived);
   if (note) summary = [summary, note].filter(Boolean).join("; ");
+  const warn = impactWarning(root, mergeBase(root, target), team, description);
+  if (warn) summary = [summary, warn].filter(Boolean).join("; ");
 
   if (o.dryRun) {
     return o.json
@@ -200,6 +207,7 @@ export interface UpdateOpts {
   draft?: boolean;
   target?: string;
   noNotes?: boolean;
+  asIs?: boolean;
   json?: boolean;
 }
 
@@ -239,6 +247,11 @@ export async function updatePr(ctx: Ctx, o: UpdateOpts): Promise<string> {
     throw new AihubError("--append-*/--replace-* need --section <heading>");
   }
 
+  if (!o.asIs && changed.length) {
+    const team = loadTeam(root);
+    const touched = [...(o.section ? [o.section] : []), ...(o.bodyFile ? parseSections(readUtf8(o.bodyFile)).sections.map((s) => s.heading) : [])];
+    checkActionSections({ description, only: touched, configured: team.pullRequest?.actionSections, emptyText: team.pullRequest?.emptySection || DEFAULT_EMPTY, verb: "updated" });
+  }
   const patch: Record<string, unknown> = {};
   if (changed.length) patch.description = description;
   if (o.title) (patch.title = o.title), changed.push("title");

@@ -9,7 +9,7 @@ import { run as fabricRun } from "./fabric.js";
 export const PR_LIST_SUBS = ["list", "show", "data-diff", "comment", "tests"];
 
 export const PR_LIST_USAGE =
-  "aihub pr list [--mine|--reviewer] [--branch <b>] [--status active|completed|abandoned|all] [--repo <r>] [--json]\n" +
+  "aihub pr list [--mine|--reviewer] [--branch <b>] [--status active|completed|abandoned|all] [--repo <r>] [--builds] [--json]\n" +
   "aihub pr show --pr <n|url> [--json]\n" +
   "aihub pr comment [--pr <n|url>] --title \"<what>\" (--text <markdown>|--body-file f) [--closed] [--link-section <section>] [--json]\n" +
   "aihub pr tests add [--pr <n|url>] --from-run <build> | --from-robot <build> | --from-fabric-job <ws>/<item>/<job> [--name <n>] [--json]\n" +
@@ -21,6 +21,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
   const v = parse(rest, {
     mine: { type: "boolean" },
+    builds: { type: "boolean" },
     reviewer: { type: "boolean" },
     branch: { type: "string" },
     status: { type: "string" },
@@ -40,7 +41,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     name: { type: "string" },
     json: { type: "boolean" },
   }, true).values;
-  if (sub === "list") return void ctx.out(await prList(ctx, { mine: v.mine, reviewer: v.reviewer, branch: v.branch, status: v.status, repo: v.repo, json: v.json }));
+  if (sub === "list") return void ctx.out(await prList(ctx, { mine: v.mine, reviewer: v.reviewer, branch: v.branch, status: v.status, repo: v.repo, json: v.json, builds: v.builds }));
   if (sub === "show") {
     if (!v.pr) throw new AihubError("aihub pr show needs --pr <number|url>");
     return void ctx.out(await prShow(ctx, { pr: v.pr, json: v.json }));

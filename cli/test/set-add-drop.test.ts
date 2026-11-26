@@ -41,7 +41,7 @@ describe("aihub worktree add | drop | repair", { timeout: 30_000 }, () => {
     expect(r.out).toContain("the window stays as it is: 3 repositories, repo-c added on feature/1-x");
     expect(head(join(set.folder, "repo-c"))).toBe("feature/1-x");
     expect(json(join(set.folder, ".aihub-set.json")).repos.map((x: { name: string }) => x.name)).toEqual(["repo-a", "repo-b", "repo-c"]);
-    expect(json(set.workspace).folders).toContainEqual({ name: "repo-c", path: "repo-c" });
+    expect(json(set.workspace).folders).toContainEqual({ name: "repo-c (feature/1-x)", path: "repo-c" });
   });
 
   it("add --branch gives the new repository its own branch (repos[].branch)", async () => {
@@ -60,7 +60,7 @@ describe("aihub worktree add | drop | repair", { timeout: 30_000 }, () => {
     expect(existsSync(join(set.folder, "repo-b"))).toBe(false);
     expect(sh(repos[1].dir, ["branch", "--list", "feature/1-x"])).toContain("feature/1-x");
     expect(json(join(set.folder, ".aihub-set.json")).repos.map((x: { name: string }) => x.name)).toEqual(["repo-a"]);
-    expect(json(set.workspace).folders.map((f: { name: string }) => f.name)).toEqual(["repo-a"]);
+    expect(json(set.workspace).folders.map((f: { name: string }) => f.name)).toEqual(["repo-a (feature/1-x)"]);
   });
 
   it("drop keeps a worktree with uncommitted work, in the set, and says so", async () => {

@@ -56,6 +56,7 @@ export const commands: Record<string, CommandFn> = {
     return (await import("./commands/story.js")).run(argv, ctx);
   },
   worktree: lazy(() => import("./commands/worktree.js")),
+  recent: lazy(() => import("./commands/recent.js")),
   review: lazy(() => import("./commands/review.js")),
   wiki: lazy(() => import("./commands/wiki.js")),
   release: lazy(() => import("./commands/release.js")),

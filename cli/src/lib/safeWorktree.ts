@@ -1,6 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { listWorktrees, refSha, samePath, tryGit } from "./gitx.js";
+import { listWorktrees, pruneIfSafe, refSha, samePath, tryGit } from "./gitx.js";
+import { guardLocalFiles } from "./localFiles.js";
 
 /**
  * Removing and moving a worktree without losing work. Shared by `aihub story branches remove|place` and the worktree
@@ -131,12 +132,17 @@ export interface RemoveResult {
 }
 
 /** `git worktree remove` (no --force) after taking out directory links; optionally `git branch -d` (refuses unmerged work). */
-export function removeWorktreeSafely(source: string, path: string | undefined, branch: string, o: { deleteBranch?: boolean } = {}): RemoveResult {
+export function removeWorktreeSafely(source: string, path: string | undefined, branch: string, o: { deleteBranch?: boolean; discardLocalWork?: boolean; env?: NodeJS.ProcessEnv } = {}): RemoveResult {
   let removed = false;
   let freedBytes = 0;
+  let savedNote = "";
   if (path && existsSync(path)) {
     const check = canRemoveWorktree(source, path);
     if (!check.ok) return { removed: false, branchDeleted: false, note: `kept: ${check.reason}`, freedBytes: 0 };
+    // ignored local files (.env, notes) are saved first, or the removal is refused when they are too big (localFiles.ts)
+    const saved = guardLocalFiles(path, source, { discard: o.discardLocalWork, env: o.env });
+    if (!saved.ok) return { removed: false, branchDeleted: false, note: `kept: ${saved.note}`, freedBytes: 0 };
+    savedNote = saved.note;
     const links = findDirLinks(path);
     for (const l of links) removeDirLink(join(path, l.rel));
     const size = dirSize(path);
@@ -147,8 +153,8 @@ export function removeWorktreeSafely(source: string, path: string | undefined, b
     }
     removed = true;
     freedBytes = size;
-  } else tryGit(source, ["worktree", "prune"]);
-  if (!o.deleteBranch || !refSha(source, `refs/heads/${branch}`)) return { removed, branchDeleted: false, note: removed ? "worktree removed, branch kept" : "no worktree", freedBytes };
+  } else pruneIfSafe(source);
+  if (!o.deleteBranch || !refSha(source, `refs/heads/${branch}`)) return { removed, branchDeleted: false, note: removed ? `worktree removed, branch kept${savedNote ? `; ${savedNote}` : ""}` : "no worktree", freedBytes };
   if (listWorktrees(source).some((w) => w.branch === branch)) return { removed, branchDeleted: false, note: `${removed ? "worktree removed; " : ""}branch kept: it is checked out elsewhere`, freedBytes };
   const d = tryGit(source, ["branch", "-d", branch]);
   return d.ok

@@ -4,7 +4,7 @@ import { ensureBranch, findStoryBranchName } from "./branches.js";
 import { repoClient, type Ctx } from "./context.js";
 import { repoRoot } from "./git.js";
 import { AihubError } from "./errors.js";
-import { isDirty, listWorktrees, mustGit, refSha, samePath, tryGit, unpushedCount } from "./gitx.js";
+import { isDirty, listWorktrees, mustGit, pruneIfSafe, refSha, samePath, tryGit, unpushedCount } from "./gitx.js";
 import { clientForDir, fetchOrigin, resolveRepoDirs } from "./repos.js";
 import { findSet } from "./setInfo.js";
 import { baseFor } from "./story-flow.js";
@@ -12,8 +12,9 @@ import { loadTeam } from "./team.js";
 import { getWorkItem, storyBranchName } from "./workitems.js";
 import { storyFolderFor, storyIdFromBranch, worktreePathFor } from "./storyWorktrees.js";
 import { findDirLinks, removeDirLink } from "./safeWorktree.js";
-import { readSetFile, repoBranch, type SetMeta } from "./setFile.js";
+import { MAKER_SET, readJsonText, readSetFile, repoBranch, writeAtomic, writeSetFile, type SetMeta } from "./setFile.js";
 import { checkExisting, moveExisting, readWhenExists, recreateExisting, type WhenExists } from "./existingWorktree.js";
+import { guardLocalFiles } from "./localFiles.js";
 
 const META = ".aihub-set.json";
 
@@ -58,7 +59,7 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
   let folder = setFolder(setsRoot, o.story, o.branch ?? "");
   let metaPath = join(folder, META);
   const meta: SetMeta = existsSync(metaPath)
-    ? (JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta)
+    ? (JSON.parse(readJsonText(metaPath)) as SetMeta)
     : { story: o.story, branch: o.branch ?? "", repos: [] };
 
   let branch = o.branch ?? meta.branch;
@@ -73,11 +74,15 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
     if (!wi.title) throw new AihubError(`work item ${o.story} not found; pass --branch <name>`);
     branch = storyBranchName(team, o.story, wi.title);
   }
-  meta.branch = branch;
+  // an existing set keeps its branch: another --branch only puts the new repositories on that branch (repos[].branch)
+  if (!meta.branch) meta.branch = branch;
   if (!existsSync(metaPath)) {
     // the folder name takes the slug of the branch now that it is known
     folder = setFolder(setsRoot, o.story, branch);
     metaPath = join(folder, META);
+  }
+  if (!existsSync(metaPath) && readSetFile(folder)?.kind === "maker") {
+    throw new AihubError(`${folder} holds a set in the extension's format (.worktree-set.json); add repositories to it from inside that set: aihub worktree add --repos ${o.repos.join(",")}`);
   }
 
   // what each repository becomes; a branch with a worktree elsewhere is asked about before anything is created
@@ -101,27 +106,27 @@ export async function createSet(ctx: Ctx, o: CreateSetOpts): Promise<string> {
       const how = policy === "ask" ? "reuse" : policy;
       const inside = samePath(dirname(busy.path), folder);
       if (inside || how === "reuse") {
-        meta.repos.push({ name: d.name, source: d.dir, path: busy.path, ...(own !== branch ? { branch: own } : {}) });
+        meta.repos.push({ name: d.name, source: d.dir, path: busy.path, ...(own !== meta.branch ? { branch: own } : {}) });
         lines.push(`${d.name}: worktree ${busy.path} on '${own}' reused`);
-        writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+        writeAtomic(metaPath, JSON.stringify(meta, null, 2));
         continue;
       }
       const p = how === "move" ? moveExisting(d.dir, own, busy.path, path, again) : recreateExisting(d.dir, own, busy.path, path, { discard: o.discardLocalWork, again });
       if (!p.ok) throw new AihubError(`${d.name}: ${p.note}`);
-      meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== branch ? { branch: own } : {}) });
+      meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== meta.branch ? { branch: own } : {}) });
       lines.push(`${d.name}: ${p.note}`);
-      writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+      writeAtomic(metaPath, JSON.stringify(meta, null, 2));
       continue;
     }
     fetchOrigin(d.dir);
     const base = await baseFor(d.dir, clientForDir(ctx, d.dir), team, o.base);
     const e = ensureBranch(d.dir, own, base);
     mustGit(d.dir, ["worktree", "add", path, own]);
-    meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== branch ? { branch: own } : {}) });
+    meta.repos.push({ name: d.name, source: d.dir, path, ...(own !== meta.branch ? { branch: own } : {}) });
     lines.push(`${d.name}: worktree ${path} on '${own}'${e.created ? ` (new, from ${base})` : ""}`);
-    writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+    writeAtomic(metaPath, JSON.stringify(meta, null, 2));
   }
-  writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+  writeAtomic(metaPath, JSON.stringify(meta, null, 2));
   lines.unshift(`set for story ${o.story}: ${folder}`);
   return o.json ? JSON.stringify({ folder, ...meta }) : lines.join("\n");
 }
@@ -162,48 +167,69 @@ export function listSets(ctx: Ctx, o: { root?: string; json?: boolean }): string
  * a worktree of its source keep it (removed false, the reason in the line). Folder links (a node_modules junction) go
  * first: git would empty the folder they point to. The branch stays.
  */
-export function removeWorktreeSafely(r: { name: string; source: string; path: string }, branch: string): { removed: boolean; line: string } {
+export function removeWorktreeSafely(r: { name: string; source: string; path: string }, branch: string, o: { discardLocalWork?: boolean; env?: NodeJS.ProcessEnv } = {}): { removed: boolean; line: string } {
   if (!existsSync(r.path)) {
-    tryGit(r.source, ["worktree", "prune"]);
+    // a folder on a drive or share that is not there right now is not "gone": it stays in the set
+    if (!existsSync(dirname(r.path))) return { removed: false, line: `${r.name}: kept, ${r.path} cannot be reached (drive or share not available); try again when it is back` };
+    pruneIfSafe(r.source);
     return { removed: true, line: `${r.name}: worktree already gone` };
   }
-  const known = listWorktrees(r.source).some((w) => samePath(w.path, r.path));
+  const listed = listWorktrees(r.source);
+  // a set entry that IS the main clone (a story branch that was checked out there and reused): never removable, it only leaves the set
+  if (listed.some((w) => w.main && samePath(w.path, r.path))) return { removed: true, line: `${r.name}: the main clone ${r.path} stays where it is; it is no longer part of the set` };
+  const known = listed.some((w) => samePath(w.path, r.path));
   const links = known ? findDirLinks(r.path) : [];
   const linkSet = new Set(links.map((l) => l.rel.replace(/\\/g, "/")));
   const dirty = known && tryGit(r.path, ["status", "--porcelain"]).out.split("\n").filter(Boolean).some((l) => !linkSet.has(l.slice(3).replace(/\/$/, "")));
   const unpushed = unpushedCount(r.path);
   if (!known || dirty || unpushed) return { removed: false, line: `${r.name}: kept, ${!known ? "not a worktree of its source repository" : dirty ? "uncommitted changes" : `${unpushed} unpushed commit(s)`}` };
+  // ignored local files (.env, notes) are saved first, or refuse the removal when they are too big (see localFiles.ts)
+  const saved = guardLocalFiles(r.path, r.source, { discard: o.discardLocalWork, env: o.env });
+  if (!saved.ok) return { removed: false, line: `${r.name}: kept, ${saved.note}` };
   for (const l of links) removeDirLink(join(r.path, l.rel));
   mustGit(r.source, ["worktree", "remove", r.path]);
-  return { removed: true, line: `${r.name}: worktree removed (branch '${branch}' kept)` };
+  return { removed: true, line: `${r.name}: worktree removed (branch '${branch}' kept)${saved.note ? `; ${saved.note}` : ""}` };
 }
 
-export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?: string; json?: boolean }): string {
-  const root = repoRoot(ctx.cwd);
-  const setsRoot = resolve(o.root ?? defaultSetsRoot(root));
+export function removeSet(ctx: Ctx, o: { story?: number; branch?: string; root?: string; folder?: string; json?: boolean; discardLocalWork?: boolean }): string {
+  // --folder names the set itself: no repository (and no sets root) is needed, so it also works from a folder that is no clone
+  const setsRoot = o.folder ? resolve(o.folder, "..") : resolve(o.root ?? defaultSetsRoot(repoRoot(ctx.cwd)));
   // a story branch opened with `worktree open` lives in its story folder, next to the other sets of that story
   const storyId = o.story ?? (o.branch ? storyIdFromBranch(o.branch) : undefined);
   const byBranch = join(setsRoot, slugOfBranch(o.branch ?? ""));
-  const folder = o.story ? setFolder(setsRoot, o.story) : storyId && !existsSync(join(byBranch, META)) ? setFolder(setsRoot, storyId, o.branch) : byBranch;
-  const metaPath = join(folder, META);
-  if (!existsSync(metaPath)) throw new AihubError(`no worktree set for ${o.story ? `story ${o.story}` : `branch '${o.branch}'`} under ${setsRoot}`);
-  const top = JSON.parse(readFileSync(metaPath, "utf8")) as SetMeta;
+  // --folder names the set folder itself (the menus know it from the scan); else it is found from the story or the branch
+  const folder = o.folder ? resolve(o.folder) : o.story ? setFolder(setsRoot, o.story) : storyId && !existsSync(join(byBranch, META)) ? setFolder(setsRoot, storyId, o.branch) : byBranch;
+  // the extension's own format (.worktree-set.json) is a set too: same checks, same result
+  const maker = !existsSync(join(folder, META)) && readSetFile(folder)?.kind === "maker";
+  const metaPath = join(folder, maker ? MAKER_SET : META);
+  if (!existsSync(metaPath)) throw new AihubError(o.folder ? `no worktree set in ${folder}` : `no worktree set for ${o.story ? `story ${o.story}` : `branch '${o.branch}'`} under ${setsRoot}`);
+  const top = maker ? readSetFile(folder)!.top : (JSON.parse(readJsonText(metaPath)) as SetMeta);
   const all = [{ ...top, others: undefined }, ...(top.others ?? [])];
-  const meta = all.find((s) => (o.branch ? s.branch === o.branch : s.story === o.story)) ?? all[0];
+  // naming a branch or a story that is not in this folder (anymore) removes nothing: never "the top set instead"
+  const named = o.branch ? (s: SetMeta) => s.branch === o.branch : o.story ? (s: SetMeta) => s.story === o.story : undefined;
+  const meta = named ? all.find(named) : all[0];
+  if (!meta) throw new AihubError(`no worktree set for ${o.branch ? `branch '${o.branch}'` : `story ${o.story}`} in ${folder}${all.length ? ` (it holds: ${all.map((s) => `'${s.branch}'`).join(", ")})` : ""}; nothing was removed`);
   const rest = all.filter((s) => s !== meta);
   const lines: string[] = [];
   const left: SetMeta["repos"] = [];
   for (const r of meta.repos) {
-    const x = removeWorktreeSafely(r, repoBranch(meta, r));
+    // one failing repository (a locked worktree, a submodule) keeps only itself in the set; the others are still handled
+    let x: { removed: boolean; line: string };
+    try {
+      x = removeWorktreeSafely(r, repoBranch(meta, r), { discardLocalWork: o.discardLocalWork, env: ctx.env });
+    } catch (e) {
+      x = { removed: false, line: `${r.name}: kept, ${(e as Error).message.split("\n")[0]}` };
+    }
     if (!x.removed) left.push(r);
     lines.push(x.line);
   }
-  const write = (sets: SetMeta[]) => writeFileSync(metaPath, JSON.stringify({ ...sets[0], ...(sets.length > 1 ? { others: sets.slice(1) } : {}) }, null, 2));
+  const write = (sets: SetMeta[]) => maker ? writeSetFile(folder, "maker", sets[0]) : writeAtomic(metaPath, JSON.stringify({ ...sets[0], ...(sets.length > 1 ? { others: sets.slice(1) } : {}) }, null, 2));
   if (left.length) {
     write([{ ...meta, repos: left }, ...rest]);
     lines.push(`set kept: ${left.length} worktree(s) need attention`);
   } else {
-    if (meta.workspace) rmSync(meta.workspace, { force: true });
+    // the workspace file is the set's own (a hand-edited set file may name another one)
+    if (meta.workspace && dirname(resolve(meta.workspace)).toLowerCase() === resolve(folder).toLowerCase()) rmSync(meta.workspace, { force: true });
     if (rest.length) write(rest);
     else {
       rmSync(metaPath);

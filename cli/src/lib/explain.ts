@@ -10,7 +10,7 @@ export const EXPLAIN: Record<string, string[]> = {
     "aihub pr update: edits sections of the existing description (PATCH); other sections stay intact.",
     "Use --dry-run to see the filled description and the calls without writing.",
   ],
-  comments: ["aihub comments get: REST GET of the PR threads, shows open ones with the code around the line.", "aihub comments reply --replies-file f.yaml: REST POST of the replies and thread status changes you listed."],
+  comments: ["aihub comments get: REST GET of the PR threads, shows open ones with the code around the line.", "aihub comments reply --replies-file f.yaml: REST POST of the replies and thread status changes you listed.", "aihub comments threads --pr repo:N: REST GET of the iterations, threads (tracked to the latest iteration) and the commented files, for an editor."],
   init: [
     "aihub init: reads the git remote (organization/project/repository) and the default branch.",
     "1. Proposes team.yaml, story and commit templates, and a PR template only when none exists where Azure DevOps looks.",

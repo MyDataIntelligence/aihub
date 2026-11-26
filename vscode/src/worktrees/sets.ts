@@ -161,9 +161,44 @@ function setPath(folder: string, p: string): string {
   return path.resolve(p);
 }
 
+/**
+ * The same lock file as the CLI and the bar (`.aihub-set.lock`, created exclusively, older than 10 s is a crashed writer): one
+ * writer at a time for the set files of a folder, whichever process it is.
+ */
+async function withSetLock<T>(folder: string, fn: () => Promise<T>): Promise<T> {
+  const lock = path.join(folder, ".aihub-set.lock");
+  const deadline = Date.now() + 3000;
+  for (;;) {
+    try {
+      const h = await fs.promises.open(lock, "wx");
+      await h.write(`${process.pid} ${Date.now()}`);
+      await h.close();
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") return fn();
+      try {
+        if (Date.now() - (await fs.promises.stat(lock)).mtimeMs > 10_000) await fs.promises.rm(lock, { force: true });
+      } catch {
+        continue;
+      }
+      if (Date.now() > deadline) throw new Error("the set file is being written by another window; try again in a moment");
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    await fs.promises.rm(lock, { force: true });
+  }
+}
+
 export async function writeSet(set: WorktreeSet): Promise<void> {
+  await fs.promises.mkdir(set.folder, { recursive: true });
+  return withSetLock(set.folder, () => writeSetLocked(set));
+}
+
+async function writeSetLocked(set: WorktreeSet): Promise<void> {
   const folder = set.folder;
-  await fs.promises.mkdir(folder, { recursive: true });
   const repos = [...set.repos].sort((a, b) => a.name.localeCompare(b.name));
 
   const meta: Record<string, unknown> = {
@@ -180,7 +215,17 @@ export async function writeSet(set: WorktreeSet): Promise<void> {
     if (r.base !== undefined) o.base = r.base;
     return o;
   });
-  await fs.promises.writeFile(path.join(folder, SET_FILE), JSON.stringify(meta, null, 2) + "\n", "utf8");
+  // a temporary file and a rename: the watcher of the bar never reads half a set file, a crash leaves the old one
+  const setFile = path.join(folder, SET_FILE);
+  const tmp = `${setFile}.${process.pid}.tmp`;
+  const text = JSON.stringify(meta, null, 2) + "\n";
+  try {
+    await fs.promises.writeFile(tmp, text, "utf8");
+    await fs.promises.rename(tmp, setFile);
+  } catch {
+    await fs.promises.rm(tmp, { force: true });
+    await fs.promises.writeFile(setFile, text, "utf8");
+  }
 
   const wsFile = setWorkspaceFile(set);
   let existing: Record<string, unknown> = {};

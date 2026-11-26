@@ -11,6 +11,8 @@ export interface LocalRepoJson {
   branch: string;
   key?: string;
   project?: string;
+  /** other clones of the same remote; the CLI already chose this one (aihub repos local) */
+  otherClones?: string[];
 }
 
 export interface AdoRepoJson {
@@ -19,6 +21,7 @@ export interface AdoRepoJson {
   key: string;
   path?: string;
   branch?: string;
+  otherClones?: string[];
 }
 
 export interface RecentRepo {
@@ -42,10 +45,14 @@ export interface RepoRow {
 
 const norm = (p: string) => p.replace(/\\/g, "/").toLowerCase();
 const branchText = (b: string | undefined) => (b ? b : "(detached)");
+/** "branch · folder", plus "+N more" and the other folders when the repository is cloned more than once. */
+const where = (l: { branch?: string; path?: string; otherClones?: string[] }): { description: string; detail?: string } =>
+  l.otherClones?.length ? { description: `${branchText(l.branch)} · ${l.path}  +${l.otherClones.length} more`, detail: `also cloned at ${l.otherClones.join(", ")}` } : { description: `${branchText(l.branch)} · ${l.path}` };
 
 export function repoRows(o: { groups: GroupJson[]; recent: RecentRepo[]; local: LocalRepoJson[]; ado?: AdoRepoJson[]; adoError?: string }): RepoRow[] {
   const rows: RepoRow[] = [];
-  const localByPath = new Map(o.local.map((l) => [norm(l.path), l]));
+  // a recent folder that is another clone of a listed repository counts as that repository
+  const localByPath = new Map(o.local.flatMap((l) => [l.path, ...(l.otherClones ?? [])].map((p) => [norm(p), l] as const)));
   if (o.groups.length) {
     rows.push({ label: "Groups", separator: true });
     for (const g of o.groups) rows.push({ id: `g:${g.name}`, label: `★ ${g.name}`, description: `${g.repos.length} repos${g.source === "team" ? " · team.yaml" : ""}`, detail: g.repos.map((r) => r.name).join(", ") + (g.missing?.length ? `   [not on this PC: ${g.missing.join(", ")}]` : ""), value: { kind: "group", group: g } });
@@ -56,8 +63,9 @@ export function repoRows(o: { groups: GroupJson[]; recent: RecentRepo[]; local: 
     rows.push({ label: "Recent", separator: true });
     for (const r of recent) {
       const l = localByPath.get(norm(r.path))!;
+      if (shown.has(norm(l.path))) continue;
       shown.add(norm(l.path));
-      rows.push({ id: `l:${norm(l.path)}`, label: l.name, description: `${branchText(l.branch)} · ${l.path}`, value: { kind: "local", path: l.path, name: l.name } });
+      rows.push({ id: `l:${norm(l.path)}`, label: l.name, ...where(l), value: { kind: "local", path: l.path, name: l.name } });
     }
   }
   const adoKeys = new Set<string>();
@@ -70,7 +78,7 @@ export function repoRows(o: { groups: GroupJson[]; recent: RecentRepo[]; local: 
         if (a.path) {
           if (shown.has(norm(a.path))) continue;
           shown.add(norm(a.path));
-          rows.push({ id: `l:${norm(a.path)}`, label: a.name, description: `${branchText(a.branch)} · ${a.path}`, value: { kind: "local", path: a.path, name: a.name } });
+          rows.push({ id: `l:${norm(a.path)}`, label: a.name, ...where(a), value: { kind: "local", path: a.path, name: a.name } });
         } else rows.push({ id: `c:${a.project}/${a.name}`, label: a.name, description: "not cloned ↓", detail: `cloned into the repos root when you pick it`, value: { kind: "clone", project: a.project, name: a.name } });
       }
     }
@@ -78,7 +86,7 @@ export function repoRows(o: { groups: GroupJson[]; recent: RecentRepo[]; local: 
   const rest = o.local.filter((l) => !shown.has(norm(l.path)) && !(l.key && adoKeys.has(l.key)));
   if (rest.length) {
     rows.push({ label: o.ado ? "Local, not in Azure DevOps" : "Local", separator: true });
-    for (const l of rest) rows.push({ id: `l:${norm(l.path)}`, label: l.name, description: `${branchText(l.branch)} · ${l.path}`, value: { kind: "local", path: l.path, name: l.name } });
+    for (const l of rest) rows.push({ id: `l:${norm(l.path)}`, label: l.name, ...where(l), value: { kind: "local", path: l.path, name: l.name } });
   }
   if (o.adoError) rows.push({ label: `Azure DevOps could not be read: ${o.adoError}`, separator: true });
   return rows;

@@ -1,3 +1,4 @@
+import { plainPath, plainPathsIn } from "./bar/paths";
 /**
  * "Open Repo Set": the pure parts of the quick-pick flow. The CLI does the work (`aihub worktree open`);
  * this file builds the pick lists and the command line and turns the answer into a message. No vscode, no I/O.
@@ -26,6 +27,8 @@ export interface BranchesJson {
 
 export interface OpenRepoJson {
   repo: string;
+  /** the branch is checked out in this folder (a clone that cannot be moved); nothing was changed */
+  checkedOutIn?: string;
   ok: boolean;
   state: string;
   branch: string;
@@ -68,6 +71,50 @@ export function needsChoiceOf(text: string): NeedsChoiceJson | undefined {
 /** The arguments that answer the question with one choice (the same as its ready command). */
 export function choiceArgs(c: NeedsChoiceJson["choices"][number]): string[] {
   return ["--existing", c.choice, ...(/--discard-local-work/.test(c.command) ? ["--discard-local-work"] : [])];
+}
+
+export interface ExistingOption {
+  key: "move" | "reuse" | "recreate" | "own";
+  /** the button */
+  button: string;
+  /** one line in the dialog: what happens, and where */
+  line: string;
+  /** the CLI's choice behind it; absent for "own" (no CLI call at all) */
+  choice?: NeedsChoiceJson["choices"][number];
+}
+
+/**
+ * The buttons of the question "this branch already has a worktree elsewhere": Move (first), Reuse, Recreate and, when the
+ * question is about exactly one repository and the caller allows it, "Open in Its Own Window": that worktree opens in
+ * a window of its own and nothing changes in the set (no CLI call).
+ */
+/** The title of the question: which branch is checked out elsewhere (the repository named when it is a set). */
+export function existingTitle(q: NeedsChoiceJson): string {
+  const one = q.existing.length === 1 ? q.existing[0] : undefined;
+  return one ? `${one.branch} is already checked out (${one.repo})` : `${q.existing.length} branches are already checked out (${q.existing.map((e) => e.repo).join(", ")})`;
+}
+
+/** Where it is and what is in it: the path once, shortened in the middle, and under it what would be saved. */
+export function existingFacts(q: NeedsChoiceJson): string[] {
+  return q.existing.flatMap((e, i) => [...(i ? [""] : []), `${q.existing.length > 1 ? `${e.repo}: ` : ""}${plainPath(e.path)}`, (e.state || "clean").replace(/, /g, " · ")]);
+}
+
+export function existingOptions(q: NeedsChoiceJson, ownWindow: boolean): ExistingOption[] {
+  const one = q.existing.length === 1 ? q.existing[0] : undefined;
+  // short lines without a path (the path is said once, above them)
+  const lines = {
+    move: `Move: bring ${one ? "that folder" : "each folder"} into this set (work and branch go along)`,
+    reuse: `Reuse: leave ${one ? "it" : "them"} there and use ${one ? "it" : "them"} from this set`,
+    recreate: `Recreate: make a fresh folder in this set; your work and local files are saved first`,
+    own: "Open in Its Own Window: open that folder; this set stays as it is",
+  };
+  const out: ExistingOption[] = [];
+  for (const key of ["move", "reuse", "recreate"] as const) {
+    const choice = q.choices.find((c) => c.choice === key);
+    if (choice) out.push({ key, button: key.charAt(0).toUpperCase() + key.slice(1), line: lines[key], choice });
+  }
+  if (ownWindow && one) out.push({ key: "own", button: "Open in Its Own Window", line: lines.own });
+  return out;
 }
 
 export interface PrJson {
@@ -203,7 +250,7 @@ export interface OpenSummary {
 
 export function summarizeOpen(r: OpenResultJson): OpenSummary {
   const failed = r.repos.filter((x) => !x.ok).length;
-  const lines = r.repos.map((x) => `${x.ok ? "ok" : "FAIL"}  ${x.repo}: ${x.state} - ${x.note}`);
+  const lines = r.repos.map((x) => `${x.ok ? "ok" : "FAIL"}  ${x.repo}: ${x.state} - ${plainPathsIn(x.note)}`);
   const title = failed
     ? `${r.repos.length - failed} of ${r.repos.length} repositories are open on ${r.branch}; ${failed} need attention`
     : `${r.repos.length} repositories on ${r.branch} (${r.mode})`;

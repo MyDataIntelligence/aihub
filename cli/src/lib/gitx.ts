@@ -1,7 +1,8 @@
 import { spawnSync } from "./proc.js";
 import { AihubError } from "./errors.js";
 import { gitGate } from "./trace.js";
-import { isAbsolute, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 export interface GitResult {
   ok: boolean;
@@ -113,3 +114,15 @@ export const unpushedCount = (dir: string): number => {
 
 export const samePath = (a: string, b: string): boolean =>
   a.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase() === b.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+
+/**
+ * `git worktree prune`, but only when every registration that has lost its folder lost it for real: the parent folder
+ * of the worktree exists. A worktree on a drive or share that is not there right now (USB disk, network path, OneDrive
+ * offline) must keep its registration, or its folder no longer belongs to any repository when the drive is back.
+ * Returns whether prune ran.
+ */
+export function pruneIfSafe(source: string): boolean {
+  const stale = listWorktrees(source).filter((w) => !w.main && w.path && !existsSync(w.path));
+  if (!stale.length || stale.some((w) => !existsSync(dirname(w.path)))) return false;
+  return tryGit(source, ["worktree", "prune"]).ok;
+}

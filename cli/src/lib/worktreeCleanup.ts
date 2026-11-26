@@ -3,7 +3,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import type { Ctx } from "./context.js";
 import { findPullRequests } from "./worktreeCleanupAdo.js";
 import { originDefaultBranch, repoRoot } from "./git.js";
-import { listWorktrees, samePath, tryGit } from "./gitx.js";
+import { listWorktrees, pruneIfSafe, samePath, tryGit } from "./gitx.js";
 import { listGroups, resolveRepos } from "./repoGroups.js";
 import { clientForDir } from "./repos.js";
 import { dirSize, findDirLinks, removeWorktreeSafely } from "./safeWorktree.js";
@@ -168,7 +168,7 @@ export interface RemovedRow {
 }
 
 /** Removes the chosen worktrees safely (links first, never --force, never local work); prunes once per repository. */
-export function removeCleanup(rows: CleanupRow[], paths: string[], o: { deleteBranch?: boolean } = {}): RemovedRow[] {
+export function removeCleanup(rows: CleanupRow[], paths: string[], o: { deleteBranch?: boolean; discardLocalWork?: boolean } = {}): RemovedRow[] {
   const out: RemovedRow[] = [];
   const sources = new Set<string>();
   for (const p of paths) {
@@ -178,12 +178,12 @@ export function removeCleanup(rows: CleanupRow[], paths: string[], o: { deleteBr
       continue;
     }
     // a merged branch may go too; an unmerged one is kept (git branch -d refuses it)
-    const r = removeWorktreeSafely(row.source, row.path, row.branch, { deleteBranch: !!o.deleteBranch });
+    const r = removeWorktreeSafely(row.source, row.path, row.branch, { deleteBranch: !!o.deleteBranch, discardLocalWork: o.discardLocalWork });
     const busy = /permission denied|being used|busy|cannot (remove|delete)|directory not empty/i.test(r.note);
     out.push({ path: row.path, branch: row.branch, ...r, note: busy ? `${r.note} (a program still has files open here: close VS Code windows and terminals in this folder)` : r.note });
     sources.add(row.source);
   }
-  for (const s of sources) tryGit(s, ["worktree", "prune"]);
+  for (const s of sources) pruneIfSafe(s);
   return out;
 }
 

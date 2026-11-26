@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { configHome } from "./configHome.js";
 import { AihubError } from "./errors.js";
 import { parseDuration } from "./pipeline.js";
 
@@ -15,7 +15,7 @@ export const NOTIFY_MODES: NotifyMode[] = ["all", "needed", "off"];
 export const TOAST_GAP_MS = 2 * 60_000;
 const MAX_HELD = 20;
 
-export const configHome = (env: NodeJS.ProcessEnv) => env.AIHUB_CONFIG_HOME || join(env.XDG_CONFIG_HOME || join(homedir(), ".config"), "aihub");
+export { configHome };
 
 export interface WatchConfig {
   notify: NotifyMode;

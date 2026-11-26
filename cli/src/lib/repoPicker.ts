@@ -23,6 +23,8 @@ export interface LocalRepo {
   /** `org/project/repo` of an Azure DevOps origin, lower case */
   key?: string;
   project?: string;
+  /** the other clones of the same remote on this PC; this one is used (see dedupeClones) */
+  otherClones?: string[];
 }
 
 export interface AdoRepo {
@@ -35,6 +37,7 @@ export interface AdoRepo {
   /** the local clone, when there is one */
   path?: string;
   branch?: string;
+  otherClones?: string[];
 }
 
 // ---- pure ------------------------------------------------------------------------------------------------------
@@ -49,10 +52,16 @@ export function originFromConfig(config: string): string | undefined {
 /** `org/project/repo` (lower case) of an Azure DevOps URL in its https, old visualstudio.com or ssh form. */
 export function adoKey(url: string | undefined): string | undefined {
   if (!url) return undefined;
-  const u = decodeURIComponent(url.trim()).replace(/\.git$/, "");
+  let u = url.trim();
+  try {
+    u = decodeURIComponent(u);
+  } catch {
+    /* a stray % in a url must not break the whole list of clones */
+  }
+  u = u.replace(/\.git$/, "");
   const m =
     /dev\.azure\.com\/([^/]+)\/([^/]+)\/_git\/([^/?#]+)/i.exec(u) ??
-    /ssh\.dev\.azure\.com:v3\/([^/]+)\/([^/]+)\/([^/?#]+)/i.exec(u) ??
+    /ssh\.dev\.azure\.com[:/]v3\/([^/]+)\/([^/]+)\/([^/?#]+)/i.exec(u) ??
     (() => {
       const v = /([^/.@]+)\.visualstudio\.com\/(?:DefaultCollection\/)?([^/]+)\/_git\/([^/?#]+)/i.exec(u);
       return v;
@@ -64,11 +73,92 @@ export function adoKey(url: string | undefined): string | undefined {
 export function joinAdoLocal(ado: Omit<AdoRepo, "path" | "branch">[], local: LocalRepo[], reposRoot?: string): AdoRepo[] {
   return ado.map((a) => {
     const l = local.find((x) => x.key === a.key) ?? (reposRoot ? local.find((x) => samePath(x.path, join(reposRoot, a.name))) : undefined);
-    return l ? { ...a, path: l.path, branch: l.branch } : { ...a };
+    return l ? { ...a, path: l.path, branch: l.branch, ...(l.otherClones ? { otherClones: l.otherClones } : {}) } : { ...a };
   });
 }
 
 const samePath = (a: string, b: string) => resolve(a).toLowerCase() === resolve(b).toLowerCase();
+
+/** One key per remote: the Azure DevOps key, else host/path of any URL (https and ssh alike), lower case. */
+export function remoteKey(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const ado = adoKey(url);
+  if (ado) return ado;
+  const u = url.trim();
+  const m = /^[a-z+]+:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?\/?$/i.exec(u) ?? /^[^@\s/]+@([^:/]+):(.+?)(?:\.git)?\/?$/.exec(u);
+  return m ? `${m[1]}/${m[2]}`.toLowerCase() : undefined;
+}
+
+/** When a clone was last used: the newest of .git/index and .git/HEAD (git writes them on status, commit, switch). */
+function usedAt(dir: string): number {
+  let t = 0;
+  for (const f of ["index", "HEAD"]) {
+    try {
+      t = Math.max(t, statSync(join(dir, ".git", f)).mtimeMs);
+    } catch {
+      /* missing: never used */
+    }
+  }
+  return t;
+}
+
+/**
+ * One repository is one entry, however often it is cloned: the branch is chosen afterwards, so which clone is used
+ * does not matter. Per remote the clone used is the preferred one (`aihub repos prefer`), else the most recently used,
+ * else the shortest path; the others go to `otherClones`. Clones without an origin stay apart. Worktrees never get
+ * here (readLocal skips them).
+ */
+export function dedupeClones(repos: LocalRepo[], prefer: Record<string, string> = {}, used: (dir: string) => number = usedAt): LocalRepo[] {
+  const groups = new Map<string, LocalRepo[]>();
+  for (const r of repos) {
+    const k = remoteKey(r.remoteUrl) ?? `path:${r.path.toLowerCase()}`;
+    groups.set(k, [...(groups.get(k) ?? []), r]);
+  }
+  const preferOf = (names: string[]) => {
+    const n = Object.keys(prefer).find((p) => names.some((x) => x.toLowerCase() === p.toLowerCase()));
+    return n ? prefer[n] : undefined;
+  };
+  return [...groups.entries()]
+    .map(([k, list]) => {
+      if (list.length === 1) return list[0];
+      const want = preferOf([k.split("/").pop()!, ...list.map((r) => r.name)]);
+      const at = new Map(list.map((r) => [r, used(r.path)]));
+      const chosen = (want && list.find((r) => samePath(r.path, want))) || [...list].sort((a, b) => at.get(b)! - at.get(a)! || a.path.length - b.path.length || a.path.localeCompare(b.path))[0];
+      return { ...chosen, otherClones: list.filter((r) => r !== chosen).map((r) => r.path) };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ---- personal clone preference ----------------------------------------------------------------------------------
+
+const prefFile = (env: NodeJS.ProcessEnv) => join(configHome(env), "repos.json");
+
+/** `aihub repos prefer`: repository name -> the clone to use when there are several. Personal, never in team.yaml. */
+export function readPreferredClones(env: NodeJS.ProcessEnv): Record<string, string> {
+  try {
+    return (JSON.parse(readFileSync(prefFile(env), "utf8")) as { prefer?: Record<string, string> }).prefer ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export function setPreferredClone(env: NodeJS.ProcessEnv, name: string, dir: string | undefined): Record<string, string> {
+  let all: { prefer?: Record<string, string> } = {};
+  try {
+    all = JSON.parse(readFileSync(prefFile(env), "utf8"));
+  } catch {
+    /* first preference */
+  }
+  const prefer = { ...(all.prefer ?? {}) };
+  for (const k of Object.keys(prefer)) if (k.toLowerCase() === name.toLowerCase()) delete prefer[k];
+  if (dir) {
+    if (!existsSync(join(dir, ".git"))) throw new AihubError(`${dir} is not a git clone`);
+    prefer[name] = resolve(dir);
+  }
+  mkdirSync(configHome(env), { recursive: true });
+  writeFileSync(prefFile(env), JSON.stringify({ ...all, prefer }, null, 2), "utf8");
+  return prefer;
+}
 
 // ---- local -----------------------------------------------------------------------------------------------------
 
@@ -157,9 +247,11 @@ function knownRepos(cwd: string): string[] {
   }
 }
 
-export function localRepos(ctx: Ctx, o: { root?: string } = {}): { root?: string; repos: LocalRepo[] } {
+/** The clones under the repos root, one per remote (`all`: every clone). */
+export function localRepos(ctx: Ctx, o: { root?: string; all?: boolean } = {}): { root?: string; repos: LocalRepo[] } {
   const root = reposRootOf(ctx.cwd, o.root);
-  return { root, repos: scanLocal(root ? [root] : [], knownRepos(ctx.cwd)) };
+  const repos = scanLocal(root ? [root] : [], knownRepos(ctx.cwd));
+  return { root, repos: o.all ? repos : dedupeClones(repos, readPreferredClones(ctx.env)) };
 }
 
 // ---- Azure DevOps ----------------------------------------------------------------------------------------------
@@ -188,20 +280,24 @@ export async function adoRepos(ctx: Ctx, o: { refresh?: boolean; now?: number } 
     }
   }
   const team = loadTeam(root) as TeamConfig & { projects?: string[] };
-  const projects = team.projects?.length ? team.projects : ((await client.getOrg<{ value?: { name: string; state?: string }[] }>("projects", { $top: 500 })).value ?? []).filter((p) => !p.state || p.state === "wellFormed").map((p) => p.name);
   const repos: Cache["repos"] = [];
+  type Raw = { id: string; name: string; remoteUrl?: string; defaultBranch?: string; isDisabled?: boolean; project?: { name?: string } };
+  const add = (project: string, r: Raw) => {
+    if (r.isDisabled) return;
+    const remoteUrl = (r.remoteUrl ?? "").replace(/^(https?:\/\/)[^@/]+@/, "$1");
+    repos.push({ project, name: r.name, id: r.id, remoteUrl, defaultBranch: (r.defaultBranch ?? "").replace(/^refs\/heads\//, ""), key: adoKey(remoteUrl) ?? `${org}/${project}/${r.name}`.toLowerCase() });
+  };
+  // without a project list: one call for every repository of the organisation you can see
+  const projects = team.projects?.length ? team.projects : [];
+  if (!projects.length) for (const r of (await client.getOrg<{ value?: Raw[] }>("git/repositories")).value ?? []) add(r.project?.name ?? "", r);
   for (const project of projects) {
-    let list: { id: string; name: string; remoteUrl?: string; defaultBranch?: string; isDisabled?: boolean }[] = [];
+    let list: Raw[] = [];
     try {
-      list = (await client.forProject(project).get<{ value?: typeof list }>("git/repositories")).value ?? [];
+      list = (await client.forProject(project).get<{ value?: Raw[] }>("git/repositories")).value ?? [];
     } catch {
       continue; // a project you cannot read is left out, the others still show
     }
-    for (const r of list) {
-      if (r.isDisabled) continue;
-      const remoteUrl = (r.remoteUrl ?? "").replace(/^(https?:\/\/)[^@/]+@/, "$1");
-      repos.push({ project, name: r.name, id: r.id, remoteUrl, defaultBranch: (r.defaultBranch ?? "").replace(/^refs\/heads\//, ""), key: adoKey(remoteUrl) ?? `${org}/${project}/${r.name}`.toLowerCase() });
-    }
+    for (const r of list) add(project, r);
   }
   repos.sort((a, b) => a.project.localeCompare(b.project) || a.name.localeCompare(b.name));
   mkdirSync(dirname(file), { recursive: true });

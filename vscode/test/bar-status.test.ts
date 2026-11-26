@@ -1,0 +1,251 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { buildState } from "../src/bar/state";
+import { gitRun } from "../src/bar/ownWindow";
+import { BehindMemo, gitStatusOf, isStoryBranch, prOfBranch, prStateOf, PrMemo, type GitRepoLike, type PrRow } from "../src/bar/repoStatus";
+import { sh, write } from "./gitHelpers";
+
+const repo = (path: string, o: Partial<GitRepoLike["state"]> = {}): GitRepoLike => ({ rootUri: { fsPath: path }, state: { workingTreeChanges: [], indexChanges: [], mergeChanges: [], ...o } });
+const f = (p: string) => ({ uri: { fsPath: p } });
+
+describe("changes and ahead from the git extension", () => {
+  it("a file staged and changed again counts once; ahead from HEAD; paths in any case or slash", () => {
+    const r = repo("C:\\Work\\Repo A", { workingTreeChanges: [f("C:\\Work\\Repo A\\a.txt"), f("C:\\Work\\Repo A\\b.txt")], indexChanges: [f("c:/work/repo a/a.txt")], mergeChanges: [], HEAD: { ahead: 3 } });
+    expect(gitStatusOf([r], "c:/work/repo a/")).toEqual({ changes: 2, ahead: 3 });
+    expect(gitStatusOf([r], "C:/other")).toBeUndefined();
+    expect(gitStatusOf([repo("C:/x")], "C:/x")).toEqual({ changes: 0, ahead: 0 });
+  });
+});
+
+describe("behind the target: one git call after a HEAD change, then remembered", () => {
+  it("counts from the refs that are there, asks git once per repository, again only after forget()", async () => {
+    const root = mkdtempSync(join(tmpdir(), "aihub-behind-"));
+    const origin = join(root, "origin.git");
+    mkdirSync(origin);
+    sh(origin, "init", "--bare", "-b", "main");
+    const a = join(root, "Repo A");
+    sh(root, "clone", origin, a);
+    sh(a, "switch", "-c", "main");
+    write(a, "x.txt", "1\n");
+    sh(a, "add", "-A");
+    sh(a, "commit", "-m", "one");
+    sh(a, "push", "-u", "origin", "main");
+    sh(a, "switch", "-c", "feature/5-x");
+    // somebody else puts two commits on main
+    const b = join(root, "other");
+    sh(root, "clone", origin, b);
+    for (const n of ["2", "3"]) {
+      write(b, `${n}.txt`, n);
+      sh(b, "add", "-A");
+      sh(b, "commit", "-m", n);
+    }
+    sh(b, "push", "origin", "HEAD:main");
+    sh(a, "fetch", "origin");
+    let calls = 0;
+    const memo = new BehindMemo(async (cwd, args) => (calls++, gitRun(cwd, args)));
+    expect(await memo.behind(a, "Repo A")).toBe(2);
+    expect(await memo.behind(a, "Repo A")).toBe(2);
+    expect(calls).toBe(1);
+    memo.forget(a);
+    await memo.behind(a, "Repo A");
+    expect(calls).toBe(2);
+    // not a repository: unknown, not an error
+    expect(await memo.behind(join(root, "nowhere"), "x")).toBeUndefined();
+  });
+});
+
+describe("behind the target after a commit, merge or pull in a terminal", () => {
+  it("counts again when HEAD or origin/<target> moved, without forget(); asks nothing when neither moved", async () => {
+    const root = mkdtempSync(join(tmpdir(), "aihub-behind-moved-"));
+    const origin = join(root, "origin.git");
+    mkdirSync(origin);
+    sh(origin, "init", "--bare", "-b", "main");
+    const a = join(root, "repo-a");
+    sh(root, "clone", origin, a);
+    sh(a, "switch", "-c", "main");
+    write(a, "x.txt", "1");
+    sh(a, "add", "-A");
+    sh(a, "commit", "-m", "one");
+    sh(a, "push", "-u", "origin", "main");
+    sh(a, "switch", "-c", "feature/5-x");
+    const b = join(root, "other");
+    sh(root, "clone", origin, b);
+    write(b, "2.txt", "2");
+    sh(b, "add", "-A");
+    sh(b, "commit", "-m", "2");
+    sh(b, "push", "origin", "HEAD:main");
+    sh(a, "fetch", "origin");
+    let calls = 0;
+    const memo = new BehindMemo(async (cwd, args) => (calls++, gitRun(cwd, args)));
+    expect(await memo.behind(a, "repo-a")).toBe(1);
+    expect(await memo.behind(a, "repo-a")).toBe(1);
+    expect(calls).toBe(1);
+    // a merge in a terminal moves HEAD: the next question counts again, nobody called forget()
+    sh(a, "merge", "--no-edit", "origin/main");
+    expect(await memo.behind(a, "repo-a")).toBe(0);
+    expect(calls).toBe(2);
+    // a fetch that brings a new commit moves origin/main
+    write(b, "3.txt", "3");
+    sh(b, "add", "-A");
+    sh(b, "commit", "-m", "3");
+    sh(b, "push", "origin", "HEAD:main");
+    sh(a, "fetch", "origin");
+    expect(await memo.behind(a, "repo-a")).toBe(1);
+    expect(calls).toBe(3);
+  });
+});
+
+const row = (o: Partial<PrRow> = {}): PrRow => ({ id: 812, repo: "repo-a", source: "feature/5-x", status: "active", url: "https://x/pr/812", reviewers: [], ...o });
+
+describe("the pull request of a branch", () => {
+  it("merged, approved, failed, active; abandoned is none", () => {
+    expect(prStateOf(row({ status: "completed" }))).toBe("merged");
+    expect(prStateOf(row({ status: "abandoned" }))).toBeUndefined();
+    expect(prStateOf(row())).toBe("active");
+    expect(prStateOf(row({ reviewers: [{ vote: 10, required: true }, { vote: 0, required: false }] }))).toBe("approved");
+    expect(prStateOf(row({ reviewers: [{ vote: 10, required: false }, { vote: 0, required: true }] }))).toBe("active");
+    expect(prStateOf(row({ reviewers: [{ vote: -5, required: false }] }))).toBe("failed");
+    expect(prStateOf(row({ mergeStatus: "conflicts" }))).toBe("failed");
+  });
+
+  it("an open one before a merged one; repository names in any case; none for another branch", () => {
+    const rows = [row({ id: 1, status: "completed" }), row({ id: 2 }), row({ id: 3, source: "feature/other" })];
+    expect(prOfBranch(rows, "REPO-A", "feature/5-x")).toEqual({ id: 2, status: "active", url: "https://x/pr/812" });
+    expect(prOfBranch(rows, "repo-a", "feature/none")).toBeUndefined();
+    expect(prOfBranch([row({ status: "abandoned" })], "repo-a", "feature/5-x")).toBeUndefined();
+  });
+
+  it("one read for the set, remembered for minutes; a failed read is remembered too; force and concurrent calls", async () => {
+    let t = 1000;
+    let calls = 0;
+    let fail = false;
+    const memo = new PrMemo(async () => {
+      calls++;
+      if (fail) throw new Error("not signed in");
+      return [row()];
+    }, () => t);
+    await Promise.all([memo.refresh(), memo.refresh()]);
+    expect(calls).toBe(1);
+    expect(memo.get()).toHaveLength(1);
+    t += 4 * 60_000;
+    await memo.refresh();
+    expect(calls).toBe(1);
+    t += 2 * 60_000;
+    fail = true;
+    await memo.refresh();
+    expect(calls).toBe(2);
+    // the failed read is remembered: no retry on every event; the old answer stays
+    await memo.refresh();
+    await memo.refresh();
+    expect(calls).toBe(2);
+    expect(memo.get()).toHaveLength(1);
+    await memo.refresh(true);
+    expect(calls).toBe(3);
+  });
+});
+
+describe("BarState.repos[]", () => {
+  const open = { dir: "C:/s/a", set: { folder: "C:/s", story: 5, branch: "feature/5-x", repos: [{ name: "repo-a", path: "C:/s/a", branch: "feature/5-x" }, { name: "repo-b", path: "C:/s/b", branch: "main" }] } };
+  const base = { open, scan: { at: 1, folders: [], repos: [], sets: [] }, recents: [], lookIn: [], stories: {}, exists: () => true };
+
+  it("changes, ahead, behindTarget, pr and storyBranch are there; the old fields stay", () => {
+    const s = buildState({
+      ...base,
+      dirty: () => 9,
+      status: (p) => (p === "C:/s/a" ? { changes: 2, ahead: 1, behindTarget: 4 } : undefined),
+      pr: (repo, branch) => (repo === "repo-a" && branch === "feature/5-x" ? { id: 812, status: "approved", url: "https://x/pr/812" } : undefined),
+      storyBranch: (_p, b) => b === "feature/5-x",
+    });
+    expect(s.repos[0]).toEqual({ name: "repo-a", path: "C:/s/a", branch: "feature/5-x", dirty: 2, changes: 2, ahead: 1, behindTarget: 4, pr: { id: 812, status: "approved", url: "https://x/pr/812" }, storyBranch: true });
+    // unknown stays absent; storyBranch is a plain false
+    expect(s.repos[1]).toEqual({ name: "repo-b", path: "C:/s/b", branch: "main", dirty: 9, changes: 9, storyBranch: false });
+  });
+
+  it("a set without a story has no story branches; a single repository has the fields it knows", () => {
+    expect(buildState({ ...base, open: { ...open, set: { ...open.set, story: 0 } }, storyBranch: () => true }).repos.every((r) => r.storyBranch === false)).toBe(true);
+    const one = buildState({ ...base, open: { dir: "C:/r", repo: { name: "r", path: "C:/r", branch: "main" } }, status: () => ({ changes: 1, ahead: 0, behindTarget: 0 }) });
+    expect(one.repos[0]).toMatchObject({ changes: 1, ahead: 0, behindTarget: 0, storyBranch: false });
+  });
+
+  it("a branch is a story branch when linked or when its name starts with the story number", () => {
+    expect(isStoryBranch(5, "feature/5-x", [])).toBe(true);
+    expect(isStoryBranch(5, "feature/other", ["feature/other"])).toBe(true);
+    expect(isStoryBranch(5, "feature/50-x", [])).toBe(false);
+    expect(isStoryBranch(0, "feature/5-x", [])).toBe(false);
+  });
+});
+
+describe("the target branch from team.yaml without a yaml parser", () => {
+  const yaml = [
+    "branches:",
+    "  protected: [main]",
+    "repositories:",
+    "  - name: repo-a",
+    "    defaultTarget: staging   # pull requests go here",
+    "  - name: Repo With Spaces",
+    "    defaultTarget: \"develop\"",
+    "other:",
+    "  defaultTarget: nope",
+  ].join("\r\n");
+  it("by repository name, any case; the only unnamed item; none otherwise", async () => {
+    const { teamTargetOf } = await import("../src/bar/repoStatus");
+    expect(teamTargetOf(yaml, "REPO-A")).toBe("staging");
+    expect(teamTargetOf(yaml, "repo with spaces")).toBe("develop");
+    expect(teamTargetOf(yaml, "unknown")).toBeUndefined();
+    expect(teamTargetOf("repositories:\n  - defaultTarget: main\n", "anything")).toBe("main");
+  });
+});
+
+describe("one function for the target branch: team.yaml, else staging if origin has it, else origin/HEAD, else main", () => {
+  const clone = (o: { team?: string; refs?: string[]; packed?: string; head?: string }) => {
+    const root = mkdtempSync(join(tmpdir(), "aihub-target-"));
+    mkdirSync(join(root, ".git", "refs", "remotes", "origin"), { recursive: true });
+    for (const r of o.refs ?? []) {
+      mkdirSync(join(root, ".git", "refs", "remotes", "origin", ...r.split("/").slice(0, -1)), { recursive: true });
+      writeFileSync(join(root, ".git", "refs", "remotes", "origin", ...r.split("/")), "0".repeat(40) + "\n");
+    }
+    if (o.packed) writeFileSync(join(root, ".git", "packed-refs"), o.packed);
+    if (o.head) writeFileSync(join(root, ".git", "refs", "remotes", "origin", "HEAD"), `ref: refs/remotes/origin/${o.head}\n`);
+    if (o.team) {
+      mkdirSync(join(root, ".agents", "skills", "_shared", "references"), { recursive: true });
+      writeFileSync(join(root, ".agents", "skills", "_shared", "references", "team.yaml"), o.team);
+    }
+    return root;
+  };
+  it("the four cases", async () => {
+    const { targetOf, originHas } = await import("../src/bar/repoStatus");
+    const name = "repo-a";
+    expect(targetOf(clone({ team: "repositories:\n  - name: repo-a\n    defaultTarget: develop\n", refs: ["staging", "main"], head: "main" }), name)).toBe("develop");
+    expect(targetOf(clone({ refs: ["staging", "main"], head: "main" }), name)).toBe("staging");
+    expect(targetOf(clone({ packed: "# pack-refs\n" + "a".repeat(40) + " refs/remotes/origin/staging\n", head: "main" }), name)).toBe("staging");
+    expect(targetOf(clone({ refs: ["main", "trunk"], head: "trunk" }), name)).toBe("trunk");
+    expect(targetOf(clone({ refs: ["main"] }), name)).toBe("main");
+    expect(originHas(clone({ refs: ["feature/x"] }), "feature/x")).toBe(true);
+    expect(originHas(clone({ refs: ["staging-old"] }), "staging")).toBe(false);
+  });
+});
+
+describe("the build of a pull request", () => {
+  it("a failed build is failed, whatever the votes; build is passed on; the plain read has no builds, the forced read has", async () => {
+    expect(prStateOf(row({ build: "failed", reviewers: [{ vote: 10, required: true }] }))).toBe("failed");
+    expect(prStateOf(row({ build: "running", reviewers: [{ vote: 10, required: true }] }))).toBe("approved");
+    expect(prOfBranch([row({ build: "failed" })], "repo-a", "feature/5-x")).toEqual({ id: 812, status: "failed", url: "https://x/pr/812", build: "failed" });
+    const asked: boolean[] = [];
+    const memo = new PrMemo(async (builds) => (asked.push(builds), []));
+    await memo.refresh();
+    await memo.refresh(true);
+    expect(asked).toEqual([false, true]);
+  });
+});
+
+describe("team.yaml with lists inside a repository item", () => {
+  it("a nested list is not another repository and its keys are not the item's", async () => {
+    const { teamTargetOf } = await import("../src/bar/repoStatus");
+    const yaml = ["repositories:", "  - name: repo-a", "    reviewers:", "      - name: anna", "        defaultTarget: wrong", "    defaultTarget: staging", "  - name: repo-b", "    defaultTarget: develop", ""].join("\n");
+    expect(teamTargetOf(yaml, "repo-a")).toBe("staging");
+    expect(teamTargetOf(yaml, "repo-b")).toBe("develop");
+    expect(teamTargetOf(yaml, "anna")).toBeUndefined();
+  });
+});

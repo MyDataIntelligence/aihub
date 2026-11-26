@@ -68,9 +68,9 @@ describe("aihub worktree open", () => {
     }
     const ws = JSON.parse(readFileSync(j.workspace, "utf8"));
     expect(ws.folders).toEqual([
-      { name: "repo-a", path: "repo-a" },
-      { name: "repo-b", path: "repo-b" },
-      { name: "repo-c", path: "repo-c" },
+      { name: "repo-a (feature/shared)", path: "repo-a" },
+      { name: "repo-b (feature/shared)", path: "repo-b" },
+      { name: "repo-c (feature/shared)", path: "repo-c" },
     ]);
     expect(findSet(join(j.folder, "repo-b"))?.branch).toBe("feature/shared");
   });

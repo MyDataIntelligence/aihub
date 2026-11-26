@@ -9,6 +9,8 @@ export interface UpdateBranchOpts {
   branch?: string;
   target?: string;
   rebase?: boolean;
+  /** merge or rebase here and leave the push to the user (the extension's buttons never publish by themselves) */
+  noPush?: boolean;
   json?: boolean;
 }
 
@@ -37,10 +39,11 @@ export async function branchUpdate(ctx: Ctx, o: UpdateBranchOpts): Promise<strin
   let res: UpdateResult;
   if (here) {
     if (git(root, ["status", "--porcelain", "--untracked-files=no"]) !== "") throw new AihubError("uncommitted changes in this checkout; commit or stash them first");
-    res = doUpdate(root, branch, target, !!o.rebase, "HEAD");
+    res = doUpdate(root, branch, target, !!o.rebase, "HEAD", !!o.noPush);
   } else {
     if (!remoteBranchKnown) throw new AihubError(`branch '${branch}' not found on origin`);
-    res = await withTempWorktree(root, `origin/${branch}`, (wt) => doUpdate(wt, branch, target, !!o.rebase, "HEAD"));
+    res = await withTempWorktree(root, `origin/${branch}`, (wt) => doUpdate(wt, branch, target, !!o.rebase, "HEAD", !!o.noPush));
+    if (o.noPush) throw new AihubError(`'${branch}' is not checked out here; without a push the update would be lost: check it out, or update without --no-push`);
   }
   if (o.json) return JSON.stringify(res);
   return `${res.branch} <- ${res.target}: ${res.result} (${res.detail})`;
@@ -54,7 +57,7 @@ function currentBranchOrEmpty(root: string): string {
   }
 }
 
-function doUpdate(dir: string, branch: string, target: string, rebase: boolean, pushFrom: string): UpdateResult {
+function doUpdate(dir: string, branch: string, target: string, rebase: boolean, pushFrom: string, noPush = false): UpdateResult {
   const upstream = `origin/${target}`;
   const behind = Number(git(dir, ["rev-list", "--count", `HEAD..${upstream}`]));
   if (behind === 0) return { branch, target, result: "up-to-date", detail: "already contains the target" };
@@ -66,6 +69,8 @@ function doUpdate(dir: string, branch: string, target: string, rebase: boolean, 
     if (!files.length) throw new AihubError(`${rebase ? "rebase" : "merge"} failed: ${r.stderr.split("\n")[0]}`);
     return { branch, target, result: "conflict", detail: `conflict in ${files.join(", ")}; nothing changed or pushed` };
   }
+  const made = git(dir, ["rev-parse", "HEAD"]);
+  if (noPush) return { branch, target, result: "updated", detail: `${behind} commit(s) from ${target} ${rebase ? "rebased onto" : "merged into"} ${branch}, not pushed` };
   const push = gitRaw(dir, [
     "push",
     "--quiet",
@@ -74,8 +79,10 @@ function doUpdate(dir: string, branch: string, target: string, rebase: boolean, 
     `${pushFrom}:refs/heads/${branch}`,
   ]);
   if (push.status !== 0) {
-    gitRaw(dir, ["reset", "--hard", before]);
-    throw new AihubError(`push of '${branch}' rejected (someone pushed meanwhile?); local branch restored: ${push.stderr.split("\n").pop()}`);
+    // put the branch back only when it is still exactly what this update made, and keep what was saved meanwhile (--keep, never --hard)
+    const stillMine = git(dir, ["rev-parse", "HEAD"], { allowFail: true }) === made;
+    const back = stillMine && gitRaw(dir, ["reset", "--keep", before]).status === 0;
+    throw new AihubError(`push of '${branch}' rejected (someone pushed meanwhile?); ${back ? "local branch restored" : "the local branch was left as it is (it changed meanwhile)"}: ${push.stderr.split("\n").pop()}`);
   }
   return { branch, target, result: "updated", detail: `${behind} commit(s) from ${target} ${rebase ? "rebased onto" : "merged into"} ${branch}, pushed` };
 }

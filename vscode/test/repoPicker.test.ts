@@ -61,4 +61,14 @@ describe("the repo opener's list", () => {
     expect(w.folders).toEqual([{ path: "C:/r/repo-a" }, { path: "C:/r/repo-b" }]);
     expect(w.settings["aihub.set"]).toMatchObject({ mode: "plain", repos: [{ name: "repo-a" }, { name: "repo-b" }] });
   });
+
+  it("a repository cloned twice is one row with +1 more; a recent folder of the other clone shows that row once", () => {
+    const local: LocalRepoJson[] = [{ name: "repo-a", path: "C:/src/repo-a", branch: "main", key: "o/p/repo-a", otherClones: ["C:/old/repo-a"] }];
+    const rows = repoRows({ groups: [], recent: [{ path: "C:/old/repo-a", name: "repo-a", lastUsed: "2026-11-25T00:00:00Z" }, { path: "C:/src/repo-a", name: "repo-a", lastUsed: "2026-11-24T00:00:00Z" }], local });
+    const a = rows.filter((r) => r.label === "repo-a");
+    expect(a).toHaveLength(1);
+    expect(a[0]).toMatchObject({ description: "main · C:/src/repo-a  +1 more", detail: "also cloned at C:/old/repo-a", value: { kind: "local", path: "C:/src/repo-a" } });
+    const ado: AdoRepoJson[] = [{ project: "p", name: "repo-a", key: "o/p/repo-a", path: "C:/src/repo-a", branch: "main", otherClones: ["C:/old/repo-a"] }];
+    expect(repoRows({ groups: [], recent: [], local, ado }).filter((r) => r.label === "repo-a")).toHaveLength(1);
+  });
 });
