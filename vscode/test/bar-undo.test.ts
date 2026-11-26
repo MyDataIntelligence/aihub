@@ -286,7 +286,7 @@ describe("Undo during a merge or a rebase", () => {
     const w = world();
     const snap = await takeSnapshot(gitRun, w.folder, "Switch Repo A to feature/5-y");
     sh(w.repos[0].path, "switch", "feature/5-y");
-    writeFileSync(join(sh(w.repos[0].path, "rev-parse", "--git-dir").trim().replace(/^(?!.*:)/, w.repos[0].path + "/"), "MERGE_HEAD"), sh(w.repos[0].path, "rev-parse", "HEAD"));
+    writeFileSync(join(sh(w.repos[0].path, "rev-parse", "--absolute-git-dir").trim(), "MERGE_HEAD"), sh(w.repos[0].path, "rev-parse", "HEAD"));
     const plan = await planUndo(gitRun, snap);
     expect(plan.problem).toBe("a merge is in progress in Repo A; finish or abort it first");
     expect(plan.steps).toEqual([]);
