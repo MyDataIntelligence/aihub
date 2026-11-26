@@ -386,6 +386,6 @@ export async function pipelineRetry(ctx: Ctx, o: { run: number; stage?: string; 
     await client.patch(`build/builds/${o.run}/stages/${encodeURIComponent(s.identifier ?? s.name)}`, { state: "retry", forceRetryAllJobs: false }, { "api-version": "7.1-preview.1" });
   }
   return o.json
-    ? JSON.stringify({ run: o.run, retried: pick.map((s) => s.name) })
+    ? JSON.stringify({ run: o.run, retried: pick.map((s) => s.name), webUrl: `${client.remote.orgUrl}/${encodeURIComponent(client.remote.project)}/_build/results?buildId=${o.run}` })
     : `run ${o.run}: retrying stage ${pick.map((s) => s.name).join(", ")}; follow with aihub pipeline follow --run ${o.run}`;
 }
