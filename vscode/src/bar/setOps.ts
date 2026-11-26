@@ -47,14 +47,15 @@ async function removeSet(h: StoryHooks, arg: unknown): Promise<void> {
   const meta = file && [file.top, ...(file.top.others ?? [])].find((m) => m.branch === set.branch);
   // run in a source clone: never in a worktree that is about to go (Windows cannot remove a folder a process runs in)
   const cwd = meta?.repos.map((r) => r.source).find((s) => existsSync(s)) ?? set.folder;
-  const out = await withUndo(h, `Remove the set of ${label}`, set.folder, async () => vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Removing the set of ${label}...` }, () => cli(["worktree", "remove", "--folder", set.folder, "--branch", set.branch, ...(set.story ? ["--story", String(set.story)] : []), "--json"], cwd)), { backup: true });
+  const out = await withUndo(h, `Remove the set of ${label}`, set.folder, async () => vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Removing the set of ${label}...` }, () => cli(["worktree", "remove", "--folder", set.folder, "--branch", set.branch, ...(set.story ? ["--story", String(set.story)] : []), "--json"], cwd)), { backup: true, message: (o) => (o ? ((r) => (r.kept.length ? `the set stays, ${r.kept.join(", ")} hold work` : r.lines[r.lines.length - 1] ?? "set removed"))(jsonOf<{ lines: string[]; kept: string[] }>(o)) : ""), warn: (o) => !!o && jsonOf<{ kept: string[] }>(o).kept.length > 0 });
   const res = jsonOf<{ lines: string[]; kept: string[] }>(out);
   h.log(`remove set ${set.id}: ${res.lines.join(" | ")}`);
   forgetScan(process.env);
   forgetUse(process.env, set.id);
   h.changed();
   const text = res.lines.join("\n");
-  void (res.kept.length ? vscode.window.showWarningMessage(`AI Context Hub: the set stays, ${res.kept.join(", ")} hold work.\n${text}`) : vscode.window.showInformationMessage(`AI Context Hub: ${res.lines[res.lines.length - 1] ?? "set removed"}`));
+  // the one message (with Undo) came from withUndo; the lines are in the log
+  h.log(text);
 }
 
 // ---- the set file of this window, changed by hand ---------------------------------------------------------------
@@ -170,7 +171,7 @@ export class SetFileWatcher implements vscode.Disposable {
       };
       const label = `Set file: ${plan.actions.map((x) => (x.kind === "repair" ? `made ${x.repos.join(", ")}` : `${x.repo} to ${x.branch}`)).join("; ")}`;
       const raw0 = [AIHUB_SET, MAKER_SET].map((n) => join(this.key, n)).find((q) => existsSync(q));
-      const cancelled = plan.actions.length ? await withUndo(this.h, label, here.folder, runActions, { files: raw0 && this.prevBytes ? [{ path: raw0, bytes: this.prevBytes }] : undefined }) : undefined;
+      const cancelled = plan.actions.length ? await withUndo(this.h, label, here.folder, runActions, { files: raw0 && this.prevBytes ? [{ path: raw0, bytes: this.prevBytes }] : undefined, message: (c) => (c ? "" : summarizePlan(done, plan.notes)) }) : undefined;
       if (cancelled) return this.say(cancelled, true);
       // HEAD moved outside aihub in a repository the file did not change: HEAD wins, the file and the folder name follow (one write each, only when they differ)
       const wsFile = vscode.workspace.workspaceFile;
@@ -190,7 +191,8 @@ export class SetFileWatcher implements vscode.Disposable {
       forgetScan(process.env);
       this.h.changed();
       // a file that already matches the folders (our own write) is silent
-      if (done.length || plan.notes.length) this.say(summarizePlan(done, plan.notes));
+      // (when actions ran, withUndo said it already, once)
+      if (!plan.actions.length && (done.length || plan.notes.length)) this.say(summarizePlan(done, plan.notes));
     } finally {
       this.busy = false;
       if (this.again) {

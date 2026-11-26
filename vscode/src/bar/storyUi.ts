@@ -192,7 +192,7 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
     h.changed();
     return res;
     },
-    { sources: ticked.map((t) => t.path), created: (r) => r?.folder },
+    { sources: ticked.map((t) => t.path), created: (r) => r?.folder, message: (r) => (r ? `Story #${story.id} is open` : "") },
   );
 }
 
@@ -248,7 +248,7 @@ async function switchAll(h: StoryHooks, d: Divergence[], repos: { name: string; 
 /** One repository of the set on another branch; the window stays. A branch with a worktree elsewhere asks move / reuse / recreate. */
 async function switchIn(h: StoryHooks, repo: string, branch: string, path: string, from?: string): Promise<boolean> {
   const folder = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.folder;
-  return withUndo(h, `Switch ${repo} to ${branch}`, folder, () => switchInRun(h, repo, branch, path, from));
+  return withUndo(h, `Switch ${repo} to ${branch}`, folder, () => switchInRun(h, repo, branch, path, from), { message: (ok) => (ok ? `${repo} is now on ${branch}` : "") });
 }
 
 async function switchInRun(h: StoryHooks, repo: string, branch: string, path: string, from?: string): Promise<boolean> {
@@ -439,14 +439,21 @@ export function registerStoryCommands(h: StoryHooks): void {
     }
     if (!name) return;
     const args = ["worktree", "add", "--repos", name, "--json"];
-    await withUndo(h, `Add ${name} to the set`, set.folder, async () => {
-      const first = await cli(args, set.repos[0].path);
-      const out = await answerExisting(first, (extra) => cli([...args, ...extra], set.repos[0].path));
-      if (out === undefined) return;
-      await showOpened(JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson, "this", h.log);
-      forgetScan(process.env);
-      h.changed();
-    });
+    await withUndo(
+      h,
+      `Add ${name} to the set`,
+      set.folder,
+      async () => {
+        const first = await cli(args, set.repos[0].path);
+        const out = await answerExisting(first, (extra) => cli([...args, ...extra], set.repos[0].path));
+        if (out === undefined) return false;
+        const ok = await showOpened(JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson, "this", h.log);
+        forgetScan(process.env);
+        h.changed();
+        return ok;
+      },
+      { message: (ok) => (ok ? `${name} is now in the set` : "") },
+    );
   });
 
   h.reg("aihub.bar.removeRepository", async (arg?: unknown) => {
@@ -461,11 +468,12 @@ export function registerStoryCommands(h: StoryHooks): void {
       async () => {
         const out = await cli(["worktree", "drop", "--repos", n.repo.name, "--json"], n.set.repos.find((r) => r.name !== n.repo.name)?.path ?? n.repo.path);
         const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
-        await showOpened(res, "this", h.log);
+        const ok = await showOpened(res, "this", h.log);
         forgetScan(process.env);
         h.changed();
+        return ok;
       },
-      { backup: true },
+      { backup: true, message: (ok) => (ok ? `${n.repo.name} is out of the set` : "") },
     );
   });
 }
