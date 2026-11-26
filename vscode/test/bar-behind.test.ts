@@ -321,3 +321,28 @@ describe("the look at the target branch stays out of the way", () => {
     expect(offlineSummary("Push all", [{ repo: "a", ok: true, line: "a: pushed" }])).toBeUndefined();
   });
 });
+
+describe("the awkward repositories of the look at the target", () => {
+  it("no remote and a missing folder: no message, no failure per repository, the others are still looked at", async () => {
+    const w = world(["a", "b"]);
+    w.advance(w.repos[1], "new.txt", "n");
+    const { root } = w;
+    const lone = join(root, "lone");
+    mkdirSync(lone);
+    sh(lone, "init", "-b", "feature/5-x");
+    write(lone, "a.txt", "a\n");
+    sh(lone, "add", "-A");
+    sh(lone, "commit", "-m", "init");
+    const fetched: string[] = [];
+    const git = async (cwd: string, args: string[]) => (args[0] === "fetch" && fetched.push(cwd), gitRun(cwd, args));
+    const repos = [{ name: "lone", path: lone, branch: "feature/5-x" }, { name: "gone", path: join(root, "nowhere"), branch: "feature/5-x" }, { name: w.repos[1].name, path: w.repos[1].path, branch: "feature/5-x" }];
+    const { u, log } = ui([]);
+    const base = u.repos;
+    void base;
+    const m = new BehindManager({ git, raw: gitRaw, cli: async () => "", ui: { ...u, repos: () => repos } });
+    const r = await m.run("open");
+    expect(fetched).not.toContain(join(root, "nowhere"));
+    expect(r.facts.map((f) => f.name)).toEqual(["b"]);
+    expect(log.asked.map((x) => x.message)).toEqual(["b is 1 commit behind staging · no conflicts"]);
+  });
+});
