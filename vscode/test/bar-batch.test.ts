@@ -172,8 +172,78 @@ describe("the awkward repositories", () => {
     const w = world();
     sh(w.a.clone, "switch", "main");
     commitIn(w.a.clone, "on-main.txt", "1");
-    const r = await pushOne(gitRun, { name: "Repo A", path: w.a.clone }, "main");
-    expect(r).toEqual({ repo: "Repo A", ok: true, line: "Repo A: on main, the target branch: left alone" });
+    const r = await pushOne(gitRun, { name: "Repo A", path: w.a.clone }, { protect: ["main"] });
+    expect(r).toEqual({ repo: "Repo A", ok: true, line: "Repo A: on main, a protected or target branch: left alone" });
     expect(sh(w.a.origin, "rev-list", "--count", "main").trim()).toBe("1");
+  });
+});
+
+describe("Push All and Commit All only do what was ticked (review F)", () => {
+  it("push names the branch: a user setting such as push.default=upstream with a branch that tracks staging never pushes to staging", async () => {
+    const w = world();
+    sh(w.a.clone, "config", "push.default", "upstream");
+    sh(w.a.clone, "branch", "--set-upstream-to=origin/main", "feature/5-x");
+    const mainBefore = sh(w.a.origin, "rev-parse", "main").trim();
+    commitIn(w.a.clone, "a2.txt", "1");
+    const r = await pushOne(gitRun, { name: "Repo A", path: w.a.clone }, { protect: ["main", "master"] });
+    expect(r.line).toBe("Repo A: pushed 1 commit");
+    expect(sh(w.a.origin, "rev-parse", "main").trim()).toBe(mainBefore);
+    expect(sh(w.a.origin, "log", "-1", "--format=%s", "feature/5-x").trim()).toBe("a2.txt");
+  });
+
+  it("main, master, the target and a protected branch of team.yaml are left alone; a detached HEAD says so", async () => {
+    const w = world();
+    sh(w.a.clone, "switch", "-c", "master");
+    commitIn(w.a.clone, "x.txt", "1");
+    const alone = await pushOne(gitRun, { name: "Repo A", path: w.a.clone }, { protect: ["main", "master"] });
+    expect(alone.line).toBe("Repo A: on master, a protected or target branch: left alone");
+    expect(sh(w.a.origin, "branch", "--list", "master").trim()).toBe("");
+    sh(w.b.clone, "checkout", "--detach");
+    expect((await pushOne(gitRun, { name: "Repo B", path: w.b.clone })).line).toContain("detached HEAD");
+    const { protectedBranches } = await import("../src/bar/repoStatus");
+    const dir = mkdtempSync(join(tmpdir(), "aihub-prot-"));
+    mkdirSync(join(dir, ".agents", "skills", "_shared", "references"), { recursive: true });
+    writeFileSync(join(dir, ".agents", "skills", "_shared", "references", "team.yaml"), "branches:\n  protected: [main, release/*]\n");
+    expect(protectedBranches(dir)).toEqual(["main", "release/*"]);
+    writeFileSync(join(dir, ".agents", "skills", "_shared", "references", "team.yaml"), "branches:\n  protected:\n    - main\n    - \"staging\"\nother: 1\n");
+    expect(protectedBranches(dir)).toEqual(["main", "staging"]);
+  });
+
+  it("commit with a file list adds exactly those files by name, commits with --no-add, and leaves the others alone", async () => {
+    const w = world();
+    write(w.a.clone, "mine.txt", "1\n");
+    write(w.a.clone, "other.txt", "2\n");
+    const calls: string[][] = [];
+    const cli = async (args: string[]) => (calls.push(args), JSON.stringify({ sha: "abc", files: 1 }));
+    const r = await commitOne(cli, { name: "Repo A", path: w.a.clone, files: ["mine.txt"] }, "fix: x", false, gitRun);
+    expect(r.ok).toBe(true);
+    expect(calls[0]).toContain("--no-add");
+    expect(sh(w.a.clone, "diff", "--cached", "--name-only").trim()).toBe("mine.txt");
+    expect(sh(w.a.clone, "status", "--porcelain").includes("?? other.txt")).toBe(true);
+  });
+
+  it("files that were staged already and are not in the list stop that repository: nothing is committed", async () => {
+    const w = world();
+    write(w.a.clone, "mine.txt", "1\n");
+    write(w.a.clone, "staged.txt", "2\n");
+    sh(w.a.clone, "add", "staged.txt");
+    const calls: string[][] = [];
+    const r = await commitOne(async (a) => (calls.push(a), "{}"), { name: "Repo A", path: w.a.clone, files: ["mine.txt"] }, "fix: x", false, gitRun);
+    expect(r.ok).toBe(false);
+    expect(r.line).toBe("Repo A: 1 other file is staged already (staged.txt); unstage it or leave the file list out");
+    expect(calls).toEqual([]);
+  });
+
+  it("without a file list every change of that repository is committed (aihub commit adds it), and a repository that is not in the list is not in the call at all", async () => {
+    const calls: { args: string[]; cwd: string }[] = [];
+    const cli = async (args: string[], cwd: string) => (calls.push({ args, cwd }), JSON.stringify({ sha: "abc" }));
+    const dirs = ["Repo A", "Repo B"].map((n) => {
+      const d = mkdtempSync(join(tmpdir(), "aihub-cm-"));
+      return { name: n, path: d };
+    });
+    await eachRepo([dirs[0]], (r) => commitOne(cli, r, "fix: x", false, gitRun), 1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).not.toContain("--no-add");
+    expect(calls[0].cwd).toBe(dirs[0].path);
   });
 });

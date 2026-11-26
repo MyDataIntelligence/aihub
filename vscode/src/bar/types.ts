@@ -129,7 +129,7 @@ export const BAR_COMMANDS = {
   updateAll: "aihub.bar.updateAll",
   /** push every repository of the set (a branch without a remote branch gets one) */
   pushAll: "aihub.bar.pushAll",
-  /** `{ message, repos?, push? }`: one message, one `aihub commit` per repository; a failing hook in one repository does not stop the others */
+  /** `{ message, repos: [{ name, files? }], push? }`: one message, one `aihub commit` per NAMED repository (never one that is not named; without `files` every change of it, with `files` exactly those); a failing hook in one repository does not stop the others. Without `repos` the user ticks them in a pick */
   commitAll: "aihub.bar.commitAll",
   /** a pick with ticks (story branches without a pull request); one `aihub pr create` per ticked repository, linked to the story and to each other */
   createPullRequests: "aihub.bar.createPullRequests",
