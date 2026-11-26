@@ -505,3 +505,30 @@ describe("the target branch per repository (review E)", () => {
     expect(calls[0].args).toEqual(["branch", "update", "--no-push", "--target", "staging"]);
   });
 });
+
+describe("background git never prompts and has a time limit (review I)", () => {
+  it("every git call of the bar runs with GIT_TERMINAL_PROMPT=0 and GCM_INTERACTIVE=never", async () => {
+    const { BACKGROUND_ENV } = await import("../src/bar/ownWindow");
+    expect(BACKGROUND_ENV.GIT_TERMINAL_PROMPT).toBe("0");
+    expect(BACKGROUND_ENV.GCM_INTERACTIVE).toBe("never");
+    const w = world(["Repo A"]);
+    // what git itself sees, through an alias that prints the variables
+    const seen = await gitRun(w.repos[0].path, ["-c", "alias.seen=!printf '%s,%s' \"$GIT_TERMINAL_PROMPT\" \"$GCM_INTERACTIVE\"", "seen"]);
+    expect(seen).toBe("0,never");
+    const raw = await gitRaw(w.repos[0].path, ["-c", "alias.seen=!printf '%s,%s' \"$GIT_TERMINAL_PROMPT\" \"$GCM_INTERACTIVE\"", "seen"]);
+    expect(raw.out).toBe("0,never");
+  });
+
+  it("a fetch that needs a sign-in fails at once instead of asking: one failure, remembered, no message", async () => {
+    const w = world(["Repo A"]);
+    // a remote that asks for credentials: a tiny server would be needed; a helper that would prompt must not be reached
+    sh(w.repos[0].path, "config", "credential.helper", "!f() { echo ASKED > ../asked.txt; echo username=x; echo password=y; }; f");
+    sh(w.repos[0].path, "remote", "set-url", "origin", "https://127.0.0.1:9/nothing.git");
+    const { u, log } = ui(w.repos);
+    const started = Date.now();
+    const r = await manager(u, [], { gate: new FetchGate(gitRun) }).run("open");
+    expect(Date.now() - started).toBeLessThan(25_000);
+    expect(r.messages).toEqual([]);
+    expect(log.asked).toEqual([]);
+  });
+});

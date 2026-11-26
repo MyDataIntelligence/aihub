@@ -7,7 +7,7 @@ import { forgetUse, pathKey, readRecentUse, ago } from "../../../cli/src/lib/rec
 import { syncRepoName } from "../../../cli/src/lib/workspaceNames";
 import { CliProblem } from "./cliCheck";
 import { BarEngine, openFacts } from "./engine";
-import { gitRun } from "./ownWindow";
+import { BACKGROUND_ENV, gitRun } from "./ownWindow";
 import { cli } from "./runner";
 import { SizeMemo } from "./setSize";
 import { BehindMemo, gitStatusOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
@@ -38,7 +38,7 @@ export function dirtyCounter(): (path: string) => Promise<number | undefined> {
     if (hit && Date.now() - hit.at < DIRTY_TTL_MS) return hit.n;
     const n = new Promise<number | undefined>((resolve) => {
       // --no-optional-locks: counting changes must never take the index lock a commit of the user needs at the same moment
-      execFile("git", ["--no-optional-locks", "status", "--porcelain"], { cwd: path, timeout: 10_000, windowsHide: true, maxBuffer: 4_000_000 }, (err, out) => resolve(err ? undefined : out.split("\n").filter(Boolean).length));
+      execFile("git", ["--no-optional-locks", "status", "--porcelain"], { cwd: path, timeout: 10_000, env: BACKGROUND_ENV, windowsHide: true, maxBuffer: 4_000_000 }, (err, out) => resolve(err ? undefined : out.split("\n").filter(Boolean).length));
     });
     memo.set(path, { at: Date.now(), n });
     return n;
