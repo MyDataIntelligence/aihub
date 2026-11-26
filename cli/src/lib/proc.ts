@@ -1,6 +1,6 @@
 import * as cp from "node:child_process";
 import { perfOn, recordChild } from "./perf.js";
-import { isGitCommand, scrubGitOptions } from "./gitEnv.js";
+import { scrubGitOptions } from "./gitEnv.js";
 
 /**
  * The only way aihub starts a child process. Every call gets `windowsHide: true`, so no console window ever appears or
@@ -16,10 +16,10 @@ export function withHidden(args: unknown[]): unknown[] {
   return [...args, { windowsHide: true }];
 }
 
-/** The arguments every child process of aihub starts with: hidden, and git without the repository variables. */
-const prepared = (args: unknown[]): unknown[] => withHidden(isGitCommand(args[0]) ? withGitEnvironment(args) : args);
+/** The arguments every child process of aihub starts with: hidden, and without the repository variables (dbt deps, a test command or a hook may run git). */
+const prepared = (args: unknown[]): unknown[] => withHidden(withGitEnvironment(args));
 
-/** A git process never inherits GIT_DIR and the other repository variables (see gitEnv.ts). */
+/** No child process inherits GIT_DIR and the other repository variables (see gitEnv.ts). */
 function withGitEnvironment(args: unknown[]): unknown[] {
   const at = args.length > 1 && args[args.length - 1] && typeof args[args.length - 1] === "object" && !Array.isArray(args[args.length - 1]) ? args.length - 1 : -1;
   return at >= 0 ? [...args.slice(0, at), scrubGitOptions(args[at])] : [...args, scrubGitOptions(undefined)];

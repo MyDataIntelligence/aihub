@@ -114,3 +114,23 @@ describe("core.bare repair message", () => {
     expect(bareHint(bareRepo, "fatal: this operation must be run in a work tree")).toBe("");
   });
 });
+
+describe("every child process of aihub is scrubbed", () => {
+  const show = "console.log([process.env.GIT_DIR, process.env.GIT_WORK_TREE, process.env.GIT_INDEX_FILE, process.env.KEEP_ME].join('|'))";
+
+  it("a non-git child started through proc.ts sees no repository variables", () => {
+    process.env.GIT_DIR = "/inherited/.git/worktrees/x";
+    process.env.GIT_WORK_TREE = "/inherited";
+    process.env.KEEP_ME = "yes";
+    const r = spawnSync(process.execPath, ["-e", show], { encoding: "utf8" });
+    expect(r.stdout.trim()).toBe("|||yes");
+    const withEnv = spawnSync(process.execPath, ["-e", show], { encoding: "utf8", env: { ...process.env } });
+    expect(withEnv.stdout.trim()).toBe("|||yes");
+  });
+
+  it("a variable set on purpose for a child survives", () => {
+    process.env.GIT_DIR = "/inherited";
+    const r = spawnSync(process.execPath, ["-e", show], { encoding: "utf8", env: { ...process.env, GIT_INDEX_FILE: "/own/index" } });
+    expect(r.stdout.trim()).toBe("||/own/index|" + (process.env.KEEP_ME ?? ""));
+  });
+});
