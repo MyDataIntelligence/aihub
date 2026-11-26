@@ -8,7 +8,9 @@ import { syncRepoName } from "../../../cli/src/lib/workspaceNames";
 import { CliProblem } from "./cliCheck";
 import { BarEngine, openFacts } from "./engine";
 import { BACKGROUND_ENV, gitRun } from "./ownWindow";
-import { cli } from "./runner";
+import { cli, jsonOf } from "./runner";
+import { RemoteRepos } from "./remoteRepos";
+import { registerSearchCommands } from "./searchUi";
 import { SizeMemo } from "./setSize";
 import { BehindMemo, gitStatusOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
 import { linkedOf, registerStoryCommands } from "./storyUi";
@@ -154,7 +156,21 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       },
     },
   });
+  // the Azure DevOps list for the search: read only when the search asks, once a day, never without focus
+  const remote = new RemoteRepos({
+    env: process.env,
+    focused: () => vscode.window.state.focused,
+    changed: () => changed(),
+    read: async ({ refresh }) => {
+      // the CLI needs one clone of Azure DevOps to know the organisation; its sign-in is the one the CLI already has
+      const cwd = engine.scan().repos.find((r) => /dev\.azure\.com|visualstudio\.com/i.test(r.remote ?? ""))?.path;
+      if (!cwd) throw new Error("no clone of Azure DevOps on this PC yet: the organisation is not known");
+      const out = await cli(["repos", "ado", "--json", ...(refresh ? ["--refresh"] : [])], cwd);
+      return (jsonOf<{ repos?: { name: string; project: string; remoteUrl: string }[] }>(out).repos ?? []).map((r) => ({ name: r.name, project: r.project, remoteUrl: r.remoteUrl }));
+    },
+  });
   const engine = new BarEngine({
+    remote: (local) => remote.get(local),
     unpushedOf,
     sizes,
     undoLabel,
@@ -306,7 +322,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   const askContinue = setTimeout(() => void offerContinue(deps), 6000);
   ctx.subscriptions.push({ dispose: () => clearTimeout(askContinue) });
 
-  registerCommands(ctx, engine, deps, changed, { prs, behind, mgr: behindMgr });
+  registerCommands(ctx, engine, deps, changed, { prs, behind, mgr: behindMgr, remote });
   // the window gets focus back and the last successful fetch is over 30 minutes ago: look again (one fetch per repository)
   ctx.subscriptions.push(
     vscode.window.onDidChangeWindowState((s) => {
@@ -337,7 +353,7 @@ async function offerContinue(deps: BarDeps): Promise<void> {
 
 const idOf = (a: unknown): string | undefined => (typeof a === "string" ? a : a && typeof a === "object" && "id" in a ? String((a as { id: unknown }).id) : undefined);
 
-function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps: BarDeps, changed: () => void, memo: { prs: PrMemo; behind: BehindMemo; mgr: BehindManager }): void {
+function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps: BarDeps, changed: () => void, memo: { prs: PrMemo; behind: BehindMemo; mgr: BehindManager; remote: RemoteRepos }): void {
   const { prs, behind, mgr } = memo;
   const fail = (e: unknown) => {
     if (e instanceof CliProblem) {
@@ -449,6 +465,7 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   registerPullRequestCommand({ engine, log: deps.log, changed, reg, refreshPrs: () => prs.refresh(true).then(() => undefined) });
   registerUndoCommand({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerSetOps({ engine, log: deps.log, changed, reg });
+  registerSearchCommands({ engine, remote: memo.remote, log: deps.log, changed, reg });
 }
 
 async function pickRepository(engine: BarEngine): Promise<string | undefined> {
