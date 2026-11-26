@@ -6,7 +6,7 @@ import { AIHUB_SET, MAKER_SET, readSetFile } from "../../../cli/src/lib/setFile"
 import { gitCommonDir } from "../../../cli/src/lib/storyWorktrees";
 import { guardLocalFiles, inventoryIgnored, localFilesProblem } from "../../../cli/src/lib/localFiles";
 import { headSha, operationInProgress } from "./behind";
-import { branchesOf, worktreesOf, type GitRun } from "./ownWindow";
+import { branchesOf, worktreesOf, type GitRun, type WorktreeAt } from "./ownWindow";
 
 /**
  * Undo for the actions that change a set (switch, move, reuse, recreate, add, drop, remove set): a snapshot before the
@@ -114,6 +114,26 @@ const listDir = (d: string | undefined): string[] => {
   }
 };
 
+/** The worktrees of a clone, read from its files (`.git/worktrees/<name>/gitdir` and HEAD): no process. Undefined when the clone cannot be read. */
+export function worktreesFromFiles(source: string): WorktreeAt[] | undefined {
+  const common = gitCommonDir(source);
+  if (!common) return undefined;
+  const mainPath = basename(common) === ".git" ? dirname(common) : common;
+  const at = (path: string, main: boolean): WorktreeAt => ({ path: resolve(path), branch: headBranchOf(path) || undefined, head: headSha(path), main });
+  const list = [at(mainPath, true)];
+  const dir = join(common, "worktrees");
+  for (const name of existsSync(dir) ? readdirSync(dir) : []) {
+    try {
+      const gitdir = readFileSync(join(dir, name, "gitdir"), "utf8").trim();
+      const path = dirname(gitdir);
+      if (existsSync(path)) list.push(at(path, false));
+    } catch {
+      /* a half-made worktree: not listed */
+    }
+  }
+  return list;
+}
+
 /** The set files and the workspace files of a set folder, as they are now (bytes, or absent). */
 function setFilesOf(folder: string): { path: string; bytes?: Buffer }[] {
   const paths = new Set<string>([join(folder, AIHUB_SET), join(folder, MAKER_SET)]);
@@ -128,12 +148,14 @@ function setFilesOf(folder: string): { path: string; bytes?: Buffer }[] {
  * the set); `files`: what a file was before something outside this action changed it (a set file edited by hand).
  * An empty `setFolder` is a set that does not exist yet.
  */
-export async function takeSnapshot(git: GitRun, setFolder: string, label: string, o: { sources?: string[]; files?: { path: string; bytes?: Buffer }[] } = {}): Promise<Snapshot> {
+export async function takeSnapshot(git: GitRun, setFolder: string, label: string, o: { sources?: string[]; files?: { path: string; bytes?: Buffer }[]; only?: string[] } = {}): Promise<Snapshot> {
   const file = setFolder ? readSetFile(setFolder) : undefined;
   const seen = new Set<string>();
   const repos: SnapRepo[] = [];
   for (const m of file ? [file.top, ...(file.top.others ?? [])] : []) {
     for (const r of m.repos) {
+      // an action on one repository notes that repository (and the worktrees of its clone), not all of the set
+      if (o.only && !o.only.some((n) => n.toLowerCase() === r.name.toLowerCase())) continue;
       if (seen.has(key(r.path)) || !existsSync(join(r.path, ".git"))) continue;
       seen.add(key(r.path));
       // the commit comes from the files (no process); git only when the files cannot say
@@ -145,7 +167,7 @@ export async function takeSnapshot(git: GitRun, setFolder: string, label: string
   const backups = new Map<string, string[]>();
   for (const src of new Set([...repos.map((r) => r.source), ...(o.sources ?? [])].filter((s) => existsSync(s)))) {
     // every other worktree of these clones (one the action may move, recreate or reuse): put back like a member of the set
-    for (const w of await worktreesOf(git, src).catch(() => [])) {
+    for (const w of worktreesFromFiles(src) ?? (await worktreesOf(git, src).catch(() => []))) {
       if (w.main || seen.has(key(w.path))) continue;
       seen.add(key(w.path));
       repos.push({ name: basename(w.path), source: src, path: w.path, branch: w.branch, head: w.head ?? "" });

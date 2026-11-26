@@ -33,8 +33,8 @@ function differs(s: Snapshot): boolean {
  * Runs `run` (an action that changes the set) with a snapshot before it. When something changed, one message with Undo
  * (and, after a removal, Show Backup) follows, and the state offers "Undo: <label>" until the next action.
  */
-export async function withUndo<T>(h: Pick<StoryHooks, "changed" | "log" | "afterGit">, label: string, setFolder: string | undefined, run: () => Promise<T>, o: { backup?: boolean; files?: { path: string; bytes?: Buffer }[]; sources?: string[]; created?: (result: T) => string | undefined; message?: (result: T) => string; warn?: (result: T) => boolean } = {}): Promise<T> {
-  const snap = setFolder !== undefined ? await takeSnapshot(gitRun, setFolder, label, { files: o.files, sources: o.sources }).catch(() => undefined) : undefined;
+export async function withUndo<T>(h: Pick<StoryHooks, "changed" | "log" | "afterGit">, label: string, setFolder: string | undefined, run: () => Promise<T>, o: { backup?: boolean; files?: { path: string; bytes?: Buffer }[]; sources?: string[]; only?: string[]; created?: (result: T) => string | undefined; message?: (result: T) => string; warn?: (result: T) => boolean } = {}): Promise<T> {
+  const snap = setFolder !== undefined ? await takeSnapshot(gitRun, setFolder, label, { files: o.files, sources: o.sources, only: o.only }).catch(() => undefined) : undefined;
   const release = holdNotices();
   let result: T;
   let heldLines: string[] = [];

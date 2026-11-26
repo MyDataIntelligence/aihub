@@ -248,7 +248,7 @@ async function switchAll(h: StoryHooks, d: Divergence[], repos: { name: string; 
 /** One repository of the set on another branch; the window stays. A branch with a worktree elsewhere asks move / reuse / recreate. */
 async function switchIn(h: StoryHooks, repo: string, branch: string, path: string, from?: string): Promise<boolean> {
   const folder = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.folder;
-  return withUndo(h, `Switch ${repo} to ${branch}`, folder, () => switchInRun(h, repo, branch, path, from), { message: (ok) => (ok ? `${repo} is now on ${branch}` : "") });
+  return withUndo(h, `Switch ${repo} to ${branch}`, folder, () => switchInRun(h, repo, branch, path, from), { only: [repo], message: (ok) => (ok ? `${repo} is now on ${branch}` : "") });
 }
 
 async function switchInRun(h: StoryHooks, repo: string, branch: string, path: string, from?: string): Promise<boolean> {
@@ -473,7 +473,7 @@ export function registerStoryCommands(h: StoryHooks): void {
         h.changed();
         return ok;
       },
-      { backup: true, message: (ok) => (ok ? `${n.repo.name} is out of the set` : "") },
+      { backup: true, only: [n.repo.name], message: (ok) => (ok ? `${n.repo.name} is out of the set` : "") },
     );
   });
 }
