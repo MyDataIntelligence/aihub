@@ -97,7 +97,7 @@ describe("behind the target branch", () => {
     const calls: { args: string[]; cwd: string }[] = [];
     const r = await manager(u, calls).run("open");
     expect(log.asked).toEqual([{ message: "Repo A is 2 commits behind staging · no conflicts", buttons: ["Update", "Always Update Automatically", "Later"] }]);
-    expect(calls).toEqual([{ args: ["branch", "update", "--target", "staging"], cwd: w.repos[0].path }]);
+    expect(calls).toEqual([{ args: ["branch", "update", "--no-push", "--target", "staging"], cwd: w.repos[0].path }]);
     expect(r.updated.map((x) => x.line)).toEqual(["Repo A updated from staging (2 commits)"]);
     expect(sh(w.repos[0].path, "rev-list", "--count", "HEAD..origin/staging").trim()).toBe("0");
   });
@@ -344,5 +344,56 @@ describe("the awkward repositories of the look at the target", () => {
     expect(fetched).not.toContain(join(root, "nowhere"));
     expect(r.facts.map((f) => f.name)).toEqual(["b"]);
     expect(log.asked.map((x) => x.message)).toEqual(["b is 1 commit behind staging · no conflicts"]);
+  });
+});
+
+describe("Undo of an update only undoes that update", () => {
+  async function updated() {
+    const w = world(["Repo A"]);
+    w.advance(w.repos[0], "new.txt", "n", 2);
+    const { u, log } = ui(w.repos, {}, "auto");
+    await manager(u).run("open");
+    return { w, log, path: w.repos[0].path };
+  }
+
+  it("not after a commit of the user: the commit stays on the branch", async () => {
+    const { w, log, path } = await updated();
+    write(path, "mine.txt", "mine\n");
+    sh(path, "add", "-A");
+    sh(path, "commit", "-m", "feat: mine");
+    const head = sh(path, "rev-parse", "HEAD").trim();
+    const r = await log.undo!.run();
+    expect(r.problem).toBe("Repo A has new commits since the update; they would be lost, so the update stays");
+    expect(sh(path, "rev-parse", "HEAD").trim()).toBe(head);
+    void w;
+  });
+
+  it("not on another branch: that branch is never moved", async () => {
+    const { w, log, path } = await updated();
+    sh(path, "switch", "-c", "feature/other", "main");
+    const other = sh(path, "rev-parse", "feature/other").trim();
+    const r = await log.undo!.run();
+    expect(r.problem).toBe("Repo A is not on feature/5-x any more; the update stays");
+    expect(sh(path, "rev-parse", "feature/other").trim()).toBe(other);
+    void w;
+  });
+
+  it("not in the middle of a merge", async () => {
+    const { log, path } = await updated();
+    writeFileSync(join(path, ".git", "MERGE_HEAD"), sh(path, "rev-parse", "HEAD"));
+    expect((await log.undo!.run()).problem).toBe("a merge is in progress in Repo A; finish or abort it first");
+  });
+
+  it("and the update itself never publishes: the remote branch is where it was", async () => {
+    const w = world(["Repo A"]);
+    sh(w.repos[0].path, "push", "-u", "origin", "feature/5-x");
+    const remote = sh(w.repos[0].origin, "rev-parse", "feature/5-x").trim();
+    w.advance(w.repos[0], "new.txt", "n");
+    const { u, log } = ui(w.repos, {}, "auto");
+    await manager(u).run("open");
+    expect(log.said[0]).toContain("updated from staging");
+    expect(sh(w.repos[0].origin, "rev-parse", "feature/5-x").trim()).toBe(remote);
+    // not pushed, so Undo works
+    expect(await log.undo!.run()).toEqual({});
   });
 });
