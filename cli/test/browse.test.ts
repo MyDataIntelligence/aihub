@@ -186,9 +186,17 @@ describe("browse branches, history, diff", () => {
   });
 
   it("reads branches through the API", async () => {
-    const s = setup([{ match: /repo-a\/refs\?filter=heads/, respond: () => ({ body: { value: [{ name: "refs/heads/main", objectId: C1 }] } }) }, { match: /repo-a\/refs\?filter=tags/, respond: () => ({ body: { value: [] } }) }]);
+    const s = setup([
+      { match: /repo-a\/refs\?filter=heads/, respond: () => ({ body: { value: [{ name: "refs/heads/main", objectId: C1 }, { name: "refs/heads/staging", objectId: C2 }] } }) },
+      { match: /repo-a\/refs\?filter=tags/, respond: () => ({ body: { value: [] } }) },
+      { match: /repo-a\/stats\/branches/, respond: () => ({ body: { value: [{ name: "staging", aheadCount: 2, behindCount: 1, commit: { committer: { date: "2026-11-26T11:21:00Z" } } }] } }) },
+    ]);
     const r = await browseBranches(s.b(), { project: "test-project", repo: "repo-a" });
-    expect(r).toMatchObject({ default: "main", count: 1, more: false });
+    expect(r).toMatchObject({ default: "main", count: 2, more: false });
+    expect(r.branches.map((x) => [x.name, x.at, x.ahead, x.behind])).toEqual([
+      ["main", null, 0, 0],
+      ["staging", "2026-11-26T11:21:00Z", 2, 1],
+    ]);
   });
 
   it("reads the history of a file, one more than asked to know there is more", async () => {

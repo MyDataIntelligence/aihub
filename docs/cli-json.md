@@ -177,7 +177,8 @@ Cache (`<config>/aihub/cache/browse/`): projects and repositories 4 hours, proje
 larger than `--max-bytes` has `content: null` (the UI offers Open in Browser).
 
 `aihub browse branches --project P --repo R [--filter t] [--top 50]`: default first, then the branches I created, then by name; tags
-newest first. `{"default":"main","count":14,"branches":[{"name":"main","commit":"<sha>","isMine":false,"isDefault":true,"by":{…}|null}],
+newest first; `at` is the date of the newest commit, `ahead`/`behind` count against the default branch (one call to the branch statistics,
+read with the refs; `null` when it fails). `{"default":"main","count":14,"branches":[{"name":"main","commit":"<sha>","isMine":false,"isDefault":true,"by":{…}|null,"at":"…","ahead":0,"behind":0}],
 "tags":[{"name":"v1.2","commit":"<sha>"}],"more":false}`
 
 `aihub browse history --project P --repo R [--path /p] [--ref ...] [--top 50] [--skip 0]`: newest first; `more` says there is a next page
