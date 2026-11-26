@@ -214,3 +214,56 @@ describe("the look at the target branch blocks nothing", () => {
     await running;
   });
 });
+
+describe("a reloaded window and a second window on the same set (review G)", () => {
+  it("do no fetch within the freshness term: the time of the last fetch is in a file shared by the windows", async () => {
+    const { FetchGate } = await import("../src/bar/behind");
+    const { readFileSync, writeFileSync } = await import("node:fs");
+    const w = world();
+    const cfg = mkdtempSync(join(tmpdir(), "aihub-budget-cfg-"));
+    const file = join(cfg, "fetched.json");
+    const store = {
+      read: () => {
+        try {
+          return JSON.parse(readFileSync(file, "utf8"));
+        } catch {
+          return {};
+        }
+      },
+      write: (rec: Record<string, { ok: boolean; at: number }>) => writeFileSync(file, JSON.stringify(rec)),
+    };
+    const fetches: string[] = [];
+    const git = async (cwd: string, args: string[]) => (args[0] === "fetch" && fetches.push(cwd), gitRun(cwd, args));
+    const windowOf = () => {
+      const behind = new BehindMemo(gitRun);
+      const gate = new FetchGate(git, Date.now, store);
+      const ui: BehindUi = { mode: () => "ask", setAuto: async () => undefined, focused: () => true, repos: () => w.repos.map((r) => ({ name: r.name, path: r.path, branch: "feature/5-x", changes: 0 })), ask: async () => undefined, said: () => undefined, changed: (p) => behind.forget(p) };
+      const mgr = new BehindManager({ git, raw: gitRaw, cli: async () => "", ui, gate, count: (p, n) => behind.behind(p, n) });
+      const engine = new BarEngine({
+        env: { AIHUB_CONFIG_HOME: cfg, AIHUB_COMMON_ROOTS: "" } as NodeJS.ProcessEnv,
+        dir: () => w.repos[0].path,
+        dirtyOf: async () => 0,
+        statusOf: async (path, name) => ({ changes: 0, ahead: 0, ...(gate.has(path) ? await behind.behind(path, name).then((n) => (n === undefined ? {} : { behindTarget: n })) : {}) }),
+      });
+      return { mgr, engine };
+    };
+    const first = windowOf();
+    await first.engine.state();
+    await first.mgr.run("open");
+    expect(fetches).toHaveLength(5);
+    // the window is reloaded, and a second window opens on the same set: both within 60 s
+    fetches.length = 0;
+    const rows: string[] = [];
+    for (const label of ["window reloaded within 60 s", "second window on the same set"]) {
+      const win = windowOf();
+      const before = c.n;
+      await win.engine.state();
+      await win.mgr.run("open");
+      rows.push(`${label.padEnd(34)}${String(c.n - before).padStart(4)} git, ${fetches.length} fetch`);
+      expect(fetches).toEqual([]);
+      // the count behind the target is shown from the refs of the earlier fetch: one count per repository, a merge-tree where it is behind
+      expect(c.n - before).toBeLessThanOrEqual(5 + 2);
+    }
+    console.log(rows.join("\n"));
+  });
+});

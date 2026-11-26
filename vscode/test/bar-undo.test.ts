@@ -391,3 +391,68 @@ describe("Undo is careful with what the user keeps in the set (review C)", () =>
     expect(res).toEqual({ ok: false, lines: ["one", "stopped at \"two\": locked", "not done: three"] });
   });
 });
+
+describe("the last undo of a set lives on disk: every window shows the same one (review G)", () => {
+  it("action in A, Undo in B works: B reads A's entry from the file and puts the set back", async () => {
+    const { saveUndo, loadUndo, clearUndo } = await import("../src/bar/undoStore");
+    const env = { AIHUB_CONFIG_HOME: mkdtempSync(join(tmpdir(), "aihub-undo-cfg-")) } as NodeJS.ProcessEnv;
+    const w = world();
+    const before = fingerprint(w);
+    // window A
+    const snapA = await takeSnapshot(gitRun, w.folder, "Switch Repo A to feature/5-y");
+    sh(w.repos[0].path, "switch", "feature/5-y");
+    w.writeSet([{ ...w.repos[0], branch: "feature/5-y" }, w.repos[1]]);
+    finishSnapshot(snapA);
+    saveUndo(env, snapA.label, snapA);
+    // window B: nothing in memory, only the file
+    const kept = loadUndo(env, w.folder)!;
+    expect(kept.label).toBe("Switch Repo A to feature/5-y");
+    expect(kept.snap.files.every((f) => f.bytes === undefined || Buffer.isBuffer(f.bytes))).toBe(true);
+    const plan = await planUndo(gitRun, kept.snap);
+    expect(plan.problem).toBeUndefined();
+    expect((await runUndo(plan)).ok).toBe(true);
+    clearUndo(env, w.folder);
+    expect(fingerprint(w)).toEqual(before);
+    expect(loadUndo(env, w.folder)).toBeUndefined();
+  });
+
+  it("action in A, action in B: there is one entry (B's), and A's stale snapshot is refused", async () => {
+    const { saveUndo, loadUndo, undoLabelOf } = await import("../src/bar/undoStore");
+    const env = { AIHUB_CONFIG_HOME: mkdtempSync(join(tmpdir(), "aihub-undo-cfg-")) } as NodeJS.ProcessEnv;
+    const w = world();
+    const snapA = await takeSnapshot(gitRun, w.folder, "Switch Repo A to feature/5-y");
+    sh(w.repos[0].path, "switch", "feature/5-y");
+    w.writeSet([{ ...w.repos[0], branch: "feature/5-y" }, w.repos[1]]);
+    finishSnapshot(snapA);
+    saveUndo(env, snapA.label, snapA, 1000);
+    // B does its own action on the same set
+    const snapB = await takeSnapshot(gitRun, w.folder, "Switch Repo B to feature/5-y");
+    sh(w.repos[1].path, "switch", "feature/5-y");
+    w.writeSet([{ ...w.repos[0], branch: "feature/5-y" }, { ...w.repos[1], branch: "feature/5-y" }]);
+    finishSnapshot(snapB);
+    saveUndo(env, snapB.label, snapB, 2000);
+    expect(undoLabelOf(env, w.folder)).toBe("Switch Repo B to feature/5-y");
+    expect(loadUndo(env, w.folder)!.savedAt).toBe(2000);
+    // A still holds its own snapshot in memory: the set is not what it left, so it is refused
+    const stale = await planUndo(gitRun, snapA);
+    expect(stale.problem).toBe("the set changed since this action, in another window or by hand");
+    expect(stale.steps).toEqual([]);
+    // and B's entry (what both windows now show) works
+    expect((await planUndo(gitRun, loadUndo(env, w.folder)!.snap)).problem).toBeUndefined();
+  });
+
+  it("the entry survives the file: Maps, bytes and the stamp come back as they were", async () => {
+    const { saveUndo, loadUndo } = await import("../src/bar/undoStore");
+    const env = { AIHUB_CONFIG_HOME: mkdtempSync(join(tmpdir(), "aihub-undo-cfg-")) } as NodeJS.ProcessEnv;
+    const w = world();
+    const snap = await takeSnapshot(gitRun, w.folder, "x");
+    sh(w.repos[0].source, "branch", "made");
+    finishSnapshot(snap);
+    saveUndo(env, "x", snap);
+    const back = loadUndo(env, w.folder)!.snap;
+    expect(back.after).toEqual(snap.after);
+    expect([...back.created!]).toEqual([...snap.created!]);
+    expect([...back.branches.get(w.repos[0].source)!]).toEqual([...snap.branches.get(w.repos[0].source)!]);
+    expect(back.files.map((f) => f.bytes?.toString("base64"))).toEqual(snap.files.map((f) => f.bytes?.toString("base64")));
+  });
+});

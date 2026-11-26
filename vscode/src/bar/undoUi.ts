@@ -3,17 +3,24 @@ import * as vscode from "vscode";
 import { forgetScan, headBranchOf } from "../../../cli/src/lib/machineScan";
 import { gitRun } from "./ownWindow";
 import { finishSnapshot, newBackups, planUndo, runUndo, takeSnapshot, type Snapshot } from "./undo";
+import { clearUndo, loadUndo, saveUndo, undoLabelOf } from "./undoStore";
+import { openFacts } from "./engine";
 import type { StoryHooks } from "./storyUi";
 
 /** The one thing that can be undone: the last action that changed a set. The next action replaces it. */
-let last: { label: string; snap?: Snapshot; custom?: () => Promise<{ problem?: string }> } | undefined;
+let last: { label: string; at: number; snap?: Snapshot; custom?: () => Promise<{ problem?: string }> } | undefined;
 
 /** An undo that is not a snapshot of a set (an update from the target branch): `run` puts it back or says why not. */
 export function setCustomUndo(h: StoryHooks, label: string, run: () => Promise<{ problem?: string }>): void {
-  last = { label, custom: run };
+  last = { label, at: Date.now(), custom: run };
   h.changed();
 }
-export const undoLabel = (): string | undefined => last?.label;
+
+/** What the buttons show: the undo of the set this window shows, from the file every window reads (else what this window did to another set). */
+export const undoLabel = (setFolder?: string): string | undefined => {
+  const kept = setFolder ? loadUndo(process.env, setFolder) : undefined;
+  return kept && (!last || kept.savedAt >= last.at) ? kept.label : last?.label;
+};
 
 /** Did the action change what a snapshot holds (set files, branches, worktree folders)? Files only. */
 function differs(s: Snapshot): boolean {
@@ -33,7 +40,13 @@ export async function withUndo<T>(h: Pick<StoryHooks, "changed" | "log" | "after
   if (!snap || (snap.setFolder ? !differs(snap) && !(o.created && existsSync(snap.setFolder)) : true)) return result;
   // how the set looks right after the action, and the branches the action made: Undo only goes back to exactly this
   finishSnapshot(snap);
-  last = { label, snap };
+  last = { label, at: Date.now(), snap };
+  // on disk too, per set: every window on the set shows the same Undo and there is only ever one
+  try {
+    saveUndo(process.env, label, snap);
+  } catch (e) {
+    h.log(`undo not saved to disk: ${(e as Error).message}`);
+  }
   h.changed();
   const undo = "Undo";
   const show = "Show Backup";
@@ -47,18 +60,27 @@ export async function withUndo<T>(h: Pick<StoryHooks, "changed" | "log" | "after
 
 /** Puts the set back as it was before the last action, or says in one sentence why it cannot and does nothing. */
 export async function undoLast(h: Pick<StoryHooks, "changed" | "log" | "afterGit">): Promise<boolean> {
-  if (!last) {
+  // the undo of this window's set from the file (made by this window or another), unless this window made a newer one itself
+  const folder = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.folder;
+  const kept = folder ? loadUndo(process.env, folder) : undefined;
+  const entry = kept && (!last || kept.savedAt >= last.at) ? { label: kept.label, snap: kept.snap, custom: undefined } : last;
+  if (!entry) {
     void vscode.window.showInformationMessage("AI Context Hub: nothing to undo.");
     return false;
   }
-  const { label, snap, custom } = last;
+  const { label, snap, custom } = entry;
+  const done = () => {
+    last = undefined;
+    if (snap?.setFolder) clearUndo(process.env, snap.setFolder);
+    if (folder) clearUndo(process.env, folder);
+  };
   if (custom) {
     const r = await custom();
     if (r.problem) {
       void vscode.window.showWarningMessage(`AI Context Hub: cannot undo "${label}": ${r.problem}. Nothing was changed.`);
       return false;
     }
-    last = undefined;
+    done();
     forgetScan(process.env);
     h.afterGit?.();
     h.changed();
@@ -73,7 +95,7 @@ export async function undoLast(h: Pick<StoryHooks, "changed" | "log" | "afterGit
   const res = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Undoing ${label}...` }, () => runUndo(plan));
   h.log(`undo ${label}: ${res.lines.join(" | ")}`);
   forgetScan(process.env);
-  if (res.ok) last = undefined;
+  if (res.ok) done();
   h.afterGit?.();
   h.changed();
   void (res.ok ? vscode.window.showInformationMessage(`AI Context Hub: undone: ${label}.`) : vscode.window.showWarningMessage(`AI Context Hub: ${res.lines[res.lines.length - 1]}`));
