@@ -204,3 +204,25 @@ describe("the answer to the question of a switch (Move, Reuse, Recreate): one en
     expect(JSON.parse(readFileSync(join(set.folder, ".aihub-set.json"), "utf8")).repos).toHaveLength(3);
   });
 });
+
+describe("a clone in a folder named differently from its repository (persona 5)", { timeout: 60_000 }, () => {
+  it("worktree open with the clone's folder names the entry after the repository, not the folder", async () => {
+    const parent = newParent();
+    const a = makeNamedRepo(parent, "repo-a");
+    sh(a.dir, ["config", "user.name", "Test"]);
+    sh(a.dir, ["config", "user.email", "test@example.invalid"]);
+    sh(a.dir, ["push", "origin", "main:refs/heads/feature/9-x"]);
+    // the same repository cloned again in a folder with another name (the url settings are copied, the bare origin is the same)
+    const kopie = join(parent, "oud", "repo-a-kopie");
+    sh(parent, ["clone", a.dir, kopie]);
+    sh(kopie, ["remote", "set-url", "origin", sh(a.dir, ["config", "remote.origin.url"])]);
+    sh(kopie, ["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"]);
+    sh(kopie, ["config", `url.${a.bare.split(String.fromCharCode(92)).join("/")}.insteadOf`, sh(a.dir, ["config", "remote.origin.url"])]);
+    sh(kopie, ["fetch", "origin"]);
+    const r = await run(a.dir, ["worktree", "open", "--repos", kopie, "--branch", "feature/9-x", "--window", "none", "--json"]);
+    const j = JSON.parse(r.out);
+    expect(j.repos[0]).toMatchObject({ repo: "repo-a", ok: true });
+    expect(fwd(j.repos[0].path).endsWith("/repo-a")).toBe(true);
+    expect(fwd(j.repos[0].path).includes("repo-a-kopie")).toBe(false);
+  });
+});

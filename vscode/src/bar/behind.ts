@@ -1,3 +1,4 @@
+import { plainError } from "./plainError";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitDirFor, headBranchOf } from "../../../cli/src/lib/machineScan";
@@ -210,7 +211,7 @@ export async function updateRepo(cli: (args: string[], cwd: string) => Promise<s
     const now = headSha(f.path) ?? (await git(f.path, ["rev-parse", "HEAD"]).catch(() => "")).trim();
     return { name: f.name, ok: true, before: f.head, after: now, line: `${f.name} updated from ${f.target} (${commits(f.behind)})${now === f.head ? " (nothing changed)" : ""}` };
   } catch (e) {
-    return { name: f.name, ok: false, line: `${f.name}: not updated, ${(e as Error).message.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0] ?? "failed"}` };
+    return { name: f.name, ok: false, line: `${f.name}: not updated, ${plainError((e as Error).message).text}` };
   }
 }
 

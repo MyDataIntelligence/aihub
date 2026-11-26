@@ -1,5 +1,5 @@
 import { spawnSync } from "./proc.js";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AihubError } from "./errors.js";
@@ -29,7 +29,7 @@ function gitUncached(cwd: string, args: string[], opts: { allowFail?: boolean })
   if (r.error) throw new AihubError(`git is not available: ${r.error.message}`);
   if (r.status !== 0) {
     if (opts.allowFail) return "";
-    throw new AihubError(`git ${args.join(" ")} failed: ${(r.stderr || "").trim().split("\n")[0]}`);
+    throw new AihubError(`git ${args.join(" ")} failed: ${(r.stderr || "").trim().split("\n")[0]}${bareHint(cwd, r.stderr || "")}`);
   }
   return r.stdout.replace(/\r\n/g, "\n").trimEnd();
 }
@@ -145,7 +145,28 @@ export function gitRaw(cwd: string, args: string[], env?: Record<string, string>
   if (gitGate(cwd, args)) return { status: 0, stdout: "", stderr: "" };
   const r = spawnSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, env: env ? { ...process.env, ...env } : undefined });
   if (r.error) throw new AihubError(`git is not available: ${r.error.message}`);
-  return { status: r.status ?? 1, stdout: r.stdout.split("\r\n").join("\n").trimEnd(), stderr: (r.stderr || "").trim() };
+  const stderr = (r.stderr || "").trim();
+  return { status: r.status ?? 1, stdout: r.stdout.split("\r\n").join("\n").trimEnd(), stderr: r.status ? stderr + bareHint(cwd, stderr) : stderr };
+}
+
+export const NOT_A_WORK_TREE = "must be run in a work tree";
+
+/**
+ * Said after "must be run in a work tree" when the folder is a normal clone (own `.git` folder with an index) whose shared
+ * config says `core.bare = true`: a git process that inherited GIT_DIR from a hook of a linked worktree wrote it. aihub does
+ * not repair it by itself; the sentence names the one command that does.
+ */
+export function bareHint(cwd: string, stderr: string): string {
+  if (!stderr.includes(NOT_A_WORK_TREE)) return "";
+  try {
+    const dotGit = join(cwd, ".git");
+    if (!existsSync(join(dotGit, "index")) || !existsSync(join(dotGit, "config"))) return "";
+    const r = spawnSync("git", ["-C", cwd, "config", "core.bare"], { encoding: "utf8" });
+    if (r.status !== 0 || String(r.stdout).trim() !== "true") return "";
+    return ` (this clone has work files but its config says core.bare = true, usually written by a git process that ran inside a worktree hook; repair it with: git -C "${cwd}" config core.bare false)`;
+  } catch {
+    return "";
+  }
 }
 
 /** Run `fn` inside a throw-away detached worktree at `ref`; the user's checkout is never touched. */

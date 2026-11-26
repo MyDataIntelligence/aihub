@@ -17,6 +17,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     "body-file": { type: "string" },
     parent: { type: "string" },
     json: { type: "boolean" },
+    "refresh-template": { type: "boolean" },
   });
   if (sub === "create") {
     ctx.out(
@@ -26,6 +27,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
         bodyFile: v["body-file"] as string | undefined,
         parent: optInt(v.parent, "--parent"),
         json: !!v.json,
+        refreshTemplate: !!v["refresh-template"],
       }),
     );
     return;

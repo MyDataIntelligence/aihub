@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { readJson, makeRunner, type Runner } from "./cli";
 import { HEAVY_DIRS, pickNotification, vscodeFindings, type AdvisorFinding, type FolderFacts, type NotifyState } from "./advisorModel";
 import { clearTrackedInterval, trackedInterval, trackedTimeout } from "./perf/probe";
+import { showFailure } from "./bar/failureUi";
 
 /**
  * "AI Context Hub: Performance Advisor": what makes git, node and VS Code slow here, one card per cause with the evidence,
@@ -89,7 +90,7 @@ export class AdvisorController implements vscode.Disposable {
       try {
         cli = await readJson<CliAdvice>(this.runner(), ["doctor", "--perf"], cwd);
       } catch (e) {
-        void vscode.window.showWarningMessage(`AI Context Hub: aihub doctor --perf did not answer (${(e as Error).message}). Update the CLI: npm i -g @ferronhooi/aihub`);
+        void showFailure(e, "the performance check did not answer; update the CLI (npm i -g @ferronhooi/aihub)", "warning");
       }
     }
     const folders = await Promise.all((vscode.workspace.workspaceFolders ?? []).map(async (f) => ({ name: f.name, heavy: await heavyDirs(f.uri.fsPath) })));
@@ -179,7 +180,7 @@ export class AdvisorController implements vscode.Disposable {
       }
       return true;
     } catch (e) {
-      void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+      void showFailure(e);
       return false;
     }
   }

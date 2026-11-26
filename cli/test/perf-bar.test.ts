@@ -56,6 +56,7 @@ describe("sign-in without a credential", () => {
     const f = fakeFetch([]);
     const { ctx, lines } = ctxFor(dir, f.fn);
     ctx.env = { AIHUB_HOME: tmp("aihub-home-") };
+    ctx.tokenCache = join(tmp("auth-"), "token.json"); // not the shared cache of this PC: a token left there by a real sign-in made signedIn true
     ctx.exec = noLogin as never;
     const t0 = Date.now();
     expect(await main(["status", "--json"], ctx)).toBe(0);
@@ -86,6 +87,7 @@ describe("aihub bar", () => {
     sh(dir, ["checkout", "-b", "feature/7-csv"]);
     const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
     ctx.env = { AIHUB_HOME: tmp("aihub-home-"), AIHUB_CONFIG_HOME: tmp("aihub-config-") };
+    ctx.tokenCache = join(tmp("auth-"), "token.json"); // not the shared cache of this PC: a token left there by a real sign-in made signedIn true
     ctx.exec = noLogin as never;
     expect(await main(["bar", "--json"], ctx)).toBe(0);
     const b = JSON.parse(lines.join(""));

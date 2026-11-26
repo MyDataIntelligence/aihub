@@ -2,6 +2,13 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.8.0
+- Pipelines for the bar: `aihub pipeline list` (a red run carries its failed stage, step and tests; "today" over the whole set; red-run facts read once and kept in `~/.aihub/pipeline-red-runs.json`), `pipeline show --run N` (stages, jobs, steps, trigger, parameters, variables without secrets, a summary in plain words), `pipeline log`, `pipeline poll` and `pipeline run-again --run N --plan | --changes-file F`. A retried stage no longer counts its tests twice.
+- A repository is its remote: one rule for which clone wins (preferred, last used, first folder to look in, shortest path), shared with the extension; a clone is found by its remote or a loose folder name; when none is found the failure says so in one sentence.
+- No child process of the CLI inherits `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and the other repository variables (git, dbt, test commands, robot, python, hooks); an explicit `GIT_INDEX_FILE` is kept; `core.bare = true` in a main clone is explained with its repair.
+- Story refine and work item create write into the main text field of the type (Repro Steps when the type has it); a missing team template is asked again after ten minutes, `--refresh-template` asks at once.
+- Every failure message in one plain sentence. Release notes: docs/releases/1.8.0.md.
+
 ## 1.7.0
 - The engine for the story-set buttons in the title bar (AI Context Hub 3.6.0 with PyCharm Git 0.28.0): `aihub recent`, `aihub worktree list --all`, a file-only scan of the PC (clones, sets, where each branch is checked out, branch names per clone; OneDrive and network folders only when listed; says when the scan was cut off) and `aihub story branches` that also finds branches with only the story number in their name.
 - One story is one set: `worktree create` keeps the branch of an existing set and writes no second set file next to an extension set; removing a set removes only that set, from any folder, and never a workspace file outside the set.

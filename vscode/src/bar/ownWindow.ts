@@ -1,4 +1,5 @@
 import { plainPath } from "./paths";
+import { gitEnvironment } from "../../../cli/src/lib/gitEnv";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
@@ -24,7 +25,7 @@ export type GitRaw = (cwd: string, args: string[]) => Promise<{ code: number; ou
  * What every git call of the bar runs with: never a prompt, never a sign-in window (a fetch that needs a login fails and the
  * failure is remembered), and a time limit (a fetch gives up after 30 s, anything else after 60 s).
  */
-export const BACKGROUND_ENV: NodeJS.ProcessEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" };
+export const BACKGROUND_ENV: NodeJS.ProcessEnv = gitEnvironment(process.env, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" });
 const limit = (args: string[]) => (args.includes("fetch") ? 30_000 : 60_000);
 
 export const gitRaw: GitRaw = (cwd, args) =>

@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AdoClient } from "./ado.js";
 import { aihubDir, ensureDir } from "./aihubDir.js";
+import { ACCEPTANCE_FIELD, DEFAULT_LAYOUT, typeLayout, type FieldLayout } from "./fieldLayout.js";
 import { readUtf8, type TeamConfig } from "./team.js";
 
 /** Where a work item template lives in a team repository, in this order (after the path named in team.yaml). */
@@ -65,12 +66,10 @@ const htmlToMarkdown = (html: string): string =>
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-const ACCEPTANCE = "Microsoft.VSTS.Common.AcceptanceCriteria";
-
-/** The template's Description (and acceptance criteria) as markdown with `## ` sections; undefined without headings. */
-export function devopsTemplateText(fields: Record<string, unknown>): string | undefined {
-  const desc = htmlToMarkdown(String(fields["System.Description"] ?? ""));
-  const ac = htmlToMarkdown(String(fields[ACCEPTANCE] ?? ""));
+/** The template's main text field (Description, or ReproSteps for a Bug) and acceptance criteria as markdown with `## ` sections; undefined without headings. */
+export function devopsTemplateText(fields: Record<string, unknown>, layout: FieldLayout = DEFAULT_LAYOUT): string | undefined {
+  const desc = htmlToMarkdown(String(fields[layout.primary] ?? ""));
+  const ac = layout.acceptance === layout.primary ? "" : htmlToMarkdown(String(fields[ACCEPTANCE_FIELD] ?? ""));
   const text = [desc, ac && !/^##\s+acceptance/im.test(desc) ? `## Acceptance criteria\n\n${ac}` : ""].filter(Boolean).join("\n\n");
   return /^##\s+\S/m.test(text) ? `${text}\n` : undefined;
 }
@@ -80,11 +79,12 @@ export function devopsTemplateText(fields: Record<string, unknown>): string | un
  * once per day per type (a failure once per ten minutes); no access or no network is skipped without a message.
  * Several templates: the one whose name contains the type or "story"; otherwise none is chosen and `note` says why.
  */
-export async function devopsTemplate(root: string, client: AdoClient, team: TeamConfig, type: string, now = Date.now()): Promise<{ text?: string; name?: string; note?: string }> {
+export async function devopsTemplate(root: string, client: AdoClient, team: TeamConfig, type: string, now = Date.now(), refresh = false): Promise<{ text?: string; name?: string; note?: string }> {
   const teamName = String((team.azureDevOps as { team?: string } | undefined)?.team ?? `${client.remote.project} Team`);
   const key = `${client.remote.org}/${client.remote.project}/${teamName}/${type}`;
   const hit = readCache(root)[key];
-  if (hit && now - hit.at < (hit.ok ? TTL_OK_MS : TTL_FAILED_MS)) return { text: hit.text, name: hit.name, note: hit.note };
+  // a found template is kept a day; "none found" and failures ten minutes, so a template added in Azure DevOps is seen soon
+  if (!refresh && hit && now - hit.at < (hit.ok && hit.text ? TTL_OK_MS : TTL_FAILED_MS)) return { text: hit.text, name: hit.name, note: hit.note };
   const tc = client.forTeam(teamName);
   let result: Cached;
   try {
@@ -95,8 +95,8 @@ export async function devopsTemplate(root: string, client: AdoClient, team: Team
       result = { at: now, ok: true, note: list.length ? `Azure DevOps has ${list.length} templates for ${type} and none is clearly the one: ${list.map((t) => t.name).join(", ")}` : undefined };
     } else {
       const t = await tc.get<{ fields?: Record<string, unknown> }>(`wit/templates/${encodeURIComponent(pick.id)}`);
-      const text = devopsTemplateText(t.fields ?? {});
-      result = text ? { at: now, ok: true, text, name: pick.name } : { at: now, ok: true, note: `Azure DevOps template "${pick.name}" has no ## headings in its description` };
+      const text = devopsTemplateText(t.fields ?? {}, await typeLayout(root, client, type, now));
+      result = text ? { at: now, ok: true, text, name: pick.name } : { at: now, ok: true, note: `Azure DevOps template "${pick.name}" has no ## headings in its text` };
     }
   } catch {
     result = { at: now, ok: false };
@@ -114,14 +114,17 @@ export interface FindOpts {
   fileName: string;
   builtIn: string;
   now?: number;
+  /** Ask Azure DevOps again instead of using the cached answer (`--refresh-template`). */
+  refresh?: boolean;
 }
 
 /** The fixed order: (a) team.yaml path, (b) repository files, (c) the team's Azure DevOps template, (d) built-in. */
 export async function findWorkItemTemplate(o: FindOpts): Promise<FoundTemplate> {
   const local = localTemplate(o.root, o.configured, o.fileName);
   if (local) return local;
-  const d = o.client ? await devopsTemplate(o.root, o.client, o.team, o.type, o.now) : {};
+  const d = o.client ? await devopsTemplate(o.root, o.client, o.team, o.type, o.now, o.refresh) : {};
   if (d.text) return { text: d.text, source: `Azure DevOps "${d.name}"`, kind: "devops" };
   const why = d.note ?? "no team template found";
-  return { text: o.builtIn, source: `built-in (${why}; add ${TEMPLATE_ASSET_DIRS[0]}/${o.fileName} to use your own)`, kind: "built-in" };
+  const again = o.client && !o.refresh ? "; added one in Azure DevOps? run again with --refresh-template" : "";
+  return { text: o.builtIn, source: `built-in (${why}; add ${TEMPLATE_ASSET_DIRS[0]}/${o.fileName} to use your own${again})`, kind: "built-in" };
 }

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, rmdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { BACKGROUND_ENV, type GitRun } from "./ownWindow";
 
@@ -45,7 +45,18 @@ export function progressOf(line: string): number | undefined {
 /** The sentence to show when git could not sign in from the background. */
 export const SIGN_IN_HINT = "git could not sign in without a window: run 'git clone' of this repository once in a terminal (or sign in with Git Credential Manager), then clone again";
 
-export type CloneOutcome = { ok: true } | { ok: false; cancelled: boolean; error: string };
+/**
+ * Stops a process with everything it started. On Windows `git` is often Git for Windows' starter (cmd\git.exe) that runs the
+ * real git, which runs git-remote-https: killing only the starter lets the clone go on writing into the folder that Cancel
+ * removes. One taskkill, only on Cancel.
+ */
+export function stopTree(pid: number | undefined, fallback: () => void, platform = process.platform): void {
+  if (platform !== "win32" || !pid) return fallback();
+  const k = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+  k.on("error", fallback);
+}
+
+export type CloneOutcome ={ ok: true } | { ok: false; cancelled: boolean; error: string };
 
 /**
  * `git clone --progress <url> <dir>`: reports percentages, stops on `cancel` and then removes the half clone. `dir` must
@@ -60,7 +71,7 @@ export function cloneWithProgress(o: { url: string; dir: string; onProgress?: (p
     let last = -1;
     o.onCancel?.(() => {
       cancelled = true;
-      p.kill();
+      stopTree(p.pid, () => p.kill());
     });
     p.stderr.on("data", (b: Buffer) => {
       const text = b.toString();
@@ -73,16 +84,73 @@ export function cloneWithProgress(o: { url: string; dir: string; onProgress?: (p
     p.on("error", (e) => finish(e.message));
     p.on("close", (code) => finish(code === 0 && !cancelled ? undefined : err));
     let done = false;
-    function finish(error: string | undefined) {
+    async function finish(error: string | undefined) {
       if (done) return;
       done = true;
       if (error === undefined) return resolve({ ok: true });
-      removeFolder(o.dir);
+      // after Cancel the git processes under the starter may still hold a file for a moment
+      await removeFolderPatiently(o.dir, { tries: 20 });
       const line = error.split(/\r?\n/).map((l) => l.trim()).find((l) => /^(fatal|error):/i.test(l)) ?? "";
       const login = /terminal prompts disabled|could not read Username|Authentication failed|credential/i.test(error);
       resolve({ ok: false, cancelled, error: cancelled ? "cancelled" : login ? SIGN_IN_HINT : line.replace(/^fatal:\s*/i, "") || "git clone failed" });
     }
   });
+}
+
+/**
+ * Removes a folder and tries again for up to a minute while a file in it is still in use (a git process that is ending, the
+ * git extension or a watcher of VS Code that lets go of the worktree that just left the workspace). `gone` says whether the
+ * folder is gone, `ms` how long it took, `why` the last error of a removal that did not succeed.
+ */
+export async function removeFolderPatiently(dir: string, o: { tries?: number; waitMs?: number; remove?: (dir: string) => void; exists?: (dir: string) => boolean } = {}): Promise<{ gone: boolean; ms: number; why?: string }> {
+  const tries = o.tries ?? 120;
+  const exists = o.exists ?? existsSync;
+  const t0 = Date.now();
+  let why: string | undefined;
+  for (let i = 0; i < tries; i++) {
+    try {
+      (o.remove ?? removeFolderOrThrow)(dir);
+    } catch (e) {
+      why = (e as Error).message;
+    }
+    if (!exists(dir)) return { gone: true, ms: Date.now() - t0, why };
+    await new Promise((r) => setTimeout(r, o.waitMs ?? 500));
+  }
+  return { gone: !exists(dir), ms: Date.now() - t0, why };
+}
+
+function removeFolderOrThrow(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+  } catch {
+    // the removal of the whole tree refused (a read-only file such as a git object or pack, or a file in use): one entry at a time, read-only
+    // cleared, so what cannot go is named and everything else is gone
+    removeTree(dir, dir);
+  }
+}
+
+function removeTree(root: string, dir: string): void {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) removeTree(root, p);
+    else {
+      try {
+        unlinkSync(p);
+      } catch {
+        try {
+          chmodSync(p, 0o666);
+          unlinkSync(p);
+        } catch (err) {
+          throw new Error(`${(err as NodeJS.ErrnoException).code ?? "error"} on ${p.slice(root.length + 1)}`);
+        }
+      }
+    }
+  }
+  try {
+    rmdirSync(dir);
+  } catch (err) {
+    throw new Error(`${(err as NodeJS.ErrnoException).code ?? "error"} on ${dir === root ? "the folder itself" : dir.slice(root.length + 1)}`);
+  }
 }
 
 /** Removes a folder git made (read-only pack files included); quiet when it is gone already. */
@@ -95,17 +163,16 @@ export function removeFolder(dir: string): void {
 }
 
 /**
- * Nothing was changed or made in a fresh clone: no changed, new or ignored file, one local branch, and it is where origin's
- * branch of that name is. Only then may Undo remove it.
+ * Nothing was changed or made in a fresh clone: no changed, new or ignored file, no commit that is on no remote, and no local
+ * branch but the one the clone checked out (and `ours`, the story branch Clone and Add made). Only then may Undo remove it.
  */
-export async function untouched(git: GitRun, dir: string): Promise<{ ok: boolean; why?: string }> {
+export async function untouched(git: GitRun, dir: string, o: { ours?: string } = {}): Promise<{ ok: boolean; why?: string }> {
   const status = (await git(dir, ["status", "--porcelain", "--ignored", "--untracked-files=all"])).trim();
   if (status) return { ok: false, why: "files in it were changed or added" };
-  const heads = (await git(dir, ["for-each-ref", "--format=%(refname:short) %(objectname)", "refs/heads"])).trim().split(/\r?\n/).filter(Boolean);
-  if (heads.length !== 1) return { ok: false, why: "a branch was made in it" };
-  const [name, sha] = heads[0].split(" ");
-  const remote = (await git(dir, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${name}`]).catch(() => "")).trim();
-  if (remote !== sha) return { ok: false, why: "a commit was made in it" };
+  const unpushed = Number((await git(dir, ["rev-list", "--count", "--branches", "--not", "--remotes"])).trim()) || 0;
+  if (unpushed) return { ok: false, why: "a commit was made in it" };
+  const heads = (await git(dir, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])).trim().split(/\r?\n/).filter(Boolean);
+  if (heads.filter((h) => h !== o.ours).length > 1) return { ok: false, why: "a branch was made in it" };
   const worktrees = (await git(dir, ["worktree", "list", "--porcelain"])).split(/\r?\n/).filter((l) => l.startsWith("worktree ")).length;
   if (worktrees > 1) return { ok: false, why: "a worktree of it is still in use" };
   return { ok: true };

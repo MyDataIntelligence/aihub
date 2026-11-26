@@ -42,6 +42,8 @@ export interface BarRepo {
   name: string;
   path: string;
   branch: string;
+  /** the source clone this worktree belongs to is gone (moved or deleted): the worktree cannot be used by git until it is found again. Choose with aihub.bar.locateClone, aihub.bar.useAnotherClone or aihub.bar.removeRepository */
+  sourceMissing?: true;
   /** the branch is linked to the story in Azure DevOps (a set only; absent when not known) */
   linked?: boolean;
   /** changed files; absent when not known */
@@ -98,8 +100,10 @@ export interface BarRepository {
   name: string;
   path: string;
   branch: string;
-  /** other clones of the same remote (one line per remote in the menu) */
+  /** other clones of the same remote (one line per remote in the menu: "· 2 other clones") */
   otherClones?: number;
+  /** every clone of the repository on this PC when there is more than one (the one in use is `chosen`); the name is the repository's (its remote), the path the clone. Choose with aihub.bar.useClone, take out of the list with aihub.bar.removeClone */
+  clones?: { path: string; branch: string; chosen: boolean }[];
 }
 
 /**
@@ -218,6 +222,14 @@ export const BAR_COMMANDS = {
   measureSets: "aihub.bar.measureSets",
   /** looks at the uncommitted work of the other sets that can be removed (at most 8 worktrees, git status each, remembered 5 minutes); the clean-up dialog calls it when it opens, the state gets clean and allMerged as they come in */
   checkClean: "aihub.bar.checkClean",
+  /** `{ name, path }`: use this clone of the repository from now on (the same preference as `aihub repos prefer`); the list and every action follow */
+  useClone: "aihub.bar.useClone",
+  /** `{ path }` (the worktree whose source clone is missing): pick the folder of the clone; accepted only when its remote is the repository's; the worktree is repaired and the set file points at it */
+  locateClone: "aihub.bar.locateClone",
+  /** `{ path }`: the same with another clone of the repository that is on this PC (the pick lists them) */
+  useAnotherClone: "aihub.bar.useAnotherClone",
+  /** `{ path }`: take this clone out of the list ("Remove from List"); the folder stays where it is */
+  removeClone: "aihub.bar.removeClone",
   /** puts the set back as it was before the last action (branches, folders, set file, workspace file), or says in one sentence why not and does nothing */
   undoLast: "aihub.bar.undoLast",
   /** pull (fast-forward) in every repository of the set; one result line per repository */
@@ -242,4 +254,64 @@ export const BAR_COMMANDS = {
   showComment: "aihub.bar.showComment",
   /** read the review threads of the pull requests again now (one aihub process for all of them) */
   refreshComments: "aihub.bar.refreshComments",
+  // ---- pipelines in the bar (one aihub process each, JSON as in docs/cli-json.md "Pipelines in the bar"; a failure is
+  // `{ error: { kind: "signedOut"|"cliMissing"|"cliTooOld"|"notARepository"|"failed", message } }`, never a popup; the
+  // lasting kinds are remembered 5 minutes per folder; the bar does the timing, nothing polls by itself) ----
+  /**
+   * `{ repoDirs?, mine? (default true), today?, status?, branch?, top?, rowsRepoDir? }` -> `aihub pipeline list` (default repoDirs: the
+   * repositories of this window). `today` counts all runs read of all repoDirs, whatever branch/status/rowsRepoDir say; a red row
+   * carries failedStage, failedStep and tests. The menu of one repository: `{ branch, top: 3, rowsRepoDir: <its path> }`.
+   */
+  pipelineRuns: "aihub.bar.pipelineRuns",
+  /** `{ run, repoDir? }` -> `aihub pipeline show`: tree, trigger, parameters, variables, summary */
+  pipelineRun: "aihub.bar.pipelineRun",
+  /** `{ run, repoDir?, step?, tail?, fromLine? }` -> `aihub pipeline log` (default step: the failed one) */
+  pipelineLog: "aihub.bar.pipelineLog",
+  /** `{ run, repoDir? }` -> `aihub pipeline poll`: the cheap read for the bar's 15 s timer while a run of mine runs */
+  pipelineStatus: "aihub.bar.pipelineStatus",
+  /** `{ run, repoDir? }` -> `aihub pipeline run-again --plan`: the rerun dialog (types, values, settable variables, skippable stages, newer commit) */
+  pipelineRerunPlan: "aihub.bar.pipelineRerunPlan",
+  /** `{ run, repoDir?, commit?: "same"|"latest", parameters?, variables?, skipStages? }` (only what changed; a secret only when typed) -> the new run */
+  pipelineRerun: "aihub.bar.pipelineRerun",
+  /** `{ run, repoDir?, stage? }` -> `aihub pipeline retry`: the failed stages of the same run again ("Rerun Failed Jobs") */
+  pipelineRerunFailed: "aihub.bar.pipelineRerunFailed",
+  /** `{ run, repoDir? }` -> `aihub pipeline cancel`: `{ run, cancelled }` (false: already finished) */
+  pipelineCancel: "aihub.bar.pipelineCancel",
+  /** `{ run, pipeline?, branch? }`: puts the pipeline-fix text in the chat (the user presses Enter) */
+  pipelineFix: "aihub.bar.pipelineFix",
+  /** forget the remembered failures (after az login or a CLI update) */
+  pipelineRetryNow: "aihub.bar.pipelineRetryNow",
+  // ---- repository browser (one aihub process each, JSON as in docs/cli-json.md "Repository browser"; a failure is
+  // `{ error: { kind, message } }`, kind signedOut|noAccess|notFound|searchUnavailable|protectedBranch|branchExists|offline|badInput|
+  // failed|cliMissing|cliTooOld, never a popup; the lasting kinds are remembered 5 minutes; nothing polls) ----
+  /** `{ org?, refresh? }` -> `aihub browse projects`: every project and repository you can read, with the clone on this PC */
+  browseProjects: "aihub.bar.browseProjects",
+  /** `{ project, days?, org?, refresh? }` -> `aihub browse project`: repositories with language and last activity, recent files, active authors */
+  browseProject: "aihub.bar.browseProject",
+  /** `{ project, repo, ref?, org?, refresh? }` -> `aihub browse repo`: README, root with last commits, branches, open PRs, commits, pipelines; `errors[]` per failed part */
+  browseRepo: "aihub.bar.browseRepo",
+  /** `{ project, repo, path?, ref?, lastCommit? }` -> `aihub browse items`: one folder level; `ref.commit` is the stable key */
+  browseItems: "aihub.bar.browseItems",
+  /** `{ project, repo, path, ref?, maxBytes? }` -> `aihub browse file`: content (null when binary or too large), objectId, lastCommit, webUrl */
+  browseFile: "aihub.bar.browseFile",
+  /** `{ project, repo, filter?, top? }` -> `aihub browse branches`: default, mine, the rest; tags */
+  browseBranches: "aihub.bar.browseBranches",
+  /** `{ project, repo, path?, ref?, top?, skip? }` -> `aihub browse history`: commits newest first, `more` */
+  browseHistory: "aihub.bar.browseHistory",
+  /** `{ project, repo, commit, path }` -> `aihub browse diff`: before, after and hunks of one file in one commit */
+  browseDiff: "aihub.bar.browseDiff",
+  /** `{ project, repo, path, ref? }` -> `aihub browse blame`: per line its commit (only for a clone on this PC; otherwise `available: false`) */
+  browseBlame: "aihub.bar.browseBlame",
+  /** `{ query, top?, repos? }` -> `aihub browse find` (Ctrl+P): file names over all repositories, `route` codeSearch or treeCache */
+  browseFind: "aihub.bar.browseFind",
+  /** `{ text, project?, repo?, path?, ext?, top? }` -> `aihub browse search`: matching lines per file; `searchUnavailable` without Code Search */
+  browseSearch: "aihub.bar.browseSearch",
+  /** `{ story?, path, title? }` -> `aihub browse suggest-branch`: `{ branch }` (no network) */
+  browseSuggestBranch: "aihub.bar.browseSuggestBranch",
+  /** `{ project, repo, path, baseCommit, baseBranch, content, branch, message, pr?, target?, story?, prTitle?, draft?, rebase? }` -> `aihub browse push`: `status: pushed` or `status: conflict` (rebase: true = Rebase my change); protectedBranch and branchExists are errors */
+  browsePush: "aihub.bar.browsePush",
+  /** forget the remembered failures (after az login or a CLI update) */
+  /** `{ project, repo, branch, target?, story?, prTitle?, draft? }` -> `aihub browse pr`: Create Pull Request after a push; `{ pr: { id, title, webUrl }, existing }` (an active PR of the branch is returned, not a second one) */
+  browseCreatePr: "aihub.bar.browseCreatePr",
+  browseRetryNow: "aihub.bar.browseRetryNow",
 } as const;

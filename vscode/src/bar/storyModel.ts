@@ -91,7 +91,8 @@ export function openStoryArgs(story: StoryRef, ticked: StoryRepoRow[], from?: st
   const fresh = storyBranchSuggestion(story);
   const setBranch = (ticked.find((r) => r.branch && r.linked !== false) ?? ticked.find((r) => r.branch))?.branch ?? fresh;
   const pairs = ticked.map((r) => `${r.repo}=${r.branch ?? fresh}`);
-  return ["worktree", "open", "--repos", ticked.map((r) => r.repo).join(","), "--branch", setBranch, "--branch-for", pairs.join(","), "--story", String(story.id), ...(from ? ["--from", from] : []), "--window", "none"];
+  // the clone the user sees is the clone that is used: its folder goes in, its repository name (the remote's) names the entry
+  return ["worktree", "open", "--repos", ticked.map((r) => r.path).join(","), "--branch", setBranch, "--branch-for", pairs.join(","), "--story", String(story.id), ...(from ? ["--from", from] : []), "--window", "none"];
 }
 
 /** feature/<id>-<slug>-<n>: the first number (2, 3, ...) that no branch of the story has yet. */

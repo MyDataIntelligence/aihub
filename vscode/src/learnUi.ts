@@ -2,6 +2,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { readJson, type Runner } from "./cli";
 import { lessonLabel, lessonPage, tourSteps, type Lesson, type LessonMeta } from "./learnModel";
+import { showFailure } from "./bar/failureUi";
 
 /** Only links of the iDiagram app open outside VS Code. */
 export const isIDiagramLink = (u: string) => {
@@ -87,7 +88,7 @@ export class LearnController implements vscode.TreeDataProvider<Node>, vscode.Di
     try {
       return await readJson<Lesson>(this.getRunner(), ["learn", "show", "--id", id], cwd);
     } catch (e) {
-      void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+      void showFailure(e);
       return undefined;
     }
   }

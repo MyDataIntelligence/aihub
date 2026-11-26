@@ -1,10 +1,10 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { refsFromFiles, walk } from "../../cli/src/lib/machineScan";
-import { cloneParent, cloneWithProgress, folderName, progressOf, untouched } from "../src/bar/cloneRepo";
+import { cloneParent, cloneWithProgress, folderName, progressOf, removeFolderPatiently, stopTree, untouched } from "../src/bar/cloneRepo";
 import { gitRun } from "../src/bar/ownWindow";
 import { isSignInError, notOnThisPc, REMOTE_FAILURE_MS, REMOTE_TTL_MS, RemoteRepos } from "../src/bar/remoteRepos";
 import { checkoutsOf } from "../src/bar/state";
@@ -176,6 +176,10 @@ describe("cloning from the search", () => {
     const res = await cloneWithProgress({ url: origin(), dir });
     expect(res.ok).toBe(true);
     expect(await untouched(gitRun, dir)).toEqual({ ok: true });
+    // Clone and Add makes the story branch: Undo may still remove the clone, another branch keeps it
+    git(dir, "branch", "feature/4698-klantnummer");
+    expect(await untouched(gitRun, dir)).toEqual({ ok: false, why: "a branch was made in it" });
+    expect(await untouched(gitRun, dir, { ours: "feature/4698-klantnummer" })).toEqual({ ok: true });
     writeFileSync(join(dir, "new.txt"), "x");
     expect((await untouched(gitRun, dir)).ok).toBe(false);
     git(dir, "add", ".");
@@ -188,5 +192,59 @@ describe("cloning from the search", () => {
     const res = await cloneWithProgress({ url: origin(), dir, onCancel: (stop) => stop() });
     expect(res).toMatchObject({ ok: false, cancelled: true });
     expect(existsSync(dir)).toBe(false);
+  });
+
+  // Git for Windows' cmd\git.exe is a starter: Cancel must stop the real git it started too, or the clone goes on writing
+  it.skipIf(process.platform !== "win32")("Cancel stops what the started git started (the whole process tree)", async () => {
+    const pidFile = join(tmp(), "child.pid");
+    const childJs = "setInterval(() => {}, 1000)";
+    const parentJs = `const c = require("child_process").spawn(process.execPath, ["-e", ${JSON.stringify(childJs)}], { stdio: "ignore" }); require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(c.pid)); setInterval(() => {}, 1000);`;
+    const parent = spawn(process.execPath, ["-e", parentJs], { stdio: "ignore" });
+    const alive = (pid: number) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    for (let i = 0; i < 100 && !existsSync(pidFile); i++) await new Promise((r) => setTimeout(r, 50));
+    const child = Number(readFileSync(pidFile, "utf8"));
+    expect(alive(child)).toBe(true);
+    stopTree(parent.pid, () => parent.kill());
+    for (let i = 0; i < 100 && (alive(child) || alive(parent.pid!)); i++) await new Promise((r) => setTimeout(r, 50));
+    expect(alive(child)).toBe(false);
+    expect(alive(parent.pid!)).toBe(false);
+  });
+});
+
+describe("removing a clone while a file in it is still in use (Undo, Cancel)", () => {
+  it("tries again until the folder is gone, and says so", async () => {
+    let calls = 0;
+    const r = await removeFolderPatiently("x", { waitMs: 1, remove: () => {
+      calls++;
+      if (calls < 3) throw new Error("EBUSY: resource busy or locked");
+    }, exists: () => calls < 3 });
+    expect(r.gone).toBe(true);
+    expect(r.why).toMatch(/EBUSY/);
+    expect(calls).toBe(3);
+  });
+
+  it("removes a folder with a read-only file in it (a git object or pack)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "aihub-ro-"));
+    mkdirSync(join(dir, ".git", "objects", "ab"), { recursive: true });
+    const f = join(dir, ".git", "objects", "ab", "cdef");
+    writeFileSync(f, "x");
+    chmodSync(f, 0o444);
+    const r = await removeFolderPatiently(dir, { tries: 2, waitMs: 1 });
+    expect(r.gone).toBe(true);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it("gives up after its tries and says the folder is still there", async () => {
+    let calls = 0;
+    const r = await removeFolderPatiently("x", { tries: 4, waitMs: 1, remove: () => void calls++, exists: () => true });
+    expect(r.gone).toBe(false);
+    expect(calls).toBe(4);
   });
 });

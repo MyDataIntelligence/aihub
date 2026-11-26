@@ -1,10 +1,10 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import type { AdoClient } from "./ado.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { compose, DEFAULT_EMPTY, headingsMatch, normHeading, parseSections, renderSections, type Section } from "./templates.js";
+import { DEFAULT_LAYOUT, typeLayout, type FieldLayout } from "./fieldLayout.js";
 import { loadTeam, readUtf8, type TeamConfig } from "./team.js";
+import { findTypeTemplate, knownType } from "./workItemType.js";
 import { findWorkItemTemplate, localTemplate, type FoundTemplate } from "./workItemTemplate.js";
 
 export const DEFAULT_STORY_TEMPLATE = `## Description
@@ -20,16 +20,10 @@ As a <role>, I want <goal>, so that <benefit>.
 <what this story deliberately does not do>
 `;
 
-const DESCRIPTION = "System.Description";
-const DEFAULT_MAP: Record<string, string> = {
-  description: DESCRIPTION,
-  acceptancecriteria: "Microsoft.VSTS.Common.AcceptanceCriteria",
-};
-
-/** heading -> field. Unmapped headings live inside the Description field under their own `##` heading. */
-export function fieldFor(team: TeamConfig, heading: string): string {
+/** heading -> field. team.yaml `sectionFields` first; unmapped headings live inside the type's main text field (Description, or ReproSteps for a Bug) under their own `##` heading. */
+export function fieldFor(team: TeamConfig, heading: string, layout: FieldLayout = DEFAULT_LAYOUT): string {
   for (const [h, f] of Object.entries(team.workItems?.sectionFields ?? {})) if (headingsMatch(h, heading)) return f;
-  return DEFAULT_MAP[normHeading(heading)] ?? DESCRIPTION;
+  return normHeading(heading) === "acceptancecriteria" ? layout.acceptance : layout.primary;
 }
 
 export function isPrimaryDescription(heading: string) {
@@ -96,30 +90,30 @@ export function htmlToMd(html: string): string {
 
 // ---- sections <-> fields --------------------------------------------------
 
-export function sectionsToFields(team: TeamConfig, sections: Section[]): Record<string, string> {
+export function sectionsToFields(team: TeamConfig, sections: Section[], layout: FieldLayout = DEFAULT_LAYOUT): Record<string, string> {
   const out: Record<string, string> = {};
   let desc = "";
   for (const s of sections) {
-    const f = fieldFor(team, s.heading);
-    if (f !== DESCRIPTION) {
+    const f = fieldFor(team, s.heading, layout);
+    if (f !== layout.primary) {
       out[f] = mdToHtml(s.body);
       continue;
     }
     desc += isPrimaryDescription(s.heading) ? `${s.body}\n\n` : `## ${s.heading}\n\n${s.body}\n\n`;
   }
-  if (desc.trim() || sections.some((s) => fieldFor(team, s.heading) === DESCRIPTION)) out[DESCRIPTION] = mdToHtml(desc.trim());
+  if (desc.trim() || sections.some((s) => fieldFor(team, s.heading, layout) === layout.primary)) out[layout.primary] = mdToHtml(desc.trim());
   return out;
 }
 
-export function fieldsToSections(team: TeamConfig, fields: Record<string, any>, templateHeadings: string[]): Section[] {
-  const descMd = htmlToMd(String(fields[DESCRIPTION] ?? ""));
+export function fieldsToSections(team: TeamConfig, fields: Record<string, any>, templateHeadings: string[], layout: FieldLayout = DEFAULT_LAYOUT): Section[] {
+  const descMd = htmlToMd(String(fields[layout.primary] ?? ""));
   const parsed = parseSections(descMd);
   const sections: Section[] = [];
   const used = new Set<string>();
   const pushed = (h: string) => sections.some((s) => normHeading(s.heading) === normHeading(h));
   const take = (heading: string): string => {
-    const f = fieldFor(team, heading);
-    if (f !== DESCRIPTION) return htmlToMd(String(fields[f] ?? ""));
+    const f = fieldFor(team, heading, layout);
+    if (f !== layout.primary) return htmlToMd(String(fields[f] ?? ""));
     if (isPrimaryDescription(heading)) return parsed.preamble;
     const hit = parsed.sections.find((s) => headingsMatch(s.heading, heading));
     if (hit) used.add(hit.heading);
@@ -130,10 +124,10 @@ export function fieldsToSections(team: TeamConfig, fields: Record<string, any>, 
   return sections;
 }
 
-/** Description text before the first `##` heading when no template heading holds it (a story written by hand). */
-export function currentText(team: TeamConfig, fields: Record<string, any>, templateHeadings: string[]): string {
-  if (templateHeadings.some((h) => isPrimaryDescription(h) && fieldFor(team, h) === DESCRIPTION)) return "";
-  return parseSections(htmlToMd(String(fields[DESCRIPTION] ?? ""))).preamble.trim();
+/** Main-field text before the first `##` heading when no template heading holds it (a story written by hand). */
+export function currentText(team: TeamConfig, fields: Record<string, any>, templateHeadings: string[], layout: FieldLayout = DEFAULT_LAYOUT): string {
+  if (templateHeadings.some((h) => isPrimaryDescription(h) && fieldFor(team, h, layout) === layout.primary)) return "";
+  return parseSections(htmlToMd(String(fields[layout.primary] ?? ""))).preamble.trim();
 }
 
 const STORY_TEMPLATE_FILE = "story-template.md";
@@ -145,8 +139,8 @@ export function loadStoryTemplate(root: string, team: TeamConfig): string {
 }
 
 /** The story template in the fixed order, with its source: team.yaml path, repository files, the team's Azure DevOps template, built-in. */
-export function findStoryTemplate(root: string, client: AdoClient | undefined, team: TeamConfig): Promise<FoundTemplate> {
-  return findWorkItemTemplate({ root, client, team, type: storyTypeOf(team), configured: team.workItems?.storyTemplate, fileName: STORY_TEMPLATE_FILE, builtIn: DEFAULT_STORY_TEMPLATE });
+export function findStoryTemplate(root: string, client: AdoClient | undefined, team: TeamConfig, refresh = false): Promise<FoundTemplate> {
+  return findWorkItemTemplate({ root, client, team, refresh, type: storyTypeOf(team), configured: team.workItems?.storyTemplate, fileName: STORY_TEMPLATE_FILE, builtIn: DEFAULT_STORY_TEMPLATE });
 }
 
 const emptyOf = (team: TeamConfig) => team.workItems?.emptySection || team.pullRequest?.emptySection || DEFAULT_EMPTY;
@@ -188,29 +182,40 @@ function templateHeadings(tpl: string): string[] {
   return parseSections(tpl).sections.map((s) => s.heading);
 }
 
-export async function storyShow(ctx: Ctx, o: { id: number; json?: boolean }): Promise<string> {
+/** The template and the field layout of a work item by its type: Bug/Task use their own template, everything else the story template. */
+async function forType(root: string, client: AdoClient, team: TeamConfig, type: string, refresh = false): Promise<{ found: FoundTemplate; layout: FieldLayout }> {
+  const own = type && type.toLowerCase() !== storyTypeOf(team).toLowerCase() ? knownType(team, type) : undefined;
+  const found = own ? await findTypeTemplate(root, client, team, own, refresh) : await findStoryTemplate(root, client, team, refresh);
+  return { found, layout: await typeLayout(root, client, type || storyTypeOf(team)) };
+}
+
+/** "Story" for the story type, otherwise the type itself ("Bug 123 refined"). */
+const labelOf = (team: TeamConfig, type: string) => (!type || type.toLowerCase() === storyTypeOf(team).toLowerCase() ? "Story" : type);
+
+export async function storyShow(ctx: Ctx, o: { id: number; json?: boolean; refreshTemplate?: boolean }): Promise<string> {
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
   const s = await getStory(client, o.id);
-  const heads = templateHeadings((await findStoryTemplate(root, client, team)).text);
-  const sections = fieldsToSections(team, s.fields, heads);
-  const current = currentText(team, s.fields, heads);
+  const { found, layout } = await forType(root, client, team, s.type, o.refreshTemplate);
+  const heads = templateHeadings(found.text);
+  const sections = fieldsToSections(team, s.fields, heads, layout);
+  const current = currentText(team, s.fields, heads, layout);
   if (o.json) return JSON.stringify({ id: s.id, type: s.type, state: s.state, title: s.title, parent: s.parent, url: s.url, sections, ...(current ? { currentText: current } : {}) });
-  const head = `Story ${s.id} [${s.type}, ${s.state}] ${s.title}\n${s.url}${s.parent ? `\nparent: ${s.parent}` : ""}`;
+  const head = `${labelOf(team, s.type)} ${s.id} [${s.type}, ${s.state}] ${s.title}\n${s.url}${s.parent ? `\nparent: ${s.parent}` : ""}`;
   // text outside the template headings would hide behind "(empty)" sections, yet it holds the only facts there are
   const text = current ? `\n\nCurrent text (not in template form; use it as the facts for the sections):\n${current}` : "";
   return `${head}${text}\n\n${renderSections(sections.map((x) => ({ heading: x.heading, body: x.body || "(empty)" })))}`.trimEnd();
 }
 
-export async function storyCreate(ctx: Ctx, o: { title?: string; bodyFile?: string; parent?: number; type?: string; json?: boolean }): Promise<string> {
+export async function storyCreate(ctx: Ctx, o: { title?: string; bodyFile?: string; parent?: number; type?: string; json?: boolean; refreshTemplate?: boolean }): Promise<string> {
   if (!o.title) throw new AihubError("aihub story create needs --title");
   if (!o.bodyFile) throw new AihubError("aihub story create needs --body-file <file.md>");
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
-  const found = await findStoryTemplate(root, client, team);
+  const found = await findStoryTemplate(root, client, team, o.refreshTemplate);
   const composed = compose({ template: found.text, body: readUtf8(o.bodyFile), code: {}, emptyText: emptyOf(team) });
-  const fields = sectionsToFields(team, parseSections(composed.text).sections);
   const type = o.type ?? storyTypeOf(team);
+  const fields = sectionsToFields(team, parseSections(composed.text).sections, await typeLayout(root, client, type));
   const wi = team.workItems ?? {};
   const ops: unknown[] = [{ op: "add", path: "/fields/System.Title", value: o.title }];
   for (const [f, v] of Object.entries(fields)) ops.push({ op: "add", path: `/fields/${f}`, value: v });
@@ -233,26 +238,30 @@ export async function storyCreate(ctx: Ctx, o: { title?: string; bodyFile?: stri
     : `Story ${created.id} created: ${url}${empties.length ? ` (${emptyOf(team)}: ${empties.join(", ")})` : ""}; template: ${found.source}`;
 }
 
-export async function storyRefine(ctx: Ctx, o: { id: number; bodyFile?: string; json?: boolean }): Promise<string> {
+export async function storyRefine(ctx: Ctx, o: { id: number; bodyFile?: string; json?: boolean; refreshTemplate?: boolean }): Promise<string> {
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
   const empty = emptyOf(team);
-  const found = await findStoryTemplate(root, client, team);
-  const heads = templateHeadings(found.text);
   const s = await getStory(client, o.id);
-  const current = fieldsToSections(team, s.fields, heads);
+  const { found, layout } = await forType(root, client, team, s.type, o.refreshTemplate);
+  const label = labelOf(team, s.type);
+  const heads = templateHeadings(found.text);
+  const current = fieldsToSections(team, s.fields, heads, layout);
 
   if (!o.bodyFile) {
     const gaps = current.filter((x) => isGap(x.body, empty)).map((x) => x.heading);
-    if (o.json) return JSON.stringify({ id: s.id, title: s.title, gaps, template: found.source });
+    if (o.json) return JSON.stringify({ id: s.id, type: s.type, title: s.title, gaps, template: found.source });
     return gaps.length
-      ? `Story ${s.id} '${s.title}': ${gaps.length} gap(s): ${gaps.join(", ")}; template: ${found.source}\n(no changes written; pass --body-file with the missing sections to update)`
-      : `Story ${s.id} '${s.title}': no gaps; all template sections are filled; template: ${found.source}`;
+      ? `${label} ${s.id} '${s.title}': ${gaps.length} gap(s): ${gaps.join(", ")}; template: ${found.source}\n(no changes written; pass --body-file with the missing sections to update)`
+      : `${label} ${s.id} '${s.title}': no gaps; all template sections are filled; template: ${found.source}`;
   }
 
   const patch = parseSections(readUtf8(o.bodyFile));
   if (!patch.sections.length) throw new AihubError("the body file has no '## ' sections; write one section per template heading");
   const merged = current.map((x) => ({ ...x }));
+  // text written outside the template headings (a hand-written Description or Repro steps) is kept as the opening text, never overwritten
+  const kept = currentText(team, s.fields, heads, layout);
+  if (kept && fieldFor(team, "Description", layout) === layout.primary) merged.unshift({ heading: "Description", body: kept });
   const changed: string[] = [];
   for (const p of patch.sections) {
     const hit = merged.find((m) => headingsMatch(m.heading, p.heading));
@@ -260,11 +269,11 @@ export async function storyRefine(ctx: Ctx, o: { id: number; bodyFile?: string; 
     else merged.push({ heading: p.heading, body: p.body });
     changed.push(hit?.heading ?? p.heading);
   }
-  const fields = sectionsToFields(team, merged.map((m) => ({ heading: m.heading, body: m.body.trim() ? m.body : empty })));
+  const fields = sectionsToFields(team, merged.map((m) => ({ heading: m.heading, body: m.body.trim() ? m.body : empty })), layout);
   const ops: unknown[] = Object.entries(fields)
     .filter(([f, v]) => v !== (s.fields[f] ?? "") && v !== "")
     .map(([f, v]) => ({ op: "add", path: `/fields/${f}`, value: v }));
   ops.push({ op: "add", path: "/fields/System.History", value: `Refined with aihub: ${changed.join(", ")}` });
   await client.jsonPatch("PATCH", `wit/workitems/${o.id}`, ops);
-  return o.json ? JSON.stringify({ id: o.id, url: s.url, changed, template: found.source }) : `Story ${o.id} refined: ${s.url} (${changed.join(", ")}); template: ${found.source}`;
+  return o.json ? JSON.stringify({ id: o.id, type: s.type, url: s.url, changed, template: found.source }) : `${label} ${o.id} refined: ${s.url} (${changed.join(", ")}); template: ${found.source}`;
 }

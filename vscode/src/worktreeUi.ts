@@ -9,6 +9,7 @@ import { createGit } from "./worktrees/git";
 import { timed } from "./perf/probe";
 import { cleanUpCandidate, createSet, createStatusCache, lossSummary, mergedWorktrees, pushSet, removeSet, setStatuses, syncSet, type RepoStep } from "./worktrees/service";
 import { defaultSetsRoot, listSetsIn, readSet, removeRepoFromSet, setWorkspaceFile, type SetRepo, type WorktreeSet } from "./worktrees/sets";
+import { showFailure } from "./bar/failureUi";
 
 /**
  * Worktree sets in the Explorer: one branch, one folder, one workspace file, several repositories. The logic is the
@@ -124,7 +125,7 @@ export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (lin
         try {
           await fn(...a);
         } catch (e) {
-          void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+          void showFailure(e);
         }
       }),
     );
@@ -256,7 +257,7 @@ export function registerWorktreeCommands(ctx: vscode.ExtensionContext, log: (lin
     if (!yes) return;
     const r = await removeRepoFromSet(git, n.set, n.repo.name, loss.length > 0);
     provider.refresh();
-    void (r.ok ? vscode.window.showInformationMessage(r.message) : vscode.window.showWarningMessage(r.message));
+    void (r.ok ? vscode.window.showInformationMessage(r.message) : showFailure(r.message, "", "warning"));
   });
 
   reg("aihub.worktrees.cleanup", async () => {

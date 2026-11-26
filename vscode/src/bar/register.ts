@@ -11,8 +11,14 @@ import { BACKGROUND_ENV, gitRun } from "./ownWindow";
 import { cli, jsonOf } from "./runner";
 import { RemoteRepos } from "./remoteRepos";
 import { registerSearchCommands } from "./searchUi";
+import { registerPipelineCommands } from "./pipelinesUi";
+import { registerBrowseCommands } from "./browseUi";
 import { SizeMemo } from "./setSize";
+import { showFailure } from "./failureUi";
+import { withCloneRecovery } from "./missingCloneUi";
+import { hideClone, setPreferredClone } from "./hiddenClones";
 import { BehindMemo, gitStatusOf, targetOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
+import { registerCloneCommands } from "./cloneUi";
 import { linkedOf, registerStoryCommands } from "./storyUi";
 import { registerSetOps, SetFileWatcher } from "./setOps";
 import { registerBatchCommands, registerPullRequestCommand } from "./batchUi";
@@ -165,7 +171,8 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   // the Azure DevOps list for the search: read only when the search asks, once a day, never without focus
   const remote = new RemoteRepos({
     env: process.env,
-    focused: () => vscode.window.state.focused,
+    // a minimised test window never has the focus; aiContextHub.searchWithoutFocus lets it read (test windows only)
+    focused: () => vscode.window.state.focused || vscode.workspace.getConfiguration("aiContextHub").get<boolean>("searchWithoutFocus", false) === true,
     changed: () => changed(),
     read: async ({ refresh }) => {
       // the CLI needs one clone of Azure DevOps to know the organisation; its sign-in is the one the CLI already has
@@ -423,9 +430,14 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
       });
       return;
     }
-    void vscode.window.showErrorMessage(`AI Context Hub: ${(e as Error).message}`);
+    showFailure(e);
   };
-  const reg = (id: string, f: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, (...a) => Promise.resolve(f(...a)).catch(fail)));
+  const reg = (id: string, f: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, (...a) => withCloneRecovery(async () => f(...a)).catch(fail)));
+
+  // pipelines in the bar: one aihub process per call, only when the bar asks
+  registerPipelineCommands(reg, (t) => deps.toChat?.(t));
+  // the repository browser: one aihub process per call, only when the browser asks
+  registerBrowseCommands(reg);
 
   // the overview menu opens: read the pull requests again (at most once per call, a failed call is remembered like a good one)
   reg(BAR_COMMANDS.refreshStatus, async () => {
@@ -447,6 +459,19 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
 
   // the left menu opens: measure the sets in the background, the state gets the sizes as they come in
   reg(BAR_COMMANDS.measureSets, (arg?: { force?: boolean }) => void engine.measureSets(changed, { force: arg?.force === true }).catch(() => undefined));
+  // which clone of a repository is used, and which are taken out of the list (personal, files in the aihub config home)
+  reg(BAR_COMMANDS.useClone, (arg?: { name?: string; path?: string }) => {
+    if (!arg?.path || !arg.name) return;
+    setPreferredClone(process.env, arg.name, arg.path);
+    forgetScan(process.env);
+    changed();
+  });
+  reg(BAR_COMMANDS.removeClone, (arg?: { path?: string }) => {
+    if (!arg?.path) return;
+    hideClone(process.env, arg.path);
+    forgetScan(process.env);
+    changed();
+  });
   // the clean-up dialog opens: now the uncommitted work of the sets that can be removed is looked at
   reg(BAR_COMMANDS.checkClean, () => void engine.checkClean(changed).catch(() => undefined));
 
@@ -526,6 +551,7 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   // after an own Update or Push the stand against the target is looked at again
   registerBatchCommands({ engine, log: deps.log, changed, reg, afterGit: () => (behind.forget(), void mgr.run("own")) });
   registerPullRequestCommand({ engine, log: deps.log, changed, reg, refreshPrs: () => prs.refresh(true).then(() => undefined) });
+  registerCloneCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerUndoCommand({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   registerSetOps({ engine, log: deps.log, changed, reg });
   registerSearchCommands({ engine, remote: memo.remote, log: deps.log, changed, reg });

@@ -9,6 +9,8 @@ import { AIHUB_SET, MAKER_SET, readJsonText, readSetFile, stampStoryTitle } from
 import { isClosedState, readSeenStories } from "../../../cli/src/lib/storyCache";
 import { readStoryWorktrees, storyWorktreesFileFor } from "../../../cli/src/lib/storyWorktrees";
 import { readPreferredClones, uniqueRepos } from "../worktrees/clones";
+import { repoNameOfUrl } from "../../../cli/src/lib/repoName";
+import { isHidden, readHiddenClones } from "./hiddenClones";
 import { buildState, setLabel, type OpenFacts } from "./state";
 import { isStoryBranch } from "./repoStatus";
 import { allPrsMerged, setKey, SizeMemo } from "./setSize";
@@ -146,10 +148,25 @@ function usedAt(dir: string): number {
 }
 
 /** One entry per remote ("+N more" is otherClones): the preferred clone (`aihub repos prefer`), else the most recently used, else the shortest path. */
-export async function oneClonePerRemote(env: NodeJS.ProcessEnv, repos: ScanRepo[]): Promise<ScanRepo[]> {
+export async function oneClonePerRemote(env: NodeJS.ProcessEnv, all: ScanRepo[], o: { folders?: string[] } = {}): Promise<ScanRepo[]> {
+  const hidden = readHiddenClones(env);
+  const repos = all.filter((r) => !isHidden(hidden, r.path));
   const by = new Map(repos.map((r) => [pathKey(r.path), r]));
-  const unique = await uniqueRepos(repos.map((r) => ({ name: r.name, path: r.path, root: dirname(r.path) })), readPreferredClones(env), async (f) => ({ url: by.get(pathKey(f))?.remote, lastUsed: usedAt(f) }));
-  return unique.map((u) => ({ ...by.get(pathKey(u.path))!, ...(u.otherClones?.length ? { otherClones: u.otherClones } : {}) })).sort((a, b) => a.name.localeCompare(b.name));
+  // the first folder to look in that holds the clone: the last tie-break of "which clone wins" (preferred, last used, first folder)
+  const rank = (p: string) => {
+    const i = (o.folders ?? []).findIndex((f) => pathKey(p).startsWith(`${pathKey(f)}/`) || pathKey(p) === pathKey(f));
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const unique = await uniqueRepos(repos.map((r) => ({ name: r.name, path: r.path, root: dirname(r.path) })), readPreferredClones(env), async (f) => ({ url: by.get(pathKey(f))?.remote, lastUsed: usedAt(f) }), rank);
+  return unique
+    .map((u) => {
+      const main = by.get(pathKey(u.path))!;
+      // the repository is its remote, not its folder: a clone in `repo-a-copy` of the repository repo-a is repo-a
+      const name = repoNameOfUrl(main.remote) ?? main.name;
+      const others = u.otherClones ?? [];
+      return { ...main, name, ...(others.length ? { otherClones: others, clones: [main, ...others.map((p) => by.get(pathKey(p))!).filter(Boolean)].map((c) => ({ path: c.path, branch: c.branch })) } : {}) };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 const OTHERS_TTL_MS = 5 * 60_000;
@@ -171,7 +188,7 @@ export class BarEngine {
 
   /** The repositories on this PC, one per remote. */
   async repositories(o: { refresh?: boolean } = {}): Promise<ScanRepo[]> {
-    return oneClonePerRemote(this.deps.env, this.scan(o).repos);
+    return oneClonePerRemote(this.deps.env, this.scan(o).repos, { folders: this.folders() });
   }
 
   /** Changed files of a worktree (remembered a few seconds); undefined when git cannot say. */
@@ -183,7 +200,7 @@ export class BarEngine {
     const facts = openFacts(this.deps.dir());
     const folders = this.folders(facts);
     const raw = scanMachine(this.deps.env, folders, { refresh: o.refresh, now: this.now() });
-    const scan: Scan = { ...raw, repos: await oneClonePerRemote(this.deps.env, raw.repos) };
+    const scan: Scan = { ...raw, repos: await oneClonePerRemote(this.deps.env, raw.repos, { folders }) };
     const stories = readSeenStories(this.deps.env);
     // a story this PC has not read from Azure DevOps lately still has a title in its repositories' files
     const named = new Set<number>();
@@ -220,6 +237,12 @@ export class BarEngine {
     return buildState({
       open: facts,
       undo: this.deps.undoLabel?.(facts.set?.folder),
+      // a worktree whose source clone is gone (read from the set file and the folders: no process)
+      sourceMissing: (p) => {
+        const f = facts.set ? readSetFile(facts.set.folder) : undefined;
+        const r = f && [f.top, ...(f.top.others ?? [])].flatMap((m) => m.repos).find((x) => pathKey(x.path) === pathKey(p));
+        return !!r?.source && !existsSync(join(r.source, ".git"));
+      },
       size: (s) => this.deps.sizes?.get(s.id, setKey(s)),
       prsMerged: (s) => (this.deps.prOf && this.deps.prsKnown?.() ? allPrsMerged(s, this.deps.prOf) : undefined),
       allMerged: (s) => merged.get(s.id) ?? (this.deps.prOf && !allPrsMerged(s, this.deps.prOf) ? false : undefined),

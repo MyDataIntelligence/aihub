@@ -20,7 +20,7 @@ export interface JournalEntry {
 }
 
 /** Commands that only read: they would drown the journal in noise. */
-const READ_ONLY = new Set(["status", "doctor", "watch", "update", "skills", "search", "repos", "open", "explain", "work", "probe", "research", "standup", "handoff", "library", "policy", "repo"]);
+const READ_ONLY = new Set(["status", "doctor", "watch", "update", "skills", "search", "repos", "open", "explain", "work", "probe", "research", "standup", "handoff", "library", "policy", "repo", "browse"]);
 
 export function isJournaled(name: string, args: string[]): boolean {
   if (args.includes("--help") || args.includes("--dry-run")) return false;

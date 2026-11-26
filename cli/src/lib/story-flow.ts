@@ -31,7 +31,7 @@ export async function baseFor(dir: string, client: AdoClient, team: TeamConfig, 
 function targets(ctx: Ctx, repos: string[] | undefined, root: string, team: TeamConfig, extraRoot?: string): RepoDir[] {
   const list = repos?.length ? repos : [];
   if (!list.length) return [{ name: clientForDir(ctx, root).remote.repo, dir: root }];
-  return resolveRepoDirs(list, root, team, extraRoot ? [extraRoot] : []);
+  return resolveRepoDirs(list, root, team, extraRoot ? [extraRoot] : [], ctx.env);
 }
 
 const stateIs = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
