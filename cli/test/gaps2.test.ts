@@ -52,7 +52,7 @@ describe("aihub workitem create", () => {
     { method: "POST", match: /wit\/workitems\/\$/, respond: (c) => (created.push({ url: c.url, body: c.body }), { body: { id: 301 } }) },
   ];
 
-  it("creates a Bug from the built-in template with the repro steps in the repro field", async () => {
+  it("creates a Bug from the built-in template with all its text in the repro field", async () => {
     const { dir } = makeRepo();
     created.length = 0;
     const f = join(tmp(), "bug.md");
@@ -65,9 +65,10 @@ describe("aihub workitem create", () => {
     const field = (n: string) => c.body.find((o) => o.path === `/fields/${n}`)?.value as string;
     expect(field("System.Title")).toBe("Export crash");
     expect(field("Microsoft.VSTS.TCM.ReproSteps")).toContain("open invoice");
-    expect(field("System.Description")).toContain("Export crashes on empty invoices.");
-    expect(field("System.Description")).toContain("Expected result");
-    expect(field("System.Description")).toContain("Actual result");
+    expect(field("Microsoft.VSTS.TCM.ReproSteps")).toContain("Export crashes on empty invoices.");
+    expect(field("Microsoft.VSTS.TCM.ReproSteps")).toContain("Expected result");
+    expect(field("Microsoft.VSTS.TCM.ReproSteps")).toContain("Actual result");
+    expect(c.body.some((o) => o.path === "/fields/System.Description")).toBe(false);
     expect(c.body.find((o) => o.path === "/relations/-").value.url).toContain("/_apis/wit/workItems/7");
     expect(lines[0]).toContain("Bug 301 created");
     expect(lines[0]).toContain("child of 7");

@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AdoClient } from "./ado.js";
 import { aihubDir, ensureDir } from "./aihubDir.js";
+import { ACCEPTANCE_FIELD, DEFAULT_LAYOUT, typeLayout, type FieldLayout } from "./fieldLayout.js";
 import { readUtf8, type TeamConfig } from "./team.js";
 
 /** Where a work item template lives in a team repository, in this order (after the path named in team.yaml). */
@@ -65,12 +66,10 @@ const htmlToMarkdown = (html: string): string =>
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-const ACCEPTANCE = "Microsoft.VSTS.Common.AcceptanceCriteria";
-
-/** The template's Description (and acceptance criteria) as markdown with `## ` sections; undefined without headings. */
-export function devopsTemplateText(fields: Record<string, unknown>): string | undefined {
-  const desc = htmlToMarkdown(String(fields["System.Description"] ?? ""));
-  const ac = htmlToMarkdown(String(fields[ACCEPTANCE] ?? ""));
+/** The template's main text field (Description, or ReproSteps for a Bug) and acceptance criteria as markdown with `## ` sections; undefined without headings. */
+export function devopsTemplateText(fields: Record<string, unknown>, layout: FieldLayout = DEFAULT_LAYOUT): string | undefined {
+  const desc = htmlToMarkdown(String(fields[layout.primary] ?? ""));
+  const ac = layout.acceptance === layout.primary ? "" : htmlToMarkdown(String(fields[ACCEPTANCE_FIELD] ?? ""));
   const text = [desc, ac && !/^##\s+acceptance/im.test(desc) ? `## Acceptance criteria\n\n${ac}` : ""].filter(Boolean).join("\n\n");
   return /^##\s+\S/m.test(text) ? `${text}\n` : undefined;
 }
@@ -95,8 +94,8 @@ export async function devopsTemplate(root: string, client: AdoClient, team: Team
       result = { at: now, ok: true, note: list.length ? `Azure DevOps has ${list.length} templates for ${type} and none is clearly the one: ${list.map((t) => t.name).join(", ")}` : undefined };
     } else {
       const t = await tc.get<{ fields?: Record<string, unknown> }>(`wit/templates/${encodeURIComponent(pick.id)}`);
-      const text = devopsTemplateText(t.fields ?? {});
-      result = text ? { at: now, ok: true, text, name: pick.name } : { at: now, ok: true, note: `Azure DevOps template "${pick.name}" has no ## headings in its description` };
+      const text = devopsTemplateText(t.fields ?? {}, await typeLayout(root, client, type, now));
+      result = text ? { at: now, ok: true, text, name: pick.name } : { at: now, ok: true, note: `Azure DevOps template "${pick.name}" has no ## headings in its text` };
     }
   } catch {
     result = { at: now, ok: false };
