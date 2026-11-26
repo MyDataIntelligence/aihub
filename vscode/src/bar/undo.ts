@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { headBranchOf } from "../../../cli/src/lib/machineScan";
 import { AIHUB_SET, MAKER_SET, readSetFile } from "../../../cli/src/lib/setFile";
 import { gitCommonDir } from "../../../cli/src/lib/storyWorktrees";
+import { guardLocalFiles, inventoryIgnored, localFilesProblem } from "../../../cli/src/lib/localFiles";
 import { headSha, operationInProgress } from "./behind";
 import { branchesOf, worktreesOf, type GitRun } from "./ownWindow";
 
@@ -32,7 +34,71 @@ export interface Snapshot {
   backups: Map<string, string[]>;
   /** clones noted without a set member (a set that did not exist yet) */
   sources?: string[];
+  /** what the set looked like right after the action: Undo only goes back when it still looks like this */
+  after?: Stamp;
+  /** the local branches the action itself made, per clone (worked out right after it); only these are deleted by Undo */
+  created?: Map<string, string[]>;
 }
+
+/** The set as it is: the hash of every set file and workspace file, and where each worktree's HEAD is. Files only. */
+export interface Stamp {
+  files: Record<string, string | null>;
+  heads: Record<string, string | null>;
+}
+
+const sha = (b: Buffer) => createHash("sha1").update(b).digest("hex");
+
+/** The local branches of a clone, read from its refs (loose and packed): name -> commit. No process. */
+export function localBranches(source: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const common = gitCommonDir(source);
+  if (!common) return out;
+  const walk = (dir: string, prefix: string) => {
+    for (const e of existsSync(dir) ? readdirSync(dir, { withFileTypes: true }) : []) {
+      if (e.isDirectory()) walk(join(dir, e.name), `${prefix}${e.name}/`);
+      else if (!e.name.endsWith(".lock")) out.set(`${prefix}${e.name}`, readFileSync(join(dir, e.name), "utf8").trim());
+    }
+  };
+  walk(join(common, "refs", "heads"), "");
+  try {
+    for (const l of readFileSync(join(common, "packed-refs"), "utf8").split(/\r?\n/)) {
+      const m = /^([0-9a-f]{40,64}) refs\/heads\/(.+)$/.exec(l.trim());
+      if (m && !out.has(m[2])) out.set(m[2], m[1]);
+    }
+  } catch {
+    /* no packed refs */
+  }
+  return out;
+}
+
+/** What the set looks like now (see Stamp). */
+export function stampOf(s: Pick<Snapshot, "setFolder" | "files" | "repos">): Stamp {
+  const files: Record<string, string | null> = {};
+  const paths = new Map<string, string>();
+  for (const f of [...s.files, ...(s.setFolder ? setFilesOf(s.setFolder) : [])]) paths.set(key(f.path), f.path);
+  for (const [k, p] of paths) files[k] = existsSync(p) ? sha(readFileSync(p)) : null;
+  const heads: Record<string, string | null> = {};
+  const dirs = new Map<string, string>();
+  for (const r of s.repos) dirs.set(key(r.path), r.path);
+  const f = s.setFolder ? readSetFile(s.setFolder) : undefined;
+  for (const m of f ? [f.top, ...(f.top.others ?? [])] : []) for (const r of m.repos) dirs.set(key(r.path), r.path);
+  for (const [k, p] of dirs) heads[k] = existsSync(join(p, ".git")) ? `${headBranchOf(p)}@${headSha(p)}` : null;
+  return { files, heads };
+}
+
+const sameStamp = (a: Stamp, b: Stamp) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Call right after the action: notes how the set looks and which branches the action made. */
+export function finishSnapshot(s: Snapshot): Snapshot {
+  s.after = stampOf(s);
+  s.created = new Map();
+  for (const [src, before] of s.branches) {
+    const made = [...localBranches(src).keys()].filter((b) => !before.has(b));
+    if (made.length) s.created.set(src, made);
+  }
+  return s;
+}
+
 
 const key = (p: string) => resolve(p).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 const slug = (b: string) => b.replace(/[\\/:*?"<>|\s]+/g, "-");
@@ -84,8 +150,7 @@ export async function takeSnapshot(git: GitRun, setFolder: string, label: string
       seen.add(key(w.path));
       repos.push({ name: basename(w.path), source: src, path: w.path, branch: w.branch, head: w.head ?? "" });
     }
-    const out = await git(src, ["for-each-ref", "--format=%(refname:short)%09%(objectname)", "refs/heads"]).catch(() => "");
-    branches.set(src, new Map(out.split(/\r?\n/).filter(Boolean).map((l) => l.split("\t") as [string, string])));
+    branches.set(src, localBranches(src));
     backups.set(src, listDir(backupDir(src)));
   }
   const files = setFolder ? setFilesOf(setFolder) : [];
@@ -100,7 +165,8 @@ export async function takeSnapshot(git: GitRun, setFolder: string, label: string
 export interface UndoPlan {
   /** one sentence when it cannot be undone; then nothing is done */
   problem?: string;
-  steps: { what: string; run: () => Promise<void> }[];
+  /** run may answer one more line (where something was saved) */
+  steps: { what: string; run: () => Promise<void | string> }[];
 }
 
 const copyBack = (from: string, to: string): number => {
@@ -134,6 +200,8 @@ export async function planUndo(git: GitRun, s: Snapshot): Promise<UndoPlan> {
   const sources = [...new Set([...s.repos.map((r) => r.source), ...(s.sources ?? [])])].filter((x) => existsSync(x));
   const now = new Map<string, Awaited<ReturnType<typeof worktreesOf>>>();
   for (const src of sources) now.set(src, await worktreesOf(git, src).catch(() => []));
+  // Undo only goes back to a set that still looks like it did right after the action (another window, a hand edit, a commit since)
+  if (s.after && !sameStamp(s.after, stampOf(s))) return nothing("the set changed since this action, in another window or by hand");
   const clean = async (p: string) => (await git(p, ["status", "--porcelain", "--untracked-files=no"]).catch(() => "x")).trim() === "";
 
   for (const r of s.repos) {
@@ -146,6 +214,8 @@ export async function planUndo(git: GitRun, s: Snapshot): Promise<UndoPlan> {
     if (here && existsSync(r.path)) {
       if ((here.branch ?? undefined) === r.branch) continue;
       if (!(await clean(r.path))) return nothing(`${r.name} has uncommitted changes since; commit or stash them, then undo`);
+      const elsewhere = r.branch ? list.find((w) => w.branch === r.branch && key(w.path) !== key(r.path)) : undefined;
+      if (elsewhere) return nothing(`${r.branch} is checked out in ${elsewhere.path} now; ${r.name} cannot go back to it`);
       steps.push({ what: `${r.name} back on ${r.branch ?? r.head.slice(0, 7)}`, run: async () => void (await git(r.path, r.branch ? ["switch", r.branch] : ["switch", "--detach", r.head])) });
       continue;
     }
@@ -190,30 +260,31 @@ export async function planUndo(git: GitRun, s: Snapshot): Promise<UndoPlan> {
       if (w.main || !key(w.path).startsWith(key(s.setFolder) + "/")) continue;
       if (s.repos.some((r) => key(r.path) === key(w.path)) || movedFrom.has(key(w.path))) continue;
       if (!(await clean(w.path))) return nothing(`${basename(w.path)} has uncommitted changes since; commit or stash them, then undo`);
-      removes.push({ what: `${basename(w.path)} taken out again`, run: async () => void (await git(src, ["worktree", "remove", w.path])) });
+      // new files that git does not ignore would stop the removal: said now, not half way
+      if ((await git(w.path, ["status", "--porcelain"]).catch(() => "x")).trim() !== "") return nothing(`${basename(w.path)} has new files since; commit or remove them, then undo`);
+      // ignored local files (.env, notes) are saved first, by the rule of a removal (BUILD_NAMES, limits); too much: nothing is done
+      const tooMuch = localFilesProblem(inventoryIgnored(w.path));
+      if (tooMuch) return nothing(`${basename(w.path)} holds ${tooMuch}; move them away, then undo`);
+      removes.push({
+        what: `${basename(w.path)} taken out again`,
+        run: async () => {
+          const saved = guardLocalFiles(w.path, src);
+          if (!saved.ok) throw new Error(saved.note);
+          await git(src, ["worktree", "remove", w.path]);
+          return saved.note || undefined;
+        },
+      });
     }
   }
 
-  // a branch the action made that has commits since: nothing is done (said before anything changes)
-  for (const src of sources) {
-    const before = s.branches.get(src) ?? new Map<string, string>();
-    for (const b of (await branchesOf(git, src).catch(() => undefined))?.local ?? []) {
-      if (before.has(b)) continue;
-      const unique = Number((await git(src, ["rev-list", "--count", b, "--not", `--exclude=${b}`, "--branches", "--remotes"]).catch(() => "0")).trim());
-      if (unique > 0) return nothing(`${b} has commits of its own since; they would be lost`);
-    }
-  }
+  // a branch the ACTION made (noted right after it) that has commits since: nothing is done, said before anything changes
+  const madeBranches = [...(s.created ?? new Map<string, string[]>())].flatMap(([src, list]) => list.filter((b) => existsSync(src)).map((b) => ({ src, b })));
+  const unique = async (src: string, b: string) => Number((await git(src, ["rev-list", "--count", b, "--not", `--exclude=${b}`, "--branches", "--remotes"]).catch(() => "1")).trim());
+  for (const { src, b } of madeBranches) if (localBranches(src).has(b) && (await unique(src, b)) > 0) return nothing(`${b} has commits of its own since; they would be lost`);
 
-  // branches the action made, when nothing was committed on them
+  // only the branches the action made, and only while nothing is committed on them
   const dropBranches = async () => {
-    for (const src of sources) {
-      const before = s.branches.get(src) ?? new Map<string, string>();
-      for (const b of (await branchesOf(git, src).catch(() => undefined))?.local ?? []) {
-        if (before.has(b)) continue;
-        const unique = Number((await git(src, ["rev-list", "--count", b, "--not", `--exclude=${b}`, "--branches", "--remotes"]).catch(() => "1")).trim());
-        if (unique === 0) await git(src, ["branch", "-D", b]).catch(() => undefined);
-      }
-    }
+    for (const { src, b } of madeBranches) if (localBranches(src).has(b) && (await unique(src, b)) === 0) await git(src, ["branch", "-D", b]).catch(() => undefined);
   };
   steps.push(...removes, ...restores);
   steps.push({ what: "the branches the action made are gone again", run: dropBranches });
@@ -238,24 +309,33 @@ export async function planUndo(git: GitRun, s: Snapshot): Promise<UndoPlan> {
 function writeAtomicBytes(path: string, bytes: Buffer): void {
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, bytes);
-  try {
-    // the same rename as writeAtomic; bytes, not text, so the file is byte for byte what it was
-    renameSync(tmp, path);
-  } catch {
-    rmSync(tmp, { force: true });
-    writeFileSync(path, bytes);
+  // a rename that Windows refuses for a moment is tried again; after that the error stays (never a write in place: half a file)
+  for (let i = 0; ; i++) {
+    try {
+      renameSync(tmp, path);
+      return;
+    } catch (e) {
+      if (i >= 4 || !/^(EPERM|EBUSY|EACCES)$/.test(String((e as NodeJS.ErrnoException).code))) {
+        rmSync(tmp, { force: true });
+        throw e;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * (i + 1));
+    }
   }
 }
 
 /** Does it: the steps in order. Returns what was done, one line per step; a step that fails ends the run and says which. */
 export async function runUndo(p: UndoPlan): Promise<{ ok: boolean; lines: string[] }> {
   const lines: string[] = [];
-  for (const st of p.steps) {
+  for (let i = 0; i < p.steps.length; i++) {
+    const st = p.steps[i];
     try {
-      await st.run();
-      lines.push(st.what);
+      const extra = await st.run();
+      lines.push(extra ? `${st.what} (${extra})` : st.what);
     } catch (e) {
-      return { ok: false, lines: [...lines, `stopped at "${st.what}": ${(e as Error).message}`] };
+      // not rolled back (a half undone set is better described than guessed at): what was done and what was not
+      const left = p.steps.slice(i + 1).map((x) => x.what);
+      return { ok: false, lines: [...lines, `stopped at "${st.what}": ${(e as Error).message}`, ...(left.length ? [`not done: ${left.join("; ")}`] : [])] };
     }
   }
   return { ok: true, lines };

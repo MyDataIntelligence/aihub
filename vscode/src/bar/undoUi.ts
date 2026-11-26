@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import * as vscode from "vscode";
 import { forgetScan, headBranchOf } from "../../../cli/src/lib/machineScan";
 import { gitRun } from "./ownWindow";
-import { newBackups, planUndo, runUndo, takeSnapshot, type Snapshot } from "./undo";
+import { finishSnapshot, newBackups, planUndo, runUndo, takeSnapshot, type Snapshot } from "./undo";
 import type { StoryHooks } from "./storyUi";
 
 /** The one thing that can be undone: the last action that changed a set. The next action replaces it. */
@@ -31,6 +31,8 @@ export async function withUndo<T>(h: Pick<StoryHooks, "changed" | "log" | "after
   // a set the action made: its folder is known only now
   if (snap && o.created) snap.setFolder = o.created(result) ?? snap.setFolder;
   if (!snap || (snap.setFolder ? !differs(snap) && !(o.created && existsSync(snap.setFolder)) : true)) return result;
+  // how the set looks right after the action, and the branches the action made: Undo only goes back to exactly this
+  finishSnapshot(snap);
   last = { label, snap };
   h.changed();
   const undo = "Undo";
