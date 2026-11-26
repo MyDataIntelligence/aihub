@@ -76,12 +76,13 @@ const cliMerge = (calls: { args: string[]; cwd: string }[] = []) => async (args:
 const manager = (u: BehindUi, calls: { args: string[]; cwd: string }[] = [], extra: Partial<ConstructorParameters<typeof BehindManager>[0]> = {}) => new BehindManager({ git: gitRun, raw: gitRaw, cli: cliMerge(calls), ui: u, ...extra });
 
 describe("behind the target branch: the decision", () => {
-  const f = (o: Partial<Parameters<typeof decide>[1]> = {}) => ({ name: "a", path: "/a", branch: "b", target: "staging", behind: 3, targetSha: "x", head: "h", conflicts: [] as string[] | "unknown", overlap: [] as string[], ...o });
+  const f = (o: Partial<Parameters<typeof decide>[1]> = {}) => ({ name: "a", path: "/a", branch: "b", target: "staging", behind: 3, targetSha: "x", head: "h", conflicts: [] as string[] | "unknown", overlap: [] as string[], tracked: 0, ...o });
   it("off does nothing; conflicts or no way to check always ask; auto only without overlap", () => {
     expect(decide("off", f())).toBe("none");
     expect(decide("ask", f())).toBe("ask");
     expect(decide("auto", f())).toBe("auto");
     expect(decide("auto", f({ overlap: ["x"] }))).toBe("ask");
+    expect(decide("auto", f({ tracked: 2 }))).toBe("ask");
     expect(decide("auto", f({ conflicts: ["x"] }))).toBe("ask-conflict");
     expect(decide("auto", f({ conflicts: "unknown" }))).toBe("ask-conflict");
     expect(decide("ask", f({ blocked: "a merge is in progress" }))).toBe("none");
@@ -395,5 +396,46 @@ describe("Undo of an update only undoes that update", () => {
     expect(sh(w.repos[0].origin, "rev-parse", "feature/5-x").trim()).toBe(remote);
     // not pushed, so Undo works
     expect(await log.undo!.run()).toEqual({});
+  });
+});
+
+describe("auto only when nothing tracked has changed (review D)", () => {
+  it("a changed tracked file that the update does not touch: asked, never by itself, and the question says so", async () => {
+    const w = world(["Repo A"]);
+    w.advance(w.repos[0], "new.txt", "n");
+    write(w.repos[0].path, "other.txt", "my edit\n");
+    const { u, log } = ui(w.repos, {}, "auto");
+    const calls: { args: string[]; cwd: string }[] = [];
+    const r = await manager(u, calls).run("open");
+    expect(calls).toEqual([]);
+    expect(r.facts[0].tracked).toBe(1);
+    expect(log.asked[0].message).toBe("Repo A is 1 commit behind staging · no conflicts, but you have uncommitted changes");
+  });
+
+  it("only an untracked file elsewhere: updated by itself", async () => {
+    const w = world(["Repo A"]);
+    w.advance(w.repos[0], "new.txt", "n");
+    write(w.repos[0].path, "scratch/notes.txt", "x\n");
+    const { u, log } = ui(w.repos, {}, "auto");
+    await manager(u).run("open");
+    expect(log.said[0]).toContain("updated from staging");
+  });
+
+  it("the overlap is read the safe way: renames, spaces and non-ASCII names, untracked folders", async () => {
+    const { parseStatusZ } = await import("../src/bar/behind");
+    const nul = String.fromCharCode(0);
+    const out = ["R  new name.txt", "old name.txt", " M é.txt", "?? dir sub/", "!! ignored.log", "A  plain.txt", ""].join(nul);
+    expect(parseStatusZ(out)).toEqual({ tracked: ["new name.txt", "é.txt", "plain.txt"], untracked: ["dir sub/"] });
+  });
+
+  it("an untracked folder that the update would fill, and a renamed file the update changes, count as overlap and are named", async () => {
+    const w = world(["Repo A"]);
+    w.advance(w.repos[0], "docs/new.txt", "n");
+    write(w.repos[0].path, "docs/mine.txt", "x\n");
+    const { u, log } = ui(w.repos, {}, "auto");
+    const calls: { args: string[]; cwd: string }[] = [];
+    await manager(u, calls).run("open");
+    expect(calls).toEqual([]);
+    expect(log.asked[0].message).toBe("Repo A is 1 commit behind staging · no conflicts, but your uncommitted changes touch 1 of the changed files");
   });
 });
