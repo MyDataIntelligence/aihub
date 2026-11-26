@@ -682,6 +682,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.browseCreatePr",
+        "title": "Repositories: Create Pull Request",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.browseRetryNow",
         "title": "Repositories: Try Again Now",
         "category": "AI Context Hub"
@@ -1712,6 +1717,10 @@
         },
         {
           "command": "aihub.bar.browsePush",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseCreatePr",
           "when": "false"
         },
         {

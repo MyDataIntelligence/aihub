@@ -4,7 +4,7 @@ import { browseOf, errorJson, kindOf, normPath, parseRef, BrowseError } from "..
 import { hunks, merge3, edits, splitLines } from "../src/lib/browse/lineDiff.js";
 import { browseBranches, browseDiff, browseFile, browseHistory, browseItems, browseProject, browseProjects, browseRepo, mapBranches, parsePorcelain, readmeSummary } from "../src/lib/browse/read.js";
 import { browseFind, browseSearch, linesOf, nameScore, rankFind, rememberRepo } from "../src/lib/browse/search.js";
-import { browsePush, isProtected, suggestBranch } from "../src/lib/browse/push.js";
+import { browsePr, browsePush, isProtected, suggestBranch } from "../src/lib/browse/push.js";
 import { ctxFor, fakeFetch, tmp, type Route } from "./helpers.js";
 
 const ORG = "https://dev.azure.com/ferron-test";
@@ -399,6 +399,9 @@ describe("push without a clone", () => {
       { match: /items\?path=%2F(\.azuredevops|\.vsts|docs|pull_request)/, respond: () => ({ status: 404, body: { message: "not found" } }) },
       { match: new RegExp(`items\\?path=%2Fsrc%2Fa\\.py.*version=${C1}`), respond: () => ({ body: { ...item("/src/a.py", "blob", C1, { objectId: "blob-base" }), content: BASE } }) },
       { match: new RegExp(`items\\?path=%2Fsrc%2Fa\\.py.*version=${C2}`), respond: () => ({ body: { ...item("/src/a.py", "blob", C2, { objectId: "blob-new" }), content: o.headContent ?? BASE } }) },
+      { match: /repo-a\/pullrequests\?/, respond: () => ({ body: { value: [] } }) },
+      { match: new RegExp(`commits/${C3}/changes`), respond: () => ({ body: { changes: [{ item: { path: "/src/a.py" } }] } }) },
+      { match: new RegExp(`commits/${C3}\\?`), respond: () => ({ body: { commitId: C3, comment: "Fix the first line" } }) },
       { match: /commits\?/, respond: () => ({ body: { value: [{ commitId: C2, comment: "Their change", author: author("Tom Bakker", "2026-11-26T12:00:00Z") }] } }) },
       { match: /wit\/workitems\/4711/, respond: () => ({ body: { fields: { "System.Title": "Orderexport" } } }) },
       { method: "POST", match: /repo-a\/pushes/, respond: (c) => (pushes.push(c.body), { status: 201, body: { commits: [{ commitId: C3 }] } }) },
@@ -445,6 +448,20 @@ describe("push without a clone", () => {
     const r = await browsePush(s.b(), input({ rebase: true }));
     expect(r).toMatchObject({ status: "pushed", rebased: true, startedFrom: C2 });
     expect(s.pushes[0].commits[0].changes[0].newContent.content).toBe("LINE 1\nline 2\nline 3\nline 4\nline five\n");
+  });
+
+  it("Create Pull Request after a push: from the head of the branch, the story from its name; an active PR is returned, not a second one", async () => {
+    const s = pushSetup({ exists: true });
+    const r = await browsePr(s.b(), { project: "test-project", repo: "repo-a", branch: "feature/4711-fix" });
+    expect(r).toMatchObject({ existing: false, pr: { id: 77, title: "4711 Orderexport" } });
+    expect(s.prs[0]).toMatchObject({ sourceRefName: "refs/heads/feature/4711-fix", targetRefName: "refs/heads/main", workItemRefs: [{ id: "4711" }] });
+    const again = setup([
+      { match: /repo-a\?api-version/, respond: () => ({ body: { id: "r1", defaultBranch: "refs/heads/main" } }) },
+      { match: /refs\?filter=heads%2Ffeature%2Fx/, respond: () => ({ body: { value: [{ name: "refs/heads/feature/x", objectId: C3 }] } }) },
+      { match: /pullrequests\?/, respond: () => ({ body: { value: [{ pullRequestId: 9, title: "Open one" }] } }) },
+    ]);
+    expect(await browsePr(again.b(), { project: "test-project", repo: "repo-a", branch: "feature/x" })).toEqual({ existing: true, pr: { id: 9, title: "Open one", webUrl: `${ORG}/test-project/_git/repo-a/pullrequest/9` } });
+    await expect(browsePr(again.b(), { project: "test-project", repo: "repo-a", branch: "main" })).rejects.toMatchObject({ kind: "badInput" });
   });
 
   it("suggests a branch from the story and the file", () => {

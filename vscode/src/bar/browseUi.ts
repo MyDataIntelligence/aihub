@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import * as vscode from "vscode";
 import { cli, jsonOf } from "./runner";
-import { BrowseMemo, browseArgs, browseErrorOf, pushFiles, removePushFiles, scopeOf, type BrowseError, type PushArg } from "./browse";
+import { BrowseMemo, browseArgs, browseErrorOf, pushFiles, removePushFiles, scopeOf, type BrowseError, type PrArg, type PushArg } from "./browse";
 import { BAR_COMMANDS } from "./types";
 
 /** The CLI runs in this window's first folder (its clone tells the organisation and the repos root), else in the home folder. */
@@ -51,6 +51,20 @@ export function registerBrowseCommands(reg: (id: string, f: (...a: any[]) => unk
       return browseErrorOf(e);
     } finally {
       removePushFiles(files.dir);
+    }
+  });
+  // a write: never shared, never remembered
+  reg(BAR_COMMANDS.browseCreatePr, async (a: PrArg) => {
+    let args: string[];
+    try {
+      args = browseArgs.createPr(a);
+    } catch (e) {
+      return bad(e);
+    }
+    try {
+      return await json(args);
+    } catch (e) {
+      return browseErrorOf(e);
     }
   });
   // after az login or an update of the CLI: the remembered failures go

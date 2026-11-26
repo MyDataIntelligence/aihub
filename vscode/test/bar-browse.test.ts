@@ -20,6 +20,7 @@ describe("repository browser in the bar: arguments", () => {
     expect(browseArgs.blame({ project: "p", repo: "r", path: "/a.py" })).toEqual(["browse", "blame", "--path", "/a.py", "--project", "p", "--repo", "r"]);
     expect(browseArgs.find({ query: "orders_exp", repos: ["test-project/repo-a", "test-project/repo-b"] })).toEqual(["browse", "find", "--query", "orders_exp", "--repos", "test-project/repo-a,test-project/repo-b"]);
     expect(browseArgs.search({ text: "MAX_RETRIES", project: "p", ext: ["py", "sql"], top: 10 })).toEqual(["browse", "search", "--text", "MAX_RETRIES", "--project", "p", "--top", "10", "--ext", "py,sql"]);
+    expect(browseArgs.createPr({ project: "p", repo: "r", branch: "feature/4711-fix", story: 4711, draft: true })).toEqual(["browse", "pr", "--branch", "feature/4711-fix", "--project", "p", "--repo", "r", "--story", "4711", "--draft"]);
     expect(browseArgs.suggestBranch({ story: 4711, path: "/a.py" })).toEqual(["browse", "suggest-branch", "--story", "4711", "--path", "/a.py"]);
   });
 
@@ -44,7 +45,7 @@ describe("repository browser in the bar: arguments", () => {
   });
 
   it("every browse command is in the contract", () => {
-    for (const id of ["browseProjects", "browseProject", "browseRepo", "browseItems", "browseFile", "browseBranches", "browseHistory", "browseDiff", "browseBlame", "browseFind", "browseSearch", "browseSuggestBranch", "browsePush", "browseRetryNow"])
+    for (const id of ["browseProjects", "browseProject", "browseRepo", "browseItems", "browseFile", "browseBranches", "browseHistory", "browseDiff", "browseBlame", "browseFind", "browseSearch", "browseSuggestBranch", "browsePush", "browseCreatePr", "browseRetryNow"])
       expect((BAR_COMMANDS as Record<string, string>)[id]).toBe(`aihub.bar.${id}`);
     const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf8"));
     const ids = pkg.contributes.commands.map((c: { command: string }) => c.command);

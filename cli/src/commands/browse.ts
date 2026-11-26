@@ -17,9 +17,10 @@ export const BROWSE_USAGE = `usage: aihub browse <sub> [--org O] [--refresh]   (
   search   --text <text> [--project P] [--repo R] [--path /p] [--ext py,sql] [--top 25]   Code Search
   push     --project P --repo R --path /file --base-commit SHA --base-branch B --content-file F --branch feature/x --message-file M
            [--pr [--target T] [--story N] [--pr-title t] [--draft]] [--rebase]   one commit on a new branch, no clone
+  pr       --project P --repo R --branch B [--target T] [--story N] [--pr-title t] [--draft]   Create Pull Request after a push
   suggest-branch [--story N] --path /file [--title t]`;
 
-const SUBS = ["projects", "project", "repo", "items", "file", "branches", "history", "diff", "blame", "find", "search", "push", "suggest-branch"];
+const SUBS = ["projects", "project", "repo", "items", "file", "branches", "history", "diff", "blame", "find", "search", "push", "pr", "suggest-branch"];
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -116,6 +117,8 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
       return (await import("../lib/browse/search.js")).browseFind(b, { query: need(v, "query"), top: num(str(v, "top"), "--top"), repos: list(str(v, "repos")) });
     case "search":
       return (await import("../lib/browse/search.js")).browseSearch(b, { text: need(v, "text"), project: str(v, "project"), repo: str(v, "repo"), path: str(v, "path"), ext: list(str(v, "ext")), top: num(str(v, "top"), "--top") });
+    case "pr":
+      return (await import("../lib/browse/push.js")).browsePr(b, { ...repoArgs(), branch: need(v, "branch"), target: str(v, "target"), story: num(str(v, "story"), "--story"), prTitle: str(v, "pr-title"), draft: !!v.draft });
     case "push": {
       const p = await import("../lib/browse/push.js");
       return p.browsePush(b, {

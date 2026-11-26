@@ -162,6 +162,16 @@ export interface PushArg extends Common {
   /** "Rebase my change" after a conflict */
   rebase?: boolean;
 }
+export interface PrArg extends Common {
+  project: string;
+  repo: string;
+  branch: string;
+  /** default: the default branch */
+  target?: string;
+  story?: number;
+  prTitle?: string;
+  draft?: boolean;
+}
 export interface SuggestArg {
   story?: number;
   path: string;
@@ -232,6 +242,12 @@ export const browseArgs = {
     const out = opt(opt(opt(opt(["browse", "search", "--text", a.text], "--project", a.project), "--repo", a.repo), "--path", a.path), "--top", a.top);
     if (a.ext?.length) out.push("--ext", a.ext.join(","));
     return common(a, out);
+  },
+  createPr: (a: PrArg) => {
+    if (!s(a?.branch)) throw new Error("a branch is needed ({ branch })");
+    const out = opt(opt(opt(repoFlags(a as never, ["browse", "pr", "--branch", a.branch]), "--target", a.target), "--story", a.story), "--pr-title", a.prTitle);
+    if (a.draft) out.push("--draft");
+    return common({ org: a.org }, out);
   },
   suggestBranch: (a: SuggestArg) => opt(opt(opt(["browse", "suggest-branch"], "--story", a?.story), "--path", a?.path), "--title", a?.title),
 };
