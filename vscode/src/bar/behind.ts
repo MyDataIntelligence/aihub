@@ -98,6 +98,8 @@ export interface BehindFacts {
   conflicts: string[] | "unknown";
   /** files the update changes that also have uncommitted changes */
   overlap: string[];
+  /** files with uncommitted changes to tracked files: while there are any, nothing is updated by itself */
+  tracked: number;
   /** why nothing is done to this repository (merge or rebase running, detached HEAD, on the target itself) */
   blocked?: string;
   /** where HEAD was before, for Undo */
@@ -122,7 +124,7 @@ export async function inspect(git: GitRun, raw: GitRaw, r: { name: string; path:
   if (!behind) return undefined;
   const targetSha = refSha(r.path, `refs/remotes/origin/${target}`) ?? (await git(r.path, ["rev-parse", `origin/${target}`]).catch(() => "")).trim();
   const head = headSha(r.path) ?? (await git(r.path, ["rev-parse", "HEAD"]).catch(() => "")).trim();
-  const base = { name: r.name, path: r.path, branch: r.branch, target, behind, targetSha, head, conflicts: [] as string[] | "unknown", overlap: [] as string[] };
+  const base = { name: r.name, path: r.path, branch: r.branch, target, behind, targetSha, head, conflicts: [] as string[] | "unknown", overlap: [] as string[], tracked: 0 };
   const busy = operationInProgress(r.path);
   if (busy) return { ...base, blocked: `${busy} is in progress` };
   // conflicts beforehand, without touching the working folder
@@ -136,22 +138,26 @@ export async function inspect(git: GitRun, raw: GitRaw, r: { name: string; path:
     if (!base.conflicts.length) base.conflicts = "unknown";
   } else base.conflicts = "unknown";
   // uncommitted work that the update would touch
-  // the changed-file count (from the git extension) says whether there is anything to compare: no uncommitted work, no status call
-  const dirty = r.changes === 0 ? [] : (await git(r.path, ["status", "--porcelain"]).catch(() => "")).split(/\r?\n/).filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, ""));
-  if (dirty.length) {
-    const changed = new Set((await git(r.path, ["diff", "--name-only", `HEAD...origin/${target}`]).catch(() => "")).split(/\r?\n/).filter(Boolean));
-    base.overlap = dirty.filter((f) => changed.has(f));
+  // uncommitted work, read the safe way (-z: renames, spaces, non-ASCII names, untracked folders): `tracked` decides whether
+  // auto may update at all; the overlap only says in the question what would collide
+  const st = r.changes === 0 ? { tracked: [] as string[], untracked: [] as string[] } : parseStatusZ(await git(r.path, ["-c", "core.quotepath=false", "status", "--porcelain=v1", "-z"]).catch(() => ""));
+  base.tracked = st.tracked.length;
+  if (st.tracked.length || st.untracked.length) {
+    const changed = (await git(r.path, ["-c", "core.quotepath=false", "diff", "--name-only", "-z", `HEAD...origin/${target}`]).catch(() => "")).split("\0").filter(Boolean);
+    const set = new Set(changed);
+    base.overlap = [...st.tracked, ...st.untracked].filter((f) => (f.endsWith("/") ? changed.some((c) => c.startsWith(f)) : set.has(f)));
   }
   return base;
 }
 
 export type Decision = "none" | "auto" | "ask" | "ask-conflict";
 
-/** off: nothing. Conflicts (or no way to check): the question, never by itself. auto: no conflicts and no overlap. Otherwise ask. */
+/** off: nothing. Conflicts (or no way to check): the question, never by itself. auto: no conflicts and no changes to tracked files. Otherwise ask. */
 export function decide(mode: BehindMode, f: BehindFacts): Decision {
   if (mode === "off" || f.blocked || f.behind === 0) return "none";
   if (f.conflicts === "unknown" || f.conflicts.length) return "ask-conflict";
-  if (mode === "auto" && f.overlap.length === 0) return "auto";
+  // by itself only when the working folder has no changes to tracked files; otherwise always the question
+  if (mode === "auto" && f.tracked === 0 && f.overlap.length === 0) return "auto";
   return "ask";
 }
 
@@ -160,7 +166,7 @@ const files = (n: number) => `${n} file${n === 1 ? "" : "s"}`;
 
 /** "repo-a is 14 commits behind staging · no conflicts" / "· 3 files will conflict" / "· your uncommitted changes touch 2 of them". */
 export function behindMessage(f: BehindFacts): string {
-  const tail = f.conflicts === "unknown" ? "cannot tell whether it conflicts" : f.conflicts.length ? `${files(f.conflicts.length)} will conflict` : f.overlap.length ? `no conflicts, but your uncommitted changes touch ${f.overlap.length} of the changed files` : "no conflicts";
+  const tail = f.conflicts === "unknown" ? "cannot tell whether it conflicts" : f.conflicts.length ? `${files(f.conflicts.length)} will conflict` : f.overlap.length ? `no conflicts, but your uncommitted changes touch ${f.overlap.length} of the changed files` : f.tracked ? "no conflicts, but you have uncommitted changes" : "no conflicts";
   return `${f.name} is ${commits(f.behind)} behind ${f.target} · ${tail}`;
 }
 
@@ -251,4 +257,22 @@ export function headSha(path: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** `git status --porcelain=v1 -z`: the tracked files with changes (a rename counts as its new name) and the untracked ones. */
+export function parseStatusZ(out: string): { tracked: string[]; untracked: string[] } {
+  const parts = out.split("\0");
+  const tracked: string[] = [];
+  const untracked: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const e = parts[i];
+    if (e.length < 4) continue;
+    const xy = e.slice(0, 2);
+    const name = e.slice(3);
+    if (xy === "??") untracked.push(name);
+    else if (xy !== "!!") tracked.push(name);
+    // a rename or copy is followed by the old name as an entry of its own
+    if (/[RC]/.test(xy)) i++;
+  }
+  return { tracked, untracked };
 }
