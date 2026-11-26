@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { decide, behindMessage, FetchGate, headSha, inspect, refSha, setMessage, Told, undoUpdate, updateRepo, type BehindFacts, type BehindMode, type UpdateResult } from "./behind";
 import { targetOf } from "./repoStatus";
 import type { GitRaw, GitRun } from "./ownWindow";
@@ -57,7 +58,8 @@ export class BehindManager {
     try {
       for (const r of ui.repos()) {
         const target = this.target(r.path, r.name);
-        if (!r.branch || r.branch === target) continue;
+        // a folder that is gone (a set with a missing worktree) is not looked at: no process, no failure to remember
+        if (!r.branch || r.branch === target || !existsSync(r.path)) continue;
         if ((await this.gate.fetch(r.path, target, reason)) === "fetched") ui.changed(r.path);
         const key = `${r.branch}|${headSha(r.path)}|${refSha(r.path, `refs/remotes/origin/${target}`)}`;
         const known = this.seen.get(r.path.toLowerCase());
