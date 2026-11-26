@@ -121,6 +121,8 @@ export const BAR_COMMANDS = {
   refreshStatus: "aihub.bar.refreshStatus",
   /** start measuring the sets in the background (the left menu calls it when it opens); the state gets sizeBytes as they come in */
   measureSets: "aihub.bar.measureSets",
+  /** looks at the uncommitted work of the other sets that can be removed (at most 8 worktrees, git status each, remembered 5 minutes); the clean-up dialog calls it when it opens, the state gets clean and allMerged as they come in */
+  checkClean: "aihub.bar.checkClean",
   /** puts the set back as it was before the last action (branches, folders, set file, workspace file), or says in one sentence why not and does nothing */
   undoLast: "aihub.bar.undoLast",
   /** pull (fast-forward) in every repository of the set; one result line per repository */

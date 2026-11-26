@@ -567,6 +567,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.checkClean",
+        "title": "Check Which Sets Can Be Removed",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.undoLast",
         "title": "Undo the Last Change to the Set",
         "category": "AI Context Hub"
@@ -1376,6 +1381,10 @@
         },
         {
           "command": "aihub.bar.measureSets",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.checkClean",
           "when": "false"
         },
         {

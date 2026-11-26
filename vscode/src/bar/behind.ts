@@ -16,37 +16,73 @@ export const FETCH_FAILED_MS = 10 * 60_000;
 /** Fetches of the target branch: after each other, a failed one remembered 10 minutes, a fresh one (focus back) only after 30 minutes. */
 export class FetchGate {
   private last = new Map<string, { ok: boolean; at: number }>();
+  /** a fetch failed because there is no network: nothing is fetched until then (one quiet failure, not one per repository) */
+  private offlineUntil = 0;
   constructor(
     private git: GitRun,
     private now: () => number = Date.now,
+    /** the last fetch of each repository, kept in a file so a reload or a second window on the same set does not fetch again */
+    private store?: FetchStore,
   ) {}
 
-  /** `reason`: "focus" is the cheap background trigger; the others (open, own, menu) fetch unless the same call was made very recently. */
+  private known(k: string): { ok: boolean; at: number } | undefined {
+    const mine = this.last.get(k);
+    const kept = this.store?.read()[k];
+    return mine && kept ? (kept.at > mine.at ? kept : mine) : (mine ?? kept);
+  }
+
+  /** `reason`: "focus" is the cheap background trigger; the others fetch unless the same repository was fetched recently (by this window or another). */
   async fetch(path: string, target: string, reason: "open" | "own" | "menu" | "focus"): Promise<"fetched" | "skipped" | "failed"> {
     const k = path.toLowerCase();
-    const had = this.last.get(k);
+    const had = this.known(k);
     const t = this.now();
+    if (t < this.offlineUntil || (this.store?.read()["*offline"]?.at ?? 0) + FETCH_FAILED_MS > t) return "skipped";
     if (had && !had.ok && t - had.at < FETCH_FAILED_MS) return "skipped";
-    if (had && had.ok && t - had.at < (reason === "focus" ? FETCH_FRESH_MS : reason === "menu" ? 5 * 60_000 : 60_000)) return "skipped";
+    if (had && had.ok && t - had.at < (reason === "focus" ? FETCH_FRESH_MS : reason === "own" ? 60_000 : 5 * 60_000)) return "skipped";
     try {
       await this.git(path, ["fetch", "--quiet", "origin", target]);
-      this.last.set(k, { ok: true, at: t });
+      this.remember(k, { ok: true, at: t });
       return "fetched";
-    } catch {
-      this.last.set(k, { ok: false, at: t });
+    } catch (e) {
+      this.remember(k, { ok: false, at: t });
+      if (isOffline((e as Error).message)) {
+        // no network: one failure is enough for all repositories, and it is not remembered per repository as a broken remote
+        this.offlineUntil = t + FETCH_FAILED_MS;
+        this.store?.write({ ...this.store.read(), "*offline": { ok: false, at: t } });
+      }
       return "failed";
     }
   }
 
-  /** Was this repository fetched (successfully) in this window? Before that the count behind the target is not known and not asked. */
+  private remember(k: string, v: { ok: boolean; at: number }): void {
+    this.last.set(k, v);
+    this.store?.write({ ...this.store.read(), [k]: v });
+  }
+
+  /** Was this repository fetched (successfully) by this window or an earlier one? Before that the count behind the target is not known and not asked. */
   has(path: string): boolean {
-    return !!this.last.get(path.toLowerCase())?.ok;
+    return !!this.known(path.toLowerCase())?.ok;
   }
 
   /** When did the last successful fetch of any repository happen (for the focus trigger)? */
   lastOk(): number {
-    return Math.max(0, ...[...this.last.values()].filter((v) => v.ok).map((v) => v.at));
+    const kept = Object.entries(this.store?.read() ?? {}).filter(([k, v]) => k !== "*offline" && v.ok).map(([, v]) => v.at);
+    return Math.max(0, ...[...this.last.values()].filter((v) => v.ok).map((v) => v.at), ...kept);
   }
+}
+
+export interface FetchStore {
+  read(): Record<string, { ok: boolean; at: number }>;
+  write(rec: Record<string, { ok: boolean; at: number }>): void;
+}
+
+/** git's words for "there is no network" (not a broken remote or a missing branch). */
+export const isOffline = (message: string): boolean => /could not resolve host|unable to access|network is unreachable|connection (timed out|refused|reset)|timed out|no route to host|temporary failure in name resolution|could not read from remote|early eof/i.test(message);
+
+/** The first state of a window starts the look at the target branch only a few seconds after the window opened, never before. */
+export const OPEN_CHECK_AFTER_MS = 5_000;
+export function openCheckDelay(activatedAt: number, now: number, minMs = OPEN_CHECK_AFTER_MS): number {
+  return Math.max(0, minMs - (now - activatedAt));
 }
 
 export interface BehindFacts {

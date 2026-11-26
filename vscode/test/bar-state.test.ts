@@ -127,6 +127,7 @@ describe("BarState in the three modes", () => {
     // the state starts no process for other sets: clean is not known yet; the left menu's background check fills it in
     expect((await engine.state()).sets.find((x) => x.story === 7)?.clean).toBeUndefined();
     await engine.measureSets(() => undefined);
+    await engine.checkClean(() => undefined);
     const st = await engine.state();
     const by = Object.fromEntries(st.sets.map((x) => [x.story, x]));
     expect(by[7]).toMatchObject({ done: true, clean: true });
@@ -140,6 +141,7 @@ describe("BarState in the three modes", () => {
     set(7, "feature/7-x", ["repo-a"]);
     const engine = engineFor(undefined, { dirtyOf: async () => undefined });
     await engine.measureSets(() => undefined);
+    await engine.checkClean(() => undefined);
     const st = await engine.state();
     expect(st.sets[0]).toMatchObject({ done: true });
     expect(st.sets[0].clean).toBeUndefined();

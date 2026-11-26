@@ -203,7 +203,13 @@ export class BarEngine {
     const scan = this.scan();
     const sets = scan.sets.map((s) => ({ id: s.id, key: setKey(s), paths: s.repos.filter((r) => r.exists).map((r) => r.path) }));
     await (this.deps.sizes?.measureAll(sets, done) ?? Promise.resolve());
-    await this.checkOthers(done);
+    // unpushed of the worktrees of other sets, from the files only: no process
+    for (const w of this.offered()) {
+      const head = headSha(w.path);
+      const k = this.others.get(w.path);
+      if (head && head === refSha(w.path, `refs/remotes/origin/${w.branch}`) && !(k && k.unpushed === 0)) this.others.set(w.path, { ...(k ?? { changes: undefined }), at: k?.at ?? this.now(), unpushed: 0 });
+    }
+    done();
   }
 
   /**
@@ -211,7 +217,8 @@ export class BarEngine {
    * pull requests merged): at most MAX_CLEAN_CHECKS worktrees per menu opening, each remembered for 5 minutes. Unpushed is
    * read from files when the branch is at its remote branch; git is asked only when it is not.
    */
-  private async checkOthers(done: () => void): Promise<void> {
+  /** The worktrees of the other sets that can be offered for removal (closed story, or all pull requests merged). */
+  private offered(): { path: string; branch: string }[] {
     const stories = readSeenStories(this.deps.env);
     const facts = openFacts(this.deps.dir());
     const wanted: { path: string; branch: string }[] = [];
@@ -220,10 +227,19 @@ export class BarEngine {
       const offered = (s.story && isClosedState(stories[s.story]?.state)) || (this.deps.prOf && allPrsMerged(s, this.deps.prOf));
       if (offered) for (const r of s.repos) if (r.exists) wanted.push({ path: r.path, branch: r.branch });
     }
+    return wanted;
+  }
+
+  /**
+   * Changed files (and unpushed commits, git only when the files cannot say) of at most MAX_CLEAN_CHECKS offered worktrees, each
+   * remembered 5 minutes: asked for when the clean-up dialog opens, not when the left menu opens (that starts no process).
+   */
+  async checkClean(done: () => void): Promise<void> {
+    const wanted = this.offered();
     let n = 0;
     for (const w of wanted) {
       const k = this.others.get(w.path);
-      if (k && this.now() - k.at < OTHERS_TTL_MS) continue;
+      if (k && k.changes !== undefined && this.now() - k.at < OTHERS_TTL_MS) continue;
       if (n++ >= MAX_CLEAN_CHECKS) break;
       const changes = await this.deps.dirtyOf?.(w.path);
       const head = headSha(w.path);

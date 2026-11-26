@@ -163,9 +163,13 @@ describe("process starts with 10 sets on the PC, and for one action and its Undo
     // the left menu: the state itself starts nothing; the background check looks at no more than 8 worktrees
     const critical = await count(() => engine.state());
     expect(critical).toBe(0);
+    // measureSets (the sizes, the unpushed of the other sets from the files) is part of opening the left menu: no process at all
     const background = await count(() => engine.measureSets(() => undefined));
-    expect(background).toBeLessThanOrEqual(8);
-    const again = await count(async () => (await engine.state(), await engine.measureSets(() => undefined)));
+    expect(background).toBe(0);
+    // the clean-up dialog asks for the uncommitted work of the sets that can be removed: at most 8 worktrees
+    const dialog = await count(() => engine.checkClean(() => undefined));
+    expect(dialog).toBeLessThanOrEqual(8);
+    const again = await count(async () => (await engine.state(), await engine.measureSets(() => undefined), await engine.checkClean(() => undefined)));
     // the next opening of the menu within 5 minutes: the sizes and the 8 worktrees are remembered; only the worktrees not yet looked at (the 20 are looked at 8 at a time)
     expect(again).toBeLessThanOrEqual(8);
     const st = await engine.state();
@@ -185,9 +189,28 @@ describe("process starts with 10 sets on the PC, and for one action and its Undo
     });
     rowsExtra.push(["one Undo (plan and steps)", undoStarts]);
     rowsExtra.push(["left menu, 10 sets: the state", critical]);
-    rowsExtra.push(["left menu, 10 sets: background", background]);
-    rowsExtra.push(["left menu again (within 5 min)", again]);
+    rowsExtra.push(["left menu, 10 sets: measureSets", background]);
+    rowsExtra.push(["clean-up dialog (checkClean)", dialog]);
+    rowsExtra.push(["clean-up dialog again", again]);
     console.log(rowsExtra.map(([l, n]) => `${String(l).padEnd(36)}${String(n).padStart(4)}`).join("\n"));
   });
 });
 const rowsExtra: [string, number][] = [];
+
+describe("the look at the target branch blocks nothing", () => {
+  it("a fetch that hangs does not hold up the state: a menu that opens meanwhile gets the old stand", async () => {
+    const w = world();
+    const cfg = mkdtempSync(join(tmpdir(), "aihub-budget-cfg-"));
+    let release!: () => void;
+    const stalled = new Promise<void>((r) => (release = r));
+    const git = async (cwd: string, args: string[]) => (args[0] === "fetch" ? (await stalled, "") : gitRun(cwd, args));
+    const ui: BehindUi = { mode: () => "ask", setAuto: async () => undefined, focused: () => true, repos: () => w.repos.map((r) => ({ name: r.name, path: r.path, branch: "feature/5-x", changes: 0 })), ask: async () => undefined, said: () => undefined, changed: () => undefined };
+    const mgr = new BehindManager({ git, raw: gitRaw, cli: async () => "", ui });
+    const engine = new BarEngine({ env: { AIHUB_CONFIG_HOME: cfg, AIHUB_COMMON_ROOTS: "" } as NodeJS.ProcessEnv, dir: () => w.repos[0].path, dirtyOf: async () => 0 });
+    const running = mgr.run("open");
+    const state = await Promise.race([engine.state(), new Promise<"blocked">((r) => setTimeout(() => r("blocked"), 3000))]);
+    expect(state).not.toBe("blocked");
+    release();
+    await running;
+  });
+});
