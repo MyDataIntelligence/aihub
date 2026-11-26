@@ -442,7 +442,8 @@ export async function browseFile(b: Browse, o: { project: string; repo: string; 
 export interface BranchesResult extends ReadMeta {
   default: string;
   count: number;
-  branches: { name: string; commit: string; isMine: boolean; isDefault: boolean; by: Person | null }[];
+  /** at: date of the newest commit; ahead/behind: against the default branch (null when the statistics could not be read) */
+  branches: { name: string; commit: string; isMine: boolean; isDefault: boolean; by: Person | null; at: string | null; ahead: number | null; behind: number | null }[];
   tags: { name: string; commit: string }[];
   more: boolean;
 }
@@ -452,6 +453,10 @@ interface RawRef {
   objectId: string;
   peeledObjectId?: string;
   creator?: { displayName?: string; uniqueName?: string; id?: string };
+  /** from the branch statistics (kept with the refs) */
+  at?: string | null;
+  ahead?: number | null;
+  behind?: number | null;
 }
 
 export function mapBranches(refs: RawRef[], def: string, me: MeInfo, filter?: string, top = 50): Omit<BranchesResult, "readAt" | "cached"> {
@@ -461,7 +466,8 @@ export function mapBranches(refs: RawRef[], def: string, me: MeInfo, filter?: st
     .map((r) => {
       const by = r.creator ? personOf(r.creator, me) : null;
       const name = r.name.slice("refs/heads/".length);
-      return { name, commit: r.objectId, isMine: !!by?.isMe, isDefault: name === def, by };
+      const isDefault = name === def;
+      return { name, commit: r.objectId, isMine: !!by?.isMe, isDefault, by, at: r.at ?? null, ahead: isDefault ? 0 : (r.ahead ?? null), behind: isDefault ? 0 : (r.behind ?? null) };
     })
     .filter((x) => !f || x.name.toLowerCase().includes(f))
     .sort((x, y) => Number(y.isDefault) - Number(x.isDefault) || Number(y.isMine) - Number(x.isMine) || x.name.localeCompare(y.name));
@@ -476,8 +482,22 @@ export function mapBranches(refs: RawRef[], def: string, me: MeInfo, filter?: st
 async function refsOf(b: Browse, row: RepoRow): Promise<{ data: RawRef[]; meta: ReadMeta }> {
   const rc = repoClientOf(b, row.project, row.repo);
   return cached(b, `refs|${b.org}|${row.project}|${row.repo}`, TTL.short, async () => {
-    const [heads, tags] = await Promise.all([rc.list<RawRef>(`${rc.repoPath()}/refs`, { filter: "heads/" }), rc.list<RawRef>(`${rc.repoPath()}/refs`, { filter: "tags/", peelTags: true })]);
-    return [...heads, ...tags].map((r) => ({ name: r.name, objectId: r.objectId, peeledObjectId: r.peeledObjectId, creator: r.creator ? { displayName: r.creator.displayName, uniqueName: r.creator.uniqueName, id: r.creator.id } : undefined }));
+    const [heads, tags, stats] = await Promise.all([
+      rc.list<RawRef>(`${rc.repoPath()}/refs`, { filter: "heads/" }),
+      rc.list<RawRef>(`${rc.repoPath()}/refs`, { filter: "tags/", peelTags: true }),
+      rc.get<{ value?: RawBranchStat[] }>(`${rc.repoPath()}/stats/branches`).then((x) => x.value ?? []).catch(() => [] as RawBranchStat[]),
+    ]);
+    const st = new Map(stats.map((s) => [`refs/heads/${s.name}`, s]));
+    return [...heads, ...tags].map((r) => {
+      const s = st.get(r.name);
+      return {
+        name: r.name,
+        objectId: r.objectId,
+        peeledObjectId: r.peeledObjectId,
+        creator: r.creator ? { displayName: r.creator.displayName, uniqueName: r.creator.uniqueName, id: r.creator.id } : undefined,
+        ...(s ? { at: s.commit?.committer?.date ?? s.commit?.author?.date ?? null, ahead: s.aheadCount ?? null, behind: s.behindCount ?? null } : {}),
+      };
+    });
   });
 }
 
