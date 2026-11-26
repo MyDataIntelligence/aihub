@@ -2,6 +2,18 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.7.0
+- The engine for the story-set buttons in the title bar (AI Context Hub 3.6.0 with PyCharm Git 0.28.0): `aihub recent`, `aihub worktree list --all`, a file-only scan of the PC (clones, sets, where each branch is checked out, branch names per clone; OneDrive and network folders only when listed; says when the scan was cut off) and `aihub story branches` that also finds branches with only the story number in their name.
+- One story is one set: `worktree create` keeps the branch of an existing set and writes no second set file next to an extension set; removing a set removes only that set, from any folder, and never a workspace file outside the set.
+- The Explorer folder name `<repo> (<branch>)` and `repos[].branch` follow the real branch of every repository, also after `git switch` outside aihub (files only, atomic, only when the value differs).
+- Ignored local files (`.env`, notes) are copied to `<git dir>/aihub/backup/` before a worktree is removed or recreated; build and cache folders are left out; too much to copy refuses unless `--discard-local-work`.
+- `aihub branch switch --existing move|reuse|recreate` keeps one entry per repository: the chosen worktree takes the repository's own entry and folder; an old worktree that is not clean stays on disk as a loose folder next to the set, said in the one note.
+- Set files are written atomically under one lock, read with a BOM or as UTF-16, never overwritten when unreadable; the registration of a worktree on a drive or share that is not there is never pruned.
+- `aihub comments threads [--pr <N|repo:N> ...]` (threads of one or more pull requests for editors: position, outdated, anchor, suggestions, `me`) and `aihub comments reply ... --return-threads`.
+- `aihub repos ado` reads every repository of the organisation in one call when team.yaml names no projects.
+- One target-branch rule per repository (team.yaml, set file base, the branch it was cut from, staging, origin/HEAD, main); `--target` only when sure.
+- `aihub pr impact` and concrete user actions in PR sections; vague action text is refused (`--as-is` overrides). Release notes: docs/releases/1.7.0.md.
+
 ## 1.6.0
 - `aihub branch switch --repo <r> --branch <X>`: one repository of the set you are in on another branch, in its own worktree (`git switch`); the folder, the workspace file and the other repositories stay and no window opens (`the window stays as it is: 3 repositories, repo-b now on X`). `worktree open --repos` with only some repositories of the set does the same; `--new-set` still makes a new set. Uncommitted work: nothing switches and the line gives the choices.
 - The CLI reads and writes the sets of the VS Code extension too (`.worktree-set.json`, schema 1, nothing renamed): `status`, `--all-repos`, `worktree list`, `branch switch` and `worktree add|drop|repair` work in them, and a switch updates that file and its workspace folder names, so the Worktree Sets view stays right.
