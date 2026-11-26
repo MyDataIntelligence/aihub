@@ -857,6 +857,11 @@
             "No review comments in the editor or the Explorer; nothing is read for them."
           ],
           "description": "Review comments of pull requests in the editor (Reply, Resolve, Apply Suggestion) and as a count in the Explorer. They are read with the pull requests (one aihub call for all of them): when a set opens, when the overview opens, when the window gets focus back after 5 minutes, and on a refresh. Opening a file reads nothing."
+        },
+        "aiContextHub.searchWithoutFocus": {
+          "type": "boolean",
+          "default": false,
+          "description": "Test windows only: the search of the left menu may read the Azure DevOps list while the window has no focus (a minimised test window). Normally the list is never read without focus."
         }
       }
     },

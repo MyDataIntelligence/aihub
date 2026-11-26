@@ -45,7 +45,18 @@ export function progressOf(line: string): number | undefined {
 /** The sentence to show when git could not sign in from the background. */
 export const SIGN_IN_HINT = "git could not sign in without a window: run 'git clone' of this repository once in a terminal (or sign in with Git Credential Manager), then clone again";
 
-export type CloneOutcome = { ok: true } | { ok: false; cancelled: boolean; error: string };
+/**
+ * Stops a process with everything it started. On Windows `git` is often Git for Windows' starter (cmd\git.exe) that runs the
+ * real git, which runs git-remote-https: killing only the starter lets the clone go on writing into the folder that Cancel
+ * removes. One taskkill, only on Cancel.
+ */
+export function stopTree(pid: number | undefined, fallback: () => void, platform = process.platform): void {
+  if (platform !== "win32" || !pid) return fallback();
+  const k = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+  k.on("error", fallback);
+}
+
+export type CloneOutcome ={ ok: true } | { ok: false; cancelled: boolean; error: string };
 
 /**
  * `git clone --progress <url> <dir>`: reports percentages, stops on `cancel` and then removes the half clone. `dir` must
@@ -60,7 +71,7 @@ export function cloneWithProgress(o: { url: string; dir: string; onProgress?: (p
     let last = -1;
     o.onCancel?.(() => {
       cancelled = true;
-      p.kill();
+      stopTree(p.pid, () => p.kill());
     });
     p.stderr.on("data", (b: Buffer) => {
       const text = b.toString();
@@ -95,17 +106,16 @@ export function removeFolder(dir: string): void {
 }
 
 /**
- * Nothing was changed or made in a fresh clone: no changed, new or ignored file, one local branch, and it is where origin's
- * branch of that name is. Only then may Undo remove it.
+ * Nothing was changed or made in a fresh clone: no changed, new or ignored file, no commit that is on no remote, and no local
+ * branch but the one the clone checked out (and `ours`, the story branch Clone and Add made). Only then may Undo remove it.
  */
-export async function untouched(git: GitRun, dir: string): Promise<{ ok: boolean; why?: string }> {
+export async function untouched(git: GitRun, dir: string, o: { ours?: string } = {}): Promise<{ ok: boolean; why?: string }> {
   const status = (await git(dir, ["status", "--porcelain", "--ignored", "--untracked-files=all"])).trim();
   if (status) return { ok: false, why: "files in it were changed or added" };
-  const heads = (await git(dir, ["for-each-ref", "--format=%(refname:short) %(objectname)", "refs/heads"])).trim().split(/\r?\n/).filter(Boolean);
-  if (heads.length !== 1) return { ok: false, why: "a branch was made in it" };
-  const [name, sha] = heads[0].split(" ");
-  const remote = (await git(dir, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${name}`]).catch(() => "")).trim();
-  if (remote !== sha) return { ok: false, why: "a commit was made in it" };
+  const unpushed = Number((await git(dir, ["rev-list", "--count", "--branches", "--not", "--remotes"])).trim()) || 0;
+  if (unpushed) return { ok: false, why: "a commit was made in it" };
+  const heads = (await git(dir, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])).trim().split(/\r?\n/).filter(Boolean);
+  if (heads.filter((h) => h !== o.ours).length > 1) return { ok: false, why: "a branch was made in it" };
   const worktrees = (await git(dir, ["worktree", "list", "--porcelain"])).split(/\r?\n/).filter((l) => l.startsWith("worktree ")).length;
   if (worktrees > 1) return { ok: false, why: "a worktree of it is still in use" };
   return { ok: true };
