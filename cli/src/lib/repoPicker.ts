@@ -92,7 +92,7 @@ export function remoteKey(url: string | undefined): string | undefined {
 export { repoNameOfUrl } from "./repoName.js";
 
 /** When a clone was last used: the newest of .git/index and .git/HEAD (git writes them on status, commit, switch). */
-function usedAt(dir: string): number {
+export function usedAt(dir: string): number {
   let t = 0;
   for (const f of ["index", "HEAD"]) {
     try {

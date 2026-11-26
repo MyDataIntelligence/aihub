@@ -16,6 +16,8 @@ export function plainError(raw: string): { text: string; details: string } {
     [/^usage:|unknown (option|flag|command)/i, "that did not work as asked"],
     [/not a fast-forward|non-fast-forward|rejected/i, "the remote has changes you do not have yet; update first, then push"],
   ];
+  const missing = /can't find the clone of '([^']+)'/.exec(details);
+  if (missing) return { text: `the clone of ${missing[1]} was not found; choose its folder when asked, or run: aihub repos prefer "${missing[1]}" <folder>`, details };
   const hit = rules.find(([re]) => re.test(details));
   if (hit) return { text: hit[1], details };
   // an unknown failure: the first line, without the prefixes and flags nobody can type here

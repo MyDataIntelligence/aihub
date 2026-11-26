@@ -13,6 +13,7 @@ import { RemoteRepos } from "./remoteRepos";
 import { registerSearchCommands } from "./searchUi";
 import { SizeMemo } from "./setSize";
 import { showFailure } from "./failureUi";
+import { withCloneRecovery } from "./missingCloneUi";
 import { hideClone, setPreferredClone } from "./hiddenClones";
 import { BehindMemo, gitStatusOf, targetOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
 import { registerCloneCommands } from "./cloneUi";
@@ -429,7 +430,7 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
     }
     showFailure(e);
   };
-  const reg = (id: string, f: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, (...a) => Promise.resolve(f(...a)).catch(fail)));
+  const reg = (id: string, f: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, (...a) => withCloneRecovery(async () => f(...a)).catch(fail)));
 
   // the overview menu opens: read the pull requests again (at most once per call, a failed call is remembered like a good one)
   reg(BAR_COMMANDS.refreshStatus, async () => {

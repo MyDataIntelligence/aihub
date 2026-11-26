@@ -25,6 +25,7 @@ import {
   type BranchStatus,
   type StoryBranch,
 } from "./storyWorktrees.js";
+import { cloneNotFoundMessage } from "./findClone.js";
 import { loadTeam, type TeamConfig } from "./team.js";
 import { addArtifactLink, branchArtifact, getWorkItem, repoInfo, type WorkItem } from "./workitems.js";
 import type { WhenExists } from "./existingWorktree.js";
@@ -257,7 +258,7 @@ function repoDir(ctx: Ctx, repo: string | undefined): RepoDir {
   const { root, team: t } = team(ctx);
   if (!repo) return { name: basename(root), dir: root };
   const d = tryResolve(repo, root, t);
-  if (!d) throw new AihubError(`repository '${repo}' not found next to ${root}`);
+  if (!d) throw new AihubError(cloneNotFoundMessage(repo, root));
   return d;
 }
 
