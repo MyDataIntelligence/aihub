@@ -60,8 +60,14 @@ export interface BarSet {
   done?: boolean;
   /** no work in it (nothing uncommitted or unpushed); only worked out for done sets */
   clean?: boolean;
-  /** disk the set holds (bytes); measured in the background when the menu opens, so absent at first */
+  /** disk the set holds (bytes); measured in the background at most once a day (or when the user asks), kept in a file, so absent at first */
   sizeBytes?: number;
+  /** the measurement stopped at its time limit: the set holds at least sizeBytes (show "≥ x GB") */
+  sizeLowerBound?: boolean;
+  /** when sizeBytes was measured (epoch ms) */
+  sizeAt?: number;
+  /** every repository of the set has a merged pull request (from the pull request list only, no git); absent when the list is not known; clean/allMerged say whether nothing would be lost */
+  prsMerged?: boolean;
   /** every repository has a merged pull request and nothing in the set would be lost (no uncommitted work, nothing unpushed) */
   allMerged?: boolean;
 }
@@ -90,6 +96,8 @@ export interface BarState {
   undo?: { label: string };
   /** the sizes of all sets whose size is known, added up */
   totalSizeBytes?: number;
+  /** at least one of the sets is a lower bound: the total is at least this (show "≥ x GB") */
+  totalSizeLowerBound?: boolean;
   /** OneDrive / network folders that were left out because they are not in "Folders to Look In" */
   scanSkipped?: string[];
 }
@@ -119,7 +127,11 @@ export const BAR_COMMANDS = {
   refresh: "aihub.bar.refresh",
   /** read the pull requests of the set again (the overview menu calls it when it opens) */
   refreshStatus: "aihub.bar.refreshStatus",
-  /** start measuring the sets in the background (the left menu calls it when it opens); the state gets sizeBytes as they come in */
+  /**
+   * start measuring the sets in the background (the left menu calls it when it opens); the state gets sizeBytes as they come in.
+   * A set is measured at most once a day and only while the window has focus; `{ force: true }` (the user asked, "Measure now")
+   * measures every set again. A walk stops after 20 s and leaves sizeLowerBound.
+   */
   measureSets: "aihub.bar.measureSets",
   /** looks at the uncommitted work of the other sets that can be removed (at most 8 worktrees, git status each, remembered 5 minutes); the clean-up dialog calls it when it opens, the state gets clean and allMerged as they come in */
   checkClean: "aihub.bar.checkClean",

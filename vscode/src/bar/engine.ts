@@ -36,6 +36,8 @@ export interface EngineDeps {
   sizes?: SizeMemo;
   /** the pull request of a branch (from the one read for the set, remembered for minutes; never a call) */
   prOf?: (repo: string, branch: string) => BarPr | undefined;
+  /** the pull request list has been read (an empty memory is "unknown", not "no pull requests") */
+  prsKnown?: () => boolean;
   /** is the branch linked to the story in Azure DevOps (answered from an earlier read, never a call) */
   linkedOf?: (story: number, repo: string, branch: string) => boolean | undefined;
   /** other places known to be in use (the older recent list of this extension): folders, or workspace files of sets */
@@ -179,6 +181,7 @@ export class BarEngine {
       open: facts,
       undo: this.deps.undoLabel?.(facts.set?.folder),
       size: (s) => this.deps.sizes?.get(s.id, setKey(s)),
+      prsMerged: (s) => (this.deps.prOf && this.deps.prsKnown?.() ? allPrsMerged(s, this.deps.prOf) : undefined),
       allMerged: (s) => merged.get(s.id) ?? (this.deps.prOf && !allPrsMerged(s, this.deps.prOf) ? false : undefined),
       scan,
       recents: readRecentUse(this.deps.env),
@@ -199,10 +202,10 @@ export class BarEngine {
   }
 
   /** Measures the size of every set in the background (one at a time, without blocking); `done` runs after each one. */
-  async measureSets(done: () => void): Promise<void> {
+  async measureSets(done: () => void, o: { force?: boolean } = {}): Promise<void> {
     const scan = this.scan();
     const sets = scan.sets.map((s) => ({ id: s.id, key: setKey(s), paths: s.repos.filter((r) => r.exists).map((r) => r.path) }));
-    await (this.deps.sizes?.measureAll(sets, done) ?? Promise.resolve());
+    await (this.deps.sizes?.measureAll(sets, done, o) ?? Promise.resolve());
     // unpushed of the worktrees of other sets, from the files only: no process
     for (const w of this.offered()) {
       const head = headSha(w.path);

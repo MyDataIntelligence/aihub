@@ -1,6 +1,7 @@
-import { promises as fsp, statSync } from "node:fs";
-import { join } from "node:path";
+import { promises as fsp, mkdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ScanSet } from "../../../cli/src/lib/machineScan";
+import { writeAtomic } from "../../../cli/src/lib/setFile";
 import type { BarPr } from "./types";
 
 /**
@@ -8,9 +9,17 @@ import type { BarPr } from "./types";
  * the set changes) and whether everything in it is merged and nothing would be lost. No vscode here.
  */
 
-/** Bytes in the folders, links not followed, measured without blocking: the walk gives the event loop a turn every 200 entries. */
-export async function sizeOfDirs(paths: string[], o: { yieldEvery?: number } = {}): Promise<number> {
+export interface Measured {
+  bytes: number;
+  /** the walk stopped at its time limit: the real size is at least this */
+  lowerBound?: boolean;
+}
+
+/** Bytes in the folders, links not followed, measured without blocking: the walk gives the event loop a turn every 200 entries; after `limitMs` it stops and says so. */
+export async function measureDirs(paths: string[], o: { yieldEvery?: number; limitMs?: number; now?: () => number } = {}): Promise<Measured> {
   const every = o.yieldEvery ?? 200;
+  const now = o.now ?? Date.now;
+  const stopAt = o.limitMs === undefined ? undefined : now() + o.limitMs;
   let total = 0;
   let seen = 0;
   const stack = [...paths];
@@ -33,45 +42,97 @@ export async function sizeOfDirs(paths: string[], o: { yieldEvery?: number } = {
           /* gone while measuring */
         }
       }
-      if (++seen % every === 0) await new Promise((r) => setImmediate(r));
+      if (++seen % every === 0) {
+        await new Promise((r) => setImmediate(r));
+        if (stopAt !== undefined && now() > stopAt) return { bytes: total, lowerBound: true };
+      }
     }
   }
-  return total;
+  return { bytes: total };
 }
 
-/** What makes a measured size stale: the set file (it changes with every add, drop and switch) and the worktrees it names. */
-export function setKey(s: Pick<ScanSet, "folder" | "repos">, file: (folder: string) => string[] = defaultSetFiles): string {
-  const stamp = file(s.folder).map((f) => {
-    try {
-      return statSync(f).mtimeMs;
-    } catch {
-      return 0;
-    }
-  });
-  return `${stamp.join(",")}|${s.repos.map((r) => `${r.path}:${r.exists ? 1 : 0}`).join(",")}`;
-}
-const defaultSetFiles = (folder: string): string[] => [join(folder, ".aihub-set.json"), join(folder, ".worktree-set.json")];
+export const sizeOfDirs = async (paths: string[], o: { yieldEvery?: number } = {}): Promise<number> => (await measureDirs(paths, o)).bytes;
 
-/** Sizes per set, measured one set after the other in the background and remembered until the set changes. */
+/** What makes a measured size stale before its day is over: the worktrees the set holds (an added or dropped repository). */
+export function setKey(s: Pick<ScanSet, "folder" | "repos">): string {
+  return s.repos.map((r) => `${r.path}:${r.exists ? 1 : 0}`).join(",");
+}
+
+export const SIZE_TTL_MS = 24 * 60 * 60 * 1000;
+export const SIZE_LIMIT_MS = 20_000;
+
+interface SizeRecord {
+  key: string;
+  bytes: number;
+  at: number;
+  lowerBound?: boolean;
+}
+
+/**
+ * Sizes per set, measured one set after the other in the background. The result is kept in a file with its time (shared by
+ * windows and restarts): a set is measured at most once a day, or when its repositories changed, or when the user asks.
+ * A walk that takes longer than the limit stops and leaves a lower bound. Nothing is measured while the window has no focus.
+ */
 export class SizeMemo {
-  private sizes = new Map<string, { key: string; bytes: number }>();
+  private sizes?: Map<string, SizeRecord>;
   private running = false;
-  constructor(private measure: (paths: string[]) => Promise<number> = sizeOfDirs) {}
-
-  /** The remembered size, when it is still the size of this set. */
-  get(id: string, key: string): number | undefined {
-    const had = this.sizes.get(id);
-    return had && had.key === key ? had.bytes : undefined;
+  private measure: (paths: string[], limitMs: number) => Promise<number | Measured>;
+  constructor(
+    measure?: (paths: string[], limitMs: number) => Promise<number | Measured>,
+    private o: { file?: string; now?: () => number; ttlMs?: number; limitMs?: number; focused?: () => boolean } = {},
+  ) {
+    this.measure = measure ?? ((paths, limitMs) => measureDirs(paths, { limitMs }));
   }
 
-  /** Measures the sets whose size is unknown or stale; `done` runs after each one (the state changes). One run at a time. */
-  async measureAll(sets: { id: string; key: string; paths: string[] }[], done: () => void): Promise<void> {
-    if (this.running) return;
-    this.running = true;
+  private load(): Map<string, SizeRecord> {
+    if (this.sizes) return this.sizes;
+    this.sizes = new Map();
+    if (this.o.file) {
+      try {
+        const rec = JSON.parse(readFileSync(this.o.file, "utf8")) as Record<string, SizeRecord>;
+        for (const [id, r] of Object.entries(rec)) if (r && typeof r.bytes === "number" && typeof r.at === "number" && typeof r.key === "string") this.sizes.set(id, r);
+      } catch {
+        /* no file yet, or unreadable: measured again */
+      }
+    }
+    return this.sizes;
+  }
+
+  private save(): void {
+    if (!this.o.file) return;
     try {
+      mkdirSync(dirname(this.o.file), { recursive: true });
+      writeAtomic(this.o.file, JSON.stringify(Object.fromEntries(this.load())));
+    } catch {
+      /* the size is shown anyway */
+    }
+  }
+
+  /** The remembered size of the set (even an old one, with its time): undefined when it was never measured or its repositories changed. */
+  get(id: string, key: string): { bytes: number; at: number; lowerBound?: boolean } | undefined {
+    const had = this.load().get(id);
+    return had && had.key === key ? { bytes: had.bytes, at: had.at, ...(had.lowerBound ? { lowerBound: true } : {}) } : undefined;
+  }
+
+  /**
+   * Measures the sets without a size of today; `done` runs after each one (the state changes). One run at a time. `force`
+   * (the user asked for it) measures every set again.
+   */
+  async measureAll(sets: { id: string; key: string; paths: string[] }[], done: () => void, o: { force?: boolean } = {}): Promise<void> {
+    if (this.running) return;
+    if (!o.force && this.o.focused && !this.o.focused()) return;
+    this.running = true;
+    const now = this.o.now ?? Date.now;
+    try {
+      const mem = this.load();
+      for (const id of [...mem.keys()]) if (!sets.some((s) => s.id === id)) mem.delete(id);
       for (const s of sets) {
-        if (this.get(s.id, s.key) !== undefined) continue;
-        this.sizes.set(s.id, { key: s.key, bytes: await this.measure(s.paths) });
+        const had = this.get(s.id, s.key);
+        if (!o.force && had && now() - had.at < (this.o.ttlMs ?? SIZE_TTL_MS)) continue;
+        const m = await this.measure(s.paths, this.o.limitMs ?? SIZE_LIMIT_MS);
+        const r = typeof m === "number" ? { bytes: m } : m;
+        mem.set(s.id, { key: s.key, bytes: r.bytes, at: now(), ...(r.lowerBound ? { lowerBound: true } : {}) });
+        this.save();
         done();
       }
     } finally {
