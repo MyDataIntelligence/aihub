@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { showFile, listRefFiles } from "../src/lib/git.js";
 import { resolveTemplate, templateSourceText } from "../src/lib/templates.js";
-import { devopsTemplateText } from "../src/lib/workItemTemplate.js";
+import { repoClientAt } from "../src/lib/context.js";
+import { devopsTemplate, devopsTemplateText } from "../src/lib/workItemTemplate.js";
+import { loadTeam } from "../src/lib/team.js";
 import { commands, main } from "../src/router.js";
 import { ctxFor, fakeFetch, makeRepo, sh, tmp, write, type Route } from "./helpers.js";
 
@@ -76,7 +78,7 @@ describe("story template: fixed order and a visible source", () => {
     expect(r.code).toBe(0);
     const j = JSON.parse(r.out);
     expect(j.kind).toBe("built-in");
-    expect(j.template).toBe("built-in (no team template found; add .agents/skills/_shared/assets/story-template.md to use your own)");
+    expect(j.template).toBe("built-in (no team template found; add .agents/skills/_shared/assets/story-template.md to use your own; added one in Azure DevOps? run again with --refresh-template)");
   });
 
   it("story create and refine name the template in their result line", async () => {
@@ -153,5 +155,66 @@ describe("pull request template: the Azure DevOps order", () => {
   it("pr create names the template it used, or that there is none", () => {
     expect(templateSourceText({ path: ".azuredevops/pull_request_template.md", content: "", from: "ref" }, "main")).toBe("template: .azuredevops/pull_request_template.md (origin/main)");
     expect(templateSourceText(undefined, "main")).toContain("template: none");
+  });
+});
+
+describe("template cache: a missing template is asked again soon, --refresh-template at once", () => {
+  const fields = { "System.Description": "<h2>Context</h2><p>Waarom?</p><h2>Gebruikersverhaal</h2><p>Als ...</p>" };
+
+  it("no template found is kept ten minutes, a found template a day", async () => {
+    const { dir } = makeRepo();
+    const home = tmp("aihub-home-");
+    const { ctx } = ctxFor(dir, fakeFetch([]).fn);
+    ctx.env = { ...ctx.env, AIHUB_HOME: home };
+    const { root, client } = repoClientAt(ctx, dir);
+    const team = loadTeam(root);
+    const t0 = 1_000_000_000_000;
+    const asked = { n: 0 };
+    let list: { id: string; name: string }[] = [];
+    const c = (await import("./helpers.js")).fakeFetch([
+      { match: TEMPLATES_LIST, respond: () => (asked.n++, { body: { value: list } }) },
+      { match: TEMPLATE_ONE, respond: () => ({ body: { id: "tpl-1", fields } }) },
+    ]);
+    const cl = repoClientAt({ ...ctx, fetch: c.fn }, dir).client;
+    expect((await devopsTemplate(root, cl, team, "User Story", t0)).text).toBeUndefined();
+    expect(asked.n).toBe(1);
+    await devopsTemplate(root, cl, team, "User Story", t0 + 5 * 60_000);
+    expect(asked.n).toBe(1); // five minutes later: still the cached "none"
+    list = [{ id: "tpl-1", name: "User Story sjabloon" }];
+    expect((await devopsTemplate(root, cl, team, "User Story", t0 + 11 * 60_000)).text).toContain("## Context");
+    expect(asked.n).toBe(2); // after ten minutes the new template is seen
+    await devopsTemplate(root, cl, team, "User Story", t0 + 11 * 60_000 + 3 * 3_600_000);
+    expect(asked.n).toBe(2); // a found template stays for a day
+    void client;
+  });
+
+  it("--refresh-template on story create/refine/show and workitem create asks Azure DevOps again, and the built-in line says how", async () => {
+    const { dir } = makeRepo();
+    const home = tmp("aihub-home-");
+    const empty = await run(dir, ["story", "template"], devops([]), home);
+    expect(empty.out.split("\n")[0]).toContain("added one in Azure DevOps? run again with --refresh-template");
+    const routes = devops([{ id: "tpl-1", name: "User Story sjabloon" }], fields);
+    const cached = await run(dir, ["story", "template"], routes, home);
+    expect(cached.out.split("\n")[0]).toContain("template: built-in"); // still the cached "none"
+    expect(cached.calls).toHaveLength(0);
+    const fresh = await run(dir, ["story", "template", "--refresh-template"], routes, home);
+    expect(fresh.out.split("\n")[0]).toBe('template: Azure DevOps "User Story sjabloon"');
+  });
+
+  it("refine and workitem create accept --refresh-template", async () => {
+    const { dir } = makeRepo();
+    const home = tmp("aihub-home-");
+    write(dir, "b.md", "## Description\nx\n");
+    const routes: Route[] = [
+      ...devops([{ id: "tpl-1", name: "User Story sjabloon" }], fields),
+      { match: /wit\/workitems\/9\?/, respond: () => ({ body: { id: 9, fields: { "System.WorkItemType": "User Story", "System.Title": "t" } } }) },
+      { method: "POST", match: /wit\/workitems\/\$Task/, respond: () => ({ body: { id: 10 } }) },
+    ];
+    const r = await run(dir, ["story", "refine", "9", "--refresh-template"], routes, home);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain('template: Azure DevOps "User Story sjabloon"');
+    const w = await run(dir, ["workitem", "create", "--type", "Task", "--title", "t", "--body-file", `${dir}/b.md`, "--refresh-template"], routes, home);
+    expect(w.code).toBe(0);
+    expect(w.out).toContain("Task 10 created");
   });
 });

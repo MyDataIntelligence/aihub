@@ -17,7 +17,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
   const p = parse(
     rest,
-    { id: { type: "string" }, title: { type: "string" }, "body-file": { type: "string" }, parent: { type: "string" }, type: { type: "string" }, json: { type: "boolean" } },
+    { id: { type: "string" }, title: { type: "string" }, "body-file": { type: "string" }, parent: { type: "string" }, type: { type: "string" }, json: { type: "boolean" }, "refresh-template": { type: "boolean" } },
     true,
   );
   const v = p.values;
@@ -30,13 +30,13 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     } catch {
       client = undefined; // no Azure DevOps remote: the repository files and the built-in template still answer
     }
-    const t = await findStoryTemplate(root, client, loadTeam(root));
+    const t = await findStoryTemplate(root, client, loadTeam(root), v["refresh-template"]);
     return void ctx.out(v.json ? JSON.stringify({ template: t.source, kind: t.kind, text: t.text }) : `template: ${t.source}\n\n${t.text.trimEnd()}`);
   }
-  if (sub === "show") return void ctx.out(await storyShow(ctx, { id: idOf(v, p.positionals), json: v.json }));
+  if (sub === "show") return void ctx.out(await storyShow(ctx, { id: idOf(v, p.positionals), json: v.json, refreshTemplate: v["refresh-template"] }));
   if (sub === "create") {
-    return void ctx.out(await storyCreate(ctx, { title: v.title, bodyFile: v["body-file"], parent: num(v.parent, "--parent"), type: v.type, json: v.json }));
+    return void ctx.out(await storyCreate(ctx, { title: v.title, bodyFile: v["body-file"], parent: num(v.parent, "--parent"), type: v.type, json: v.json, refreshTemplate: v["refresh-template"] }));
   }
-  if (sub === "refine") return void ctx.out(await storyRefine(ctx, { id: idOf(v, p.positionals), bodyFile: v["body-file"], json: v.json }));
+  if (sub === "refine") return void ctx.out(await storyRefine(ctx, { id: idOf(v, p.positionals), bodyFile: v["body-file"], json: v.json, refreshTemplate: v["refresh-template"] }));
   throw new AihubError("usage: aihub story show|create|refine|template [flags]");
 }

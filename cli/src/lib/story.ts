@@ -139,8 +139,8 @@ export function loadStoryTemplate(root: string, team: TeamConfig): string {
 }
 
 /** The story template in the fixed order, with its source: team.yaml path, repository files, the team's Azure DevOps template, built-in. */
-export function findStoryTemplate(root: string, client: AdoClient | undefined, team: TeamConfig): Promise<FoundTemplate> {
-  return findWorkItemTemplate({ root, client, team, type: storyTypeOf(team), configured: team.workItems?.storyTemplate, fileName: STORY_TEMPLATE_FILE, builtIn: DEFAULT_STORY_TEMPLATE });
+export function findStoryTemplate(root: string, client: AdoClient | undefined, team: TeamConfig, refresh = false): Promise<FoundTemplate> {
+  return findWorkItemTemplate({ root, client, team, refresh, type: storyTypeOf(team), configured: team.workItems?.storyTemplate, fileName: STORY_TEMPLATE_FILE, builtIn: DEFAULT_STORY_TEMPLATE });
 }
 
 const emptyOf = (team: TeamConfig) => team.workItems?.emptySection || team.pullRequest?.emptySection || DEFAULT_EMPTY;
@@ -183,20 +183,20 @@ function templateHeadings(tpl: string): string[] {
 }
 
 /** The template and the field layout of a work item by its type: Bug/Task use their own template, everything else the story template. */
-async function forType(root: string, client: AdoClient, team: TeamConfig, type: string): Promise<{ found: FoundTemplate; layout: FieldLayout }> {
+async function forType(root: string, client: AdoClient, team: TeamConfig, type: string, refresh = false): Promise<{ found: FoundTemplate; layout: FieldLayout }> {
   const own = type && type.toLowerCase() !== storyTypeOf(team).toLowerCase() ? knownType(team, type) : undefined;
-  const found = own ? await findTypeTemplate(root, client, team, own) : await findStoryTemplate(root, client, team);
+  const found = own ? await findTypeTemplate(root, client, team, own, refresh) : await findStoryTemplate(root, client, team, refresh);
   return { found, layout: await typeLayout(root, client, type || storyTypeOf(team)) };
 }
 
 /** "Story" for the story type, otherwise the type itself ("Bug 123 refined"). */
 const labelOf = (team: TeamConfig, type: string) => (!type || type.toLowerCase() === storyTypeOf(team).toLowerCase() ? "Story" : type);
 
-export async function storyShow(ctx: Ctx, o: { id: number; json?: boolean }): Promise<string> {
+export async function storyShow(ctx: Ctx, o: { id: number; json?: boolean; refreshTemplate?: boolean }): Promise<string> {
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
   const s = await getStory(client, o.id);
-  const { found, layout } = await forType(root, client, team, s.type);
+  const { found, layout } = await forType(root, client, team, s.type, o.refreshTemplate);
   const heads = templateHeadings(found.text);
   const sections = fieldsToSections(team, s.fields, heads, layout);
   const current = currentText(team, s.fields, heads, layout);
@@ -207,12 +207,12 @@ export async function storyShow(ctx: Ctx, o: { id: number; json?: boolean }): Pr
   return `${head}${text}\n\n${renderSections(sections.map((x) => ({ heading: x.heading, body: x.body || "(empty)" })))}`.trimEnd();
 }
 
-export async function storyCreate(ctx: Ctx, o: { title?: string; bodyFile?: string; parent?: number; type?: string; json?: boolean }): Promise<string> {
+export async function storyCreate(ctx: Ctx, o: { title?: string; bodyFile?: string; parent?: number; type?: string; json?: boolean; refreshTemplate?: boolean }): Promise<string> {
   if (!o.title) throw new AihubError("aihub story create needs --title");
   if (!o.bodyFile) throw new AihubError("aihub story create needs --body-file <file.md>");
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
-  const found = await findStoryTemplate(root, client, team);
+  const found = await findStoryTemplate(root, client, team, o.refreshTemplate);
   const composed = compose({ template: found.text, body: readUtf8(o.bodyFile), code: {}, emptyText: emptyOf(team) });
   const type = o.type ?? storyTypeOf(team);
   const fields = sectionsToFields(team, parseSections(composed.text).sections, await typeLayout(root, client, type));
@@ -238,12 +238,12 @@ export async function storyCreate(ctx: Ctx, o: { title?: string; bodyFile?: stri
     : `Story ${created.id} created: ${url}${empties.length ? ` (${emptyOf(team)}: ${empties.join(", ")})` : ""}; template: ${found.source}`;
 }
 
-export async function storyRefine(ctx: Ctx, o: { id: number; bodyFile?: string; json?: boolean }): Promise<string> {
+export async function storyRefine(ctx: Ctx, o: { id: number; bodyFile?: string; json?: boolean; refreshTemplate?: boolean }): Promise<string> {
   const { root, client } = repoClient(ctx);
   const team = loadTeam(root);
   const empty = emptyOf(team);
   const s = await getStory(client, o.id);
-  const { found, layout } = await forType(root, client, team, s.type);
+  const { found, layout } = await forType(root, client, team, s.type, o.refreshTemplate);
   const label = labelOf(team, s.type);
   const heads = templateHeadings(found.text);
   const current = fieldsToSections(team, s.fields, heads, layout);
