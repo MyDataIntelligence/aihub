@@ -36,7 +36,7 @@ export function gitStatusOf(repos: GitRepoLike[], path: string): { changes: numb
 }
 
 /** The team.yaml path inside a repository (the same as the CLI's TEAM_FILE; no yaml package is needed here for one key). */
-const TEAM_YAML = ".agents/skills/_shared/references/team.yaml";
+export const TEAM_YAML = ".agents/skills/_shared/references/team.yaml";
 
 /**
  * `defaultTarget` of the repository `name` in the text of team.yaml: the item of `repositories:` with that name, or the only

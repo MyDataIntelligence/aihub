@@ -4,7 +4,8 @@ import { buildModel, toFabric, unwrap, type BarEvent, type BarModel, type Fabric
 
 export interface LoadOptions {
   cwd: string;
-  fabric: boolean;
+  /** read the Fabric part too (a function: asked at each read, so a team.yaml that appears later counts) */
+  fabric: boolean | (() => boolean);
   /** How long a Fabric result stays valid; Fabric calls are the slow ones. */
   fabricTtlMs: number;
   /**
@@ -66,13 +67,14 @@ export class BarLoader {
   private async loadCombined(): Promise<BarModel> {
     const { cwd } = this.opts;
     const known = this.lastBranch !== undefined ? this.cachedFabric(this.lastBranch) : undefined;
-    const askFabric = this.opts.fabric && known === undefined;
+    const wantFabric = typeof this.opts.fabric === "function" ? this.opts.fabric() : this.opts.fabric;
+    const askFabric = wantFabric && known === undefined;
     const bar = await readJson<BarJson>(this.run, ["bar", ...(askFabric ? ["--fabric"] : [])], cwd);
     if (bar.status?.error) throw new CliError("failed", bar.status.error);
     const status = bar.status;
     const branch = status.branch ?? "";
     let fabric: FabricModel | null = null;
-    if (this.opts.fabric) {
+    if (wantFabric) {
       if (askFabric && bar.fabric) fabric = this.keepFabric(branch, bar.fabric);
       else if (branch === this.lastBranch && known !== undefined) fabric = known === FABRIC_NONE ? null : known;
       else fabric = await this.fabric(branch); // the branch changed under us: one separate read
@@ -88,7 +90,7 @@ export class BarLoader {
     const active = status.pr && status.pr.status === "active" ? status.pr : null;
     const [checks, fabric, watching] = await Promise.all([
       active ? this.soft(() => readJson<PrChecksJson>(this.run, ["pr", "checks", "--pr", String(active.id)], cwd)) : undefined,
-      this.opts.fabric ? this.fabric(status.branch ?? "") : null,
+      (typeof this.opts.fabric === "function" ? this.opts.fabric() : this.opts.fabric) ? this.fabric(status.branch ?? "") : null,
       this.soft(async () => (await readJson<{ mine?: boolean }[]>(this.run, ["watch", "list"], cwd)).some((w) => w.mine)),
     ]);
     const events = (await this.soft(() => this.cliEvents())) ?? [];

@@ -125,3 +125,42 @@ describe("Refresher", () => {
     expect(n).toBe(2);
   });
 });
+
+describe("Refresher without a timer (the old status bar)", () => {
+  it("a branch change reads at once, a focus only after 5 minutes, nothing without focus until the focus is back", async () => {
+    let n = 0;
+    const { r, advance } = make(async () => (n++, model));
+    await r.request("start");
+    await r.request("git");
+    expect(n).toBe(2);
+    advance(60_000);
+    await r.request("focus");
+    expect(n).toBe(2);
+    advance(5 * 60_000);
+    await r.request("focus");
+    expect(n).toBe(3);
+    r.focused = false;
+    await r.request("git");
+    expect(n).toBe(3);
+    r.focused = true;
+    await r.request("focus");
+    expect(n).toBe(4);
+  });
+
+  it("a failed read is not tried again by itself for 5 minutes, but a branch change tries", async () => {
+    let n = 0;
+    const { r, advance } = make(async () => {
+      n++;
+      throw new CliError("failed", "offline");
+    });
+    await r.request("start");
+    advance(60_000);
+    await r.request("focus");
+    expect(n).toBe(1);
+    await r.request("git");
+    expect(n).toBe(2);
+    advance(6 * 60_000);
+    await r.request("focus");
+    expect(n).toBe(3);
+  });
+});
