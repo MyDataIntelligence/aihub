@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import * as vscode from "vscode";
 import { cli, jsonOf } from "./runner";
-import { BrowseMemo, browseArgs, browseErrorOf, pushFiles, removePushFiles, scopeOf, type BrowseError, type PrArg, type PushArg } from "./browse";
+import { BrowseMemo, browseArgs, browseErrorOf, pipeBrowseArgs, pushFiles, removePushFiles, runFiles, scopeOf, type BrowseError, type BrowseRunArg, type PrArg, type PushArg } from "./browse";
 import { BAR_COMMANDS } from "./types";
 
 /** The CLI runs in this window's first folder (its clone tells the organisation and the repos root), else in the home folder. */
@@ -65,6 +65,44 @@ export function registerBrowseCommands(reg: (id: string, f: (...a: any[]) => unk
       return await json(args);
     } catch (e) {
       return browseErrorOf(e);
+    }
+  });
+  // the pipeline browser: reads like the repository browser (one process, shared, lasting failures remembered), writes never shared
+  const write = <A>(build: (a: A) => string[]) => async (a: A) => {
+    let args: string[];
+    try {
+      args = build(a ?? ({} as A));
+    } catch (e) {
+      return bad(e);
+    }
+    try {
+      return await json(args);
+    } catch (e) {
+      return browseErrorOf(e);
+    }
+  };
+  reg(BAR_COMMANDS.browsePipelines, read("pipelines", pipeBrowseArgs.pipelines));
+  reg(BAR_COMMANDS.browsePipeline, read("pipeline", pipeBrowseArgs.pipeline));
+  reg(BAR_COMMANDS.browseRunPlan, read("run-plan", pipeBrowseArgs.runPlan));
+  reg(BAR_COMMANDS.browseArtifacts, read("artifacts", pipeBrowseArgs.artifacts));
+  reg(BAR_COMMANDS.browseArtifactFiles, read("artifact-files", pipeBrowseArgs.artifactFiles));
+  reg(BAR_COMMANDS.browseArtifactOpen, read("artifact-open", pipeBrowseArgs.artifactOpen));
+  reg(BAR_COMMANDS.browseDrafts, read("drafts", pipeBrowseArgs.drafts));
+  reg(BAR_COMMANDS.browseDraftCreate, write(pipeBrowseArgs.draftCreate));
+  reg(BAR_COMMANDS.browseDraftDelete, write(pipeBrowseArgs.draftDelete));
+  reg(BAR_COMMANDS.browseRun, async (a: BrowseRunArg) => {
+    let f: ReturnType<typeof runFiles>;
+    try {
+      f = runFiles(a);
+    } catch (e) {
+      return bad(e);
+    }
+    try {
+      return await json(f.args);
+    } catch (e) {
+      return browseErrorOf(e);
+    } finally {
+      removePushFiles(f.dir);
     }
   });
   // after az login or an update of the CLI: the remembered failures go
