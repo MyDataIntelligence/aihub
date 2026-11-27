@@ -357,6 +357,7 @@ describe("wiki writes", () => {
     const s = setup(
       [
         { method: "POST", match: /wikis\/w-orders\/pagemoves\?/, respond: () => ({ body: {} }) },
+        { match: /wikis\/w-orders\/pages\?path=%2FHow\+we\+work&recursionLevel=oneLevel/, respond: () => ({ body: { path: "/How we work", subPages: [{ path: "/How we work/Branching" }, { path: "/How we work/Code review" }] } }) },
         { match: /wikis\/w-orders\/pages\?.*includeContent=true/, respond: (c) => ({ body: { path: "x", content: pages[new URL(c.url).searchParams.get("path")!] }, headers: { etag: `"${E1}"` } }) },
         { method: "PUT", match: /wikis\/w-orders\/pages\?/, respond: () => ({ body: {} }) },
         commits,
@@ -366,8 +367,15 @@ describe("wiki writes", () => {
     const r = await wikiMove(s.b(), { project: "test-project", wiki: "orders.wiki", path: "/Runbooks/Backfill", to: "/How we work/Backfill" });
     expect(r.linksUpdated).toEqual([{ page: "/How we work/Backfill", count: 1 }, { page: "/Runbooks/Order export", count: 1 }]);
     expect(r.linkErrors).toEqual([]);
-    expect(s.calls.find((c) => c.method === "POST")!.body).toEqual({ path: "/Runbooks/Backfill", newPath: "/How we work/Backfill" });
+    // a new parent needs newOrder (Azure DevOps answers 400 "Nullable object must have a value" without it): last under it
+    expect(s.calls.find((c) => c.method === "POST")!.body).toEqual({ path: "/Runbooks/Backfill", newPath: "/How we work/Backfill", newOrder: 2 });
     expect(s.calls.filter((c) => c.method === "PUT").map((c) => (c.body as { content: string }).content)).toEqual(["[self](/How-we-work/Backfill)", "[b](/How-we-work/Backfill)"]);
+  });
+  it("renames within the same parent without newOrder, so the page keeps its place", async () => {
+    const s = setup([{ method: "POST", match: /wikis\/w-orders\/pagemoves\?/, respond: () => ({ body: {} }) }]);
+    await wikiMove(s.b(), { project: "test-project", wiki: "orders.wiki", path: "/Runbooks/Backfill", to: "/Runbooks/Backfill v2", updateLinks: false });
+    expect(s.calls.find((c) => c.method === "POST")!.body).toEqual({ path: "/Runbooks/Backfill", newPath: "/Runbooks/Backfill v2" });
+    expect(s.calls.some((c) => /recursionLevel=oneLevel/.test(c.url))).toBe(false);
   });
   it("uploads an attachment and answers its markdown", async () => {
     const s = setup([{ method: "PUT", match: /wikis\/w-orders\/attachments\?name=flow-diagram\.png/, respond: () => ({ body: { name: "flow-diagram.png", path: "/.attachments/flow-diagram.png" } }) }]);
