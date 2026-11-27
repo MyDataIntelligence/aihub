@@ -336,4 +336,91 @@ export const BAR_COMMANDS = {
   browseDrafts: "aihub.bar.browseDrafts",
   /** `{ project, pipeline, keepBranch? }` -> `aihub browse draft-delete`: only your own draft-* in the folder Drafts; the pipeline and (unless keepBranch) its draft branch go */
   browseDraftDelete: "aihub.bar.browseDraftDelete",
+  // ---- wiki browser (one `aihub wiki browse` process each, JSON as in docs/cli-json.md "Wiki browser"; failures as the
+  // repository browser; a code wiki is edited with browsePush using the `code` of the wikiPage answer; nothing polls) ----
+  /** `{ org?, refresh? }` -> `wiki browse wikis`: every project and code wiki, `projects` with their wiki count */
+  wikiList: "aihub.bar.wikiList",
+  /** `{ project, wiki, path?, refresh? }` -> `wiki browse tree`: one level of pages in the order of Azure DevOps */
+  wikiTree: "aihub.bar.wikiTree",
+  /** `{ project, wiki, path, version?, refresh? }` -> `wiki browse page`: markdown, etag, lastChange, attachments, `code` for a code wiki */
+  wikiPage: "aihub.bar.wikiPage",
+  /** `{}` -> `wiki browse templates`: empty, runbook, decision (no network) */
+  wikiTemplates: "aihub.bar.wikiTemplates",
+  /** `{ project, wiki, path, content, etag, comment?, force? }` -> `wiki browse publish`: `status: published` or `status: conflict` (force: Overwrite) */
+  wikiPublish: "aihub.bar.wikiPublish",
+  /** `{ project, wiki, parent?, name, template?, content?, comment? }` -> `wiki browse create`: `status: created`, or `status: push` for a code wiki */
+  wikiCreate: "aihub.bar.wikiCreate",
+  /** `{ project, wiki, path, to }` -> `wiki browse move-plan`: subpages and the links that would change (changes nothing) */
+  wikiMovePlan: "aihub.bar.wikiMovePlan",
+  /** `{ project, wiki, path, to, updateLinks?, order?, comment? }` -> `wiki browse move`: moved, linksUpdated, linkErrors */
+  wikiMove: "aihub.bar.wikiMove",
+  /** `{ project, wiki, path, top? }` -> `wiki browse history`: versions newest first with their parent */
+  wikiHistory: "aihub.bar.wikiHistory",
+  /** `{ project, wiki, path, to, from? }` -> `wiki browse diff`: hunks between two versions */
+  wikiRevisionDiff: "aihub.bar.wikiRevisionDiff",
+  /** `{ text, project?, wiki?, top?, skip? }` -> `wiki browse search`: pages with highlighted lines; `searchUnavailable` without search */
+  wikiSearch: "aihub.bar.wikiSearch",
+  /** `{ project, wiki, ref, pagePath? }` -> `wiki browse attachment`: `{ name, mime, bytes, file }` (a cached file for the preview) */
+  wikiAttachment: "aihub.bar.wikiAttachment",
+  /** `{ project, wiki, file, name? }` -> `wiki browse upload`: `{ name, ref, markdown }` (project wiki only) */
+  wikiUpload: "aihub.bar.wikiUpload",
+  /** `{ project, wiki, path, question? }`: puts "ask about this page" in the chat (the user presses Enter) */
+  wikiAskAgent: "aihub.bar.wikiAskAgent",
+  /** `{ project, wiki, path?, branch?, base? }`: puts "update the wiki from this branch" in the chat; the agent only writes drafts */
+  wikiUpdateFromBranch: "aihub.bar.wikiUpdateFromBranch",
+  /** forget the remembered failures (after az login or a CLI update) */
+  wikiRetryNow: "aihub.bar.wikiRetryNow",
+  // ---- story browser (one `aihub stories` process each, JSON as in docs/cli-json.md "Story browser"; a failure is
+  // `{ error: { kind, message } }` (kinds of the repository browser plus needsSetting), a newer save in between is
+  // `{ status: "conflict" }`, never a popup; nothing polls) ----
+  /** `{ org? }` -> `aihub stories settings`: the saved project/team/area/iteration and the default types */
+  storySettings: "aihub.bar.storySettings",
+  /** `{ project, team?, areaPath?, iterationPath? }` -> saves the choice per organisation (config home), answers like storySettings */
+  storySaveSettings: "aihub.bar.storySaveSettings",
+  /** `{ org? }` -> `{ org, projects:[{id,name}] }` */
+  storyProjects: "aihub.bar.storyProjects",
+  /** `{ project }` -> `{ teams:[{id,name,isDefault}] }` */
+  storyTeams: "aihub.bar.storyTeams",
+  /** `{ project, team? }` -> `{ defaultArea, areas:[{path,includeChildren}], all:[path] }` */
+  storyAreas: "aihub.bar.storyAreas",
+  /** `{ project, team? }` -> `{ iterations:[{id,name,path,start,finish,timeFrame}], current? }` */
+  storyIterations: "aihub.bar.storyIterations",
+  /** `{ view: mine|sprint|backlog, types?, search?, top?, project?, team? }` -> `{ items:[ItemRow], iterationPath?, readAt, cached }` */
+  storyList: "aihub.bar.storyList",
+  /** `{ board?, types?, project?, team? }` -> `{ board, columns:[{name,states,category,isDone,wipLimit?,items:[ItemRow]}] }` */
+  storyBoard: "aihub.bar.storyBoard",
+  /** `{ id }` -> Item: sections per template, systemInfo (Bug), tasks, parentItem, related, children, development, comments, allowedStates */
+  storyShow: "aihub.bar.storyShow",
+  /** `{ id, to, rev }` -> `{ status:"saved", rev, state }` | `{ status:"conflict", current, theirChanges }` */
+  storyMove: "aihub.bar.storyMove",
+  /** `{ id, rev, title?, state?, assign?, priority?, severity?, points?, tags?, iterationPath?, areaPath?, sections?:[{heading,markdown}], systemInfo? }` -> saved | conflict */
+  storyEdit: "aihub.bar.storyEdit",
+  /** `{ id, done, rev? }` -> the Completed (done) or Proposed state of the task; saved | conflict */
+  storyTask: "aihub.bar.storyTask",
+  /** `{ parent, title }` -> `{ id, rev, title, state, url }` */
+  storyAddTask: "aihub.bar.storyAddTask",
+  /** `{ id, markdown }` -> `{ id, comment:{id,date,markdown,html} }` */
+  storyComment: "aihub.bar.storyComment",
+  /** `{ id }` -> `{ prompt, proposalFile, gaps }`: put prompt in the chat; the agent writes proposalFile */
+  storyRefineAsk: "aihub.bar.storyRefineAsk",
+  /** `{ id }` -> `{ rev, parts:[{part,heading,current,proposed,changed}], tasks:{current,proposed,new} }` (reads only) */
+  storyRefine: "aihub.bar.storyRefine",
+  /** `{ id, rev, parts:[description|criteria|tasks|<heading>] }` -> writes only those parts; saved (applied, tasksCreated) | conflict */
+  storyRefineApply: "aihub.bar.storyRefineApply",
+  /** `{ id, repos?, base?, set?: reuse|none, assignToMe?, open?: new|this|none }` -> branches, state Active, assigned, the story's set */
+  storyStart: "aihub.bar.storyStart",
+  /** `{ type }` -> `{ type, sections:[{heading,field,hint}], systemInfo, severityValues?, priorityValues?, defaults }` */
+  storyForm: "aihub.bar.storyForm",
+  /** `{ type, title, sections?, systemInfo?, severity?, priority?, parent?, iterationPath?: current|path, areaPath?, assign?, tags? }` -> `{ id, rev, type, url }` */
+  storyNew: "aihub.bar.storyNew",
+  /** `{ type, title, notes? }` -> `{ prompt, draftFile }`: put prompt in the chat; the agent writes draftFile */
+  storyDraftAsk: "aihub.bar.storyDraftAsk",
+  /** `{ draftFile }` -> `{ sections:[{heading,markdown}] }` to fill the New form */
+  storyDraft: "aihub.bar.storyDraft",
+  /** `{ id, set? }` or `{ id, repo, branch }` -> `{ linked:[{repo,branch,added}], prs:[{repo,id,added}] }` */
+  storyLink: "aihub.bar.storyLink",
+  /** `{ id, repo?, base? }` -> bugfix/<id>-<slug> from the base, pushed and linked */
+  storyFixBranch: "aihub.bar.storyFixBranch",
+  /** forget the remembered failures (after az login or a CLI update) */
+  storyRetryNow: "aihub.bar.storyRetryNow",
 } as const;

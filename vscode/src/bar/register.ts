@@ -13,11 +13,13 @@ import { RemoteRepos } from "./remoteRepos";
 import { registerSearchCommands } from "./searchUi";
 import { registerPipelineCommands } from "./pipelinesUi";
 import { registerBrowseCommands } from "./browseUi";
+import { registerWikiCommands } from "./wikiUi";
+import { registerStoryBrowserCommands } from "./storiesUi";
 import { SizeMemo } from "./setSize";
 import { showFailure } from "./failureUi";
 import { withCloneRecovery } from "./missingCloneUi";
 import { hideClone, setPreferredClone } from "./hiddenClones";
-import { BehindMemo, gitStatusOf, targetOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
+import { BehindMemo, gitStatusOf, targetOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow, prListCalls } from "./repoStatus";
 import { registerCloneCommands } from "./cloneUi";
 import { linkedOf, registerStoryCommands } from "./storyUi";
 import { registerSetOps, SetFileWatcher } from "./setOps";
@@ -85,8 +87,12 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     const f = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
     const cwd = f.set?.repos[0]?.path;
     if (!cwd) return [];
-    const out = await cli(["pr", "list", "--mine", "--status", "all", ...(builds ? ["--builds"] : []), "--json"], cwd);
-    return JSON.parse(out.slice(out.search(/[[{]/))) as PrRow[];
+    const rows: PrRow[] = [];
+    for (const args of prListCalls(f.set!.repos.map((r) => r.branch), builds)) {
+      const out = await cli(args, cwd);
+      rows.push(...(JSON.parse(out.slice(out.search(/[[{]/))) as PrRow[]));
+    }
+    return rows;
   });
   const unpushed = new Map<string, { at: number; n: Promise<number | undefined> }>();
   const unpushedOf = (path: string): Promise<number | undefined> => {
@@ -145,7 +151,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       },
     ),
     ui: {
-      mode: () => (cfg().get<string>("behindTarget", "ask") as "ask" | "auto" | "off"),
+      mode: () => (cfg().get<string>("behindTarget", "auto") as "ask" | "auto" | "off"),
       setAuto: async () => void (await cfg().update("behindTarget", "auto", vscode.ConfigurationTarget.Global)),
       focused: () => vscode.window.state.focused,
       repos: () => {
@@ -438,6 +444,9 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   registerPipelineCommands(reg, (t) => deps.toChat?.(t));
   // the repository browser: one aihub process per call, only when the browser asks
   registerBrowseCommands(reg);
+  // the wiki browser: one aihub process per call, only when the wiki view asks; the agent actions put text in the chat
+  registerWikiCommands(reg, (t) => deps.toChat?.(t));
+  registerStoryBrowserCommands(reg);
 
   // the overview menu opens: read the pull requests again (at most once per call, a failed call is remembered like a good one)
   reg(BAR_COMMANDS.refreshStatus, async () => {

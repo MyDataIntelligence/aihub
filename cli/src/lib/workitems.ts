@@ -1,5 +1,6 @@
 import type { AdoClient } from "./ado.js";
 import { AihubError } from "./errors.js";
+import { slugify } from "./slug.js";
 import type { TeamConfig } from "./team.js";
 
 export interface WorkItem {
@@ -69,15 +70,7 @@ export async function repoInfo(c: AdoClient): Promise<RepoInfo> {
 export const branchArtifact = (i: RepoInfo, branch: string) => `vstfs:///Git/Ref/${i.projectId}%2F${i.id}%2FGB${encodeURIComponent(branch)}`;
 export const prArtifact = (i: RepoInfo, prId: number) => `vstfs:///Git/PullRequestId/${i.projectId}%2F${i.id}%2F${prId}`;
 
-export function slugify(title: string, max = 40): string {
-  const s = title
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return s.slice(0, max).replace(/-+$/g, "") || "story";
-}
+export { slugify } from "./slug.js";
 
 export function storyBranchName(team: TeamConfig, id: number, title: string): string {
   const pattern = (team.branches as { feature?: string } | undefined)?.feature || "feature/{storyId}-{slug}";

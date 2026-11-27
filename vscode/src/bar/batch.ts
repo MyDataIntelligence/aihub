@@ -56,6 +56,12 @@ export async function eachRepo(repos: RepoRef[], one: (r: RepoRef) => Promise<Re
   return out;
 }
 
+/** The reason Update All gives for a branch that has commits of its own while its remote has others; the message offers "Update from Target" for it. */
+export const DIVERGED = "has commits of its own and the remote has others: use Update from Target";
+
+/** The repositories Update All could not fast-forward because they have commits of their own. */
+export const divergedRepos = (repos: RepoRef[], results: RepoResult[]): RepoRef[] => repos.filter((r) => results.some((x) => x.repo === r.name && !x.ok && x.line.includes(DIVERGED)));
+
 /** `git pull --ff-only` in one repository: what came in, "already up to date", or why it did not (diverged, no upstream, uncommitted work in the way). */
 export async function updateOne(git: GitRun, r: RepoRef): Promise<RepoResult> {
   try {
@@ -67,7 +73,7 @@ export async function updateOne(git: GitRun, r: RepoRef): Promise<RepoResult> {
     return { repo: r.name, ok: true, line: `${r.name}: ${n} new commit${n === "1" ? "" : "s"}`, detail: first(out) };
   } catch (e) {
     const t = errText(e);
-    const why = /diverg|not possible to fast-forward|Not possible/i.test(t) ? "has commits of its own and the remote has others: update from the target or rebase it yourself" : /no tracking|no upstream/i.test(t) ? "has no remote branch yet" : plainError(t).text;
+    const why = /diverg|not possible to fast-forward|Not possible/i.test(t) ? DIVERGED : /no tracking|no upstream/i.test(t) ? "has no remote branch yet" : plainError(t).text;
     return { repo: r.name, ok: false, line: `${r.name}: not updated, ${why}`, detail: t };
   }
 }

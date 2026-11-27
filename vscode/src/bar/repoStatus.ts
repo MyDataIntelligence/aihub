@@ -262,6 +262,18 @@ export function prOfBranch(rows: PrRow[], repo: string, branch: string): BarPr |
 
 export const PR_TTL_MS = 5 * 60_000;
 
+/**
+ * The `aihub pr list` calls for the pull requests of a set: one per branch of the set (usually one), by anyone and in any
+ * state, so a pull request is found however old it is or whoever made it. More than three branches: the newest 100 of
+ * mine, in one call, as before.
+ */
+export function prListCalls(branches: string[], builds: boolean): string[][] {
+  const tail = [...(builds ? ["--builds"] : []), "--json"];
+  const uniq = [...new Set(branches.filter((b) => !!b && b !== "HEAD"))];
+  if (!uniq.length || uniq.length > 3) return [["pr", "list", "--mine", "--status", "all", ...tail]];
+  return uniq.map((b) => ["pr", "list", "--branch", b, "--status", "all", ...tail]);
+}
+
 /** One `aihub pr list` for the whole set, remembered for minutes; a failed call is remembered as long as a good one (no retry on every event). */
 export class PrMemo {
   private rows: PrRow[] = [];
