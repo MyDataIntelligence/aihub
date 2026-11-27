@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { looseWorktreePath, openOwn, type GitRun } from "./ownWindow";
+
 /**
  * "Open as Set…" (the repository browser) and "New Set…" (the title bar): several repositories, cloned or not, each on its own
  * branch, as ONE set through `aihub worktree open`. This file is the pure part (no vscode): the argument, which local clone is
@@ -25,6 +28,8 @@ export interface OpenReposArg {
   newBranch?: string;
   /** the base of the shared new branch */
   from?: string;
+  /** one repository in a window of its own, no set file (Open in New Window…): its clone when it is on the branch, else a worktree */
+  noSet?: boolean;
 }
 
 export type OpenReposErrorKind = "badInput" | "cancelled" | "failed" | "cliMissing" | "cliTooOld";
@@ -84,7 +89,9 @@ export function parseOpenRepos(a: unknown): OpenReposArg | { problem: string } {
     repos.push(row);
   }
   const window = o.window === "this" ? "this" : o.window === "new" ? "new" : undefined;
-  return { repos, story: posInt(o.story), window, newBranch, from: str(o.from) };
+  const noSet = o.noSet === true;
+  if (noSet && repos.length !== 1) return { problem: "noSet opens exactly one repository" };
+  return { repos, story: posInt(o.story), window, newBranch, from: str(o.from), ...(noSet ? { noSet } : {}) };
 }
 
 /** `org/project/repo` of an Azure DevOps url (https, user@, visualstudio.com, ssh), lower case; else the url without user and .git. */
@@ -189,4 +196,30 @@ export function resultOf(cli: { story?: number; folder?: string; workspace?: str
     ...(r.ok ? {} : { error: r.note }),
   }));
   return { ...(cli?.story ? { story: cli.story } : {}), ...(cli?.folder && cli.workspace ? { folder: cli.folder, workspace: cli.workspace } : {}), opened: o.opened, repos: [...rows, ...o.failed] };
+}
+
+/**
+ * noSet: where one repository opens on its own. `branch`: the clone when it is on it, the worktree that has it, else a new
+ * worktree next to the clone (openOwn). `newBranch`: a new worktree with that branch from origin/<from> (else origin's default
+ * branch), never pushed. Throws one sentence.
+ */
+export async function placeOwn(o: { git: GitRun; clone: string; current: string; branch: string; newBranch?: string; from?: string; worktreeRoot?: string }): Promise<{ path: string; state: string; note: string }> {
+  const { git } = o;
+  if (!o.newBranch) {
+    const res = await openOwn({ git, source: o.clone, setPath: o.clone, current: o.current, branch: o.branch, worktreeRoot: o.worktreeRoot });
+    return { path: res.path, state: res.note === "same folder" ? "already-on" : /has a worktree/.test(res.note) ? "reused-worktree" : "created", note: res.note };
+  }
+  const name = o.newBranch;
+  await git(o.clone, ["check-ref-format", "--branch", name]).catch(() => {
+    throw new Error(`'${name}' is not a valid branch name`);
+  });
+  const exists = await git(o.clone, ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`]).then(() => true).catch(() => false);
+  if (exists) throw new Error(`the branch ${name} exists already in ${o.clone}; choose it as branch instead`);
+  const from = o.from ?? (await git(o.clone, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]).then((x) => x.trim().replace(/^origin\//, "")).catch(() => ""));
+  if (!from) throw new Error(`which branch does ${name} start from? (from)`);
+  const base = await git(o.clone, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${from}`]).then(() => `origin/${from}`).catch(() => from);
+  const target = looseWorktreePath(o.clone, name, o.worktreeRoot);
+  if (existsSync(target)) throw new Error(`${target} exists already; nothing was created`);
+  await git(o.clone, ["worktree", "add", "--no-track", "-b", name, target, base]);
+  return { path: target, state: "created", note: `new branch ${name} from ${base} in ${target}` };
 }

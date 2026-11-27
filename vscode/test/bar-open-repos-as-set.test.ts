@@ -9,7 +9,8 @@ import { branchFor, list } from "../../cli/src/lib/cliargs";
 const cliLib = "../../cli/src/lib/";
 const loadOpenSet = async () => ((await import(/* @vite-ignore */ `${cliLib}repoSet`)) as { openSet: (ctx: unknown, o: Record<string, unknown>) => unknown }).openSet;
 import { repoNameOfUrl } from "../../cli/src/lib/repoName";
-import { branchesOf, cliNameOf, cloneOf, openArgs, parseOpenRepos, remoteKey, resultOf } from "../src/bar/openReposAsSet";
+import { branchesOf, cliNameOf, cloneOf, openArgs, parseOpenRepos, placeOwn, remoteKey, resultOf } from "../src/bar/openReposAsSet";
+import { gitRun } from "../src/bar/ownWindow";
 import { BAR_COMMANDS } from "../src/bar/types";
 import { sh, write } from "./gitHelpers";
 
@@ -139,5 +140,27 @@ describe("open repositories as a set: the CLI call on real repositories", () => 
       ["repo-a", true],
       ["repo-b", true],
     ]);
+  });
+});
+
+describe("open one repository without a set (noSet)", () => {
+  it("takes exactly one repository", () => {
+    expect(parseOpenRepos({ repos: [{ name: "a", branch: "main" }, { name: "b", branch: "main" }], noSet: true })).toEqual({ problem: "noSet opens exactly one repository" });
+    expect(parseOpenRepos({ repos: [{ name: "a", branch: "main" }], noSet: true })).toMatchObject({ noSet: true });
+  });
+
+  it("opens the clone on its own branch, a worktree for another branch, and a new branch from its own base", async () => {
+    const { root, a, b } = world();
+    const wtRoot = join(root, "worktrees");
+    expect(await placeOwn({ git: gitRun, clone: a.clone, current: "main", branch: "main", worktreeRoot: wtRoot })).toMatchObject({ path: a.clone, state: "already-on" });
+    const rel = await placeOwn({ git: gitRun, clone: a.clone, current: "main", branch: "release/1.2", worktreeRoot: wtRoot });
+    expect(rel.state).toBe("created");
+    expect(sh(rel.path, "branch", "--show-current").trim()).toBe("release/1.2");
+    expect(await placeOwn({ git: gitRun, clone: a.clone, current: "main", branch: "release/1.2", worktreeRoot: wtRoot })).toMatchObject({ path: rel.path, state: "reused-worktree" });
+    const made = await placeOwn({ git: gitRun, clone: b.clone, current: "main", branch: "feature/7-x", newBranch: "feature/7-x", from: "develop", worktreeRoot: wtRoot });
+    expect(made.state).toBe("created");
+    expect(existsSync(join(made.path, "develop.txt"))).toBe(true);
+    await expect(placeOwn({ git: gitRun, clone: b.clone, current: "main", branch: "feature/7-x", newBranch: "feature/7-x", worktreeRoot: wtRoot })).rejects.toThrow(/exists already/);
+    await expect(placeOwn({ git: gitRun, clone: a.clone, current: "main", branch: "nope" })).rejects.toThrow(/does not exist/);
   });
 });

@@ -289,13 +289,15 @@ export const BAR_COMMANDS = {
   // failed|cliMissing|cliTooOld, never a popup; the lasting kinds are remembered 5 minutes; nothing polls) ----
   /** `{ org?, refresh? }` -> `aihub browse projects`: every project and repository you can read, with the clone on this PC */
   /**
-   * `{ repos: [{ name, project?, remoteUrl?, branch?, newBranch?, from? }], story?, window?: "new"|"this", newBranch?, from? }`:
+   * `{ repos: [{ name, project?, remoteUrl?, branch?, newBranch?, from? }], story?, window?: "new"|"this", newBranch?, from?, noSet? }`:
    * several repositories as ONE set (Open as Set… in the repository browser, New Set… in the title bar). Not on this PC: cloned first
    * (Folders to Look In; Choose Folder… only without one). Then one `aihub worktree open --branch-for … [--from-for …] [--story N]`:
    * `branch` = an existing branch, `newBranch` = made from `from` (else the target branch); a repository without either gets the shared
    * `newBranch`. A story that has a set opens that set (`existingSet`). A worktree elsewhere asks the known question (move/reuse/recreate).
    * Answer `{ story?, folder?, workspace?, opened, existingSet?, repos: [{ repo, ok, branch, path?, cloned?, state?, error? }] }`; one
-   * repository failing is one sentence in `error`, the others go on. Failure of the whole call: `{ error: { kind: badInput|cancelled|failed|cliMissing|cliTooOld, message } }`.
+   * repository failing is one sentence in `error`, the others go on. `noSet: true` (Open in New Window…): exactly one repository, cloned when
+   * needed, opened in a window of its own without a set file: the clone when it is on `branch`, the worktree that has it, else a new worktree;
+   * `newBranch` makes a worktree from origin/`from` (else origin's default branch). Answer `{ opened, repos: [one row] }`. Failure of the whole call: `{ error: { kind: badInput|cancelled|failed|cliMissing|cliTooOld, message } }`.
    */
   openReposAsSet: "aihub.bar.openReposAsSet",
   browseProjects: "aihub.bar.browseProjects",
