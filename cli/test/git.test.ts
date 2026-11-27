@@ -47,6 +47,22 @@ describe("git helpers", () => {
     expect(pushIfNeeded(dir, "feature/9-x")).toBe(true);
   });
 
+  it("a branch already on origin but tracking its base gets origin/<branch> as upstream, so it no longer shows 1 to push", () => {
+    // the persona case: feature/3749- cut from origin/main (tracking it), pushed earlier, then Create Pull Requests
+    const { dir } = makeRepo();
+    sh(dir, ["checkout", "-b", "feature/3749-", "--track", "origin/main"]);
+    write(dir, "a.txt", "1");
+    sh(dir, ["add", "."]);
+    sh(dir, ["commit", "-m", "x"]);
+    sh(dir, ["push", "origin", "HEAD:refs/heads/feature/3749-"]);
+    expect(sh(dir, ["rev-parse", "--abbrev-ref", "@{u}"])).toBe("origin/main");
+    expect(pushIfNeeded(dir, "feature/3749-")).toBe(false);
+    expect(sh(dir, ["rev-parse", "--abbrev-ref", "@{u}"])).toBe("origin/feature/3749-");
+    expect(sh(dir, ["rev-list", "--count", "@{u}..HEAD"])).toBe("0");
+    // the right upstream already: nothing is run again
+    expect(pushIfNeeded(dir, "feature/3749-")).toBe(false);
+  });
+
   it("shows a file at origin/<branch>", () => {
     const { dir } = makeRepo();
     expect(showFile(dir, "main", "README.md")).toBe("x\n");

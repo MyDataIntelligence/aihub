@@ -123,7 +123,13 @@ export function listRefFiles(cwd: string, branch: string): string[] | undefined 
 export function pushIfNeeded(cwd: string, branch: string, noVerify = false): boolean {
   const remoteSha = git(cwd, ["ls-remote", "--heads", "origin", branch], { allowFail: true }).split(/\s+/)[0];
   const local = git(cwd, ["rev-parse", "HEAD"]).trim();
-  if (remoteSha === local) return false;
+  if (remoteSha === local) {
+    // already on origin (a push before, from another tool): still make origin/<branch> the upstream, or the branch keeps
+    // tracking its base (origin/main) and every editor shows its commits as "1 to push" after the pull request is made
+    const upstream = git(cwd, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], { allowFail: true }).trim();
+    if (upstream !== `origin/${branch}`) git(cwd, ["push", ...(noVerify ? ["--no-verify"] : []), "--set-upstream", "origin", `HEAD:refs/heads/${branch}`]);
+    return false;
+  }
   git(cwd, ["push", ...(noVerify ? ["--no-verify"] : []), "--set-upstream", "origin", `HEAD:refs/heads/${branch}`]);
   return true;
 }
