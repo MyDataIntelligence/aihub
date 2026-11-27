@@ -2,6 +2,12 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.8.2
+- Open Story by number names the branch after the title (read first): feature/<id>-<slug>, feature/<id>-story without a title, never a dash at the end; the folder follows. One slugify for the CLI and the extension; ß is ss.
+- `aihub pr create`: a branch already on origin gets origin/<branch> as its upstream, so it no longer shows commits to push after the pull request.
+- `aihub status`: the story title kept in the set file when the work item cannot be read, instead of "(unknown)".
+- The engine of the pipeline browser: `aihub browse pipelines|pipeline|run-plan|run|artifacts|artifact-files|artifact-open|draft-create|drafts|draft-delete`. Release notes: docs/releases/1.8.2.md.
+
 ## 1.8.1
 - Diagnose failures with a representative check before queuing a full run. Explicit monitoring continues to an observed outcome. Pipeline reruns retain template parameters and pin the source revision.
 - Generic PR templates and skills link expectations to observations. Optional migration, rollout and review sections appear when filled. Section updates prefer an exact heading and reject oversized descriptions before sending.
