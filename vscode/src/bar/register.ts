@@ -2,14 +2,14 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import * as vscode from "vscode";
-import { forgetScan, gitDirFor, writeLookIn } from "../../../cli/src/lib/machineScan";
+import { forgetScan, gitDirFor, remoteOfFolder, writeLookIn } from "../../../cli/src/lib/machineScan";
 import { forgetUse, pathKey, readRecentUse, ago } from "../../../cli/src/lib/recentUse";
 import { syncRepoName } from "../../../cli/src/lib/workspaceNames";
 import { CliProblem } from "./cliCheck";
 import { BarEngine, openFacts, setWorkspaceDirSource } from "./engine";
 import { BACKGROUND_ENV, gitRun } from "./ownWindow";
 import { cli, jsonOf } from "./runner";
-import { RemoteRepos } from "./remoteRepos";
+import { adoCloneOf, RemoteRepos } from "./remoteRepos";
 import { registerSearchCommands } from "./searchUi";
 import { registerPipelineCommands } from "./pipelinesUi";
 import { registerBrowseCommands } from "./browseUi";
@@ -187,7 +187,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     changed: () => changed(),
     read: async ({ refresh }) => {
       // the CLI needs one clone of Azure DevOps to know the organisation; its sign-in is the one the CLI already has
-      const cwd = engine.scan().repos.find((r) => /dev\.azure\.com|visualstudio\.com/i.test(r.remote ?? ""))?.path;
+      const cwd = adoCloneOf(engine.scan(), remoteOfFolder);
       if (!cwd) throw new Error("no clone of Azure DevOps on this PC yet: the organisation is not known");
       const out = await cli(["repos", "ado", "--json", ...(refresh ? ["--refresh"] : [])], cwd);
       return (jsonOf<{ repos?: { name: string; project: string; remoteUrl: string }[] }>(out).repos ?? []).map((r) => ({ name: r.name, project: r.project, remoteUrl: r.remoteUrl }));
