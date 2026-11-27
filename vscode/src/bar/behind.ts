@@ -204,12 +204,25 @@ export interface UpdateResult {
   after?: string;
 }
 
-/** The team's way (merge or rebase after team.yaml): `aihub branch update`, in that repository. */
+/**
+ * The line after an update: "updated from" only when the branch really moved; otherwise "already up to date with <target>"
+ * (never "updated from …" together with "nothing changed").
+ */
+export function updateLine(name: string, target: string, before: string | undefined, after: string | undefined, behind?: number): string {
+  if (before && after && before === after) return `${name} is already up to date with ${target}`;
+  return `${name} updated from ${target}${behind ? ` (${commits(behind)})` : ""}`;
+}
+
+/**
+ * The team's way (merge or rebase after team.yaml): `aihub branch update`, in that repository. The target the bar measured
+ * against is always passed, also when it was derived (the branch it was cut from): else the CLI derives its own and can pick
+ * another branch on the same commit (staging), and the bar would say "updated" while the branch is still behind.
+ */
 export async function updateRepo(cli: (args: string[], cwd: string) => Promise<string>, git: GitRun, f: BehindFacts): Promise<UpdateResult> {
   try {
-    await cli(["branch", "update", "--no-push", ...(f.sure ? ["--target", f.target] : [])], f.path);
+    await cli(["branch", "update", "--no-push", "--target", f.target], f.path);
     const now = headSha(f.path) ?? (await git(f.path, ["rev-parse", "HEAD"]).catch(() => "")).trim();
-    return { name: f.name, ok: true, before: f.head, after: now, line: `${f.name} updated from ${f.target} (${commits(f.behind)})${now === f.head ? " (nothing changed)" : ""}` };
+    return { name: f.name, ok: true, before: f.head, after: now, line: updateLine(f.name, f.target, f.head, now, f.behind) };
   } catch (e) {
     return { name: f.name, ok: false, line: `${f.name}: not updated, ${plainError((e as Error).message).text}` };
   }
