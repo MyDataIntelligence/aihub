@@ -450,4 +450,23 @@ export const BAR_COMMANDS = {
   teamEdit: "aihub.bar.teamEdit",
   /** `{ cwd?, mode: "pack", repo? }` -> team.yaml from the team pack as a pull request; `{ mode: "teamRepo", teamRepo, everywhere? }` -> use that team repository */
   teamInit: "aihub.bar.teamInit",
+  // ---- Run End to End and the agent actions per story (docs/cli-json.md "Run End to End"; failures as the story browser) ----
+  /** `{ id, action, repos?, yolo?, window?: new|this, project? }` -> opens or reuses the story's set (starts the story when it has no branches) and starts the opencode tab there with `/<action> <id>`; another window gets a one-shot pending action: `{ id, action, command, folder, window, started }` */
+  storyAction: "aihub.bar.storyAction",
+  /** `{ id, action, project? }` -> `aihub prompt render <action> --id N --json`: `{ action, slash, title, source: story|team|default, file, summary, filled, unknown, text }` */
+  storyPrompt: "aihub.bar.storyPrompt",
+  /** `{ id, action, text }` -> Edit Prompt: kept for this story and action until reset */
+  storyPromptSave: "aihub.bar.storyPromptSave",
+  /** `{ id, action }` -> Reset to Generated: `{ reset }` */
+  storyPromptReset: "aihub.bar.storyPromptReset",
+  /** `{ project? }` -> `{ prompts:[{ action, title, slash, goal, reads, produces, source, file }] }` */
+  storyPrompts: "aihub.bar.storyPrompts",
+  /** `{ id }` -> `{ id, running, step, total, label, steps:[{label, state: done|running|queued}], updatedAt, stateFile }` (the badge; watch `stateFile` instead of asking again) */
+  storyRunState: "aihub.bar.storyRunState",
+  /** `{ id }` -> `{ id, total, proven, criteria:[{ n, text, how, proof, result: pass|fail|notrun, evidence?, reason?, at? }], stateFile }` */
+  criteriaStatus: "aihub.bar.criteriaStatus",
+  /** `{ id }` -> `{ id, rev, proposalFile, rows:[{ n, current?, proposed, how?, proof?, vague?, isNew, changed }] }` (written by /story-criteria) */
+  criteriaProposal: "aihub.bar.criteriaProposal",
+  /** `{ id, rev, take:[n] }` -> writes only the ticked criteria with their how-tested and proof lines: saved | conflict */
+  criteriaApply: "aihub.bar.criteriaApply",
 } as const;

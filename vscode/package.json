@@ -1075,6 +1075,51 @@
         "command": "aihub.bar.storyRetryNow",
         "title": "Work Items: Try Again Now",
         "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyAction",
+        "title": "Work Items: Run Agent Action",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyPrompt",
+        "title": "Work Items: Agent Prompt",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyPromptSave",
+        "title": "Work Items: Save Agent Prompt",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyPromptReset",
+        "title": "Work Items: Reset Agent Prompt",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyPrompts",
+        "title": "Work Items: Agent Prompts",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyRunState",
+        "title": "Work Items: Run State",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.criteriaStatus",
+        "title": "Work Items: Criteria Status",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.criteriaProposal",
+        "title": "Work Items: Criteria Proposal",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.criteriaApply",
+        "title": "Work Items: Apply Criteria",
+        "category": "AI Context Hub"
       }
     ],
     "configuration": {
@@ -2247,6 +2292,42 @@
         },
         {
           "command": "aihub.bar.storyRetryNow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyAction",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyPrompt",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyPromptSave",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyPromptReset",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyPrompts",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyRunState",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.criteriaStatus",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.criteriaProposal",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.criteriaApply",
           "when": "false"
         }
       ],

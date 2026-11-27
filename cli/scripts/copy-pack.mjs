@@ -9,7 +9,7 @@ rmSync(pack, { recursive: true, force: true });
 mkdirSync(pack, { recursive: true });
 import { copyFileSync } from "node:fs";
 if (existsSync(join(cli, "..", "CHANGELOG.md"))) copyFileSync(join(cli, "..", "CHANGELOG.md"), join(pack, "CHANGELOG.md"));
-for (const name of ["skills", "commands", "agents", "team-pack"]) {
+for (const name of ["skills", "commands", "agents", "team-pack", "prompts"]) {
   const src = join(cli, "..", name);
   if (!existsSync(src)) throw new Error(`${src} not found: build from a checkout of the aihub repository`);
   cpSync(src, join(pack, name), { recursive: true });

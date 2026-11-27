@@ -51,6 +51,8 @@ export const commands: Record<string, CommandFn> = {
     if (storyMemory.STORY_MEMORY_SUBS.includes(sub)) return storyMemory.run(argv, ctx);
     const storyBranches = await import("./commands/story-branches.js");
     if (storyBranches.STORY_BRANCHES_SUBS.includes(sub)) return storyBranches.run(argv, ctx);
+    const storyE2e = await import("./commands/e2e.js");
+    if (storyE2e.STORY_E2E_SUBS.includes(sub)) return storyE2e.runStoryE2e(argv, ctx);
     const storyFlow = await import("./commands/story-flow.js");
     if (storyFlow.STORY_FLOW_SUBS.includes(sub)) return storyFlow.run(argv, ctx);
     return (await import("./commands/story.js")).run(argv, ctx);
@@ -74,6 +76,8 @@ export const commands: Record<string, CommandFn> = {
   repos: lazy(() => import("./commands/repos.js")),
   browse: lazy(() => import("./commands/browse.js")),
   stories: lazy(() => import("./commands/stories.js")),
+  prompt: async (argv, ctx) => (await import("./commands/e2e.js")).runPrompt(argv, ctx),
+  criteria: async (argv, ctx) => (await import("./commands/e2e.js")).runCriteria(argv, ctx),
   open: lazy(() => import("./commands/open.js")),
   commit: lazy(() => import("./commands/commit.js")),
   boards: lazy(() => import("./commands/boards.js")),
