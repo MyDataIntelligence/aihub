@@ -397,7 +397,10 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   // the window gets focus back and the last successful fetch is over 30 minutes ago: look again (one fetch per repository)
   ctx.subscriptions.push(
     vscode.window.onDidChangeWindowState((s) => {
-      if (s.focused && openedChecked && Date.now() - behindMgr.gate.lastOk() > FETCH_FRESH_MS) void behindMgr.run("focus");
+      if (!s.focused || !openedChecked) return;
+      // the look at opening that found the window without focus runs now, once; otherwise the usual look after 30 minutes
+      if (behindMgr.openPending) void behindMgr.focusGained();
+      else if (Date.now() - behindMgr.gate.lastOk() > FETCH_FRESH_MS) void behindMgr.run("focus");
       // back in the window after more than 5 minutes: the comments may have new replies (never without focus)
       if (s.focused) comments.focusBack();
     }),

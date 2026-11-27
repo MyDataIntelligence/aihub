@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -232,6 +232,52 @@ describe("behind the target branch", () => {
     log.mode = "off";
     await m.run("menu");
     expect(fetches).toBe(2);
+  });
+
+  it("the look at opening without focus is owed, not lost: it runs once at the first focus and updates a branch behind without a conflict (persona round 3, N4)", async () => {
+    const w = world(["Repo A"]);
+    w.advance(w.repos[0], "new.txt", "n");
+    let fetches = 0;
+    const gate = new FetchGate(async (cwd, args) => (fetches++, gitRun(cwd, args)), () => 1_000_000);
+    const { u, log } = ui(w.repos, {}, "auto");
+    const m = manager(u, [], { gate });
+    log.focused = false;
+    const atOpen = await m.run("open");
+    expect(atOpen.updated).toEqual([]);
+    expect(fetches).toBe(0);
+    expect(m.openPending).toBe(true);
+    // focus comes back: once, the look at opening, which updates by itself with Undo
+    log.focused = true;
+    expect(await m.focusGained()).toEqual({ ran: true });
+    expect(m.openPending).toBe(false);
+    expect(fetches).toBe(1);
+    expect(log.said.some((l) => /updated from staging/.test(l) && /Undo/.test(l))).toBe(true);
+    expect(sh(w.repos[0].path, "rev-list", "--count", "HEAD..origin/staging").trim()).toBe("0");
+    expect(log.asked).toEqual([]);
+    // a second focus owes nothing
+    expect(await m.focusGained()).toEqual({ ran: false });
+    expect(fetches).toBe(1);
+  });
+
+  it("the look at opening is not owed when the setting is off, nor after it ran with focus", async () => {
+    const w = world(["Repo A"]);
+    const { u, log } = ui(w.repos, {}, "off");
+    const m = manager(u);
+    log.focused = false;
+    await m.run("open");
+    expect(m.openPending).toBe(false);
+    log.mode = "auto";
+    log.focused = true;
+    await m.run("open");
+    expect(m.openPending).toBe(false);
+    expect(await m.focusGained()).toEqual({ ran: false });
+  });
+
+  it("the focus handler runs the owed look, no timer for it", () => {
+    const src = readFileSync(join(__dirname, "..", "src", "bar", "register.ts"), "utf8");
+    expect(src).toMatch(/if \(behindMgr\.openPending\) void behindMgr\.focusGained\(\);/);
+    const run = readFileSync(join(__dirname, "..", "src", "bar", "behindRun.ts"), "utf8");
+    expect(run).not.toMatch(/setTimeout|setInterval/);
   });
 
   it("five repositories, three behind: one message for the set; Update All updates the three", async () => {
