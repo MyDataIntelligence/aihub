@@ -255,8 +255,11 @@ export function openSet(setCtx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = la
   const pattern = storyPatternOf(team);
   const setsRoot = resolve(o.root ?? worktreeRootOf(team, root) ?? defaultSetsRootFor(setsBase, root, dirs[0].dir));
   const storyId = o.storyId ?? storyIdFromBranch(branch, pattern);
-  const stray = [...Object.keys(o.branches ?? {}), ...Object.keys(o.froms ?? {})].filter((n) => !dirs.some((d) => d.name === n) && !missing.includes(n));
-  if (stray.length) throw new AihubError(`--branch-for/--from-for names ${stray.join(", ")}, which is not in --repos/--group (${dirs.map((d) => d.name).join(", ")}); nothing was changed`);
+  const strayOf = (m: Record<string, string> | undefined) => Object.keys(m ?? {}).filter((n) => !dirs.some((d) => d.name === n) && !missing.includes(n));
+  const strayFrom = strayOf(o.froms);
+  if (strayFrom.length) throw new AihubError(`--from-for names ${strayFrom.join(", ")}, which is not in --repos/--group (${dirs.map((d) => d.name).join(", ")}); nothing was changed`);
+  const stray = strayOf(o.branches);
+  if (stray.length) throw new AihubError(`--branch-for names ${stray.join(", ")}, which is not in --repos/--group (${dirs.map((d) => d.name).join(", ")}); nothing was changed`);
   const branchOf = (name: string) => o.branches?.[name] ?? branch;
   // a story's worktrees go to <root>/<id>-<slug>/<repo>[--variant]; other branches keep one folder per branch
   const storyFolders = storyId && existsSync(setsRoot) ? readdirSync(setsRoot) : [];

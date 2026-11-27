@@ -1,4 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+// the CLI's own packages (yaml) are there only where cli/ was installed too (locally); the CI job of the extension installs vscode/ only
+const cliInstalled = existsSync(join(__dirname, "..", "..", "cli", "node_modules", "yaml"));
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -105,7 +107,7 @@ function world() {
 }
 
 describe("open repositories as a set: the CLI call on real repositories", () => {
-  it("makes one set: an existing branch in one, a new branch from its own base in the other", async () => {
+  it.skipIf(!cliInstalled)("makes one set: an existing branch in one, a new branch from its own base in the other", async () => {
     const { root, a, b } = world();
     const arg = parseOpenRepos({ repos: [{ name: "repo-a", branch: "release/1.2" }, { name: "repo-b", newBranch: "feature/12-from-develop", from: "develop" }], story: 12 }) as never;
     const present = [
