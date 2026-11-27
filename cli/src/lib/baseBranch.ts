@@ -59,11 +59,14 @@ function localOrigins(root: string, branch: string): string[] {
   return [...new Set(out)].filter((b) => b !== branch && !/^[0-9a-f]{7,40}$/.test(b));
 }
 
-/** [commits of the candidate after the merge-base, commits of HEAD after it]; undefined without a merge-base. */
+/** [commits of the candidate after the merge-base, commits of HEAD after it along its own first-parent line]; undefined without a merge-base. */
 function distance(root: string, ref: string): [number, number] | undefined {
   const out = git(root, ["rev-list", "--left-right", "--count", `${ref}...HEAD`], { allowFail: true }).trim();
   const m = /^(\d+)\s+(\d+)$/.exec(out);
-  return m ? [Number(m[1]), Number(m[2])] : undefined;
+  if (!m) return undefined;
+  // the branch's own line of work: a merge of another branch into it (main merged into a feature cut from staging) is not work after that branch
+  const own = git(root, ["rev-list", "--first-parent", "--count", `${ref}..HEAD`], { allowFail: true }).trim();
+  return [Number(m[1]), /^\d+$/.test(own) ? Number(own) : Number(m[2])];
 }
 
 /**
