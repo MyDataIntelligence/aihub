@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import * as vscode from "vscode";
 import { forgetScan, gitDirFor, writeLookIn } from "../../../cli/src/lib/machineScan";
 import { forgetUse, pathKey, readRecentUse, ago } from "../../../cli/src/lib/recentUse";
 import { syncRepoName } from "../../../cli/src/lib/workspaceNames";
 import { CliProblem } from "./cliCheck";
-import { BarEngine, openFacts } from "./engine";
+import { BarEngine, openFacts, setWorkspaceDirSource } from "./engine";
 import { BACKGROUND_ENV, gitRun } from "./ownWindow";
 import { cli, jsonOf } from "./runner";
 import { RemoteRepos } from "./remoteRepos";
@@ -75,6 +75,11 @@ export interface BarHandle {
 }
 
 export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHandle {
+  // a set whose first folder is a repository outside the set folder is found from the set file next to the workspace file
+  setWorkspaceDirSource(() => {
+    const f = vscode.workspace.workspaceFile;
+    return f?.scheme === "file" ? dirname(f.fsPath) : undefined;
+  });
   const dirtyOf = dirtyCounter();
   // changes and ahead come from the git extension of VS Code when it is running (no process of ours); behind the target is one git call per repository after a HEAD change
   const behind = new BehindMemo(gitRun);

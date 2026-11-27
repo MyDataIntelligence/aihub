@@ -20,6 +20,8 @@ import { BarEngine, openFacts, storyBranchesOf, titleFromFiles } from "./engine"
 import { nextStoryBranch, openStoryArgs, rowDescription, storyNumberOf, storyPickRows, storyRepoRows, type StoryRef, type StoryRepoRow } from "./storyModel";
 import { windowChoice, openPath } from "./window";
 import { withUndo } from "./undoUi";
+import { addable, branchChoices, singleToSetArgs, validBranchName, type RepoPick } from "./singleToSet";
+import { targetInfo } from "./repoStatus";
 import { branchesOf, copyName, gitRun, openOwn, ownWindowItems, worktreesOf } from "./ownWindow";
 
 /**
@@ -470,7 +472,8 @@ export function registerStoryCommands(h: StoryHooks): void {
 
   h.reg("aihub.bar.addRepository", async (arg?: unknown) => {
     const set = setContext();
-    if (!set) return void vscode.window.showInformationMessage("AI Context Hub: this window does not show a worktree set.");
+    // the window of a single repository: it becomes a set with the added repositories
+    if (!set) return addToSingleRepository(h);
     let name = nameOf(arg);
     if (!name) {
       const inSet = new Set(set.repos.map((r) => r.name.toLowerCase()));
@@ -519,6 +522,77 @@ export function registerStoryCommands(h: StoryHooks): void {
       { backup: true, only: [n.repo.name], message: (m) => m },
     );
   });
+}
+
+/**
+ * Add Repository… in the window of a single repository: pick repositories (several), a branch for each, then one question
+ * "Link to a story?". The window becomes a set: this repository stays on its branch in its folder, the added ones get a
+ * worktree each, the set opens in this window, with Undo. Everything through `aihub worktree open`.
+ */
+async function addToSingleRepository(h: StoryHooks): Promise<void> {
+  const here = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).repo;
+  if (!here) return void vscode.window.showInformationMessage("AI Context Hub: open a repository first.");
+  const current: RepoPick = { name: here.name, path: here.path, branch: here.branch };
+  if (!current.branch) return void vscode.window.showWarningMessage(`AI Context Hub: ${current.name} is not on a branch (detached HEAD); check out a branch first.`);
+  const candidates = addable(await h.engine.repositories(), current);
+  if (!candidates.length) return void vscode.window.showInformationMessage("AI Context Hub: no other repository is known on this PC. Add a folder with Folders to Look In..., or clone one from the search of the project menu.");
+  type Row = vscode.QuickPickItem & { repo: RepoPick };
+  const chosen = await vscode.window.showQuickPick<Row>(
+    candidates.map((r) => ({ label: r.name, description: r.branch, detail: r.path, repo: { name: r.name, path: r.path, branch: r.branch } })),
+    { title: `Add Repository to ${current.name}`, placeHolder: "Tick the repositories; this window becomes a set with them", canPickMany: true, matchOnDetail: true },
+  );
+  if (!chosen) return;
+  if (!chosen.length) return void vscode.window.showInformationMessage("AI Context Hub: no repository was ticked, so nothing was added.");
+  const added: { name: string; path: string; branch: string }[] = [];
+  for (const c of chosen) {
+    const target = targetInfo(c.repo.path, c.repo.name).target;
+    type B = vscode.QuickPickItem & { choice: ReturnType<typeof branchChoices>[number] };
+    const pick = await vscode.window.showQuickPick<B>(
+      branchChoices(current.branch, c.repo, target).map((b) => ({ label: b.label, description: b.description, choice: b })),
+      { title: `Branch for ${c.repo.name}`, placeHolder: `${c.repo.name} joins the set on this branch` },
+    );
+    if (!pick) return;
+    let branch = pick.choice.branch;
+    if (pick.choice.kind === "new") {
+      branch = (await vscode.window.showInputBox({ title: `New branch in ${c.repo.name}`, prompt: `Made from ${target}`, value: current.branch, validateInput: (v) => (validBranchName(v) ? undefined : "Not a valid branch name") }))?.trim();
+      if (!branch) return;
+    }
+    added.push({ name: c.repo.name, path: c.repo.path, branch: branch! });
+  }
+  // one question: a story for the set, or none
+  const linkQ = await vscode.window.showQuickPick([{ label: "No story", description: "a set of repositories without a story", story: false }, { label: "Link to a Story…", description: "search by number or words", story: true }], { title: "Link to a story?", placeHolder: "The set can belong to a story" });
+  if (!linkQ) return;
+  let story: StoryRef | undefined;
+  if (linkQ.story) {
+    const picked = await pickStory(h.engine, current.path);
+    if (!picked) return;
+    story = picked.story;
+    if (!story.title) story = { ...story, title: (await storyRead(story, picked, current.path).catch(() => ({ title: undefined }))).title ?? "" };
+  }
+  const args = singleToSetArgs(current, added, story?.id);
+  h.log(`add repository: ${current.name} becomes a set with ${added.map((a) => `${a.name} (${a.branch})`).join(", ")}${story ? ` for story #${story.id}` : ""}`);
+  const made = await withUndo(
+    h,
+    `Add ${added.map((a) => a.name).join(", ")} to ${current.name}`,
+    "",
+    async () => {
+      const first = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Making a set of ${current.name} and ${added.length === 1 ? added[0].name : `${added.length} repositories`}...` }, () => cli(args, current.path));
+      const out = await answerExisting(first, (extra) => cli([...args, ...extra], current.path));
+      if (out === undefined) return undefined;
+      const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
+      if (story) {
+        // the branches of the set are linked to the story in Azure DevOps; a failure only goes to the log
+        for (const r of res.repos.filter((x) => x.ok)) void cli(["story", "branches", "link", "--id", String(story.id), "--branch", r.branch, "--repo", r.repo], r.path ?? current.path).catch((e: Error) => h.log(`story ${story!.id}: Azure DevOps link for ${r.branch} not made: ${e.message}`));
+        if (story.title && res.folder) stampStoryTitle(res.folder, story.id, story.title);
+      }
+      forgetScan(process.env);
+      h.changed();
+      return res;
+    },
+    { sources: [current.path, ...added.map((a) => a.path)], created: (r) => r?.folder, message: (r) => (r ? `${current.name} is now a set with ${added.map((a) => a.name).join(", ")}` : "") },
+  );
+  // only now this window becomes the set (the workspace file opens here, no new window): the Undo is saved before the reload and stays in the project menu
+  if (made) await showOpened(made, "this", h.log, story ? { storyTitle: story.title } : undefined);
 }
 
 async function defaultTarget(dir: string): Promise<string> {
