@@ -47,6 +47,20 @@ export function notOnThisPc(all: BarRemoteRepository[], localRemotes: (string | 
   });
 }
 
+const isAdo = (url?: string): boolean => /dev\.azure\.com|visualstudio\.com/i.test(url ?? "");
+
+/**
+ * A folder of Azure DevOps to run `aihub repos ado` in (the CLI knows the organisation from it): a clone of the scan first, else a
+ * repository of a worktree set (the scan lists those under their set, without a remote: someone who works only in sets has no other
+ * clone). Undefined when there is none.
+ */
+export function adoCloneOf(scan: { repos: { path: string; remote?: string }[]; sets: { repos: { path: string; exists: boolean }[] }[] }, remoteOf: (dir: string) => string | undefined): string | undefined {
+  const clone = scan.repos.find((r) => isAdo(r.remote));
+  if (clone) return clone.path;
+  for (const s of scan.sets) for (const r of s.repos) if (r.exists && isAdo(remoteOf(r.path))) return r.path;
+  return undefined;
+}
+
 export class RemoteRepos {
   private loading = false;
   constructor(private deps: RemoteDeps) {}
