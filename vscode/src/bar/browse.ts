@@ -20,6 +20,7 @@ export type BrowseErrorKind =
   | "branchExists"
   | "offline"
   | "badInput"
+  | "needsSetting"
   | "failed"
   | "cliMissing"
   | "cliTooOld";
@@ -29,7 +30,7 @@ export interface BrowseError {
 }
 
 export const BROWSE_UPDATE_COMMAND = "npm i -g @ferronhooi/aihub@next";
-const KINDS: BrowseErrorKind[] = ["signedOut", "noAccess", "notFound", "searchUnavailable", "protectedBranch", "branchExists", "offline", "badInput", "failed"];
+const KINDS: BrowseErrorKind[] = ["signedOut", "noAccess", "notFound", "searchUnavailable", "protectedBranch", "branchExists", "offline", "badInput", "needsSetting", "failed"];
 const LASTING: BrowseErrorKind[] = ["signedOut", "noAccess", "searchUnavailable", "cliMissing", "cliTooOld"];
 
 /** The CLI's own error JSON inside a failure text (stderr and stdout are joined), or a kind from the words. */

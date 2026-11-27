@@ -915,6 +915,131 @@
         "command": "aihub.bar.openCheckout",
         "title": "Open a Checked-Out Branch...",
         "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storySettings",
+        "title": "Work Items: Settings",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storySaveSettings",
+        "title": "Work Items: Save Settings",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyProjects",
+        "title": "Work Items: Projects",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyTeams",
+        "title": "Work Items: Teams",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyAreas",
+        "title": "Work Items: Area Paths",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyIterations",
+        "title": "Work Items: Iterations",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyList",
+        "title": "Work Items: List",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyBoard",
+        "title": "Work Items: Board",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyShow",
+        "title": "Work Items: Work Item",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyMove",
+        "title": "Work Items: Move on Board",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyEdit",
+        "title": "Work Items: Edit",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyTask",
+        "title": "Work Items: Tick Task",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyAddTask",
+        "title": "Work Items: Add Task",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyComment",
+        "title": "Work Items: Comment",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyRefineAsk",
+        "title": "Work Items: Ask for Refinement",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyRefine",
+        "title": "Work Items: Refinement Proposal",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyRefineApply",
+        "title": "Work Items: Apply Refinement",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyStart",
+        "title": "Work Items: Start Work",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyForm",
+        "title": "Work Items: New Form",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyNew",
+        "title": "Work Items: New Work Item",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyDraftAsk",
+        "title": "Work Items: Ask for a Draft",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyDraft",
+        "title": "Work Items: Read Draft",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyLink",
+        "title": "Work Items: Link to Story",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyFixBranch",
+        "title": "Work Items: Create Fix Branch",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyRetryNow",
+        "title": "Work Items: Try Again Now",
+        "category": "AI Context Hub"
       }
     ],
     "configuration": {
@@ -1959,6 +2084,106 @@
         },
         {
           "command": "aihub.bar.browseDraftDelete",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storySettings",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storySaveSettings",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyProjects",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyTeams",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyAreas",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyIterations",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyList",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyBoard",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyShow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyMove",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyEdit",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyTask",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyAddTask",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyComment",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyRefineAsk",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyRefine",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyRefineApply",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyStart",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyForm",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyNew",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyDraftAsk",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyDraft",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyLink",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyFixBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyRetryNow",
           "when": "false"
         }
       ],

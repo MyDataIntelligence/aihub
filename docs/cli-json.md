@@ -294,3 +294,20 @@ good, attachments 4 hours (files in `cache/wiki-attachments/`). Every write move
 
 The extension's `aihub.bar.wiki*` commands (`vscode/src/bar/types.ts`) run one of these each; `aihub.bar.wikiAskAgent` and
 `aihub.bar.wikiUpdateFromBranch` only put a prompt in the chat (drafts go to `.aihub/wiki-drafts/<wiki>/<page>.md`; nothing is published).
+
+## Story browser: `aihub stories ...`
+
+Always JSON. A failure is `{"error":{"kind","message"}}` with exit 1; kinds as in the repository browser plus `needsSetting` (no project chosen). A change someone else saved in between is not an error: `{"status":"conflict","id","yourRev","rev","current":<Item>,"theirChanges":[{"rev","by","date","fields":[]}]}` with exit 0; nothing is written then. A successful write is `{"status":"saved","id","rev","changed":[field]}`. Reads are cached in the config home (lists 2 minutes, one item 1 minute, settings lists 4 hours; `--refresh` skips it); every write makes the project's cached lists and items stale. In the extension each sub is `aihub.bar.story<Sub>` with one object argument (keys = flags in camelCase; text goes in private temporary files).
+
+- `settings [--save --project P --team T [--area A] [--iteration I]]` -> `{ org, project?, team?, areaPath?, iterationPath?, types:[] }` (kept per organisation in `story-browser.json`)
+- `projects` -> `{ org, projects:[{id,name}] }`; `teams` -> `{ teams:[{id,name,isDefault}] }`; `areas` -> `{ defaultArea, areas:[{path,includeChildren}], all:[path] }`; `iterations` -> `{ iterations:[{id,name,path,start,finish,timeFrame}], current? }`
+- `list --view mine|sprint|backlog [--types a,b] [--search 123|text] [--top 200]` -> `{ view, project, team, types, iterationPath?, items:[ItemRow], readAt, cached }`
+- ItemRow: `{ id, rev, type, title, state, stateCategory, assignedTo:{name,email,isMe}|null, areaPath, iterationPath, priority?, severity?, storyPoints?, tags:[], parent?, changedDate, url, local:{ set?:{folder,name}, branches:[{repo,branch,worktree?}] } }`
+- `board [--board B] [--types a,b]` -> `{ board, columnField?, columns:[{ name, states, category, isDone, wipLimit?, items:[ItemRow] }] }` (an item sits in its own board column; the done column shows two weeks)
+- `show --id N` -> ItemRow plus `allowedStates:[{name,category}]`, `severityValues?`, `priorityValues?`, `sections:[{heading,field,markdown,html}]` (the team template; a Bug keeps its text in ReproSteps), `systemInfo?:{markdown,html}`, `tasks:[{id,rev,title,state,done,assignedTo}]`, `parentItem`, `related`, `children`, `development:{branches,prs,builds}`, `comments:[{id,author,date,markdown,html}]`, `template`
+- `move --id N (--to <state> | --column C [--board B]) --rev R`; `edit --id N --rev R [--title] [--state] [--assign me|<email>|none] [--priority] [--severity] [--points] [--tags a;b] [--iteration] [--area] [--sections-file f] [--system-info-file f]` (only the sections in the file change); `task --id <task> --done|--undone [--rev R]`; `add-task --parent N --title t`; `comment --id N --text-file f`
+- `refine-ask --id N` -> `{ prompt, proposalFile, gaps }`; `refine --id N` -> `{ rev, parts:[{part,heading,current,proposed,changed}], tasks:{current,proposed,new} }` (reads only); `refine-apply --id N --rev R --parts description,criteria,tasks` writes only those parts
+- `start --id N [--repos a,b] [--base B] [--set reuse|none] [--no-assign] [--open new|this|none]` -> branches per repository, state to the active state, assigned to me, the story's set
+- `form --type T`; `new --type T --title t [--sections-file f] [--system-info-file f] [--severity] [--priority] [--parent N] [--iteration current|path] [--area] [--assign me]` -> `{ id, rev, type, title, url, template }`
+- `draft-ask --type T --title t [--notes-file f]` -> `{ prompt, draftFile }`; `draft --draft-file f` -> `{ sections:[{heading,markdown}] }`
+- `link --id N (--set <folder> | --repo R --branch B)` -> `{ linked:[{repo,branch,added}], prs:[{repo,id,added}] }`; `fix-branch --id N [--repo R] [--base B]` -> `bugfix/<id>-<slug>` (team.yaml `branches.bugfix` wins), pushed and linked

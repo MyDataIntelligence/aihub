@@ -73,6 +73,7 @@ export const commands: Record<string, CommandFn> = {
   explain: lazy(() => import("./commands/explain.js")),
   repos: lazy(() => import("./commands/repos.js")),
   browse: lazy(() => import("./commands/browse.js")),
+  stories: lazy(() => import("./commands/stories.js")),
   open: lazy(() => import("./commands/open.js")),
   commit: lazy(() => import("./commands/commit.js")),
   boards: lazy(() => import("./commands/boards.js")),
