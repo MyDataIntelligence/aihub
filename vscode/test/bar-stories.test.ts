@@ -32,6 +32,8 @@ describe("story browser in the bar: arguments", () => {
 
   it("refuses a call without its required arguments", () => {
     expect(() => storyArgs("move", { id: 1, to: "Active" })).toThrow(/rev/);
+    expect(() => storyArgs("move", { id: 1, rev: 2 })).toThrow(/to or column/);
+    expect(storyArgs("move", { id: 1, column: "Review", board: "Stories", rev: 2 }).args).toEqual(["stories", "move", "--id", "1", "--column", "Review", "--board", "Stories", "--rev", "2"]);
     expect(() => storyArgs("list", {})).toThrow(/view/);
     expect(() => storyArgs("comment", { id: 1, markdown: " " })).toThrow(/markdown/);
   });

@@ -72,7 +72,7 @@ const REQUIRED: Partial<Record<StoryCommand, string[]>> = {
   saveSettings: ["project"],
   list: ["view"],
   show: ["id"],
-  move: ["id", "to", "rev"],
+  move: ["id", "rev"],
   edit: ["id", "rev"],
   task: ["id", "done"],
   addTask: ["parent", "title"],
@@ -116,6 +116,8 @@ export interface StoryCall {
 export function storyArgs(cmd: StoryCommand, a: Record<string, unknown> = {}): StoryCall {
   const arg = a ?? {};
   for (const k of REQUIRED[cmd] ?? []) if (!given(arg[k])) throw new Error(`${cmd} needs ${k}`);
+  // a move goes to a state or to a board column (columns can share a state)
+  if (cmd === "move" && !given(arg.to) && !given(arg.column)) throw new Error("move needs to or column");
   const args = ["stories", STORY_SUBS[cmd]];
   if (cmd === "saveSettings") args.push("--save");
   if (cmd === "task") args.push(arg.done ? "--done" : "--undone");
