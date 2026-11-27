@@ -9,6 +9,7 @@ One `## <version>` heading per release, one bullet per change. `aihub update` sh
 - Pipeline runs can be read, rerun and cancelled per project (`--project`), also in a folder without a repository; drafts carry `keepBranch` and `createdAt`.
 - `aihub worktree open --from-for repo=target,...`: the base of a new branch per repository (the engine of New Set, Open as Set and Add Repository).
 - The clones of `aihub browse` come from the same scan as the bar (Folders to Look In).
+- Lean pull requests: `aihub pr create`/`pr update` and the pr skills keep only the team template's headings, no process noise.
 - A set file with `story` as `{ id, title }` or without a `branch` reads as a set.
 
 ## 1.8.2

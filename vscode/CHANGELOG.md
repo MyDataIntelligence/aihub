@@ -8,6 +8,7 @@
 - aihub.bar.wiki* and aihub.bar.story* commands for the wiki and story browsers.
 - A pipeline run opens in a window without its repository; the Azure DevOps search also reads from a repository of a worktree set.
 - The look at the target branch at opening runs at the first focus when the window had none; Update from Target always passes --target and says nothing changed when nothing did.
+- aihub.bar.storyMove takes a board column instead of a state.
 - The buttons need aihub 1.9.0.
 
 ## 3.7.1
