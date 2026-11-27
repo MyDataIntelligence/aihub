@@ -22,9 +22,10 @@ function num(v: unknown, flag: string): number | undefined {
 }
 
 export const PR_USAGE = [
-  "aihub pr create [--summary-text \"<1-2 sentences>\"] [--body-file f.md] [--title t] [--target b] [--draft] [--work-item n] [--dry-run] [--as-is]",
+  "aihub pr create [--summary-text \"<1-2 sentences>\"] [--body-file f.md] [--title t] [--target b] [--draft] [--work-item n] [--dry-run] [--as-is] [--anyway]",
   "    One call: pushes the branch, fills the team template (story link, commits, empty sections) and opens the PR.",
   "    A vague section for the reader's actions (user actions, migration, ...) is refused: name files, fields old -> new, how to check. --as-is skips that check.",
+  "    The story's acceptance criteria become the section Acceptatiecriteria with \"N/M bewezen\" on top; not all proven: exit 5 with the choices (test first, --draft, --anyway).",
   "aihub pr update [--pr <url|N>] --section \"<heading>\" (--append-text \"<text>\" | --append-file f | --replace-text \"<text>\" | --replace-file f)",
   "    Changes ONE section and keeps the rest. Short text inline, long prose from a file.",
   "aihub pr update [--pr <url|N>] [--body-file f.md] [--title t] [--draft true|false] [--target b]   (--body-file merges the sections it contains)",
@@ -56,6 +57,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
       "dry-run": { type: "boolean" },
       "no-notes": { type: "boolean" },
       "as-is": { type: "boolean" },
+      anyway: { type: "boolean" },
       json: { type: "boolean" },
     }).values;
     const created = await createPr(ctx, {
@@ -68,6 +70,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
         dryRun: v["dry-run"] as boolean | undefined,
         noNotes: v["no-notes"] as boolean | undefined,
         asIs: v["as-is"] as boolean | undefined,
+        anyway: v.anyway as boolean | undefined,
         json: v.json as boolean | undefined,
       });
     ctx.out(created);
