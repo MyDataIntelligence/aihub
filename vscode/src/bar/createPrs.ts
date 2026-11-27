@@ -1,6 +1,9 @@
 import { unfit } from "./batch";
 import type { BarRepo } from "./types";
 
+/** The links of the pull requests that were made, for "Open Pull Requests" in the closing message. */
+export const madeLinks = (results: PrResult[]): string[] => results.filter((r) => r.ok && r.url).map((r) => r.url!);
+
 /**
  * Create Pull Requests for the repositories of a story set: which repositories are offered (and which are not, with the
  * reason), and the `aihub` calls. No vscode here.
@@ -43,9 +46,11 @@ type Cli = (args: string[], cwd: string) => Promise<string>;
  * the branch and names uncommitted work), then one `aihub crossrepo link-prs` so the pull requests of the story list
  * each other. A failure in one repository only fails that one.
  */
-export async function createPullRequests(cli: Cli, picked: { name: string; path: string; target?: string }[], story: number): Promise<{ results: PrResult[]; linked?: string }> {
+export async function createPullRequests(cli: Cli, picked: { name: string; path: string; target?: string }[], story: number, step?: (text: string) => void): Promise<{ results: PrResult[]; linked?: string }> {
   const results: PrResult[] = [];
-  for (const r of picked) {
+  for (const [i, r] of picked.entries()) {
+    // the progress says which repository is pushed and gets its pull request now
+    step?.(`${r.name} (${i + 1} of ${picked.length}): push and pull request`);
     const why = unfit(r.path);
     if (why) {
       results.push({ repo: r.name, ok: false, line: `${r.name}: ${why}` });

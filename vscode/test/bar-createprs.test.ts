@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPullRequests, prOffers } from "../src/bar/createPrs";
+import { createPullRequests, madeLinks, prOffers } from "../src/bar/createPrs";
 import type { BarRepo } from "../src/bar/types";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -56,6 +56,31 @@ describe("create the pull requests", () => {
     expect(results[0].ok).toBe(false);
     expect(linked).toBeUndefined();
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("progress and links", () => {
+  it("the progress names each repository while it is pushed and gets its pull request; the message gets the links of the ones made", async () => {
+    const steps: string[] = [];
+    const cli = async (args: string[], cwd: string) => {
+      if (args[0] === "crossrepo") return "{}";
+      if (cwd.endsWith("b")) throw new Error("fatal: could not read Username for 'https://dev.azure.com': terminal prompts disabled\nmore");
+      return JSON.stringify({ id: 1261, url: "https://dev.azure.com/ferron-test/test-project/_git/a/pullrequest/1261", action: "created" });
+    };
+    const { results } = await createPullRequests(cli, [{ name: "a", path: d("a") }, { name: "b", path: d("b") }], 3749, (t) => steps.push(t));
+    expect(steps).toEqual(["a (1 of 2): push and pull request", "b (2 of 2): push and pull request"]);
+    expect(madeLinks(results)).toEqual(["https://dev.azure.com/ferron-test/test-project/_git/a/pullrequest/1261"]);
+    expect(results[1]).toMatchObject({ ok: false, line: "b: fatal: could not read Username for 'https://dev.azure.com': terminal prompts disabled" });
+  });
+
+  it("the command shows progress per repository, reads the pull requests again and offers Open Pull Requests", () => {
+    const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "../src/bar/batchUi.ts"), "utf8") as string;
+    expect(src).toMatch(/createPullRequests\(cli, picked, state\.story!\.id, \(text\) => progress\.report\(\{ message: text \}\)\)/);
+    expect(src).toMatch(/h\.refreshPrs\?\.\(\)\.then\(\(\) => h\.changed\(\)/);
+    expect(src).toContain('"Open Pull Requests"');
+    expect(src).toMatch(/madeLinks\(results\)/);
+    expect(src).toContain("no repository was ticked, so no pull request was made");
+    expect(src).toMatch(/h\.log\(`create pull requests: \$\{picked\.map/);
   });
 });
 

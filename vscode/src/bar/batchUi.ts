@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { forgetScan } from "../../../cli/src/lib/machineScan";
-import { createPullRequests, prOffers } from "./createPrs";
+import { createPullRequests, madeLinks, prOffers } from "./createPrs";
 import { protectedBranches, targetInfo } from "./repoStatus";
 
 /** The target to pass as --target: only when team.yaml or the set file names it; else the CLI derives its own. */
@@ -23,7 +23,7 @@ function reposOf(names?: string[]): RepoRef[] {
   return all.filter((r) => want.has(r.name.toLowerCase()));
 }
 
-async function report(h: StoryHooks, what: string, results: RepoResult[]): Promise<void> {
+async function report(h: StoryHooks, what: string, results: RepoResult[], links: string[] = []): Promise<void> {
   const text = summarize(what, results);
   h.log(`${text}\n${results.filter((r) => r.detail).map((r) => `--- ${r.repo}\n${r.detail}`).join("\n")}`);
   forgetScan(process.env);
@@ -32,9 +32,17 @@ async function report(h: StoryHooks, what: string, results: RepoResult[]): Promi
   const bad = results.filter((r) => !r.ok);
   const offline = offlineSummary(what, results);
   if (offline) return void vscode.window.showInformationMessage(`AI Context Hub: ${offline}`);
-  if (!bad.length) return void vscode.window.showInformationMessage(`AI Context Hub: ${text.split("\n")[0]}`);
+  // links (pull requests that were made): one button opens them all in the browser
+  const open = links.length ? (links.length === 1 ? "Open Pull Request" : "Open Pull Requests") : undefined;
+  const openAll = () => links.forEach((l) => void vscode.env.openExternal(vscode.Uri.parse(l)));
+  if (!bad.length) {
+    const picked = await vscode.window.showInformationMessage(`AI Context Hub: ${text.split("\n")[0]}`, ...(open ? [open] : []));
+    if (picked && picked === open) openAll();
+    return;
+  }
   const more = "Show Details";
-  const pick = await vscode.window.showWarningMessage(`AI Context Hub: ${text.split("\n")[0]}. ${bad.map((r) => r.line).join("; ")}`, more);
+  const pick = await vscode.window.showWarningMessage(`AI Context Hub: ${text.split("\n")[0]}. ${bad.map((r) => r.line).join("; ")}`, ...(open ? [open] : []), more);
+  if (pick && pick === open) openAll();
   if (pick === more) void vscode.window.showWarningMessage(`${what}`, { modal: true, detail: bad.map((r) => `${r.line}\n${r.detail ?? ""}`).join("\n\n") });
 }
 
@@ -113,10 +121,15 @@ export function registerPullRequestCommand(h: StoryHooks): void {
     if (!offers.some((o) => o.enabled)) return void vscode.window.showInformationMessage(`AI Context Hub: no pull request to make. ${offers.map((o) => `${o.repo}: ${o.reason}`).join("; ")}`);
     const chosen = await vscode.window.showQuickPick(rows, { title: `Create Pull Requests for #${state.story.id}`, placeHolder: "Tick the repositories; Enter creates one pull request each", canPickMany: true });
     const picked = (chosen ?? []).filter((c) => c.offer?.enabled).map((c) => ({ name: c.offer!.repo, path: c.offer!.path, target: sureTarget(c.offer!.path, c.offer!.repo) }));
-    if (!picked.length) return [];
-    const { results, linked } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Creating ${picked.length} pull request${picked.length === 1 ? "" : "s"}...` }, () => createPullRequests(cli, picked, state.story!.id));
-    await report(h, "Create pull requests", results.map((r) => ({ repo: r.repo, ok: r.ok, line: r.line, detail: r.url })));
+    // closed without a choice (Escape, focus elsewhere): nothing, as a cancel; confirmed with nothing ticked: say so
+    if (!chosen) return [];
+    if (!picked.length) return void vscode.window.showInformationMessage("AI Context Hub: no repository was ticked, so no pull request was made."), [];
+    h.log(`create pull requests: ${picked.map((p) => p.name).join(", ")}`);
+    const { results, linked } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Creating ${picked.length} pull request${picked.length === 1 ? "" : "s"}` }, (progress) => createPullRequests(cli, picked, state.story!.id, (text) => progress.report({ message: text })));
     if (linked) h.log(`create pull requests: ${linked}`);
+    // the new pull requests on the buttons and in the overview ("none yet" and "2 missing" go), then the message with the links
+    void h.refreshPrs?.().then(() => h.changed(), () => undefined);
+    await report(h, "Create pull requests", results.map((r) => ({ repo: r.repo, ok: r.ok, line: r.line, detail: r.url })), madeLinks(results));
     return results;
   });
 }
