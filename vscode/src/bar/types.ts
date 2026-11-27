@@ -405,7 +405,7 @@ export const BAR_COMMANDS = {
   storyBoard: "aihub.bar.storyBoard",
   /** `{ id }` -> Item: sections per template, systemInfo (Bug), tasks, parentItem, related, children, development, comments, allowedStates */
   storyShow: "aihub.bar.storyShow",
-  /** `{ id, to, rev }` -> `{ status:"saved", rev, state }` | `{ status:"conflict", current, theirChanges }` */
+  /** `{ id, rev, to? | column?, board? }` (a state, or a board column) -> `{ status:"saved", rev, state, column? }` | `{ status:"conflict", current, theirChanges }` */
   storyMove: "aihub.bar.storyMove",
   /** `{ id, rev, title?, state?, assign?, priority?, severity?, points?, tags?, iterationPath?, areaPath?, sections?:[{heading,markdown}], systemInfo? }` -> saved | conflict */
   storyEdit: "aihub.bar.storyEdit",
