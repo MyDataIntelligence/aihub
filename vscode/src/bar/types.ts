@@ -335,4 +335,38 @@ export const BAR_COMMANDS = {
   browseDrafts: "aihub.bar.browseDrafts",
   /** `{ project, pipeline }` -> `aihub browse draft-delete`: only your own draft-* in the folder Drafts; the pipeline and its draft branch go */
   browseDraftDelete: "aihub.bar.browseDraftDelete",
+  // ---- wiki browser (one `aihub wiki browse` process each, JSON as in docs/cli-json.md "Wiki browser"; failures as the
+  // repository browser; a code wiki is edited with browsePush using the `code` of the wikiPage answer; nothing polls) ----
+  /** `{ org?, refresh? }` -> `wiki browse wikis`: every project and code wiki, `projects` with their wiki count */
+  wikiList: "aihub.bar.wikiList",
+  /** `{ project, wiki, path?, refresh? }` -> `wiki browse tree`: one level of pages in the order of Azure DevOps */
+  wikiTree: "aihub.bar.wikiTree",
+  /** `{ project, wiki, path, version?, refresh? }` -> `wiki browse page`: markdown, etag, lastChange, attachments, `code` for a code wiki */
+  wikiPage: "aihub.bar.wikiPage",
+  /** `{}` -> `wiki browse templates`: empty, runbook, decision (no network) */
+  wikiTemplates: "aihub.bar.wikiTemplates",
+  /** `{ project, wiki, path, content, etag, comment?, force? }` -> `wiki browse publish`: `status: published` or `status: conflict` (force: Overwrite) */
+  wikiPublish: "aihub.bar.wikiPublish",
+  /** `{ project, wiki, parent?, name, template?, content?, comment? }` -> `wiki browse create`: `status: created`, or `status: push` for a code wiki */
+  wikiCreate: "aihub.bar.wikiCreate",
+  /** `{ project, wiki, path, to }` -> `wiki browse move-plan`: subpages and the links that would change (changes nothing) */
+  wikiMovePlan: "aihub.bar.wikiMovePlan",
+  /** `{ project, wiki, path, to, updateLinks?, order?, comment? }` -> `wiki browse move`: moved, linksUpdated, linkErrors */
+  wikiMove: "aihub.bar.wikiMove",
+  /** `{ project, wiki, path, top? }` -> `wiki browse history`: versions newest first with their parent */
+  wikiHistory: "aihub.bar.wikiHistory",
+  /** `{ project, wiki, path, to, from? }` -> `wiki browse diff`: hunks between two versions */
+  wikiRevisionDiff: "aihub.bar.wikiRevisionDiff",
+  /** `{ text, project?, wiki?, top?, skip? }` -> `wiki browse search`: pages with highlighted lines; `searchUnavailable` without search */
+  wikiSearch: "aihub.bar.wikiSearch",
+  /** `{ project, wiki, ref, pagePath? }` -> `wiki browse attachment`: `{ name, mime, bytes, file }` (a cached file for the preview) */
+  wikiAttachment: "aihub.bar.wikiAttachment",
+  /** `{ project, wiki, file, name? }` -> `wiki browse upload`: `{ name, ref, markdown }` (project wiki only) */
+  wikiUpload: "aihub.bar.wikiUpload",
+  /** `{ project, wiki, path, question? }`: puts "ask about this page" in the chat (the user presses Enter) */
+  wikiAskAgent: "aihub.bar.wikiAskAgent",
+  /** `{ project, wiki, path?, branch?, base? }`: puts "update the wiki from this branch" in the chat; the agent only writes drafts */
+  wikiUpdateFromBranch: "aihub.bar.wikiUpdateFromBranch",
+  /** forget the remembered failures (after az login or a CLI update) */
+  wikiRetryNow: "aihub.bar.wikiRetryNow",
 } as const;

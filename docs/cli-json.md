@@ -1,4 +1,4 @@
-# JSON for tools: pr list, pr show, status, watch events, pipelines, repository browser
+# JSON for tools: pr list, pr show, status, watch events, pipelines, repository browser, wiki browser
 
 For the VS Code extension and other scripts. Every command prints one JSON document with `--json` and never asks a question.
 
@@ -264,3 +264,33 @@ remembered 5 minutes, nothing polls. Commands: `aihub.bar.browsePipelines` and t
 - `draft-delete --project P --pipeline ID`: only a `draft-*` pipeline in `\Drafts` that you made (else `badInput` / `noAccess`, nothing
   changes). The runs go first with their own retention lease (a run another lease keeps stays: `runsKept`), then the pipeline; its branch goes when its name holds `draft-` and it is not protected or the default branch
   (else `branchKept` says why). `{deleted{pipeline{id,name},runs,branch,repo},runsKept,branchKept}`.
+
+## Wiki browser: `aihub wiki browse ...`
+
+Every project wiki and code wiki of the organisation, read and edited without a clone. Same rules as the repository browser: always JSON,
+a failure is `{"error":{"kind","message"}}` with exit 1 (`signedOut`, `noAccess` and `searchUnavailable` remembered 5 minutes), `--org`,
+`--refresh`, `readAt`/`cached` on every read, people `{name, email, isMe}`. `--project P --wiki W` (name or id) picks the wiki; page paths
+are as Azure DevOps shows them (`/Runbooks/Order export`, no `.md`). A project wiki is edited here (a new wiki version straight away,
+only on `publish`); a code wiki is a folder of a repository and is edited with `aihub browse push` (a new feature branch and a pull request).
+
+Cache (`<config>/aihub/cache/browse/`): the wikis 4 hours, a tree level 4 hours, a page 1 hour, history 2 minutes, a page at a version for
+good, attachments 4 hours (files in `cache/wiki-attachments/`). Every write moves the wiki on, so the next read is fresh.
+
+| Sub | Answer |
+|---|---|
+| `wikis` | `{org, wikis:[{id,name,kind:"project"\|"code",project,projectId,repo,repoId,branch,mappedPath,webUrl}], projects:[{name,wikis}]}`; per project: project wiki first |
+| `tree [--path /P]` | one level: `{wiki:{id,name,kind,project}, path, pages:[{path,name,order,hasChildren,id,gitItemPath}]}` in the order of Azure DevOps |
+| `page --path /P [--version SHA]` | `{wiki, page:{path,name,id,gitItemPath,content,etag,version}, lastChange:{by,at,commit,short,message}\|null, attachments:[{name,ref}], code:null\|{project,repo,branch,filePath,baseCommit}, webUrl}` |
+| `templates` | `{templates:[{key:"empty"\|"runbook"\|"decision",name,description,headings,content}]}` (`{{title}}` in content; no network) |
+| `publish --path /P --content-file F --etag E [--comment-file C] [--force]` | `{status:"published",path,etag,version,webUrl,overwrote}`, or with a stale ETag `{status:"conflict",kind:"conflict",path,yourEtag,current:{content,etag,lastChange},base:{content},theirs:{hunks},mine:{hunks}}` (nothing written; `--force` overwrites on top of the newest version) |
+| `create [--parent /P] --name N [--template T] [--content-file F] [--comment-file C]` | `{status:"created",path,etag,webUrl}`; a code wiki: `{status:"push",path,content,code:{project,repo,branch,filePath,baseCommit}}` for `aihub browse push`; an existing page is `badInput` |
+| `move-plan --path /P --to /Q` | `{from,to,subpages,links:[{page,count,before,after}],linkCount,pageCount,outsideNote}`, from one zip download of the wiki; changes nothing |
+| `move --path /P --to /Q [--no-links] [--order N] [--comment-file C]` | `{status:"moved",from,to,linksUpdated:[{page,count}],linkErrors:[{page,message}],webUrl}`; rename = a move within the same parent; links are rewritten in the style they were written in (`/A-b`, `/A%20b`, `.md`, `#anchor`) |
+| `history --path /P [--top 50]` | `{wiki,path,versions:[{by,at,commit,short,message,parent}],more}`, newest first |
+| `diff --path /P --to SHA [--from SHA]` | `{path,from,to,hunks,added,removed,fromContent,toContent}` (`from` default: the version before) |
+| `search --text T [--project P] [--wiki W] [--top 50] [--skip 0]` | `{text,count,results:[{project,wiki:{id,name,kind},path,title,hits:[{line:null,text,highlights:[{start,length}]}]}],facets:{projects,wikis},tookMs}`; no search: `searchUnavailable` |
+| `attachment --ref /.attachments/x.png [--page /P]` | `{name,mime,bytes,file,cached}` (a relative ref is read next to the page) |
+| `upload --file F [--name N]` | project wiki: `{name,ref,markdown,bytes}`; a code wiki is `badInput` (add the file in the repository) |
+
+The extension's `aihub.bar.wiki*` commands (`vscode/src/bar/types.ts`) run one of these each; `aihub.bar.wikiAskAgent` and
+`aihub.bar.wikiUpdateFromBranch` only put a prompt in the chat (drafts go to `.aihub/wiki-drafts/<wiki>/<page>.md`; nothing is published).
