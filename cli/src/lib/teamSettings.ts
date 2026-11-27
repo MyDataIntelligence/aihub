@@ -177,7 +177,7 @@ export function flatten(team: TeamConfig, schema: SchemaNode, repo?: string): Ke
   if (repo) {
     for (const k of REPO_KEYS) if (entry && entry[k] !== undefined) add(k, entry[k], `repositories[].${k}`, repo);
     const pipes = ((team.pipelines ?? []) as Record<string, unknown>[]).filter((p) => String(p.repository ?? "").toLowerCase() === repo.toLowerCase());
-    if (team.pipelines) add("pipelines", pipes, "pipelines", pipes.length ? repo : undefined);
+    if (team.pipelines) add("pipelines", pipes.length ? pipes : undefined, "pipelines", pipes.length ? repo : undefined);
   } else {
     if (repos.length) add("repositories", repos, "repositories");
     if (team.pipelines) add("pipelines", team.pipelines, "pipelines");
