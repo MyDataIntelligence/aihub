@@ -21,6 +21,7 @@ import {
   storyTypeOf,
   typeFieldsOf,
   wiql,
+  type ColumnFields,
   type ItemRow,
   type LocalLinks,
   type StateCategory,
@@ -157,7 +158,9 @@ export interface ListOpts {
 }
 
 async function areaClause(s: Stories): Promise<string> {
-  if (s.settings.areaPath) return `[System.AreaPath] UNDER ${q(s.settings.areaPath)}`;
+  // a saved area narrower than the project is the user's choice; the project root (all teams) is not: then the team's areas count
+  const saved = s.settings.areaPath?.trim();
+  if (saved && saved.toLowerCase() !== s.project.toLowerCase()) return `[System.AreaPath] UNDER ${q(saved)}`;
   try {
     const a = await teamAreas(s);
     if (!a.areas.length) return `[System.AreaPath] UNDER ${q(s.project)}`;
@@ -204,36 +207,40 @@ export async function listWiql(s: Stories, o: ListOpts, types: string[], iterati
 }
 
 export async function rowsFor(s: Stories, ids: number[], m: MeInfo): Promise<ItemRow[]> {
-  const fields = await fetchFields(s, ids);
+  const cols = await columnFields(s);
+  const fields = await fetchFields(s, ids, [...ROW_FIELDS, await pointsField(s), ...fieldsOfColumns(cols)]);
   const cat = await categorizer(s, fields.map((f) => String(f[F.type] ?? "")));
-  return fields.map((f) => rowOf(s, f, m, cat));
+  return fields.map((f) => rowOf(s, f, m, cat, undefined, cols));
 }
 
-export async function storyList(s: Stories, o: ListOpts): Promise<{ view: View; project: string; team: string; types: string[]; iterationPath?: string; items: ItemRow[]; readAt: string; cached: boolean }> {
+export async function storyList(s: Stories, o: ListOpts): Promise<{ view: View; project: string; team: string; types: string[]; iterationPath?: string; items: ItemRow[]; total: number; readAt: string; cached: boolean }> {
   if (!["mine", "sprint", "backlog"].includes(o.view)) throw new BrowseError("badInput", "--view is mine, sprint or backlog");
   const types = o.types?.length ? o.types : await defaultTypes(s);
   const iteration = o.view === "sprint" ? await currentIteration(s) : undefined;
   const top = Math.min(Math.max(o.top ?? 200, 1), 500);
   const m = await me(s);
   const r = await read(s, `list|${s.team}|${s.settings.areaPath ?? ""}|${o.view}|${types.join(",")}|${iteration ?? ""}|${o.search ?? ""}|${top}`, STORY_TTL.lists, async () => {
-    if (o.view === "sprint" && !iteration && !/^\s*(AB)?#?\d+\s*$/i.test(o.search ?? "")) return [] as ItemRow[];
-    const ids = await wiql(s, await listWiql(s, o, types, iteration), top);
-    return rowsFor(s, ids, m);
+    if (o.view === "sprint" && !iteration && !/^\s*(AB)?#?\d+\s*$/i.test(o.search ?? "")) return { items: [] as ItemRow[], total: 0 };
+    // every match is counted (ids only), the first `top` are read: "200 of N shown"
+    const ids = await wiql(s, await listWiql(s, o, types, iteration), 20000);
+    return { items: await rowsFor(s, ids.slice(0, top), m), total: ids.length };
   });
   const local = localIndex(s);
-  const items = r.data.map((x) => ({ ...x, local: local(x.id) }));
+  const items = r.data.items.map((x) => ({ ...x, local: local(x.id) }));
   try {
     rememberStories(s.b.env, items.map((x) => ({ id: x.id, title: x.title, state: x.state })), s.b.now());
   } catch {
     /* the seen-stories list is a convenience */
   }
-  return { view: o.view, project: s.project, team: s.team, types, ...(iteration ? { iterationPath: iteration } : {}), items, readAt: r.meta.readAt, cached: r.meta.cached };
+  return { view: o.view, project: s.project, team: s.team, types, ...(iteration ? { iterationPath: iteration } : {}), items, total: r.data.total, readAt: r.meta.readAt, cached: r.meta.cached };
 }
 
 // ---- board -----------------------------------------------------------------------------------------------------------
 
 export interface BoardColumn {
   name: string;
+  /** items in the column (also the ones over the WIP limit) */
+  count: number;
   states: string[];
   category: string;
   isDone: boolean;
@@ -253,25 +260,60 @@ export interface BoardDef {
   name: string;
   columns: AdoColumn[];
   columnField?: string;
+  doneField?: string;
 }
+
+/** Every board of the team with its columns and fields (kept 4 hours: boards change rarely; Refresh reads them again). */
+export async function teamBoards(s: Stories): Promise<BoardDef[]> {
+  return (
+    await readStable(s, `boards|${s.team}`, STORY_TTL.settings, async () => {
+      const list = (await s.tc.get<{ value?: { id: string; name: string }[] }>("work/boards")).value ?? [];
+      const out: BoardDef[] = [];
+      for (const bd of list) {
+        const b = await s.tc.get<{ name?: string; columns?: AdoColumn[]; fields?: { columnField?: { referenceName?: string }; doneField?: { referenceName?: string } } }>(`work/boards/${encodeURIComponent(bd.name)}`);
+        out.push({
+          name: b.name ?? bd.name,
+          columns: b.columns ?? [],
+          ...(b.fields?.columnField?.referenceName ? { columnField: b.fields.columnField.referenceName } : {}),
+          ...(b.fields?.doneField?.referenceName ? { doneField: b.fields.doneField.referenceName } : {}),
+        });
+      }
+      return out;
+    })
+  ).data;
+}
+
+/** Per type the column and done fields of the team's board that shows it (none when no board is readable). */
+export async function columnFields(s: Stories): Promise<ColumnFields> {
+  const out: ColumnFields = {};
+  let boards: BoardDef[] = [];
+  try {
+    boards = await teamBoards(s);
+  } catch {
+    return out;
+  }
+  for (const b of boards) {
+    if (!b.columnField) continue;
+    for (const c of b.columns) for (const t of Object.keys(c.stateMappings ?? {})) out[t.toLowerCase()] ??= { board: b.name, column: b.columnField, ...(b.doneField ? { done: b.doneField } : {}) };
+  }
+  return out;
+}
+
+const fieldsOfColumns = (cols: ColumnFields) => [...new Set(Object.values(cols).flatMap((c) => [c.column, ...(c.done ? [c.done] : [])]))];
 
 const STORY_BOARDS = /^(stories|backlog items|requirements|issues)$/i;
 
 /** The board: --board, else the one that maps the story type, else the backlog board (Stories, Backlog items, Issues), else the first that is not Epics/Features. */
 export async function boardOf(s: Stories, name?: string): Promise<BoardDef> {
-  const get = async (n: string): Promise<BoardDef> => {
-    const b = await s.tc.get<{ name?: string; columns?: AdoColumn[]; fields?: { columnField?: { referenceName?: string } } }>(`work/boards/${encodeURIComponent(n)}`);
-    return { name: b.name ?? n, columns: b.columns ?? [], ...(b.fields?.columnField?.referenceName ? { columnField: b.fields.columnField.referenceName } : {}) };
-  };
-  if (name) return get(name);
-  const storyType = (await storyTypeOf(s)).toLowerCase();
-  const boards = (await s.tc.get<{ value?: { id: string; name: string }[] }>("work/boards")).value ?? [];
-  const defs: BoardDef[] = [];
-  for (const bd of boards) {
-    const d = await get(bd.name);
-    if (d.columns.some((x) => Object.keys(x.stateMappings ?? {}).some((t) => t.toLowerCase() === storyType))) return d;
-    defs.push(d);
+  const defs = await teamBoards(s);
+  if (name) {
+    const hit = defs.find((d) => d.name.toLowerCase() === name.toLowerCase());
+    if (!hit) throw new BrowseError("notFound", `team ${s.team} has no board '${name}' (${defs.map((d) => d.name).join(", ")})`);
+    return hit;
   }
+  const storyType = (await storyTypeOf(s)).toLowerCase();
+  const own = defs.find((d) => d.columns.some((x) => Object.keys(x.stateMappings ?? {}).some((t) => t.toLowerCase() === storyType)));
+  if (own) return own;
   const pick = defs.find((d) => STORY_BOARDS.test(d.name)) ?? defs.find((d) => !/^(epics|features)$/i.test(d.name)) ?? defs[0];
   if (!pick) throw new BrowseError("notFound", `team ${s.team} has no board`);
   return pick;
@@ -293,7 +335,7 @@ export async function storyBoard(s: Stories, o: { board?: string; types?: string
           wiql(s, `SELECT [System.Id] FROM WorkItems WHERE ${where.join(" AND ")} ORDER BY [System.ChangedDate] DESC`, 400),
         )
       : [];
-    const fields = await fetchFields(s, ids, [...ROW_FIELDS, await pointsField(s), ...(def.columnField ? [def.columnField] : [])]);
+    const fields = await fetchFields(s, ids, [...ROW_FIELDS, await pointsField(s), ...(def.columnField ? [def.columnField] : []), ...(def.doneField ? [def.doneField] : [])]);
     const cat = await categorizer(s, fields.map((f) => String(f[F.type] ?? "")));
     const columns: BoardColumn[] = cols.map((c) => ({
       name: c.name,
@@ -301,6 +343,7 @@ export async function storyBoard(s: Stories, o: { board?: string; types?: string
       category: c.columnType ?? "",
       isDone: c.columnType === "outgoing",
       ...(c.itemLimit ? { wipLimit: c.itemLimit } : {}),
+      count: 0,
       items: [],
     }));
     for (const f of fields) {
@@ -310,7 +353,11 @@ export async function storyBoard(s: Stories, o: { board?: string; types?: string
       const own = def.columnField ? String(f[def.columnField] ?? "") : "";
       let col = own ? cols.findIndex((c) => c.name.toLowerCase() === own.toLowerCase()) : -1;
       if (col < 0) col = cols.findIndex((c) => Object.entries(c.stateMappings ?? {}).some(([t, st]) => t.toLowerCase() === row.type.toLowerCase() && st.toLowerCase() === row.state.toLowerCase()));
-      if (col >= 0) columns[col].items.push(row);
+      if (col >= 0) {
+        const done = def.doneField ? /^true$/i.test(String(f[def.doneField] ?? "")) : false;
+        columns[col].items.push({ ...row, boardColumn: cols[col].name, boardColumnDone: done });
+        columns[col].count++;
+      }
     }
     return { board: def.name, columnField: def.columnField, columns };
   });
@@ -411,7 +458,7 @@ export async function readItem(s: Stories, id: number, m: MeInfo): Promise<ItemC
   const type = String(fields[F.type] ?? "");
   const states = await statesOf(s, type).catch(() => [] as TypeState[]);
   const cat = (_t: string, st: string): StateCategory => states.find((x) => x.name.toLowerCase() === st.toLowerCase())?.category ?? "";
-  const row = rowOf(s, fields, m, cat);
+  const row = rowOf(s, fields, m, cat, undefined, await columnFields(s));
   const tf = await typeFieldsOf(s, type).catch(() => ({ fields: undefined as string[] | undefined, allowed: {} as Record<string, string[]> }));
   const sec = await sectionsOf(s, type, fields, tf.fields);
   const rels = w.relations ?? [];
