@@ -8,7 +8,8 @@ const sureTarget = (path: string, name: string): string | undefined => {
   const t = targetInfo(path, name, { setFolder: openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.folder });
   return t.sure ? t.target : undefined;
 };
-import { commitOne, eachRepo, offlineSummary, parseMessage, pushOne, summarize, updateOne, type RepoRef, type RepoResult } from "./batch";
+import { commitOne, divergedRepos, eachRepo, offlineSummary, parseMessage, pushOne, summarize, updateOne, type RepoRef, type RepoResult } from "./batch";
+import { plainError } from "./plainError";
 import { openFacts } from "./engine";
 import { gitRun } from "./ownWindow";
 import { cli } from "./runner";
@@ -23,7 +24,7 @@ function reposOf(names?: string[]): RepoRef[] {
   return all.filter((r) => want.has(r.name.toLowerCase()));
 }
 
-async function report(h: StoryHooks, what: string, results: RepoResult[], links: string[] = []): Promise<void> {
+async function report(h: StoryHooks, what: string, results: RepoResult[], links: string[] = [], extra?: { label: string; run: () => Promise<unknown> }): Promise<void> {
   const text = summarize(what, results);
   h.log(`${text}\n${results.filter((r) => r.detail).map((r) => `--- ${r.repo}\n${r.detail}`).join("\n")}`);
   forgetScan(process.env);
@@ -41,9 +42,27 @@ async function report(h: StoryHooks, what: string, results: RepoResult[], links:
     return;
   }
   const more = "Show Details";
-  const pick = await vscode.window.showWarningMessage(`AI Context Hub: ${text.split("\n")[0]}. ${bad.map((r) => r.line).join("; ")}`, ...(open ? [open] : []), more);
+  const pick = await vscode.window.showWarningMessage(`AI Context Hub: ${text.split("\n")[0]}. ${bad.map((r) => r.line).join("; ")}`, ...(extra ? [extra.label] : []), ...(open ? [open] : []), more);
   if (pick && pick === open) openAll();
+  if (extra && pick === extra.label) return void (await extra.run());
   if (pick === more) void vscode.window.showWarningMessage(`${what}`, { modal: true, detail: bad.map((r) => `${r.line}\n${r.detail ?? ""}`).join("\n\n") });
+}
+
+/** Update from the target branch (`aihub branch update --no-push`, the target only when sure) for the named repositories; one result line each. */
+async function updateFromTarget(h: StoryHooks, repos: RepoRef[]): Promise<RepoResult[]> {
+  const results = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Updating ${repos.length} from the target branch...` }, () =>
+    eachRepo(repos, async (r) => {
+      const t = sureTarget(r.path, r.name);
+      try {
+        await cli(["branch", "update", "--no-push", ...(t ? ["--target", t] : [])], r.path);
+        return { repo: r.name, ok: true, line: `${r.name}: updated from ${t ?? "its target branch"} (nothing pushed)` };
+      } catch (e) {
+        return { repo: r.name, ok: false, line: `${r.name}: not updated, ${plainError((e as Error).message).text}`, detail: (e as Error).message };
+      }
+    }),
+  );
+  await report(h, "Update from target", results);
+  return results;
 }
 
 /** Update all, Push all and Commit all of the open set: one result line per repository, a failing repository never stops the others. */
@@ -52,7 +71,9 @@ export function registerBatchCommands(h: StoryHooks): void {
     const repos = reposOf(arg?.repos);
     if (!repos.length) return [];
     const results = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Updating ${repos.length} ${repos.length === 1 ? "repository" : "repositories"}...` }, () => eachRepo(repos, (r) => updateOne(gitRun, r)));
-    await report(h, "Update all", results);
+    // a branch with commits of its own: one button brings the target branch in (aihub branch update, never a push)
+    const diverged = divergedRepos(repos, results);
+    await report(h, "Update all", results, [], diverged.length ? { label: "Update from Target", run: () => updateFromTarget(h, diverged) } : undefined);
     return results;
   });
 

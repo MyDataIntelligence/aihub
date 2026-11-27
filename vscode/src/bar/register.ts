@@ -17,7 +17,7 @@ import { SizeMemo } from "./setSize";
 import { showFailure } from "./failureUi";
 import { withCloneRecovery } from "./missingCloneUi";
 import { hideClone, setPreferredClone } from "./hiddenClones";
-import { BehindMemo, gitStatusOf, targetOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow } from "./repoStatus";
+import { BehindMemo, gitStatusOf, targetOf, prOfBranch, PrMemo, type GitRepoLike, type PrRow, prListCalls } from "./repoStatus";
 import { registerCloneCommands } from "./cloneUi";
 import { linkedOf, registerStoryCommands } from "./storyUi";
 import { registerSetOps, SetFileWatcher } from "./setOps";
@@ -85,8 +85,12 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     const f = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
     const cwd = f.set?.repos[0]?.path;
     if (!cwd) return [];
-    const out = await cli(["pr", "list", "--mine", "--status", "all", ...(builds ? ["--builds"] : []), "--json"], cwd);
-    return JSON.parse(out.slice(out.search(/[[{]/))) as PrRow[];
+    const rows: PrRow[] = [];
+    for (const args of prListCalls(f.set!.repos.map((r) => r.branch), builds)) {
+      const out = await cli(args, cwd);
+      rows.push(...(JSON.parse(out.slice(out.search(/[[{]/))) as PrRow[]));
+    }
+    return rows;
   });
   const unpushed = new Map<string, { at: number; n: Promise<number | undefined> }>();
   const unpushedOf = (path: string): Promise<number | undefined> => {
@@ -145,7 +149,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
       },
     ),
     ui: {
-      mode: () => (cfg().get<string>("behindTarget", "ask") as "ask" | "auto" | "off"),
+      mode: () => (cfg().get<string>("behindTarget", "auto") as "ask" | "auto" | "off"),
       setAuto: async () => void (await cfg().update("behindTarget", "auto", vscode.ConfigurationTarget.Global)),
       focused: () => vscode.window.state.focused,
       repos: () => {

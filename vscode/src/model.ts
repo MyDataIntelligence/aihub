@@ -252,12 +252,16 @@ export interface StatusItem {
   command: string;
 }
 
+/** A story title that says something: not empty and not the CLI's "(unknown)" for a work item it could not read. */
+export const knownTitle = (t: string | undefined): boolean => !!t && t.trim() !== "" && t.trim() !== "(unknown)";
+
 /** What the status bar shows. Items with nothing to say are left out, so a quiet repository is a short bar. */
 export function statusItems(m: BarModel): StatusItem[] {
   const items: StatusItem[] = [];
   items.push({
     id: "story",
-    text: `$(git-branch) ${m.story ? `#${m.story.id} ${short(m.story.title, 28)}` : short(m.branch, 36)}`,
+    // a title that could not be read is left out: "#3748", not "#3748 (unknown)"
+    text: `$(git-branch) ${m.story ? `#${m.story.id}${knownTitle(m.story.title) ? ` ${short(m.story.title, 28)}` : ""}` : short(m.branch, 36)}`,
     tooltip: [m.story ? `Story #${m.story.id} (${m.story.state}): ${m.story.title}` : "No story on this branch", `Branch: ${m.branch}`, m.dirty ? "Uncommitted changes" : "", m.unpushed ? `${m.unpushed} commit(s) not pushed` : "", m.next ? `Next: ${m.next}` : ""]
       .filter(Boolean)
       .join("\n"),
