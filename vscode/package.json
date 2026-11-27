@@ -622,6 +622,31 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.changeStart",
+        "title": "Change with Agent...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.changeState",
+        "title": "Change with Agent: State",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.changePush",
+        "title": "Change with Agent: Push to Feature Branch",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.changeDiscard",
+        "title": "Change with Agent: Discard",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.changeToWorkingCopy",
+        "title": "Change with Agent: Open as Working Copy",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.browseProjects",
         "title": "Repositories: Projects",
         "category": "AI Context Hub"
@@ -2004,6 +2029,26 @@
         },
         {
           "command": "aihub.bar.openReposAsSet",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeStart",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeState",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changePush",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeDiscard",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeToWorkingCopy",
           "when": "false"
         },
         {

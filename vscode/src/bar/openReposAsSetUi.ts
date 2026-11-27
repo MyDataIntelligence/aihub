@@ -152,8 +152,8 @@ async function openWithoutSet(h: Pick<StoryHooks, "log" | "changed" | "afterGit"
     forgetScan(process.env);
     h.afterGit?.();
     h.changed();
-    await openPath(path, window);
-    return { opened: true, repos: [{ repo: r.name, ok: true, branch, path, ...(wasCloned ? { cloned: true } : {}), state }] };
+    if (arg.openWindow !== false) await openPath(path, window);
+    return { opened: arg.openWindow !== false, repos: [{ repo: r.name, ok: true, branch, path, ...(wasCloned ? { cloned: true } : {}), state }] };
   } catch (e) {
     return { opened: false, repos: [{ repo: r.name, ok: false, branch, ...(wasCloned ? { cloned: true } : {}), error: (e as Error).message }] };
   }
