@@ -76,6 +76,8 @@ export interface PageResult extends ReadMeta {
   page: { path: string; name: string; id: number | null; gitItemPath: string; content: string; etag: string | null; version: string | null };
   lastChange: LastChange | null;
   attachments: { name: string; ref: string }[];
+  /** the work items the page names as #1234 (title, type, state), for chips; {} when they cannot be read */
+  workItems: Record<string, { title: string; type: string; state: string }>;
   /** a code wiki: the repository file, for `aihub browse push` */
   code: { project: string; repo: string; branch: string; filePath: string; baseCommit: string } | null;
   webUrl: string;
@@ -100,6 +102,34 @@ export function attachmentsOf(md: string): { name: string; ref: string }[] {
     if (!out.has(clean)) out.set(clean, { name, ref: clean });
   }
   return [...out.values()];
+}
+
+/** `#1234` in the text (not in a link target, a URL or an HTML entity), at most 50, in order. */
+export function workItemIdsOf(md: string): number[] {
+  const out: number[] = [];
+  for (const m of md.matchAll(/(?<![\w&/#=?-])#(\d{1,7})\b/g)) {
+    const n = Number(m[1]);
+    if (n > 0 && !out.includes(n)) out.push(n);
+    if (out.length >= 50) break;
+  }
+  return out;
+}
+
+/** One read for all work items of a page; a failure (no access, deleted items) only leaves the chips plain. */
+async function workItemsOf(b: Browse, w: WikiInfo, ids: number[]): Promise<PageResult["workItems"]> {
+  if (!ids.length) return {};
+  try {
+    const r = await projectClient(b, w).post<{ value?: { id: number; fields?: Record<string, string> }[] }>("wit/workitemsbatch", {
+      ids,
+      fields: ["System.Title", "System.WorkItemType", "System.State"],
+      errorPolicy: "omit",
+    });
+    const out: PageResult["workItems"] = {};
+    for (const x of r.value ?? []) if (x?.id) out[String(x.id)] = { title: x.fields?.["System.Title"] ?? "", type: x.fields?.["System.WorkItemType"] ?? "", state: x.fields?.["System.State"] ?? "" };
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 interface RawCommit {
@@ -167,8 +197,11 @@ export async function wikiPage(b: Browse, o: { project: string; wiki: string; pa
       };
     }),
   );
+  const ids = workItemIdsOf(data.content);
+  const workItems = ids.length ? (await cached(b, wkey(b, w, `workitems|${ids.join(",")}`), TTL.project, () => workItemsOf(b, w, ids), (d) => Object.keys(d).length > 0)).data : {};
   return {
     ...meta,
+    workItems,
     wiki: wikiRef(w),
     page: { path, name: nameOf(path), id: data.id, gitItemPath: data.gitItemPath, content: data.content, etag: data.etag, version: o.version ?? data.commit },
     lastChange: data.last,
