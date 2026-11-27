@@ -173,6 +173,28 @@ export async function storyEdit(s: Stories, o: EditOpts): Promise<Saved | Confli
   return patchAt(s, o.id, o.rev, ops, changed);
 }
 
+// ---- Active and assigned to me (Run End to End, option setActive) --------------------------------------------------
+
+/** Assigns the item to me and, when it is still in a Proposed state, moves it to the first InProgress state of its type (team.yaml workItems.states.active wins). */
+export async function storyActivate(s: Stories, o: { id: number }): Promise<(Saved & { state: string; assignedTo: string }) | Conflict> {
+  const w = await s.c.get<{ rev: number; fields: Record<string, any> }>(`wit/workitems/${o.id}`, { fields: `${F.type},${F.state},${F.assignedTo},${F.rev}` });
+  const type = String(w.fields[F.type] ?? "");
+  const states = await statesOf(s, type);
+  const cur = states.find((x) => x.name.toLowerCase() === String(w.fields[F.state] ?? "").toLowerCase());
+  const named = (s.teamCfg.workItems as { states?: { active?: string } } | undefined)?.states?.active;
+  const active = (named && states.find((x) => x.name.toLowerCase() === named.toLowerCase())) || states.find((x) => x.category === "InProgress");
+  const m = await me(s);
+  if (!m.email) throw new BrowseError("signedOut", "who is signed in could not be read");
+  const ops: unknown[] = [];
+  const changed: string[] = [];
+  const nowMail = String((w.fields[F.assignedTo] as { uniqueName?: string } | undefined)?.uniqueName ?? "").toLowerCase();
+  if (nowMail !== m.email) (ops.push(add(F.assignedTo, m.email)), changed.push(F.assignedTo));
+  const state = cur?.category === "Proposed" && active ? active.name : String(w.fields[F.state] ?? "");
+  if (state !== w.fields[F.state]) (ops.push(add(F.state, state)), changed.push(F.state));
+  const r = await patchAt(s, o.id, Number(w.rev), ops, changed);
+  return r.status === "saved" ? { ...r, state, assignedTo: m.name || m.email } : r;
+}
+
 // ---- tasks -----------------------------------------------------------------------------------------------------------
 
 /** Tick a task: its state goes to the Completed state of its type; untick: back to the first Proposed one. */

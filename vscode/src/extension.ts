@@ -398,15 +398,17 @@ export class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /** Run End to End: the slash command goes to opencode (never Copilot) and is sent with Enter; the user chose Start. */
-  async sendToOpencode(text: string): Promise<boolean> {
-    const term = vscode.window.terminals.find((t) => isOpencodeTerminalName(t.name)) ?? (await this.openOpencodeTerminal());
+  async sendToOpencode(text: string, submit = true): Promise<boolean> {
+    // a key without Enter (Stop sends Escape) never starts opencode
+    const open = vscode.window.terminals.find((t) => isOpencodeTerminalName(t.name));
+    const term = open ?? (submit ? await this.openOpencodeTerminal() : undefined);
     this.log.appendLine(`${new Date().toISOString()} opencode: ${text}`);
     if (!term) {
       void vscode.window.showInformationMessage("Could not start opencode. Install it to run agent actions on a story.");
       return false;
     }
     term.show(false);
-    term.sendText(text, true);
+    term.sendText(text, submit);
     return true;
   }
 
@@ -543,7 +545,7 @@ function activateRest(ctx: vscode.ExtensionContext, bar: Bar, phase: (name: stri
   // the groups come from the CLI: ask again once the first status read is behind us
   trackedTimeout("worktreeSets.firstRefresh", () => refreshSets(), 4000);
   phase("bar commands");
-  const handle = registerBar(ctx, { log: (l) => bar.logLine(l), extraPlaces: () => recents.get().sets.map((s) => s.id), toChat: (t) => bar.sendText(t), toOpencode: (t) => bar.sendToOpencode(t) });
+  const handle = registerBar(ctx, { log: (l) => bar.logLine(l), extraPlaces: () => recents.get().sets.map((s) => s.id), toChat: (t) => bar.sendText(t), toOpencode: (t, submit) => bar.sendToOpencode(t, submit) });
   // a window that opened for a story's set with a pending agent action starts it (one small file read, a few seconds after start)
   trackedTimeout("e2e.pending", () => void runPending((t) => bar.sendToOpencode(t), (l) => bar.logLine(l)), 3000);
   // a window with one repository: the review comments follow the pull request the status bar read (no read while it has no open thread)

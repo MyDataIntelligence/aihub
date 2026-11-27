@@ -9,7 +9,7 @@ export const STORIES_USAGE = `usage: aihub stories <sub> [--org O] [--project P]
   projects | teams | areas | iterations                              what can be chosen
   list --view mine|sprint|backlog [--types a,b] [--search 123|text] [--top 200]
   board [--board Stories] [--types a,b]
-  show --id N
+  show --id N | activate --id N            (activate: Active when still new, assigned to me)
   move --id N (--to <state> | --column C [--board B]) --rev R          edit --id N --rev R [--title t] [--state s] [--assign me|<email>|none] [--priority n] [--severity s] [--points n] [--tags a;b] [--iteration p] [--area p] [--sections-file f] [--system-info-file f]
   task --id <task> --done|--undone [--rev R]   add-task --parent N --title t   comment --id N --text-file f
   refine-ask --id N | refine --id N | refine-apply --id N --rev R --parts description,criteria,tasks
@@ -19,7 +19,7 @@ export const STORIES_USAGE = `usage: aihub stories <sub> [--org O] [--project P]
   link --id N (--set <folder> | --repo R --branch B)   fix-branch --id N [--repo R] [--base B]
   (a changed item someone else saved in between: {"status":"conflict","current":...}, exit 0)`;
 
-const SUBS = ["settings", "projects", "teams", "areas", "iterations", "list", "board", "show", "move", "edit", "task", "add-task", "comment", "refine-ask", "refine", "refine-apply", "start", "form", "new", "draft-ask", "draft", "link", "fix-branch"];
+const SUBS = ["activate", "settings", "projects", "teams", "areas", "iterations", "list", "board", "show", "move", "edit", "task", "add-task", "comment", "refine-ask", "refine", "refine-apply", "start", "form", "new", "draft-ask", "draft", "link", "fix-branch"];
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -148,6 +148,8 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
   }
   const w = await import("../lib/stories/write.js");
   switch (sub) {
+    case "activate":
+      return w.storyActivate(s, { id: id(v) });
     case "move":
       return w.storyMove(s, { id: id(v), to: str(v, "to"), column: str(v, "column"), board: str(v, "board"), rev: id(v, "rev") });
     case "edit":

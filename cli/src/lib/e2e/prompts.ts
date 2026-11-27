@@ -9,6 +9,7 @@ import { packRoot } from "../pack.js";
 import { readSetFile, repoBranch } from "../setFile.js";
 import { me, type Stories } from "../stories/core.js";
 import { readItem } from "../stories/read.js";
+import { fixBranchName } from "../stories/start.js";
 import { defaultTargetFor } from "../team.js";
 import { howKind, renderCriteria } from "./criteria.js";
 import { langOf, readCriteria } from "./workitem.js";
@@ -29,11 +30,11 @@ export const ACTIONS = [
   "story-test-fabric",
   "story-tests",
   "story-pr",
-  "story-review",
+  "story-pr-review",
   "story-fix-pipeline",
   "story-explain",
   "bug-reproduce",
-  "bug-fix-e2e",
+  "bug-run",
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
@@ -109,7 +110,32 @@ export interface Rendered {
   filled: { name: string; value: string }[];
   /** placeholders that had no value (left as they were) */
   unknown: string[];
+  /** the Fabric workspace of the feature branch (for "Test on Fabric in the feature workspace · <ws>") */
+  workspace: string;
+  /** the options of the run (dialog of Run End to End, choice in Create Pull Request) the prompt was filled with */
+  options: RunOptions;
   text: string;
+}
+
+/** The options of the dialog: plan first, test on Fabric, Active + assign me (Resolved when green); for story-pr the user's choice. */
+export interface RunOptions {
+  planFirst: boolean;
+  fabric: boolean;
+  setActive: boolean;
+  draft: boolean;
+  anyway: boolean;
+}
+
+export function runOptions(given: Partial<Record<keyof RunOptions, unknown>> | undefined, hasWorkspace: boolean): RunOptions {
+  const b = (v: unknown, d: boolean) => (v === undefined || v === null || v === "" ? d : v === true || v === "true" || v === "yes" || v === "1");
+  return { planFirst: b(given?.planFirst, true), fabric: b(given?.fabric, hasWorkspace), setActive: b(given?.setActive, false), draft: b(given?.draft, false), anyway: b(given?.anyway, false) };
+}
+
+/** `{{#if name}}...{{/if}}`: kept when the value is "true", left out otherwise (a block on its own lines leaves no empty line). */
+export function conditionals(text: string, flags: Record<string, boolean>): string {
+  // a block on its own lines first (no empty line is left behind), then a block inside a line
+  const lines = text.replace(/^\{\{#if\s+(\w+)\s*\}\}\n([\s\S]*?)^\{\{\/if\}\}\n?/gm, (_a, name: string, body: string) => (flags[name] ? body : ""));
+  return lines.replace(/\{\{#if\s+(\w+)\s*\}\}([\s\S]*?)\{\{\/if\}\}/g, (_a, name: string, body: string) => (flags[name] ? body : ""));
 }
 
 /** Fills `{{name}}` from the values; unknown names stay as they are and are reported. */
@@ -134,7 +160,7 @@ export async function valuesFor(ctx: Ctx, s: Stories, id: number): Promise<Recor
   const crit = await readCriteria(s, id).catch(() => undefined);
   const set = storySetFolder(ctx, id);
   const top = set ? readSetFile(set)?.top : undefined;
-  const branch = top && top.story === id ? top.branch : (item.local.branches[0]?.branch ?? `feature/${id}-...`);
+  const branch = top && top.story === id ? top.branch : (item.local.branches[0]?.branch ?? (/^bug$/i.test(item.type) ? fixBranchName(s, id, item.title) : `feature/${id}-...`));
   const repos = top && top.story === id ? top.repos.map((r) => `${r.name} (${repoBranch(top, r)})`).join(", ") : [...new Set(item.local.branches.map((b) => b.repo))].join(", ");
   const firstRepo = top?.repos[0]?.name ?? s.root?.split(/[\\/]/).pop() ?? "";
   const target = defaultTargetFor(s.teamCfg, firstRepo) ?? (s.root ? originDefaultBranch(s.root) : "") ?? "";
@@ -173,14 +199,19 @@ export async function valuesFor(ctx: Ctx, s: Stories, id: number): Promise<Recor
   };
 }
 
-export async function renderPrompt(ctx: Ctx, s: Stories, action: Action, id: number): Promise<Rendered> {
+export async function renderPrompt(ctx: Ctx, s: Stories, action: Action, id: number, given: Partial<Record<keyof RunOptions, unknown>> = {}): Promise<Rendered> {
   const set = storySetFolder(ctx, id) ?? setFolderOf(ctx.cwd);
   const found = findPrompt(s, action, { id, set });
   const { meta: own, body } = splitFront(found.text);
   // a prompt edited for one story has no front matter: the title and summary come from the team or default version
   const meta = found.source === "story" ? { ...splitFront(findPrompt(s, action, { set }).text).meta, ...own } : own;
   const values = await valuesFor(ctx, s, id);
-  const f = fill(body, values);
+  const hasWs = !/^\(/.test(values.workspace);
+  const { readState, stateFile } = await import("./state.js");
+  const run = readState<{ options?: Partial<RunOptions> }>(stateFile(ctx, id, "run"), {});
+  const options = runOptions({ ...run.options, ...given }, hasWs);
+  const flags = { ...options, noFabric: !options.fabric, askChoice: !options.draft && !options.anyway };
+  const f = fill(conditionals(body, flags), values);
   return {
     action,
     slash: meta.slash ?? `/${action}`,
@@ -190,7 +221,9 @@ export async function renderPrompt(ctx: Ctx, s: Stories, action: Action, id: num
     summary: { goal: fill(meta.goal ?? "", values).text, reads: meta.reads ?? "", produces: meta.produces ?? "", limits: values.limits },
     filled: f.filled,
     unknown: f.unknown,
-    text: f.text.trim() + "\n",
+    workspace: values.workspace,
+    options,
+    text: f.text.replace(/\n{3,}/g, "\n\n").trim() + "\n",
   };
 }
 
