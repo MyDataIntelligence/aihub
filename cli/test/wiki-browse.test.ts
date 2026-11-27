@@ -220,11 +220,14 @@ describe("wiki reads", () => {
   });
   it("reads a project wiki page: markdown, ETag, the last change and the attachments", async () => {
     const s = setup([
-      { match: /wikis\/w-orders\/pages\?.*includeContent=true/, respond: () => ({ body: { id: 7, path: "/Architecture/Data flow", gitItemPath: "/Architecture/Data-flow.md", content: "# Data flow\r\n![x](/.attachments/flow.png)" }, headers: { etag: `"${E1}"` } }) },
+      { match: /wikis\/w-orders\/pages\?.*includeContent=true/, respond: () => ({ body: { id: 7, path: "/Architecture/Data flow", gitItemPath: "/Architecture/Data-flow.md", content: "# Data flow\r\n![x](/.attachments/flow.png)\r\nStory #4711, retry #4688 and #4711 again; not [a](/A#12) nor &#123;" }, headers: { etag: `"${E1}"` } }) },
+      { method: "POST", match: /test-project\/_apis\/wit\/workitemsbatch/, respond: (c) => ({ body: { value: (c.body as { ids: number[] }).ids.map((id) => ({ id, fields: { "System.Title": id === 4711 ? "Orderexport" : "Retrybeleid", "System.WorkItemType": id === 4711 ? "User Story" : "Bug", "System.State": "Active" } })) } }) },
       { match: /repositories\/w-orders\/commits\?.*itemPath=%2FArchitecture%2FData-flow\.md/, respond: () => ({ body: { value: [{ commitId: C1, comment: "Add the retry rules (#4688)\n\nmore", author: author("Test User", "2026-11-25T16:20:00Z") }] } }) },
     ]);
     const r = await wikiPage(s.b(), { project: "test-project", wiki: "orders.wiki", path: "/Architecture/Data flow" });
-    expect(r.page).toMatchObject({ id: 7, etag: E1, version: C1, content: "# Data flow\n![x](/.attachments/flow.png)" });
+    expect(r.page).toMatchObject({ id: 7, etag: E1, version: C1, content: "# Data flow\n![x](/.attachments/flow.png)\nStory #4711, retry #4688 and #4711 again; not [a](/A#12) nor &#123;" });
+    expect(r.workItems).toEqual({ "4711": { title: "Orderexport", type: "User Story", state: "Active" }, "4688": { title: "Retrybeleid", type: "Bug", state: "Active" } });
+    expect(s.calls.find((c) => c.method === "POST")!.body).toMatchObject({ ids: [4711, 4688] });
     expect(r.lastChange).toMatchObject({ short: "aaaaaaa", message: "Add the retry rules (#4688)", by: { isMe: true } });
     expect(r.attachments).toEqual([{ name: "flow.png", ref: "/.attachments/flow.png" }]);
     expect(r.code).toBeNull();
