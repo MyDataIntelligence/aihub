@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from "node:child_process";
 import { perfLog, trackedExecFile } from "./perf/probe";
 
 const perfEnv = (): Record<string, string> => {
@@ -37,18 +38,46 @@ const needsShell = (cfg: CliConfig, platform: NodeJS.Platform) => platform === "
 
 const quote = (a: string) => (/^[A-Za-z0-9_@%+=:,./\-]+$/.test(a) ? a : `"${a.replace(/"/g, '\\"')}"`);
 
+/**
+ * Stops a timed-out CLI with everything it started. With `shell` (the npm `.cmd` shim on Windows) the child is cmd.exe:
+ * killing only it leaves node and its git running, and they keep the output pipes open, so the call never ended (a git
+ * push waiting for a sign-in made "Create Pull Requests" do nothing, without a message).
+ */
+export function killTree(child: Pick<ChildProcess, "pid" | "kill">, platform: NodeJS.Platform = process.platform): void {
+  if (platform === "win32" && child.pid) {
+    try {
+      spawn("taskkill", ["/T", "/F", "/PID", String(child.pid)], { windowsHide: true, stdio: "ignore" }).on("error", () => undefined);
+    } catch {
+      /* taskkill is missing: the kill below still ends the child itself */
+    }
+  }
+  try {
+    child.kill("SIGKILL");
+  } catch {
+    /* already gone */
+  }
+}
+
 /** Runs `aihub <args>` once, with a time limit. The extension has no other way to read data. */
 export function makeRunner(cfg: CliConfig, platform: NodeJS.Platform = process.platform): Runner {
   return (args, cwd) =>
     new Promise((resolve, reject) => {
       const all = [...(cfg.prefixArgs ?? []), ...args];
       const shell = needsShell(cfg, platform);
-      trackedExecFile(
+      // our own time limit: it settles the call at the limit, also when a grandchild keeps the pipes open
+      let settled = false;
+      const settle = (f: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        f();
+      };
+      const child = trackedExecFile(
         shell ? quote(cfg.command) : cfg.command,
         shell ? all.map(quote) : all,
         // AIHUB_PERF_LOG: the CLI appends its network calls and child processes to the performance log (src/perf)
-        { cwd, timeout: cfg.timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, shell, env: { ...process.env, ...perfEnv(), ...cfg.env, NO_COLOR: "1" } },
-        (err, stdout, stderr) => {
+        { cwd, windowsHide: true, maxBuffer: 8 * 1024 * 1024, shell, env: { ...process.env, ...perfEnv(), ...cfg.env, NO_COLOR: "1" } },
+        (err, stdout, stderr) => settle(() => {
           if (!err) return resolve(stdout);
           const e = err as NodeJS.ErrnoException & { killed?: boolean; code?: number | string };
           if (e.code === "ENOENT") return reject(new CliError("missing", `aihub was not found. Install it with: ${INSTALL_COMMAND}`));
@@ -57,9 +86,13 @@ export function makeRunner(cfg: CliConfig, platform: NodeJS.Platform = process.p
           // cmd.exe says "not recognized" with exit code 1 when the shim is missing
           if (/not recognized as an internal or external command|command not found/i.test(text)) return reject(new CliError("missing", `aihub was not found. Install it with: ${INSTALL_COMMAND}`));
           reject(new CliError("failed", text.split(/\r?\n/).filter(Boolean).slice(-3).join(" ") || `aihub ${args.join(" ")} failed`, typeof e.code === "number" ? e.code : undefined));
-        },
+        }),
         { cmd: cfg.prefixArgs?.length ? "aihub" : cfg.command, args },
       );
+      const timer = setTimeout(() => settle(() => {
+        killTree(child, platform);
+        reject(new CliError("timeout", `aihub ${args.join(" ")} took longer than ${Math.round(cfg.timeoutMs / 1000)} s`));
+      }), cfg.timeoutMs);
     });
 }
 
