@@ -2,6 +2,15 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.9.0
+
+- `aihub wiki browse`: the engine of the wiki browser (tree, page with the work items it names, publish with a conflict check, history, diff, move to another parent), for a project wiki and a code wiki.
+- `aihub stories`: the engine of the story browser (teams, areas, iterations, my/sprint/backlog lists, board, new, show, edit with a conflict check, comments, tasks, refine).
+- Pipeline runs can be read, rerun and cancelled per project (`--project`), also in a folder without a repository; drafts carry `keepBranch` and `createdAt`.
+- `aihub worktree open --from-for repo=target,...`: the base of a new branch per repository (the engine of New Set, Open as Set and Add Repository).
+- The clones of `aihub browse` come from the same scan as the bar (Folders to Look In).
+- A set file with `story` as `{ id, title }` or without a `branch` reads as a set.
+
 ## 1.8.2
 - Open Story by number names the branch after the title (read first): feature/<id>-<slug>, feature/<id>-story without a title, never a dash at the end; the folder follows. One slugify for the CLI and the extension; ß is ss.
 - `aihub pr create`: a branch already on origin gets origin/<branch> as its upstream, so it no longer shows commits to push after the pull request.
