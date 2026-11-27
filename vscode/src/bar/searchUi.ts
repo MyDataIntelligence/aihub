@@ -89,7 +89,7 @@ export function registerSearchCommands(h: SearchHost): void {
       const into = parent ? join(parent, folderName(name)) : undefined;
       const info: Row = { label: `$(folder) ${into ? `Clone into ${rowPath(into)}` : "Choose a folder to clone into"}`, description: project ? `from ${project}` : undefined, act: "folder" };
       const open: Row = { label: "Clone and Open", description: "in a new window", act: "open" };
-      const add: Row = { label: `Clone and Add to ${label}`, description: set ? `on ${set.branch}` : undefined, act: "add" };
+      const add: Row = { label: `Clone and Add to ${label}`, description: set?.branch ? `on ${set.branch}` : undefined, act: "add" };
       const other: Row = { label: "Choose Another Folder…", act: "folder" };
       const rows = into ? [info, open, ...(set ? [add] : []), other] : [info, other];
       const chosen = await pick(`Clone ${name}`, into ? "Enter clones and opens it in a new window" : "Choose where the clone goes", rows, into ? open : other);
