@@ -82,9 +82,19 @@ export function unreadableSetFile(dir: string): string | undefined {
   return undefined;
 }
 
+/**
+ * The folder of the window's workspace file (set by the extension): a set whose first folder lies outside the set folder (a
+ * repository that stayed where it was) is still found from the set file next to the workspace file.
+ */
+let workspaceDir: () => string | undefined = () => undefined;
+export function setWorkspaceDirSource(f: () => string | undefined): void {
+  workspaceDir = f;
+}
+
 export function openFacts(dir: string | undefined): OpenFacts {
   if (!dir) return {};
-  const set = findSet(dir);
+  const wsDir = workspaceDir();
+  const set = findSet(dir) ?? (wsDir ? findSet(wsDir) : undefined);
   if (!set) {
     // a set this window showed does not become a loose repository because the file cannot be read for a moment (it is being replaced, a
     // scanner holds it): the last good one stays while its folder is there

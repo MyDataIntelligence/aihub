@@ -343,6 +343,13 @@ describe("pipeline browser: drafts", () => {
     for (const x of [other, notDraft]) expect(x.calls.some((c) => c.method === "DELETE" || c.method === "POST")).toBe(false);
   });
 
+  it("delete with keepBranch leaves the branch", async () => {
+    const s = setup(delRoutes(draftDef()));
+    const r = await browseDraftDelete(s.b(), "test-project", 21, { keepBranch: true });
+    expect(r).toMatchObject({ deleted: { branch: null }, branchKept: "branch feature/draft-x is kept, as asked" });
+    expect(s.calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
   it("delete keeps a branch whose name does not say it was made for the draft", async () => {
     const s = setup(delRoutes(draftDef({ repository: { id: "r1", name: "repo-a", defaultBranch: "refs/heads/feature/4711-work" } })));
     const r = await browseDraftDelete(s.b(), "test-project", 21);
@@ -353,12 +360,12 @@ describe("pipeline browser: drafts", () => {
 
   it("drafts: my draft-* pipelines with runs and how far their branch is ahead", async () => {
     const s = setup([
-      { match: /build\/definitions\?/, respond: () => ({ body: { value: [draftDef(), def(5, "orders-ci", "\\Drafts")] } }) },
+      { match: /build\/definitions\?/, respond: () => ({ body: { value: [draftDef({ createdDate: "2026-11-25T08:00:00Z" }), def(5, "orders-ci", "\\Drafts")] } }) },
       { match: /build\/builds\?/, respond: () => ({ body: { value: [build(1)] } }) },
       { match: /stats\/branches\?/, respond: () => ({ body: { aheadCount: 2 } }) },
     ]);
     const r = await browseDrafts(s.b(), "test-project");
-    expect(r.drafts.map((d) => [d.id, d.branch, d.runs, d.branchAhead, d.mine])).toEqual([[21, "feature/draft-x", 1, 2, true]]);
+    expect(r.drafts.map((d) => [d.id, d.branch, d.runs, d.branchAhead, d.createdAt, d.mine])).toEqual([[21, "feature/draft-x", 1, 2, "2026-11-25T08:00:00Z", true]]);
   });
 
   it("the command line: errors are JSON with a kind", async () => {

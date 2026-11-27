@@ -13,7 +13,7 @@ import { againOf } from "../lib/repoSet.js";
 import { formatCleanup, formatRemoved, listCleanup, removeCleanup } from "../lib/worktreeCleanup.js";
 
 const USAGE =
-  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--branch-for b=<branch>] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--branch-for b=<branch>,c=<branch>] [--new-set] [--existing move|reuse|recreate [--discard-local-work]] | worktree list --all [--refresh] [--json] | worktree look-in [add <folder>|remove <folder>|reset] | worktree when-exists [ask|move|reuse|recreate] | worktree add --repos d [--branch <b>] [--from <target>] | worktree drop --repos d | worktree repair | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | --folder <set folder> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
+  "usage: aihub worktree create|list|remove --story <id> [--repos a,b] [--branch-for b=<branch>] [--root <folder>] | worktree open --group <name> | --repos a,b,c --branch <b> [--from <target>] [--mode worktree|switch] [--window new|this] [--story <id>] [--branch-for b=<branch>,c=<branch>] [--from-for b=<target>,c=<target>] [--new-set] [--existing move|reuse|recreate [--discard-local-work]] | worktree list --all [--refresh] [--json] | worktree look-in [add <folder>|remove <folder>|reset] | worktree when-exists [ask|move|reuse|recreate] | worktree add --repos d [--branch <b>] [--from <target>] | worktree drop --repos d | worktree repair | worktree branches --group <name> | --repos a,b | worktree groups list|save <name> --repos a,b|remove <name> | worktree remove --branch <b> | --folder <set folder> | worktree cleanup [--json] [--repos a,b] [--remove p1,p2 [--delete-branch]]";
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -33,6 +33,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     folder: { type: "string" },
     branch: { type: "string" },
     "branch-for": { type: "string" },
+    "from-for": { type: "string" },
     base: { type: "string" },
     from: { type: "string" },
     mode: { type: "string" },
@@ -66,7 +67,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const window = (v.window as string | undefined) ?? "new";
     if (mode !== undefined && mode !== "worktree" && mode !== "switch") throw new AihubError("--mode must be worktree or switch");
     if (window !== "new" && window !== "this" && window !== "none") throw new AihubError("--window must be new, this or none");
-    const r = orChoice(json, ctx.out, () => openSet(ctx, { group: v.group as string | undefined, repos: list(v.repos), branch: String(v.branch ?? ""), from: (v.from ?? v.base) as string | undefined, mode: mode as OpenMode | undefined, window: window as OpenWindow, root, storyId: optInt(v.story, "--story"), newSet: !!v["new-set"], branches: branchFor(v["branch-for"]), ...ex }));
+    const r = orChoice(json, ctx.out, () => openSet(ctx, { group: v.group as string | undefined, repos: list(v.repos), branch: String(v.branch ?? ""), from: (v.from ?? v.base) as string | undefined, mode: mode as OpenMode | undefined, window: window as OpenWindow, root, storyId: optInt(v.story, "--story"), newSet: !!v["new-set"], branches: branchFor(v["branch-for"]), froms: branchFor(v["from-for"]), ...ex }));
     if (!r) return;
     ctx.out(json ? JSON.stringify(r) : formatOpenSet(r));
     const bad = r.repos.filter((x) => !x.ok).length;

@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.8.0
+
+- One engine for a set of the repositories the user picks: aihub.bar.openReposAsSet (New Set, Open as Set, noSet for one repository in its own window), cloning when needed, with Undo.
+- Add Repository in the window of a single repository makes it a set.
+- A set whose first folder is outside the set folder is found through the workspace file.
+- aihub.bar.wiki* and aihub.bar.story* commands for the wiki and story browsers.
+- A pipeline run opens in a window without its repository; the Azure DevOps search also reads from a repository of a worktree set.
+- The look at the target branch at opening runs at the first focus when the window had none; Update from Target always passes --target and says nothing changed when nothing did.
+- aihub.bar.storyMove takes a board column instead of a state.
+- The buttons need aihub 1.9.0.
+
+## 3.7.1
+
+- Behind the target updates by itself by default (aiContextHub.behindTarget: auto): no conflicts, no overlap, never a push, with Undo; a conflict asks.
+- Create Pull Requests: progress per repository, Open Pull Request(s) with the links, the pull requests read again, a message when nothing is ticked; a timed-out call stops its whole process tree.
+- The pull requests of a set are read per branch of the set (anyone, any state), so an older one or a colleague's shows instead of "none yet".
+- Update All offers Update from Target for a branch with commits of its own; a repository that is not on Azure DevOps is not "not signed in"; the status bar never says "(unknown)".
+- Open Story by number names the branch after the title, never feature/<id>-. The aihub.bar.browse* commands of the pipeline browser. The buttons need aihub 1.8.2. Notes: docs/releases/3.7.1.md.
+
 ## 3.7.0
 
 - `aihub.bar.pipeline*` commands for pipelines in the PyCharm Git bar (runs, run, log, status, rerun plan, rerun, rerun failed, cancel, fix in chat, retry): CLI JSON or a typed error, no popups; lasting failures remembered 5 minutes per folder; the rerun changes go through a private temp file that is removed at once.

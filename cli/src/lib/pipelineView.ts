@@ -157,6 +157,21 @@ export function remoteOf(dir: string): AdoRemote {
   return parseRemote(url ?? remoteUrl(dir));
 }
 
+/** Where a run lives: a repository folder, or (no clone needed) a project of the organisation (--org, else the one of this folder, the last one used or AIHUB_ADO_ORG). */
+export interface RunPlace {
+  repoDir?: string;
+  project?: string;
+  org?: string;
+}
+
+/** The client for a run: --repo-dir wins; --project works outside every repository; else the repository of this folder. */
+export async function runClient(ctx: Ctx, o: RunPlace): Promise<AdoClient> {
+  if (o.repoDir || !o.project) return clientAt(ctx, o.repoDir ?? ctx.cwd);
+  const { resolveOrg } = await import("./browse/core.js");
+  const org = resolveOrg(ctx, o.org);
+  return new AdoClient({ org, project: o.project, repo: "", orgUrl: `https://dev.azure.com/${encodeURIComponent(org)}` }, makeAuth({ env: ctx.env, exec: ctx.exec, cacheFile: ctx.tokenCache }), ctx.fetch);
+}
+
 export function clientAt(ctx: Ctx, dir: string): AdoClient {
   return new AdoClient(remoteOf(dir), makeAuth({ env: ctx.env, exec: ctx.exec, cacheFile: ctx.tokenCache }), ctx.fetch);
 }
@@ -732,7 +747,9 @@ export function summaryText(state: RunState, tree: StageNode[], cur: { stage: st
   else if (state === "succeeded" || state === "partiallySucceeded") {
     const skipped = tree.filter((s) => s.state === "skipped");
     const ran = tree.length - skipped.length;
-    parts.push(`${state === "succeeded" ? "Succeeded" : "Partially succeeded"}: ${ran} stage${ran === 1 ? "" : "s"}${skipped.length ? `, skipped ${skipped.map((s) => s.name).join(", ")}` : ""}.`);
+    const word = state === "succeeded" ? "Succeeded" : "Partially succeeded";
+    // no timeline (a removed or very old run): no stage count
+    parts.push(tree.length ? `${word}: ${ran} stage${ran === 1 ? "" : "s"}${skipped.length ? `, skipped ${skipped.map((s) => s.name).join(", ")}` : ""}.` : `${word}.`);
   }
   else parts.push(state === "canceled" ? "Canceled." : "Failed.");
   if (tests && (tests.failed || state === "failed")) parts.push(`${tests.failed} of ${tests.total} tests failed.`);
@@ -794,8 +811,8 @@ async function activePr(client: AdoClient, b: RawBuild): Promise<{ id: number; w
 }
 
 /** `aihub pipeline show --run N`: one run in one answer (tree, trigger, parameters, variables, summary). */
-export async function pipelineShow(ctx: Ctx, o: { run: number; repoDir?: string }): Promise<RunDetail> {
-  const client = clientAt(ctx, o.repoDir ?? ctx.cwd);
+export async function pipelineShow(ctx: Ctx, o: { run: number } & RunPlace): Promise<RunDetail> {
+  const client = await runClient(ctx, o);
   const now = ctx.now?.() ?? Date.now();
   const b = await client.get<RawBuild>(`build/builds/${o.run}`);
   const state = runState(b);
@@ -877,8 +894,8 @@ export interface PollResult {
 }
 
 /** `aihub pipeline poll --run N`: the cheap read the bar repeats every 15 s for a run of mine (build + timeline). */
-export async function pipelinePoll(ctx: Ctx, o: { run: number; repoDir?: string }): Promise<PollResult> {
-  const client = clientAt(ctx, o.repoDir ?? ctx.cwd);
+export async function pipelinePoll(ctx: Ctx, o: { run: number } & RunPlace): Promise<PollResult> {
+  const client = await runClient(ctx, o);
   const now = ctx.now?.() ?? Date.now();
   const b = await client.get<RawBuild>(`build/builds/${o.run}`);
   const state = runState(b);
@@ -913,8 +930,8 @@ export interface LogResult extends ReadableLog {
 }
 
 /** `aihub pipeline log --run N --step S`: one step log made readable (S is a step id from `show`, or a name). */
-export async function pipelineLog(ctx: Ctx, o: { run: number; step?: string; tail?: number; fromLine?: number; repoDir?: string }): Promise<LogResult> {
-  const client = clientAt(ctx, o.repoDir ?? ctx.cwd);
+export async function pipelineLog(ctx: Ctx, o: { run: number; step?: string; tail?: number; fromLine?: number } & RunPlace): Promise<LogResult> {
+  const client = await runClient(ctx, o);
   const now = ctx.now?.() ?? Date.now();
   const recs = (await client.get<{ records?: Rec[] }>(`build/builds/${o.run}/timeline`)).records ?? [];
   const tree = treeOf(recs, (r, j) => recUrl(client, o.run, r, j), undefined, now);
@@ -1096,8 +1113,8 @@ export interface RunAgainResult {
  * `aihub pipeline run-again --run N [--plan]`: with --plan the form (what the run had, what may change, which stages may be
  * skipped); without it a new run of the same pipeline with the changes of --changes-file, on the same or the latest commit.
  */
-export async function pipelineRunAgain(ctx: Ctx, o: { run: number; plan?: boolean; commit?: string; changesFile?: string; repoDir?: string }): Promise<RunAgainPlan | RunAgainResult> {
-  const client = clientAt(ctx, o.repoDir ?? ctx.cwd);
+export async function pipelineRunAgain(ctx: Ctx, o: { run: number; plan?: boolean; commit?: string; changesFile?: string } & RunPlace): Promise<RunAgainPlan | RunAgainResult> {
+  const client = await runClient(ctx, o);
   const { plan, build } = await loadPlan(ctx, client, o.run);
   if (o.plan) return plan;
   const changes = readChanges(o.changesFile);

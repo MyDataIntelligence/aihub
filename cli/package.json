@@ -1,6 +1,6 @@
 {
   "name": "@ferronhooi/aihub",
-  "version": "1.8.1",
+  "version": "1.9.0",
   "description": "One small CLI for Azure DevOps team workflows used by coding agents (stories, pull requests, reviews, cherry-picks).",
   "license": "MIT",
   "type": "module",

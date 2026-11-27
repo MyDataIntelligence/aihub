@@ -75,12 +75,30 @@ export function writeAtomic(path: string, text: string): void {
 export const repoBranch =(meta: Pick<SetMeta, "branch">, r: Pick<SetRepo, "branch">): string => r.branch || meta.branch;
 
 /** The set file of `folder` (`.aihub-set.json` first), in the shape of SetMeta; undefined when there is none or it is broken. */
+/**
+ * A set file in an older or hand-written form, as it is read: `story` as `{ id, title }` (or a string) becomes the number,
+ * with the title as `storyTitle`; a missing `branch` is the branch of the first repository that names one. Never "#[object
+ * Object]" or "on undefined" in a label.
+ */
+export function normalizeMeta(m: SetMeta): SetMeta {
+  const s = m.story as unknown;
+  if (s && typeof s === "object") {
+    const o = s as { id?: unknown; title?: unknown };
+    m.story = Number(o.id) > 0 ? Number(o.id) : 0;
+    if (!m.storyTitle && typeof o.title === "string" && o.title) m.storyTitle = o.title;
+  } else if (typeof s !== "number") m.story = Number(s) > 0 ? Number(s) : 0;
+  if (typeof m.branch !== "string" || !m.branch) m.branch = m.repos.find((r) => typeof r.branch === "string" && r.branch)?.branch ?? "";
+  return m;
+}
+
 export function readSetFile(folder: string): { kind: SetKind; top: SetMeta } | undefined {
   try {
     if (existsSync(join(folder, AIHUB_SET))) {
       const top = JSON.parse(readJsonText(join(folder, AIHUB_SET))) as SetMeta;
       if (!Array.isArray(top?.repos)) return undefined;
       top.repos = completeRepos(folder, top.repos as Partial<SetRepo>[]);
+      normalizeMeta(top);
+      for (const o of top.others ?? []) if (o && Array.isArray(o.repos)) normalizeMeta(o);
       return { kind: "aihub", top };
     }
     if (existsSync(join(folder, MAKER_SET))) {

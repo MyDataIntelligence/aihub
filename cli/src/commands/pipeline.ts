@@ -32,6 +32,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     status: { type: "string" },
     "repo-dir": { type: "string", multiple: true },
     "rows-repo-dir": { type: "string" },
+    project: { type: "string" },
+    org: { type: "string" },
     "from-line": { type: "string" },
     plan: { type: "boolean" },
     commit: { type: "string" },
@@ -39,16 +41,18 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   }).values;
   const sel = { pr: v.pr, branch: v.branch, run: v.run && !/^\d+$/.test(v.run) ? parseRunRef(v.run) : num(v.run, "--run"), definition: v.definition, top: num(v.top, "--top") };
   const repoDir = v["repo-dir"]?.[0];
+  // --project (and --org): a run outside every repository of this PC
+  const place = { repoDir, project: v.project, org: v.org };
   const needRun = () => {
     if (!sel.run) throw new AihubError(`aihub pipeline ${sub} needs --run <id> (see 'aihub pipeline list')`);
     return sel.run;
   };
   // the reads behind the bar: always JSON
   if (sub === "list") return void ctx.out(JSON.stringify(await pipelineList(ctx, { mine: v.mine, today: v.today, status: v.status, branch: v.branch, top: sel.top, repoDirs: v["repo-dir"], rowsRepoDir: v["rows-repo-dir"] })));
-  if (sub === "show") return void ctx.out(JSON.stringify(await pipelineShow(ctx, { run: needRun(), repoDir })));
-  if (sub === "poll") return void ctx.out(JSON.stringify(await pipelinePoll(ctx, { run: needRun(), repoDir })));
-  if (sub === "log") return void ctx.out(JSON.stringify(await pipelineLog(ctx, { run: needRun(), step: v.step, tail: num(v.tail, "--tail"), fromLine: num(v["from-line"], "--from-line"), repoDir })));
-  if (sub === "run-again") return void ctx.out(JSON.stringify(await pipelineRunAgain(ctx, { run: needRun(), plan: v.plan, commit: v.commit, changesFile: v["changes-file"], repoDir })));
+  if (sub === "show") return void ctx.out(JSON.stringify(await pipelineShow(ctx, { run: needRun(), ...place })));
+  if (sub === "poll") return void ctx.out(JSON.stringify(await pipelinePoll(ctx, { run: needRun(), ...place })));
+  if (sub === "log") return void ctx.out(JSON.stringify(await pipelineLog(ctx, { run: needRun(), step: v.step, tail: num(v.tail, "--tail"), fromLine: num(v["from-line"], "--from-line"), ...place })));
+  if (sub === "run-again") return void ctx.out(JSON.stringify(await pipelineRunAgain(ctx, { run: needRun(), plan: v.plan, commit: v.commit, changesFile: v["changes-file"], ...place })));
   if (sub === "follow") return pipelineFollow(ctx, { ...sel, timeout: v.timeout });
   if (sub === "status") return void ctx.out(await pipelineStatus(ctx, { ...sel, json: v.json }));
   if (sub === "runs") return void ctx.out(await pipelineRuns(ctx, { ...sel, json: v.json }));
@@ -66,7 +70,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
   }
   if (sub === "retry") {
     if (!sel.run) throw new AihubError("aihub pipeline retry needs --run <id> (see 'aihub pipeline runs')");
-    return void ctx.out(await pipelineRetry(ctx, { run: sel.run, stage: v.stage, json: v.json }));
+    return void ctx.out(await pipelineRetry(ctx, { run: sel.run, stage: v.stage, json: v.json, project: v.project, org: v.org }));
   }
   throw new AihubError("usage: aihub pipeline follow|status|runs|logs|run|rerun|retry|list|show|log|poll|run-again [flags]");
 }

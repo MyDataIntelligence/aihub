@@ -1,4 +1,4 @@
-# JSON for tools: pr list, pr show, status, watch events, pipelines, repository browser
+# JSON for tools: pr list, pr show, status, watch events, pipelines, repository browser, wiki browser
 
 For the VS Code extension and other scripts. Every command prints one JSON document with `--json` and never asks a question.
 
@@ -61,6 +61,8 @@ run and finish time and kept in `~/.aihub/pipeline-red-runs.json`.
           "queuedAt":"…","startedAt":"…","finishedAt":null,"durationSeconds":252,"currentStage":"Test","webUrl":"…"}],
  "today":{"total":7,"running":1,"queued":0,"failed":2,"succeeded":4,"canceled":0,"capped":false},"errors":[{"repoDir":"…","error":"…"}]}
 ```
+
+`show`, `poll`, `log`, `run-again`, `retry` and `cancel` also take `--project P [--org O]` instead of `--repo-dir`: the run is read from that project without a clone (a run opened from the pipeline browser); `--repo-dir` wins when both are given.
 
 `aihub pipeline show --run N`: `run` (trigger: `reason`, `manual`, `requestedFor`, `branch`, `commit {id,short,message}`, `pr {id,webUrl}`,
 `waitSeconds`, `durationSeconds`, `agent`), `stages[] {id,identifier,name,state,durationSeconds,dependsOn,notRunReason,errorCount,webUrl,
@@ -260,9 +262,57 @@ remembered 5 minutes, nothing polls. Commands: `aihub.bar.browsePipelines` and t
   default branch with `pipelines/draft-N.yml` (a copy of that pipeline's YAML, or one stage with one script step), then the pipeline
   `draft-N` in `\Drafts` that runs that file from that branch. main, master, staging, develop, release/* and an existing branch are
   refused; when the pipeline cannot be made the branch is removed again. `{pipeline{id,name,folder},repo,branch,startedFrom,yamlPath,commit,webUrl}`.
-- `drafts --project P`: `drafts[] {id,name,repo,branch,yamlPath,runs,latestRun,branchAhead,mine,webUrl}`.
-- `draft-delete --project P --pipeline ID`: only a `draft-*` pipeline in `\Drafts` that you made (else `badInput` / `noAccess`, nothing
+- `drafts --project P`: `drafts[] {id,name,repo,branch,yamlPath,runs,latestRun,branchAhead,createdAt,mine,webUrl}` (`createdAt`: when the pipeline's newest revision was saved; for a draft that was not edited, when it was made).
+- `draft-delete --project P --pipeline ID [--keep-branch]`: only a `draft-*` pipeline in `\Drafts` that you made (else `badInput` / `noAccess`, nothing
   changes). The runs go first with their own retention lease (a run another lease keeps stays: `runsKept`), then the pipeline; its branch goes when its name holds `draft-` and it is not protected or the default branch
+  (else, or with `--keep-branch`, `branchKept` says why). `{deleted{pipeline{id,name},runs,branch,repo},runsKept,branchKept}`.
+
+## Wiki browser: `aihub wiki browse ...`
+
+Every project wiki and code wiki of the organisation, read and edited without a clone. Same rules as the repository browser: always JSON,
+a failure is `{"error":{"kind","message"}}` with exit 1 (`signedOut`, `noAccess` and `searchUnavailable` remembered 5 minutes), `--org`,
+`--refresh`, `readAt`/`cached` on every read, people `{name, email, isMe}`. `--project P --wiki W` (name or id) picks the wiki; page paths
+are as Azure DevOps shows them (`/Runbooks/Order export`, no `.md`). A project wiki is edited here (a new wiki version straight away,
+only on `publish`); a code wiki is a folder of a repository and is edited with `aihub browse push` (a new feature branch and a pull request).
+
+Cache (`<config>/aihub/cache/browse/`): the wikis 4 hours, a tree level 4 hours, a page 1 hour, history 2 minutes, a page at a version for
+good, attachments 4 hours (files in `cache/wiki-attachments/`). Every write moves the wiki on, so the next read is fresh.
+
+| Sub | Answer |
+|---|---|
+| `wikis` | `{org, wikis:[{id,name,kind:"project"\|"code",project,projectId,repo,repoId,branch,mappedPath,webUrl}], projects:[{name,wikis}]}`; per project: project wiki first |
+| `tree [--path /P]` | one level: `{wiki:{id,name,kind,project}, path, pages:[{path,name,order,hasChildren,id,gitItemPath}]}` in the order of Azure DevOps |
+| `page --path /P [--version SHA]` | `{wiki, page:{path,name,id,gitItemPath,content,etag,version}, lastChange:{by,at,commit,short,message}\|null, attachments:[{name,ref}], workItems:{"4711":{title,type,state}}, code:null\|{project,repo,branch,filePath,baseCommit}, webUrl}` (`workItems`: the `#1234` in the text, one batch read, `{}` when they cannot be read) |
+| `templates` | `{templates:[{key:"empty"\|"runbook"\|"decision",name,description,headings,content}]}` (`{{title}}` in content; no network) |
+| `publish --path /P --content-file F --etag E [--comment-file C] [--force]` | `{status:"published",path,etag,version,webUrl,overwrote}`, or with a stale ETag `{status:"conflict",kind:"conflict",path,yourEtag,current:{content,etag,lastChange},base:{content},theirs:{hunks},mine:{hunks}}` (nothing written; `--force` overwrites on top of the newest version) |
+| `create [--parent /P] --name N [--template T] [--content-file F] [--comment-file C]` | `{status:"created",path,etag,webUrl}`; a code wiki: `{status:"push",path,content,code:{project,repo,branch,filePath,baseCommit}}` for `aihub browse push`; an existing page is `badInput` |
+| `move-plan --path /P --to /Q` | `{from,to,subpages,links:[{page,count,before,after}],linkCount,pageCount,outsideNote}`, from one zip download of the wiki; changes nothing |
+| `move --path /P --to /Q [--no-links] [--order N] [--comment-file C]` | `{status:"moved",from,to,linksUpdated:[{page,count}],linkErrors:[{page,message}],webUrl}`; rename = a move within the same parent; links are rewritten in the style they were written in (`/A-b`, `/A%20b`, `.md`, `#anchor`) |
+| `history --path /P [--top 50]` | `{wiki,path,versions:[{by,at,commit,short,message,parent}],more}`, newest first |
+| `diff --path /P --to SHA [--from SHA]` | `{path,from,to,hunks,added,removed,fromContent,toContent}` (`from` default: the version before) |
+| `search --text T [--project P] [--wiki W] [--top 50] [--skip 0]` | `{text,count,results:[{project,wiki:{id,name,kind},path,title,hits:[{line:null,text,highlights:[{start,length}]}]}],facets:{projects,wikis},tookMs}`; no search: `searchUnavailable` |
+| `attachment --ref /.attachments/x.png [--page /P]` | `{name,mime,bytes,file,cached}` (a relative ref is read next to the page) |
+| `upload --file F [--name N]` | project wiki: `{name,ref,markdown,bytes}`; a code wiki is `badInput` (add the file in the repository) |
+
+The extension's `aihub.bar.wiki*` commands (`vscode/src/bar/types.ts`) run one of these each; `aihub.bar.wikiAskAgent` and
+`aihub.bar.wikiUpdateFromBranch` only put a prompt in the chat (drafts go to `.aihub/wiki-drafts/<wiki>/<page>.md`; nothing is published).
+
+## Story browser: `aihub stories ...`
+
+Always JSON. A failure is `{"error":{"kind","message"}}` with exit 1; kinds as in the repository browser plus `needsSetting` (no project chosen). A change someone else saved in between is not an error: `{"status":"conflict","id","yourRev","rev","current":<Item>,"theirChanges":[{"rev","by","date","fields":[]}]}` with exit 0; nothing is written then. A successful write is `{"status":"saved","id","rev","changed":[field]}`. Reads are cached in the config home (lists 2 minutes, one item 1 minute, settings lists 4 hours; `--refresh` skips it); every write makes the project's cached lists and items stale. In the extension each sub is `aihub.bar.story<Sub>` with one object argument (keys = flags in camelCase; text goes in private temporary files).
+
+- `settings [--save --project P --team T [--area A] [--iteration I]]` -> `{ org, project?, team?, areaPath?, iterationPath?, types:[] }` (kept per organisation in `story-browser.json`)
+- `projects` -> `{ org, projects:[{id,name}] }`; `teams` -> `{ teams:[{id,name,isDefault}] }`; `areas` -> `{ defaultArea, areas:[{path,includeChildren}], all:[path] }`; `iterations` -> `{ iterations:[{id,name,path,start,finish,timeFrame}], current? }`
+- `list --view mine|sprint|backlog [--types a,b] [--search 123|text] [--top 200]` -> `{ view, project, team, types, iterationPath?, items:[ItemRow], readAt, cached }`
+- ItemRow: `{ id, rev, type, title, state, stateCategory, assignedTo:{name,email,isMe}|null, areaPath, iterationPath, priority?, severity?, storyPoints?, tags:[], parent?, changedDate, url, local:{ set?:{folder,name}, branches:[{repo,branch,worktree?}] } }`
+- `board [--board B] [--types a,b]` -> `{ board, columnField?, columns:[{ name, states, category, isDone, wipLimit?, items:[ItemRow] }] }` (an item sits in its own board column; the done column shows two weeks)
+- `show --id N` -> ItemRow plus `allowedStates:[{name,category}]`, `severityValues?`, `priorityValues?`, `sections:[{heading,field,markdown,html}]` (the team template; a Bug keeps its text in ReproSteps), `systemInfo?:{markdown,html}`, `tasks:[{id,rev,title,state,done,assignedTo}]`, `parentItem`, `related`, `children`, `development:{branches,prs,builds}`, `comments:[{id,author,date,markdown,html}]`, `template`
+- `move --id N (--to <state> | --column C [--board B]) --rev R`; `edit --id N --rev R [--title] [--state] [--assign me|<email>|none] [--priority] [--severity] [--points] [--tags a;b] [--iteration] [--area] [--sections-file f] [--system-info-file f]` (only the sections in the file change); `task --id <task> --done|--undone [--rev R]`; `add-task --parent N --title t`; `comment --id N --text-file f`
+- `refine-ask --id N` -> `{ prompt, proposalFile, gaps }`; `refine --id N` -> `{ rev, parts:[{part,heading,current,proposed,changed}], tasks:{current,proposed,new} }` (reads only); `refine-apply --id N --rev R --parts description,criteria,tasks` writes only those parts
+- `start --id N [--repos a,b] [--base B] [--set reuse|none] [--no-assign] [--open new|this|none]` -> branches per repository, state to the active state, assigned to me, the story's set
+- `form --type T`; `new --type T --title t [--sections-file f] [--system-info-file f] [--severity] [--priority] [--parent N] [--iteration current|path] [--area] [--assign me]` -> `{ id, rev, type, title, url, template }`
+- `draft-ask --type T --title t [--notes-file f]` -> `{ prompt, draftFile }`; `draft --draft-file f` -> `{ sections:[{heading,markdown}] }`
+- `link --id N (--set <folder> | --repo R --branch B)` -> `{ linked:[{repo,branch,added}], prs:[{repo,id,added}] }`; `fix-branch --id N [--repo R] [--base B]` -> `bugfix/<id>-<slug>` (team.yaml `branches.bugfix` wins), pushed and linked
   (else `branchKept` says why). `{deleted{pipeline{id,name},runs,branch,repo},runsKept,branchKept}`.
 
 ## Team settings: `aihub team show|validate|preview|edit|init --json`

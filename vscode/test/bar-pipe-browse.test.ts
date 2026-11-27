@@ -20,6 +20,7 @@ describe("pipeline browser: arguments", () => {
     expect(pipeBrowseArgs.draftCreate({ project: "p", repo: "r", name: "x", branch: "b", empty: true }).slice(-1)).toEqual(["--empty"]);
     expect(() => pipeBrowseArgs.draftCreate({ project: "p", repo: "r", name: "x", branch: "b" })).toThrow(/fromPipeline or empty/);
     expect(pipeBrowseArgs.draftDelete({ project: "p", pipeline: 21 })).toEqual(["browse", "draft-delete", "--project", "p", "--pipeline", "21"]);
+    expect(pipeBrowseArgs.draftDelete({ project: "p", pipeline: 21, keepBranch: true }).slice(-1)).toEqual(["--keep-branch"]);
   });
 
   it("run: the changes in a private file, an empty secret left out, removed after", () => {

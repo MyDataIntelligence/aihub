@@ -3,15 +3,18 @@ import { forgetScan } from "../../../cli/src/lib/machineScan";
 import { createPullRequests, madeLinks, prOffers } from "./createPrs";
 import { protectedBranches, targetInfo } from "./repoStatus";
 
-/** The target to pass as --target: only when team.yaml or the set file names it; else the CLI derives its own. */
+const setFolderOfWindow = () => openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.folder;
+/** The target to pass as --target for a pull request: only when team.yaml or the set file names it; else the CLI derives its own. */
 const sureTarget = (path: string, name: string): string | undefined => {
-  const t = targetInfo(path, name, { setFolder: openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set?.folder });
+  const t = targetInfo(path, name, { setFolder: setFolderOfWindow() });
   return t.sure ? t.target : undefined;
 };
-import { commitOne, eachRepo, offlineSummary, parseMessage, pushOne, summarize, updateOne, type RepoRef, type RepoResult } from "./batch";
+import { commitOne, divergedRepos, eachRepo, offlineSummary, parseMessage, pushOne, summarize, updateOne, type RepoRef, type RepoResult } from "./batch";
+import { plainError } from "./plainError";
 import { openFacts } from "./engine";
 import { gitRun } from "./ownWindow";
 import { cli } from "./runner";
+import { headSha } from "./behind";
 import type { StoryHooks } from "./storyUi";
 
 /** The repositories of the set this window shows (or its one repository), by name or all. */
@@ -23,7 +26,7 @@ function reposOf(names?: string[]): RepoRef[] {
   return all.filter((r) => want.has(r.name.toLowerCase()));
 }
 
-async function report(h: StoryHooks, what: string, results: RepoResult[], links: string[] = []): Promise<void> {
+async function report(h: StoryHooks, what: string, results: RepoResult[], links: string[] = [], extra?: { label: string; run: () => Promise<unknown> }): Promise<void> {
   const text = summarize(what, results);
   h.log(`${text}\n${results.filter((r) => r.detail).map((r) => `--- ${r.repo}\n${r.detail}`).join("\n")}`);
   forgetScan(process.env);
@@ -41,9 +44,30 @@ async function report(h: StoryHooks, what: string, results: RepoResult[], links:
     return;
   }
   const more = "Show Details";
-  const pick = await vscode.window.showWarningMessage(`AI Context Hub: ${text.split("\n")[0]}. ${bad.map((r) => r.line).join("; ")}`, ...(open ? [open] : []), more);
+  const pick = await vscode.window.showWarningMessage(`AI Context Hub: ${text.split("\n")[0]}. ${bad.map((r) => r.line).join("; ")}`, ...(extra ? [extra.label] : []), ...(open ? [open] : []), more);
   if (pick && pick === open) openAll();
+  if (extra && pick === extra.label) return void (await extra.run());
   if (pick === more) void vscode.window.showWarningMessage(`${what}`, { modal: true, detail: bad.map((r) => `${r.line}\n${r.detail ?? ""}`).join("\n\n") });
+}
+
+/** Update from the target branch (`aihub branch update --no-push --target <the target the bar shows>`) for the named repositories; one result line each. */
+async function updateFromTarget(h: StoryHooks, repos: RepoRef[]): Promise<RepoResult[]> {
+  const results = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Updating ${repos.length} from the target branch...` }, () =>
+    eachRepo(repos, async (r) => {
+      // always the target the bar measures against, also a derived one (the same rule as the look at the target branch)
+      const t = targetInfo(r.path, r.name, { setFolder: setFolderOfWindow() }).target;
+      try {
+        const before = headSha(r.path) ?? (await gitRun(r.path, ["rev-parse", "HEAD"]).catch(() => "")).trim();
+        await cli(["branch", "update", "--no-push", "--target", t], r.path);
+        const after = headSha(r.path) ?? (await gitRun(r.path, ["rev-parse", "HEAD"]).catch(() => "")).trim();
+        return { repo: r.name, ok: true, line: before && before === after ? `${r.name}: already up to date with ${t}` : `${r.name}: updated from ${t} (nothing pushed)` };
+      } catch (e) {
+        return { repo: r.name, ok: false, line: `${r.name}: not updated, ${plainError((e as Error).message).text}`, detail: (e as Error).message };
+      }
+    }),
+  );
+  await report(h, "Update from target", results);
+  return results;
 }
 
 /** Update all, Push all and Commit all of the open set: one result line per repository, a failing repository never stops the others. */
@@ -52,7 +76,9 @@ export function registerBatchCommands(h: StoryHooks): void {
     const repos = reposOf(arg?.repos);
     if (!repos.length) return [];
     const results = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Updating ${repos.length} ${repos.length === 1 ? "repository" : "repositories"}...` }, () => eachRepo(repos, (r) => updateOne(gitRun, r)));
-    await report(h, "Update all", results);
+    // a branch with commits of its own: one button brings the target branch in (aihub branch update, never a push)
+    const diverged = divergedRepos(repos, results);
+    await report(h, "Update all", results, [], diverged.length ? { label: "Update from Target", run: () => updateFromTarget(h, diverged) } : undefined);
     return results;
   });
 

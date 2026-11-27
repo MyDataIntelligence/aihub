@@ -20,6 +20,10 @@ import { BarEngine, openFacts, storyBranchesOf, titleFromFiles } from "./engine"
 import { nextStoryBranch, openStoryArgs, rowDescription, storyNumberOf, storyPickRows, storyRepoRows, type StoryRef, type StoryRepoRow } from "./storyModel";
 import { windowChoice, openPath } from "./window";
 import { withUndo } from "./undoUi";
+import { addable, branchChoices, singleToSetArgs, validBranchName, type RepoPick } from "./singleToSet";
+import { notOnThisPc, openReposArgOf, preTicked, type NewSetRepo } from "./newSet";
+import { BAR_COMMANDS } from "./types";
+import { targetInfo } from "./repoStatus";
 import { branchesOf, copyName, gitRun, openOwn, ownWindowItems, worktreesOf } from "./ownWindow";
 
 /**
@@ -119,10 +123,15 @@ function pickStory(engine: BarEngine, cwd: string | undefined): Promise<Picked |
 
 // ---- Open Story ----------------------------------------------------------------------------------------------
 
-async function storyRows(story: StoryRef, picked: Picked, cwd: string): Promise<StoryJson["branches"]> {
-  if (picked.rows) return picked.rows;
+/** The branches of the story and its title (the one read that Open Story by number needs before it names anything). */
+async function storyRead(story: StoryRef, picked: Picked, cwd: string): Promise<{ branches: StoryJson["branches"]; title?: string }> {
+  if (picked.rows && story.title) return { branches: picked.rows };
   const r = await readJson<{ stories: StoryJson[] }>(runner(), ["story", "branches", "--id", String(story.id)], cwd);
-  return r.stories[0]?.branches ?? [];
+  return { branches: picked.rows ?? r.stories[0]?.branches ?? [], title: r.stories[0]?.title || undefined };
+}
+
+async function storyRows(story: StoryRef, picked: Picked, cwd: string): Promise<StoryJson["branches"]> {
+  return (await storyRead(story, picked, cwd)).branches;
 }
 
 /** Tick the repositories: the story's linked branches ticked, the others (all on this PC) unticked with "new branch". */
@@ -155,7 +164,7 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
   const given = idArg(arg);
   const picked: Picked | undefined = given ? { story: { id: given, title: readSeenStories(process.env)[given]?.title ?? "" } } : await pickStory(h.engine, cwd);
   if (!picked) return;
-  const story = picked.story;
+  let story = picked.story;
   // the story of this window: nothing to open, one quiet line
   const here = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set;
   if (here && here.story === story.id) return void vscode.window.showInformationMessage(`AI Context Hub: #${story.id} is already open in this window.`);
@@ -171,7 +180,10 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
     return;
   }
   if (!cwd) return void vscode.window.showWarningMessage("AI Context Hub: no repository is known on this PC yet. Add a folder with Folders to Look In...");
-  const rows = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Reading story ${story.id}...` }, () => storyRows(story, picked, cwd));
+  const read = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Reading story ${story.id}...` }, () => storyRead(story, picked, cwd));
+  const rows = read.branches;
+  // by number the title is not known yet: it comes with this read, before the branch and the folder are named
+  if (!story.title && read.title) story = { ...story, title: read.title };
   const { rows: repoRows, notOnThisPc } = storyRepoRows(rows, repositories);
   if (!repoRows.length) return void vscode.window.showWarningMessage("AI Context Hub: there are no repositories on this PC. Add a folder with Folders to Look In...");
   const ticked = await pickRepos(story, repoRows, notOnThisPc);
@@ -460,9 +472,12 @@ export function registerStoryCommands(h: StoryHooks): void {
     }
   });
 
+  h.reg("aihub.bar.newSet", (arg?: unknown) => newSet(h, arg));
+
   h.reg("aihub.bar.addRepository", async (arg?: unknown) => {
     const set = setContext();
-    if (!set) return void vscode.window.showInformationMessage("AI Context Hub: this window does not show a worktree set.");
+    // the window of a single repository: it becomes a set with the added repositories
+    if (!set) return addToSingleRepository(h);
     let name = nameOf(arg);
     if (!name) {
       const inSet = new Set(set.repos.map((r) => r.name.toLowerCase()));
@@ -511,6 +526,179 @@ export function registerStoryCommands(h: StoryHooks): void {
       { backup: true, only: [n.repo.name], message: (m) => m },
     );
   });
+}
+
+/**
+ * Add Repository… in the window of a single repository: pick repositories (several), a branch for each, then one question
+ * "Link to a story?". The window becomes a set: this repository stays on its branch in its folder, the added ones get a
+ * worktree each, the set opens in this window, with Undo. Everything through `aihub worktree open`.
+ */
+async function addToSingleRepository(h: StoryHooks): Promise<void> {
+  const here = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).repo;
+  if (!here) return void vscode.window.showInformationMessage("AI Context Hub: open a repository first.");
+  const current: RepoPick = { name: here.name, path: here.path, branch: here.branch };
+  if (!current.branch) return void vscode.window.showWarningMessage(`AI Context Hub: ${current.name} is not on a branch (detached HEAD); check out a branch first.`);
+  const candidates = addable(await h.engine.repositories(), current);
+  if (!candidates.length) return void vscode.window.showInformationMessage("AI Context Hub: no other repository is known on this PC. Add a folder with Folders to Look In..., or clone one from the search of the project menu.");
+  type Row = vscode.QuickPickItem & { repo: RepoPick };
+  const chosen = await vscode.window.showQuickPick<Row>(
+    candidates.map((r) => ({ label: r.name, description: r.branch, detail: r.path, repo: { name: r.name, path: r.path, branch: r.branch } })),
+    { title: `Add Repository to ${current.name}`, placeHolder: "Tick the repositories; this window becomes a set with them", canPickMany: true, matchOnDetail: true },
+  );
+  if (!chosen) return;
+  if (!chosen.length) return void vscode.window.showInformationMessage("AI Context Hub: no repository was ticked, so nothing was added.");
+  const added: { name: string; path: string; branch: string }[] = [];
+  for (const c of chosen) {
+    const target = targetInfo(c.repo.path, c.repo.name).target;
+    type B = vscode.QuickPickItem & { choice: ReturnType<typeof branchChoices>[number] };
+    const pick = await vscode.window.showQuickPick<B>(
+      branchChoices(current.branch, c.repo, target).map((b) => ({ label: b.label, description: b.description, choice: b })),
+      { title: `Branch for ${c.repo.name}`, placeHolder: `${c.repo.name} joins the set on this branch` },
+    );
+    if (!pick) return;
+    let branch = pick.choice.branch;
+    if (pick.choice.kind === "new") {
+      branch = (await vscode.window.showInputBox({ title: `New branch in ${c.repo.name}`, prompt: `Made from ${target}`, value: current.branch, validateInput: (v) => (validBranchName(v) ? undefined : "Not a valid branch name") }))?.trim();
+      if (!branch) return;
+    }
+    added.push({ name: c.repo.name, path: c.repo.path, branch: branch! });
+  }
+  // one question: a story for the set, or none
+  const linkQ = await vscode.window.showQuickPick([{ label: "No story", description: "a set of repositories without a story", story: false }, { label: "Link to a Story…", description: "search by number or words", story: true }], { title: "Link to a story?", placeHolder: "The set can belong to a story" });
+  if (!linkQ) return;
+  let story: StoryRef | undefined;
+  if (linkQ.story) {
+    const picked = await pickStory(h.engine, current.path);
+    if (!picked) return;
+    story = picked.story;
+    if (!story.title) story = { ...story, title: (await storyRead(story, picked, current.path).catch(() => ({ title: undefined }))).title ?? "" };
+  }
+  const args = singleToSetArgs(current, added, story?.id);
+  h.log(`add repository: ${current.name} becomes a set with ${added.map((a) => `${a.name} (${a.branch})`).join(", ")}${story ? ` for story #${story.id}` : ""}`);
+  const made = await withUndo(
+    h,
+    `Add ${added.map((a) => a.name).join(", ")} to ${current.name}`,
+    "",
+    async () => {
+      const first = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Making a set of ${current.name} and ${added.length === 1 ? added[0].name : `${added.length} repositories`}...` }, () => cli(args, current.path));
+      const out = await answerExisting(first, (extra) => cli([...args, ...extra], current.path));
+      if (out === undefined) return undefined;
+      const res = JSON.parse(out.slice(out.indexOf("{"))) as OpenResultJson;
+      if (story) {
+        // the branches of the set are linked to the story in Azure DevOps; a failure only goes to the log
+        for (const r of res.repos.filter((x) => x.ok)) void cli(["story", "branches", "link", "--id", String(story.id), "--branch", r.branch, "--repo", r.repo], r.path ?? current.path).catch((e: Error) => h.log(`story ${story!.id}: Azure DevOps link for ${r.branch} not made: ${e.message}`));
+        if (story.title && res.folder) stampStoryTitle(res.folder, story.id, story.title);
+      }
+      forgetScan(process.env);
+      h.changed();
+      return res;
+    },
+    { sources: [current.path, ...added.map((a) => a.path)], created: (r) => r?.folder, message: (r) => (r ? `${current.name} is now a set with ${added.map((a) => a.name).join(", ")}` : "") },
+  );
+  // only now this window becomes the set (the workspace file opens here, no new window): the Undo is saved before the reload and stays in the project menu
+  if (made) await showOpened(made, "this", h.log, story ? { storyTitle: story.title } : undefined);
+}
+
+/** "Clone from Azure DevOps…" in New Set: the repositories of the organisation that are not on this PC; the ticked ones join the set and are cloned by aihub.bar.openReposAsSet. */
+async function remoteForNewSet(h: StoryHooks): Promise<NewSetRepo[]> {
+  const cwd = h.engine.scan().repos.find((r) => /dev\.azure\.com|visualstudio\.com/i.test(r.remote ?? ""))?.path;
+  if (!cwd) return void vscode.window.showInformationMessage("AI Context Hub: no clone of Azure DevOps on this PC yet, so its repositories are not known."), [];
+  const list = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Reading the repositories of Azure DevOps..." }, () => cli(["repos", "ado", "--json"], cwd)).then(
+    (out) => (JSON.parse(out.slice(out.indexOf("{"))) as { repos?: { name: string; project: string; remoteUrl: string }[] }).repos ?? [],
+    (e: Error) => (showFailure(e, "the repositories of Azure DevOps could not be read"), [] as { name: string; project: string; remoteUrl: string }[]),
+  );
+  const rows = notOnThisPc(list, await h.engine.repositories()).map((r) => ({ label: r.name, description: r.project, r }));
+  if (!rows.length) return [];
+  const picked = await vscode.window.showQuickPick(rows, { title: "Clone from Azure DevOps", placeHolder: "Tick the repositories; they are cloned when the set is made", canPickMany: true, matchOnDescription: true });
+  return (picked ?? []).map((p) => ({ name: p.r.name, project: p.r.project, remoteUrl: p.r.remoteUrl }));
+}
+
+/**
+ * New Set… (left menu) and Open as Set… (several repositories ticked in the left menu): the questions — the repositories, a
+ * new feature branch for all of them or an existing branch per repository, "Link to a story?". The work is
+ * aihub.bar.openReposAsSet: it clones what is not on this PC, opens the set of a story that has one, else makes the set and
+ * opens it in a new window, with Undo.
+ */
+async function newSet(h: StoryHooks, arg: unknown): Promise<void> {
+  const ticked = preTicked(arg);
+  const key = (p: string) => p.replace(/[\\/]+$/, "").toLowerCase();
+  const remote: NewSetRepo[] = [];
+  type Row = vscode.QuickPickItem & { repo: NewSetRepo & { branch?: string } };
+  let chosen: Row[] | undefined;
+  for (;;) {
+    const repos = await h.engine.repositories();
+    const qp = vscode.window.createQuickPick<Row>();
+    qp.title = "New Set";
+    qp.placeholder = "Tick the repositories of the set (type to search)";
+    qp.canSelectMany = true;
+    qp.matchOnDetail = true;
+    qp.items = [
+      ...repos.map((r) => ({ label: r.name, description: r.branch, detail: r.path, repo: { name: r.name, path: r.path, branch: r.branch } })),
+      ...remote.map((r) => ({ label: r.name, description: `clone from Azure DevOps${r.project ? ` · ${r.project}` : ""}`, repo: r })),
+    ];
+    qp.selectedItems = qp.items.filter((i) => (i.repo.path ? ticked.has(key(i.repo.path)) : true));
+    qp.buttons = [{ iconPath: new vscode.ThemeIcon("cloud-download"), tooltip: "Clone from Azure DevOps…" }];
+    const answer = await new Promise<Row[] | "clone" | undefined>((resolve) => {
+      qp.onDidAccept(() => resolve([...qp.selectedItems]));
+      qp.onDidTriggerButton(() => resolve("clone"));
+      qp.onDidHide(() => resolve(undefined));
+      qp.show();
+    });
+    for (const s of qp.selectedItems) if (s.repo.path) ticked.add(key(s.repo.path));
+    qp.dispose();
+    if (answer === "clone") {
+      for (const r of await remoteForNewSet(h)) if (!remote.some((x) => x.name === r.name)) remote.push(r);
+      continue;
+    }
+    chosen = answer;
+    break;
+  }
+  if (!chosen) return;
+  if (!chosen.length) return void vscode.window.showInformationMessage("AI Context Hub: no repository was ticked, so no set was made.");
+  const how = await vscode.window.showQuickPick(
+    [
+      { label: "New Branch for All Repositories…", description: "one new feature branch, made from each repository's target branch", all: true },
+      { label: "An Existing Branch per Repository…", description: "choose for each repository", all: false },
+    ],
+    { title: "Branch of the set", placeHolder: `${chosen.length} ${chosen.length === 1 ? "repository" : "repositories"}` },
+  );
+  if (!how) return;
+  let choice: { all: string } | { branches: Record<string, string> };
+  if (how.all) {
+    const name = (await vscode.window.showInputBox({ title: "New feature branch for all repositories", value: "feature/", valueSelection: [8, 8], validateInput: (v) => (validBranchName(v) && v.trim() !== "feature/" ? undefined : "Not a valid branch name") }))?.trim();
+    if (!name) return;
+    choice = { all: name };
+  } else {
+    const branches: Record<string, string> = {};
+    for (const c of chosen) {
+      let b: string | undefined;
+      if (c.repo.path) {
+        const known = await branchesOf(gitRun, c.repo.path).catch(() => ({ all: [] as string[], local: new Set<string>(), remote: new Set<string>() }));
+        const current = c.repo.branch ?? "";
+        const names = [current, ...known.all.filter((x) => x !== current)].filter(Boolean);
+        b = (await vscode.window.showQuickPick(names.map((n) => ({ label: n, description: n === current ? "where its clone is now (used as it is)" : known.local.has(n) ? "local" : "on the remote" })), { title: `Branch for ${c.repo.name}`, placeHolder: "An existing branch" }))?.label;
+      } else {
+        // not on this PC yet: the branch is typed (it is checked out after the clone)
+        b = (await vscode.window.showInputBox({ title: `Branch for ${c.repo.name}`, prompt: "An existing branch on Azure DevOps", value: "main", validateInput: (v) => (validBranchName(v) ? undefined : "Not a valid branch name") }))?.trim();
+      }
+      if (!b) return;
+      branches[c.repo.name] = b;
+    }
+    choice = { branches };
+  }
+  const linkQ = await vscode.window.showQuickPick([{ label: "No story", description: "a set of repositories without a story", story: false }, { label: "Link to a Story…", description: "search by number or words", story: true }], { title: "Link to a story?", placeHolder: "The set can belong to a story" });
+  if (!linkQ) return;
+  let story: number | undefined;
+  if (linkQ.story) {
+    const pickedStory = await pickStory(h.engine, chosen.find((c) => c.repo.path)?.repo.path ?? cliCwd(h.engine));
+    if (!pickedStory) return;
+    story = pickedStory.story.id;
+  }
+  const arg2 = openReposArgOf(chosen.map((c) => c.repo), choice, story);
+  h.log(`new set: ${arg2.repos.map((r) => r.name).join(", ")}${story ? ` for story #${story}` : ""} -> aihub.bar.openReposAsSet`);
+  // one engine for every "repositories as a set": clone, one story one set, the set in a new window, Undo
+  const res = (await vscode.commands.executeCommand(BAR_COMMANDS.openReposAsSet, arg2)) as { error?: { kind: string; message: string } } | undefined;
+  if (res?.error && res.error.kind !== "cancelled") void vscode.window.showWarningMessage(`AI Context Hub: no set was made: ${res.error.message}`);
 }
 
 async function defaultTarget(dir: string): Promise<string> {

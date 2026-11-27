@@ -20,6 +20,7 @@ export type BrowseErrorKind =
   | "branchExists"
   | "offline"
   | "badInput"
+  | "needsSetting"
   | "failed"
   | "cliMissing"
   | "cliTooOld";
@@ -29,7 +30,7 @@ export interface BrowseError {
 }
 
 export const BROWSE_UPDATE_COMMAND = "npm i -g @ferronhooi/aihub@next";
-const KINDS: BrowseErrorKind[] = ["signedOut", "noAccess", "notFound", "searchUnavailable", "protectedBranch", "branchExists", "offline", "badInput", "failed"];
+const KINDS: BrowseErrorKind[] = ["signedOut", "noAccess", "notFound", "searchUnavailable", "protectedBranch", "branchExists", "offline", "badInput", "needsSetting", "failed"];
 const LASTING: BrowseErrorKind[] = ["signedOut", "noAccess", "searchUnavailable", "cliMissing", "cliTooOld"];
 
 /** The CLI's own error JSON inside a failure text (stderr and stdout are joined), or a kind from the words. */
@@ -46,7 +47,7 @@ export function browseErrorOf(e: unknown): BrowseError {
     }
   }
   if (err?.kind === "missing") return { error: { kind: "cliMissing", message: raw } };
-  if (err?.kind === "old" || /unknown command 'browse'|usage: aihub browse/i.test(raw))
+  if (err?.kind === "old" || /unknown command 'browse'|usage: aihub browse|usage: aihub wiki list(?![^\n]*browse <sub>)/i.test(raw))
     return { error: { kind: "cliTooOld", message: `This needs a newer aihub CLI with the repository browser. Update it with: ${BROWSE_UPDATE_COMMAND}` } };
   if (/not signed in|az login|AIHUB_ADO_PAT/i.test(raw)) return { error: { kind: "signedOut", message: "Not signed in to Azure DevOps: run az login (or set AIHUB_ADO_PAT)." } };
   return { error: { kind: "failed", message: raw.replace(/^aihub:\s*/, "") } };
@@ -386,9 +387,11 @@ export const pipeBrowseArgs = {
     else out.push("--empty");
     return common({ org: a.org }, out);
   },
-  draftDelete: (a: PipelineArg) => {
+  draftDelete: (a: PipelineArg & { keepBranch?: boolean }) => {
     needAll(a, ["project", "pipeline"], "browseDraftDelete");
-    return common({ org: a.org }, ["browse", "draft-delete", "--project", a.project, "--pipeline", idOf(a.pipeline, "pipeline")]);
+    const out = ["browse", "draft-delete", "--project", a.project, "--pipeline", idOf(a.pipeline, "pipeline")];
+    if (a.keepBranch) out.push("--keep-branch");
+    return common({ org: a.org }, out);
   },
 };
 
