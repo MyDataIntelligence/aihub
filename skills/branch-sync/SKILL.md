@@ -16,7 +16,11 @@ aihub cherry-pick --from <pr|sha|story> --to <branch> --summary-text "<1-2 sente
 
 It cherry-picks in a temp worktree, pushes a branch per target and opens the PR per target (team template, story link). Repeat `--to` for more branches, or `--to-group <name>` (`team.yaml` `cherryPick.groups`). Show the PR links it prints. Do not run `git checkout`, `git cherry-pick`, `git log`, or `aihub pr create` yourself; no `--help`.
 
-Bring the own branch up to date with its target: `aihub branch update`.
+Bring the own branch up to date with its target: `aihub branch update`. It works with any git remote (fetch and merge); the line it prints names the target and why ("target staging (the branch it was cut from)").
+- The user names a branch ("update from staging", "werk bij vanuit main"): always `aihub branch update --target <that branch>`.
+- The printed target is not the branch the user asked for, or a `hint:` line says `--target staging` while the user meant staging: run it again at once with `--target <the branch the user meant>`. Never stop to ask about it.
+
+Example: "werk mijn branch bij vanuit staging" -> `aihub branch update --target staging`.
 
 Example: "cherry-pick PR 42 naar release/1.2" -> `aihub cherry-pick --from 42 --to release/1.2 --summary-text "Zet de fix ook op release 1.2."`
 
