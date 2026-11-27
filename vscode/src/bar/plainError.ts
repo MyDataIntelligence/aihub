@@ -9,6 +9,8 @@ export function plainError(raw: string): { text: string; details: string } {
     [/not a git repository/i, "its source clone is not where it was (moved or deleted); use Locate the Clone in the repository menu"],
     [/uncommitted changes|local changes|would be overwritten/i, "you have changes that are not committed; commit them or use Smart Checkout, then try again"],
     [/conflict/i, "the changes conflict; nothing was changed"],
+    // before the sign-in rule: "TF401019: ... does not exist or you do not have permissions" is a repository that is not there, not a sign-in problem
+    [/repository '[^']*' not found|Repository not found|does not exist or you do not have permissions/i, "this repository is not on Azure DevOps (its remote points nowhere, or you have no access to it); check the remote of the clone"],
     [/Authentication failed|could not read (Username|Password)|TF40\d+|not signed in|Authorization failed|401|403/i, "you are not signed in to Azure DevOps (or have no access); sign in and try again"],
     [/Could not resolve host|unable to access|timed out|timeout|network|ENOTFOUND|ECONNRESET|offline/i, "there is no connection to the server right now; try again when you are online"],
     [/index\.lock|another git process/i, "another git command is running in that repository; try again in a moment"],

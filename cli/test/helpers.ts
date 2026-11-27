@@ -16,7 +16,7 @@ export interface Call {
 export interface Route {
   method?: string;
   match: RegExp;
-  respond: (call: Call) => { status?: number; body?: unknown; text?: string; headers?: Record<string, string> };
+  respond: (call: Call) => { status?: number; body?: unknown; text?: string; bytes?: Uint8Array; headers?: Record<string, string> };
 }
 
 export function fakeFetch(routes: Route[]) {
@@ -45,6 +45,7 @@ export function fakeFetch(routes: Route[]) {
       });
     }
     const out = r.respond(call);
+    if (out.bytes) return new Response(out.bytes as unknown as BodyInit, { status: out.status ?? 200, headers: { "content-type": "application/zip", ...(out.headers ?? {}) } });
     const headers = { "content-type": out.text !== undefined ? "text/plain" : "application/json", ...(out.headers ?? {}) };
     return new Response(out.text !== undefined ? out.text : JSON.stringify(out.body ?? {}), { status: out.status ?? 200, headers });
   }) as unknown as typeof fetch;

@@ -18,9 +18,20 @@ export const BROWSE_USAGE = `usage: aihub browse <sub> [--org O] [--refresh]   (
   push     --project P --repo R --path /file --base-commit SHA --base-branch B --content-file F --branch feature/x --message-file M
            [--pr [--target T] [--story N] [--pr-title t] [--draft]] [--rebase]   one commit on a new branch, no clone
   pr       --project P --repo R --branch B [--target T] [--story N] [--pr-title t] [--draft]   Create Pull Request after a push
-  suggest-branch [--story N] --path /file [--title t]`;
+  suggest-branch [--story N] --path /file [--title t]
+  pipelines --project P                                       pipelines of a project: folders, repo, YAML, default branch, latest run
+  pipeline  --project P --pipeline ID [--top 8]               one pipeline with its latest runs
+  run-plan  --project P --pipeline ID [--ref <branch|tag:T|commit:SHA>]   the run form from the YAML on that ref
+  run       --project P --pipeline ID (--branch B|--tag T) [--commit SHA] [--changes-file F]   start a run
+  artifacts --project P --run N                               artifacts of a run
+  artifact-files --project P --run N --artifact A             the files in one artifact
+  artifact-open  --project P --run N --artifact A [--path p] [--max-bytes N]   one file (or the zip) in a temporary folder
+  draft-create --project P --repo R --name N --branch feature/x (--from-pipeline ID | --empty)   draft-N in \Drafts on its own branch
+  drafts       --project P                                    the draft pipelines (draft-* in \Drafts)
+  draft-delete --project P --pipeline ID                      only your own draft-* in \Drafts: the pipeline and its branch
+  (push takes --pipeline ID too: the answer says whether that pipeline can run on the new branch)`;
 
-const SUBS = ["projects", "project", "repo", "items", "file", "branches", "history", "diff", "blame", "find", "search", "push", "pr", "suggest-branch"];
+const SUBS = ["projects", "project", "repo", "items", "file", "branches", "history", "diff", "blame", "find", "search", "push", "pr", "suggest-branch", "pipelines", "pipeline", "run-plan", "run", "artifacts", "artifact-files", "artifact-open", "draft-create", "drafts", "draft-delete"];
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
@@ -56,6 +67,14 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     draft: { type: "boolean" },
     rebase: { type: "boolean" },
     json: { type: "boolean" },
+    pipeline: { type: "string" },
+    run: { type: "string" },
+    tag: { type: "string" },
+    "changes-file": { type: "string" },
+    artifact: { type: "string" },
+    name: { type: "string" },
+    "from-pipeline": { type: "string" },
+    empty: { type: "boolean" },
   }).values;
   try {
     ctx.out(JSON.stringify(await answer(sub, v, ctx)));
@@ -85,7 +104,33 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
   const repoArgs = () => ({ project: need(v, "project"), repo: need(v, "repo") });
   const remember = async (project: string, repo: string) => (await import("../lib/browse/search.js")).rememberRepo(b, project, repo);
   const read = await import("../lib/browse/read.js");
+  const pipes = () => import("../lib/browse/pipelines.js");
+  const id = (flag: string) => {
+    const n = num(need(v, flag), `--${flag}`);
+    if (!n) throw new BrowseError("badInput", `--${flag} must be a number`);
+    return n;
+  };
   switch (sub) {
+    case "pipelines":
+      return (await pipes()).browsePipelines(b, need(v, "project"));
+    case "pipeline":
+      return (await pipes()).browsePipeline(b, need(v, "project"), id("pipeline"), num(str(v, "top"), "--top") ?? 8);
+    case "run-plan":
+      return (await pipes()).browseRunPlan(b, need(v, "project"), id("pipeline"), str(v, "ref"));
+    case "run":
+      return (await pipes()).browseRun(b, need(v, "project"), id("pipeline"), { branch: str(v, "branch"), tag: str(v, "tag"), commit: str(v, "commit"), changesFile: str(v, "changes-file") });
+    case "artifacts":
+      return (await pipes()).browseArtifacts(b, need(v, "project"), id("run"));
+    case "artifact-files":
+      return (await pipes()).browseArtifactFiles(b, need(v, "project"), id("run"), need(v, "artifact"));
+    case "artifact-open":
+      return (await pipes()).browseArtifactOpen(b, need(v, "project"), id("run"), need(v, "artifact"), str(v, "path"), num(str(v, "max-bytes"), "--max-bytes"));
+    case "draft-create":
+      return (await pipes()).browseDraftCreate(b, { project: need(v, "project"), repo: need(v, "repo"), name: need(v, "name"), branch: need(v, "branch"), fromPipeline: num(str(v, "from-pipeline"), "--from-pipeline"), empty: !!v.empty });
+    case "drafts":
+      return (await pipes()).browseDrafts(b, need(v, "project"));
+    case "draft-delete":
+      return (await pipes()).browseDraftDelete(b, need(v, "project"), id("pipeline"));
     case "projects":
       return read.browseProjects(b);
     case "project":
@@ -121,7 +166,7 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
       return (await import("../lib/browse/push.js")).browsePr(b, { ...repoArgs(), branch: need(v, "branch"), target: str(v, "target"), story: num(str(v, "story"), "--story"), prTitle: str(v, "pr-title"), draft: !!v.draft });
     case "push": {
       const p = await import("../lib/browse/push.js");
-      return p.browsePush(b, {
+      const pushed = await p.browsePush(b, {
         ...repoArgs(),
         path: need(v, "path"),
         baseCommit: need(v, "base-commit"),
@@ -136,6 +181,9 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
         draft: !!v.draft,
         rebase: !!v.rebase,
       });
+      // --pipeline: can that pipeline run on the branch just pushed?
+      if (pushed.status === "pushed" && str(v, "pipeline")) return { ...pushed, pipeline: await (await pipes()).runnableOn(b, need(v, "project"), id("pipeline"), need(v, "repo"), need(v, "path")) };
+      return pushed;
     }
   }
   throw new AihubError(BROWSE_USAGE);

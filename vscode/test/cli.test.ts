@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkCli, CliError, makeRunner, readJson, versionAtLeast } from "../src/cli";
+import { checkCli, CliError, killTree, makeRunner, readJson, versionAtLeast } from "../src/cli";
 import { stubRunner } from "./helpers";
 
 describe("versionAtLeast", () => {
@@ -13,6 +13,23 @@ describe("versionAtLeast", () => {
 });
 
 describe("runner", () => {
+  it("ends at its time limit even when a process it started keeps the output open (a git push waiting for a sign-in)", async () => {
+    // the CLI stands in as node: it starts a grandchild that holds stdout for 6 s and exits itself at once
+    const script = "require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 6000)'], { stdio: 'inherit' })";
+    const run = makeRunner({ command: process.execPath, prefixArgs: ["-e", script], timeoutMs: 800 });
+    const t0 = Date.now();
+    await expect(run(["pr", "create"], process.cwd())).rejects.toMatchObject({ kind: "timeout", message: expect.stringContaining("took longer than") });
+    expect(Date.now() - t0).toBeLessThan(4000);
+  }, 10_000);
+
+  it("a timed-out call stops the whole process tree on Windows (taskkill /T), elsewhere the child", () => {
+    const killed: string[] = [];
+    killTree({ pid: undefined, kill: (s?: NodeJS.Signals | number) => (killed.push(String(s)), true) }, "linux");
+    expect(killed).toEqual(["SIGKILL"]);
+    const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "../src/cli.ts"), "utf8") as string;
+    expect(src).toMatch(/spawn\("taskkill", \["\/T", "\/F", "\/PID", String\(child\.pid\)\]/);
+  });
+
   it("parses JSON from a command", async () => {
     const s = await readJson<{ branch: string }>(stubRunner(), ["status"], process.cwd());
     expect(s.branch).toBe("feat/1234-add-export");
