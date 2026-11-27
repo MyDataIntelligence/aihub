@@ -42,6 +42,8 @@ export class BehindManager {
   readonly gate: FetchGate;
   readonly told: Told;
   private running = false;
+  /** The look at opening found the window without focus: it is owed, once, at the first focus (no timer). */
+  private openOwed = false;
   /** what was found for a repository at a pair of commits (HEAD, origin/<target>): the same pair is not looked at again, no process */
   private seen = new Map<string, { key: string; facts?: BehindFacts }>();
   private target: (path: string, name: string) => TargetInfo;
@@ -51,11 +53,29 @@ export class BehindManager {
     this.target = d.target ?? ((path, name) => targetInfo(path, name, { setFolder: d.ui.setFolder?.() }));
   }
 
+  /** True while the look at opening waits for the first focus. */
+  get openPending(): boolean {
+    return this.openOwed;
+  }
+
+  /**
+   * The window got the focus: the look at opening when it is still owed (once), else nothing here; the caller decides about
+   * the look of "focus" (a fresh fetch is not older than the freshness term).
+   */
+  async focusGained(): Promise<{ ran: boolean }> {
+    if (!this.openOwed) return { ran: false };
+    await this.run("open");
+    return { ran: !this.openOwed };
+  }
+
   /** What was shown and done, for the tests and the log. */
   async run(reason: CheckReason): Promise<{ messages: string[]; updated: UpdateResult[]; facts: BehindFacts[] }> {
     const out = { messages: [] as string[], updated: [] as UpdateResult[], facts: [] as BehindFacts[] };
     const { ui } = this.d;
+    // never without focus; the look at opening is not lost then, it runs once when the window gets the focus (persona round 3, N4)
+    if (reason === "open" && !ui.focused() && ui.mode() !== "off") this.openOwed = true;
     if (this.running || ui.mode() === "off" || !ui.focused()) return out;
+    if (reason === "open") this.openOwed = false;
     this.running = true;
     try {
       for (const r of ui.repos()) {
