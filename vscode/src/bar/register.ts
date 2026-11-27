@@ -14,6 +14,7 @@ import { registerSearchCommands } from "./searchUi";
 import { registerPipelineCommands } from "./pipelinesUi";
 import { registerBrowseCommands } from "./browseUi";
 import { registerWikiCommands } from "./wikiUi";
+import { registerStoryBrowserCommands } from "./storiesUi";
 import { SizeMemo } from "./setSize";
 import { showFailure } from "./failureUi";
 import { withCloneRecovery } from "./missingCloneUi";
@@ -445,6 +446,7 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   registerBrowseCommands(reg);
   // the wiki browser: one aihub process per call, only when the wiki view asks; the agent actions put text in the chat
   registerWikiCommands(reg, (t) => deps.toChat?.(t));
+  registerStoryBrowserCommands(reg);
 
   // the overview menu opens: read the pull requests again (at most once per call, a failed call is remembered like a good one)
   reg(BAR_COMMANDS.refreshStatus, async () => {
