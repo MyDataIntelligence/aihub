@@ -13,6 +13,7 @@ import {
   type ReadMeta,
 } from "./core.js";
 import { browseProjects, clonesOf, readFileAt, type Clone } from "./read.js";
+import { searchClones, type LocalTarget } from "./localSearch.js";
 
 /**
  * Ctrl+P and code search over every repository. Both use Azure DevOps Code Search (almsearch) when the organisation has
@@ -167,6 +168,12 @@ export interface SearchMatch {
 }
 
 export interface SearchResult extends ReadMeta {
+  /** codeSearch: Azure DevOps Code Search; local: Code Search is off, only the clones on this PC were searched */
+  route: "codeSearch" | "local";
+  /** local only: why, for the notice ("Code Search is not available ...") */
+  searchUnavailable?: { message: string };
+  /** local only: ripgrep or git grep */
+  tool?: string;
   count: number;
   results: { project: string; repo: string; path: string; branch: string; commit: string | null; clone: Clone | null; matches: SearchMatch[] }[];
   notSearched: { what: string; reason: string }[];
@@ -201,7 +208,7 @@ export function linesOf(content: string, hits: { charOffset: number; length: num
   });
 }
 
-export async function browseSearch(b: Browse, o: { text: string; project?: string; repo?: string; path?: string; ext?: string[]; top?: number }): Promise<SearchResult> {
+export async function browseSearch(b: Browse, o: { text: string; project?: string; repo?: string; path?: string; ext?: string[]; branch?: string; top?: number; local?: boolean }): Promise<SearchResult> {
   const text = o.text.trim();
   if (!text) throw new BrowseError("badInput", "aihub browse search needs --text <text>");
   const top = Math.min(Math.max(o.top ?? 25, 1), 100);
@@ -212,12 +219,21 @@ export async function browseSearch(b: Browse, o: { text: string; project?: strin
     filters.Repository = [o.repo];
   }
   if (o.path) filters.Path = [normPath(o.path)];
+  if (o.branch) filters.Branch = [o.branch];
+  if (o.local) return searchLocal(b, o, top, "local search was asked for (--local)");
   const ext = (o.ext ?? []).map((e) => e.replace(/^\*?\./, "").trim()).filter(Boolean);
   const searchText = ext.length ? `${text} ${ext.length === 1 ? `ext:${ext[0]}` : `(${ext.map((e) => `ext:${e}`).join(" OR ")})`}` : text;
   const clones = clonesOf(b);
-  const { data, meta } = await guarded(b, "search", () =>
-    cached(b, `search|${b.org}|${searchText}|${JSON.stringify(filters)}|${top}`, TTL.short, () => codeSearch(b, { searchText, $skip: 0, $top: top, filters, includeFacets: false })),
-  );
+  let found: Awaited<ReturnType<typeof cached<{ count?: number; results?: RawHit[] }>>>;
+  try {
+    found = await guarded(b, "search", () =>
+      cached(b, `search|${b.org}|${searchText}|${JSON.stringify(filters)}|${top}`, TTL.short, () => codeSearch(b, { searchText, $skip: 0, $top: top, filters, includeFacets: false })),
+    );
+  } catch (e) {
+    if (kindOf(e) !== "searchUnavailable") throw e;
+    return searchLocal(b, o, top, (e as Error).message);
+  }
+  const { data, meta } = found;
   const notSearched: SearchResult["notSearched"] = [];
   const results = await pool(data.results ?? [], 6, async (x) => {
     const project = x.project?.name ?? "";
@@ -238,5 +254,43 @@ export async function browseSearch(b: Browse, o: { text: string; project?: strin
     return { project, repo, path, branch: x.versions?.[0]?.branchName ?? "", commit, clone: cloneOf(clones, b.org, project, repo), matches };
   });
   if ((data.count ?? 0) > results.length) notSearched.push({ what: `${(data.count ?? 0) - results.length} more file(s)`, reason: `only the first ${top} are shown (--top)` });
-  return { ...meta, count: data.count ?? results.length, results, notSearched };
+  return { ...meta, route: "codeSearch", count: data.count ?? results.length, results, notSearched };
+}
+
+/** Code Search is off: the clones on this PC only (ripgrep, else git grep); nothing goes to Azure DevOps. */
+async function searchLocal(b: Browse, o: { text: string; project?: string; repo?: string; path?: string; ext?: string[]; branch?: string }, top: number, why: string): Promise<SearchResult> {
+  const clones = clonesOf(b);
+  const org = b.org.toLowerCase();
+  const targets: LocalTarget[] = [];
+  for (const [key, clone] of clones) {
+    const [kOrg, project, repo] = key.split("/");
+    if (kOrg !== org) continue;
+    if (o.project && project !== o.project.toLowerCase()) continue;
+    if (o.repo && repo !== o.repo.toLowerCase()) continue;
+    targets.push({ project, repo, clone });
+  }
+  // the real names, and how many repositories were not searched (the list is cached; offline it is left out)
+  let remote = 0;
+  try {
+    const all = (await browseProjects(b)).projects.flatMap((p) => p.repos).filter((r) => (!o.project || r.project.toLowerCase() === o.project.toLowerCase()) && (!o.repo || r.repo.toLowerCase() === o.repo.toLowerCase()));
+    for (const t of targets) {
+      const r = all.find((x) => x.project.toLowerCase() === t.project && x.repo.toLowerCase() === t.repo);
+      if (r) (t.project = r.project), (t.repo = r.repo);
+    }
+    remote = all.filter((r) => r.canOpen && !targets.some((t) => t.project === r.project && t.repo === r.repo)).length;
+  } catch {
+    remote = 0;
+  }
+  const r = searchClones(b, targets, { text: o.text.trim(), path: o.path, ext: o.ext, branch: o.branch, top });
+  const notSearched = [...r.skipped, ...(remote ? [{ what: `${remote} remote repositor${remote === 1 ? "y" : "ies"}`, reason: "not cloned on this PC; without Code Search only clones are searched" }] : [])];
+  return {
+    readAt: new Date(b.now()).toISOString(),
+    cached: false,
+    route: "local",
+    searchUnavailable: { message: why },
+    tool: r.tool,
+    count: r.files.length,
+    results: r.files.map((f) => ({ project: f.project, repo: f.repo, path: f.path, branch: f.branch, commit: null, clone: f.clone, matches: f.matches })),
+    notSearched,
+  };
 }

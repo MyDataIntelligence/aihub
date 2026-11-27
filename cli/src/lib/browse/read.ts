@@ -368,14 +368,25 @@ export interface ItemsResult extends ReadMeta {
 
 const baseName = (p: string) => p.split("/").filter(Boolean).pop() ?? "/";
 
-export function mapItems(raw: RawItem[], path: string, me: MeInfo): ItemRow[] {
+/** The sizes of the entries of one folder (one call to the tree of the folder); empty when it cannot be read. */
+async function sizesOf(rc: ReturnType<typeof repoClientOf>, treeId: string | undefined): Promise<Map<string, number>> {
+  if (!treeId) return new Map();
+  try {
+    const t = await rc.get<{ treeEntries?: { relativePath: string; size?: number; gitObjectType?: string }[] }>(`${rc.repoPath()}/trees/${treeId}`);
+    return new Map((t.treeEntries ?? []).filter((e) => e.gitObjectType === "blob" && typeof e.size === "number").map((e) => [e.relativePath, e.size!]));
+  } catch {
+    return new Map();
+  }
+}
+
+export function mapItems(raw: RawItem[], path: string, me: MeInfo, sizes: Map<string, number> = new Map()): ItemRow[] {
   return raw
     .filter((x) => normPath(x.path) !== path)
     .map((x) => ({
       name: baseName(x.path),
       path: normPath(x.path),
       kind: (x.gitObjectType === "tree" || x.isFolder ? "folder" : x.gitObjectType === "commit" ? "submodule" : "file") as ItemRow["kind"],
-      sizeBytes: null,
+      sizeBytes: sizes.get(baseName(x.path)) ?? null,
       objectId: x.objectId,
       lastCommit: x.latestProcessedChange ? commitOf(x.latestProcessedChange, me) : null,
     }))
@@ -417,7 +428,8 @@ export async function browseItems(b: Browse, o: { project: string; repo: string;
       const value = r.value ?? [];
       const self = value.find((x) => normPath(x.path) === path);
       if (self && self.gitObjectType === "blob") throw new BrowseError("badInput", `${path} is a file, not a folder (use aihub browse file)`);
-      return { ref: { name: spec.name, kind: spec.kind, commit: (self ?? value[0])?.commitId ?? "" }, path, items: mapItems(value, path, me) };
+      const sizes = await sizesOf(rc, self?.objectId);
+      return { ref: { name: spec.name, kind: spec.kind, commit: (self ?? value[0])?.commitId ?? "" }, path, items: mapItems(value, path, me, sizes) };
     }),
   );
   return { ...meta, ...data };
@@ -437,33 +449,44 @@ export interface FileResult extends ReadMeta {
   webUrl: string;
 }
 
-export const MAX_FILE_BYTES = 1024 * 1024;
+export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 export function looksBinary(s: string): boolean {
   return s.slice(0, 8000).includes("\u0000");
 }
 
+/** Files that are never text, whatever their first bytes say (data, archives, images, office, models). */
+export const BINARY_EXT = /\.(parquet|orc|avro|feather|arrow|npy|npz|pkl|pickle|h5|hdf5|onnx|pt|ckpt|obj|zip|gz|tgz|bz2|xz|7z|rar|jar|war|whl|egg|exe|dll|so|dylib|bin|dat|db|sqlite|mdb|accdb|pdf|png|jpe?g|gif|bmp|ico|webp|tiff?|psd|mp[34]|mov|avi|wav|flac|ogg|woff2?|ttf|otf|eot|xlsx?|xlsm|docx?|pptx?|pbix|dacpac|bacpac|nupkg)$/i;
+
+/**
+ * A file at a version, in at most three reads: its metadata (object id, last commit, Azure DevOps' binary flag), its size (the
+ * blob), and only then its content. A binary file (flag, extension or a NUL in the first 8000 characters) or one larger than
+ * `maxBytes` (default 5 MB) is never downloaded: `content: null` with `sizeBytes`.
+ */
 export async function readFileAt(b: Browse, project: string, repo: string, path: string, spec: RefSpec, maxBytes = MAX_FILE_BYTES): Promise<Omit<FileResult, "readAt" | "cached" | "webUrl">> {
   const me = await meOf(b);
   const rc = repoClientOf(b, project, repo);
-  const x = await rc.get<RawItem>(`${rc.repoPath()}/items`, { path, includeContent: true, includeContentMetadata: true, latestProcessedChange: true, ...versionQuery(spec) });
+  const x = await rc.get<RawItem>(`${rc.repoPath()}/items`, { path, includeContentMetadata: true, latestProcessedChange: true, ...versionQuery(spec) });
   if (x.gitObjectType === "tree" || x.isFolder) throw new BrowseError("badInput", `${path} is a folder, not a file (use aihub browse items)`);
-  const raw = x.content ?? "";
-  const size = Buffer.byteLength(raw, "utf8");
-  const binary = !!x.contentMetadata?.isBinary || looksBinary(raw);
-  const tooLarge = !binary && size > maxBytes;
-  return {
+  const size = await rc
+    .get<{ size?: number }>(`${rc.repoPath()}/blobs/${x.objectId}`, { $format: "json" })
+    .then((r) => (typeof r.size === "number" ? r.size : null))
+    .catch(() => null);
+  const head = {
     ref: { name: spec.name, kind: spec.kind, commit: x.commitId },
     path,
     objectId: x.objectId,
-    sizeBytes: binary ? null : size,
     lastCommit: x.latestProcessedChange ? commitOf(x.latestProcessedChange, me) : null,
-    binary,
-    tooLarge,
-    content: binary || tooLarge ? null : raw,
   };
+  const flagged = !!x.contentMetadata?.isBinary || BINARY_EXT.test(path);
+  if (flagged || (size !== null && size > maxBytes)) return { ...head, sizeBytes: size, binary: flagged, tooLarge: !flagged, content: null };
+  const withContent = await rc.get<RawItem>(`${rc.repoPath()}/items`, { path, includeContent: true, ...versionQuery(spec) });
+  const raw = withContent.content ?? "";
+  const bytes = size ?? Buffer.byteLength(raw, "utf8");
+  const binary = !!withContent.contentMetadata?.isBinary || looksBinary(raw);
+  const tooLarge = !binary && bytes > maxBytes;
+  return { ...head, sizeBytes: bytes, binary, tooLarge, content: binary || tooLarge ? null : raw };
 }
-
 export async function browseFile(b: Browse, o: { project: string; repo: string; path: string; ref?: string; maxBytes?: number }): Promise<FileResult> {
   const { spec, row } = await refOrDefault(b, o.project, o.repo, o.ref);
   const path = normPath(o.path);
@@ -762,7 +785,7 @@ export async function browseRepo(b: Browse, o: { project: string; repo: string; 
     cached(b, `repo|${b.org}|${row.project}|${row.repo}|${spec.kind}:${spec.name}`, TTL.short, async () => {
       const rootRaw = await part(errors, "root", () => rc.get<{ value?: RawItem[] }>(`${rc.repoPath()}/items`, { scopePath: "/", recursionLevel: "OneLevel", latestProcessedChange: true, ...versionQuery(spec) }).then((x) => x.value ?? []), [] as RawItem[]);
       const commitId = rootRaw.find((x) => normPath(x.path) === "/")?.commitId ?? rootRaw[0]?.commitId ?? "";
-      const root = mapItems(rootRaw, "/", me);
+      const root = mapItems(rootRaw, "/", me, await sizesOf(rc, rootRaw.find((x) => normPath(x.path) === "/")?.objectId));
       const readmeItem = root.find((x) => x.kind === "file" && /^readme(\.md|\.markdown|\.txt)?$/i.test(x.name));
       const at: RefSpec = commitId ? { name: commitId, kind: "commit" } : spec;
       const [readme, refs, prs, commits, builds] = await Promise.all([
