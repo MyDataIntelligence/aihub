@@ -2,6 +2,9 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## Unreleased
+- Team settings: `aihub team show --json` gives the whole Team settings page in one read (which team.yaml applies, every key per repository with its explanation, overrides, templates); `team validate` (errors with line and fix), `team preview --template pr|story|bug|commit`, `team edit` (a new branch and a pull request in the team repository, never main) and `team init --from-pack | --team-repo`. Repositories without their own team.yaml use the team repository once one is set. The schema documents `teamName`, `worktrees`, more `workItems` keys and two Fabric keys.
+
 ## 1.8.1
 - Diagnose failures with a representative check before queuing a full run. Explicit monitoring continues to an observed outcome. Pipeline reruns retain template parameters and pin the source revision.
 - Generic PR templates and skills link expectations to observations. Optional migration, rollout and review sections appear when filled. Section updates prefer an exact heading and reject oversized descriptions before sending.

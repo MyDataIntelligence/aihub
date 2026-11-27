@@ -335,4 +335,17 @@ export const BAR_COMMANDS = {
   browseDrafts: "aihub.bar.browseDrafts",
   /** `{ project, pipeline }` -> `aihub browse draft-delete`: only your own draft-* in the folder Drafts; the pipeline and its draft branch go */
   browseDraftDelete: "aihub.bar.browseDraftDelete",
+  // ---- team settings (docs/cli-json.md "Team settings"; the same error shape as the repository browser; nothing polls) ----
+  /** `{ cwd?, repo?, refresh? }` -> `aihub team show --json --no-detect`: which team.yaml applies, keys per repository (`views`), overrides, templates, where aihub looked */
+  teamShow: "aihub.bar.teamShow",
+  /** `{}` -> `aihub team validate --schema`: every key with its explanation and an example block per top-level key (the editor's key help) */
+  teamSchema: "aihub.bar.teamSchema",
+  /** `{ cwd?, content? }` -> `aihub team validate --json`: `{ ok, errors, warnings, problems[] }` with line, message and fix */
+  teamValidate: "aihub.bar.teamValidate",
+  /** `{ cwd?, template: pr|story|bug|commit, repo? }` -> `aihub team preview --json`: the template filled with this branch's data, and where each value came from */
+  teamPreview: "aihub.bar.teamPreview",
+  /** `{ cwd?, template?, repo? }` -> where the file lives; with `{ content, branch, title?, baseCommit?, story? }`: a new branch and a pull request in the team repository (never main) */
+  teamEdit: "aihub.bar.teamEdit",
+  /** `{ cwd?, mode: "pack", repo? }` -> team.yaml from the team pack as a pull request; `{ mode: "teamRepo", teamRepo, everywhere? }` -> use that team repository */
+  teamInit: "aihub.bar.teamInit",
 } as const;

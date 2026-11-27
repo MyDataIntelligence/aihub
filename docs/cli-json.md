@@ -264,3 +264,13 @@ remembered 5 minutes, nothing polls. Commands: `aihub.bar.browsePipelines` and t
 - `draft-delete --project P --pipeline ID`: only a `draft-*` pipeline in `\Drafts` that you made (else `badInput` / `noAccess`, nothing
   changes). The runs go first with their own retention lease (a run another lease keeps stays: `runsKept`), then the pipeline; its branch goes when its name holds `draft-` and it is not protected or the default branch
   (else `branchKept` says why). `{deleted{pipeline{id,name},runs,branch,repo},runsKept,branchKept}`.
+
+## Team settings: `aihub team show|validate|preview|edit|init --json`
+
+The extension's `aihub.bar.team*` commands run these and pass the JSON on; a failure is `{ "error": { kind, message } }` like the repository browser.
+
+- `team show --json --no-detect`: `{ scope: { kind: set|repo, folder, story?, title?, current }, source: { kind: teamRepo|repo|none, team, label, project?, repo?, branch?, path, commit?, short?, date?, schema?, readAt, readError? }, repos: [{ name, path, branch, uses: own|teamRepo|none, teamFile: { exists, path, commit?, date?, sameAsSource? } }], groups: [{ id, title, collapsed? }], views: { "*": KeyRow[], "<repo>": KeyRow[] }, overrides: [{ key, values: [{ repo, display }] }], templates: [{ kind: pr|story|bug|commit, title, key, path, exists? }], looked: [{ what, found, note }] }`; `KeyRow = { key, group, value, display, explain, repo? }` (`repo`: the value holds for that repository only). Without `--no-detect` also `values` and `questions` of the detection.
+- `team validate --json [--file f]`: `{ file, ok, errors, warnings, problems: [{ severity, code: yaml|unknownKey|type|missingFile|missingKey, line, col, key?, message, fix?: { label, replace?: { line, from, to }, createFromPack? }, known?, closest? }] }`. `--schema`: `{ keys: [{ key, explain, required, kind }], examples: { <top-level key>: yaml } }`.
+- `team preview --json --template k`: `{ kind, repo, branch, story?, template: { path?, source }, title?: { pattern?, text, target?, source?, createTitle? }, markdown, emptyText, sources: [{ what, value, from, how: filled|empty|agent }], note? }`.
+- `team edit --json`: `{ what, kind: teamRepo|repo, org?, project?, repo?, localPath?, branch?, path, suggestedBranch, prTitle }`; with `--content-file`: `{ validation?, target, push }` where `push` is the `browse push` answer.
+- `team init --json`: `--team-repo`: `{ teamRepo, scope, commit, branch }`; `--from-pack`: the `aihub init` result (`created`, `pr`, `questions`).

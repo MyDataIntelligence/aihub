@@ -13,6 +13,7 @@ import { RemoteRepos } from "./remoteRepos";
 import { registerSearchCommands } from "./searchUi";
 import { registerPipelineCommands } from "./pipelinesUi";
 import { registerBrowseCommands } from "./browseUi";
+import { registerTeamCommands } from "./teamUi";
 import { SizeMemo } from "./setSize";
 import { showFailure } from "./failureUi";
 import { withCloneRecovery } from "./missingCloneUi";
@@ -438,6 +439,8 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   registerPipelineCommands(reg, (t) => deps.toChat?.(t));
   // the repository browser: one aihub process per call, only when the browser asks
   registerBrowseCommands(reg);
+  // team settings: one aihub process per call, only when the page asks
+  registerTeamCommands(reg);
 
   // the overview menu opens: read the pull requests again (at most once per call, a failed call is remembered like a good one)
   reg(BAR_COMMANDS.refreshStatus, async () => {

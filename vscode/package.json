@@ -737,6 +737,36 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.teamShow",
+        "title": "Team Settings (read)",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.teamSchema",
+        "title": "Team Settings Schema",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.teamValidate",
+        "title": "Validate team.yaml",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.teamPreview",
+        "title": "Preview Team Template",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.teamEdit",
+        "title": "Edit Team File",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.teamInit",
+        "title": "Set Up Team Settings",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.browseDraftDelete",
         "title": "Delete Draft Pipeline",
         "category": "AI Context Hub"
@@ -1811,6 +1841,30 @@
         },
         {
           "command": "aihub.bar.browseDrafts",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.teamShow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.teamSchema",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.teamValidate",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.teamPreview",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.teamEdit",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.teamInit",
           "when": "false"
         },
         {
