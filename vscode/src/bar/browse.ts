@@ -46,7 +46,7 @@ export function browseErrorOf(e: unknown): BrowseError {
     }
   }
   if (err?.kind === "missing") return { error: { kind: "cliMissing", message: raw } };
-  if (err?.kind === "old" || /unknown command 'browse'|usage: aihub browse/i.test(raw))
+  if (err?.kind === "old" || /unknown command 'browse'|usage: aihub browse|usage: aihub wiki list(?![^\n]*browse <sub>)/i.test(raw))
     return { error: { kind: "cliTooOld", message: `This needs a newer aihub CLI with the repository browser. Update it with: ${BROWSE_UPDATE_COMMAND}` } };
   if (/not signed in|az login|AIHUB_ADO_PAT/i.test(raw)) return { error: { kind: "signedOut", message: "Not signed in to Azure DevOps: run az login (or set AIHUB_ADO_PAT)." } };
   return { error: { kind: "failed", message: raw.replace(/^aihub:\s*/, "") } };
