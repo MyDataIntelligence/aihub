@@ -222,7 +222,7 @@ async function projectRow(b: Browse, project: string, clones = clonesOf(b)): Pro
   return { row, meta };
 }
 
-async function repoRowOf(b: Browse, project: string, repo: string): Promise<RepoRow> {
+export async function repoRowOf(b: Browse, project: string, repo: string): Promise<RepoRow> {
   const { row } = await projectRow(b, project);
   const r = row.repos.find((x) => x.repo.toLowerCase() === repo.toLowerCase());
   if (!r) throw new BrowseError("notFound", `repository '${repo}' not found in ${project}, or you have no access to it`);
