@@ -28,7 +28,7 @@ export const BROWSE_USAGE = `usage: aihub browse <sub> [--org O] [--refresh]   (
   artifact-open  --project P --run N --artifact A [--path p] [--max-bytes N]   one file (or the zip) in a temporary folder
   draft-create --project P --repo R --name N --branch feature/x (--from-pipeline ID | --empty)   draft-N in \Drafts on its own branch
   drafts       --project P                                    the draft pipelines (draft-* in \Drafts)
-  draft-delete --project P --pipeline ID                      only your own draft-* in \Drafts: the pipeline and its branch
+  draft-delete --project P --pipeline ID [--keep-branch]      only your own draft-* in \Drafts: the pipeline and its branch
   (push takes --pipeline ID too: the answer says whether that pipeline can run on the new branch)`;
 
 const SUBS = ["projects", "project", "repo", "items", "file", "branches", "history", "diff", "blame", "find", "search", "push", "pr", "suggest-branch", "pipelines", "pipeline", "run-plan", "run", "artifacts", "artifact-files", "artifact-open", "draft-create", "drafts", "draft-delete"];
@@ -75,6 +75,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     name: { type: "string" },
     "from-pipeline": { type: "string" },
     empty: { type: "boolean" },
+    "keep-branch": { type: "boolean" },
   }).values;
   try {
     ctx.out(JSON.stringify(await answer(sub, v, ctx)));
@@ -130,7 +131,7 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
     case "drafts":
       return (await pipes()).browseDrafts(b, need(v, "project"));
     case "draft-delete":
-      return (await pipes()).browseDraftDelete(b, need(v, "project"), id("pipeline"));
+      return (await pipes()).browseDraftDelete(b, need(v, "project"), id("pipeline"), { keepBranch: !!v["keep-branch"] });
     case "projects":
       return read.browseProjects(b);
     case "project":

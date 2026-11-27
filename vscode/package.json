@@ -2,7 +2,7 @@
   "name": "ai-context-hub",
   "displayName": "AI Context Hub",
   "description": "A thin status bar and panel over the aihub CLI: story, branch, pull request, pipeline, review threads, Fabric runs and watch events. Actions open in your chat (Copilot Chat or opencode).",
-  "version": "3.7.1",
+  "version": "3.8.0",
   "publisher": "FerronHooi",
   "license": "MIT",
   "private": true,
@@ -617,6 +617,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.openReposAsSet",
+        "title": "Open Repositories as a Set",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.browseProjects",
         "title": "Repositories: Projects",
         "category": "AI Context Hub"
@@ -689,6 +694,86 @@
       {
         "command": "aihub.bar.browseRetryNow",
         "title": "Repositories: Try Again Now",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiList",
+        "title": "Wiki: List Wikis",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiTree",
+        "title": "Wiki: Page Tree",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiPage",
+        "title": "Wiki: Read Page",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiTemplates",
+        "title": "Wiki: Page Templates",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiPublish",
+        "title": "Wiki: Publish Page",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiCreate",
+        "title": "Wiki: New Page",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiMovePlan",
+        "title": "Wiki: Plan Move",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiMove",
+        "title": "Wiki: Move Page",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiHistory",
+        "title": "Wiki: Page History",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiRevisionDiff",
+        "title": "Wiki: Diff Two Versions",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiSearch",
+        "title": "Wiki: Search",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiAttachment",
+        "title": "Wiki: Read Attachment",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiUpload",
+        "title": "Wiki: Upload Attachment",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiAskAgent",
+        "title": "Wiki: Ask the Agent About This Page",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiUpdateFromBranch",
+        "title": "Wiki: Update From This Branch",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiRetryNow",
+        "title": "Wiki: Try Again Now",
         "category": "AI Context Hub"
       },
       {
@@ -834,6 +919,131 @@
       {
         "command": "aihub.bar.openCheckout",
         "title": "Open a Checked-Out Branch...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storySettings",
+        "title": "Work Items: Settings",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storySaveSettings",
+        "title": "Work Items: Save Settings",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyProjects",
+        "title": "Work Items: Projects",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyTeams",
+        "title": "Work Items: Teams",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyAreas",
+        "title": "Work Items: Area Paths",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyIterations",
+        "title": "Work Items: Iterations",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyList",
+        "title": "Work Items: List",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyBoard",
+        "title": "Work Items: Board",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyShow",
+        "title": "Work Items: Work Item",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyMove",
+        "title": "Work Items: Move on Board",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyEdit",
+        "title": "Work Items: Edit",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyTask",
+        "title": "Work Items: Tick Task",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyAddTask",
+        "title": "Work Items: Add Task",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyComment",
+        "title": "Work Items: Comment",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyRefineAsk",
+        "title": "Work Items: Ask for Refinement",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyRefine",
+        "title": "Work Items: Refinement Proposal",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyRefineApply",
+        "title": "Work Items: Apply Refinement",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyStart",
+        "title": "Work Items: Start Work",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyForm",
+        "title": "Work Items: New Form",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyNew",
+        "title": "Work Items: New Work Item",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyDraftAsk",
+        "title": "Work Items: Ask for a Draft",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyDraft",
+        "title": "Work Items: Read Draft",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyLink",
+        "title": "Work Items: Link to Story",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyFixBranch",
+        "title": "Work Items: Create Fix Branch",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyRetryNow",
+        "title": "Work Items: Try Again Now",
         "category": "AI Context Hub"
       }
     ],
@@ -1718,6 +1928,10 @@
           "when": "false"
         },
         {
+          "command": "aihub.bar.openReposAsSet",
+          "when": "false"
+        },
+        {
           "command": "aihub.bar.browseProjects",
           "when": "false"
         },
@@ -1778,6 +1992,70 @@
           "when": "false"
         },
         {
+          "command": "aihub.bar.wikiList",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiTree",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiPage",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiTemplates",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiPublish",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiCreate",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiMovePlan",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiMove",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiHistory",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiRevisionDiff",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiSearch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiAttachment",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiUpload",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiAskAgent",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiUpdateFromBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiRetryNow",
+          "when": "false"
+        },
+        {
           "command": "aihub.bar.browsePipelines",
           "when": "false"
         },
@@ -1815,6 +2093,106 @@
         },
         {
           "command": "aihub.bar.browseDraftDelete",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storySettings",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storySaveSettings",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyProjects",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyTeams",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyAreas",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyIterations",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyList",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyBoard",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyShow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyMove",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyEdit",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyTask",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyAddTask",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyComment",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyRefineAsk",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyRefine",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyRefineApply",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyStart",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyForm",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyNew",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyDraftAsk",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyDraft",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyLink",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyFixBranch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyRetryNow",
           "when": "false"
         }
       ],

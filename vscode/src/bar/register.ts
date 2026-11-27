@@ -1,18 +1,21 @@
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import * as vscode from "vscode";
-import { forgetScan, gitDirFor, writeLookIn } from "../../../cli/src/lib/machineScan";
+import { forgetScan, gitDirFor, remoteOfFolder, writeLookIn } from "../../../cli/src/lib/machineScan";
 import { forgetUse, pathKey, readRecentUse, ago } from "../../../cli/src/lib/recentUse";
 import { syncRepoName } from "../../../cli/src/lib/workspaceNames";
 import { CliProblem } from "./cliCheck";
-import { BarEngine, openFacts } from "./engine";
+import { BarEngine, openFacts, setWorkspaceDirSource } from "./engine";
 import { BACKGROUND_ENV, gitRun } from "./ownWindow";
 import { cli, jsonOf } from "./runner";
-import { RemoteRepos } from "./remoteRepos";
+import { adoCloneOf, RemoteRepos } from "./remoteRepos";
 import { registerSearchCommands } from "./searchUi";
 import { registerPipelineCommands } from "./pipelinesUi";
 import { registerBrowseCommands } from "./browseUi";
+import { registerOpenReposAsSet } from "./openReposAsSetUi";
+import { registerWikiCommands } from "./wikiUi";
+import { registerStoryBrowserCommands } from "./storiesUi";
 import { SizeMemo } from "./setSize";
 import { showFailure } from "./failureUi";
 import { withCloneRecovery } from "./missingCloneUi";
@@ -73,6 +76,11 @@ export interface BarHandle {
 }
 
 export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHandle {
+  // a set whose first folder is a repository outside the set folder is found from the set file next to the workspace file
+  setWorkspaceDirSource(() => {
+    const f = vscode.workspace.workspaceFile;
+    return f?.scheme === "file" ? dirname(f.fsPath) : undefined;
+  });
   const dirtyOf = dirtyCounter();
   // changes and ahead come from the git extension of VS Code when it is running (no process of ours); behind the target is one git call per repository after a HEAD change
   const behind = new BehindMemo(gitRun);
@@ -180,7 +188,7 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
     changed: () => changed(),
     read: async ({ refresh }) => {
       // the CLI needs one clone of Azure DevOps to know the organisation; its sign-in is the one the CLI already has
-      const cwd = engine.scan().repos.find((r) => /dev\.azure\.com|visualstudio\.com/i.test(r.remote ?? ""))?.path;
+      const cwd = adoCloneOf(engine.scan(), remoteOfFolder);
       if (!cwd) throw new Error("no clone of Azure DevOps on this PC yet: the organisation is not known");
       const out = await cli(["repos", "ado", "--json", ...(refresh ? ["--refresh"] : [])], cwd);
       return (jsonOf<{ repos?: { name: string; project: string; remoteUrl: string }[] }>(out).repos ?? []).map((r) => ({ name: r.name, project: r.project, remoteUrl: r.remoteUrl }));
@@ -389,7 +397,10 @@ export function registerBar(ctx: vscode.ExtensionContext, deps: BarDeps): BarHan
   // the window gets focus back and the last successful fetch is over 30 minutes ago: look again (one fetch per repository)
   ctx.subscriptions.push(
     vscode.window.onDidChangeWindowState((s) => {
-      if (s.focused && openedChecked && Date.now() - behindMgr.gate.lastOk() > FETCH_FRESH_MS) void behindMgr.run("focus");
+      if (!s.focused || !openedChecked) return;
+      // the look at opening that found the window without focus runs now, once; otherwise the usual look after 30 minutes
+      if (behindMgr.openPending) void behindMgr.focusGained();
+      else if (Date.now() - behindMgr.gate.lastOk() > FETCH_FRESH_MS) void behindMgr.run("focus");
       // back in the window after more than 5 minutes: the comments may have new replies (never without focus)
       if (s.focused) comments.focusBack();
     }),
@@ -442,6 +453,9 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   registerPipelineCommands(reg, (t) => deps.toChat?.(t));
   // the repository browser: one aihub process per call, only when the browser asks
   registerBrowseCommands(reg);
+  // the wiki browser: one aihub process per call, only when the wiki view asks; the agent actions put text in the chat
+  registerWikiCommands(reg, (t) => deps.toChat?.(t));
+  registerStoryBrowserCommands(reg);
 
   // the overview menu opens: read the pull requests again (at most once per call, a failed call is remembered like a good one)
   reg(BAR_COMMANDS.refreshStatus, async () => {
@@ -552,6 +566,8 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   });
 
   registerStoryCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
+  // Open as Set… (repository browser) and New Set… (title bar): clones what is missing, one aihub worktree open, the window, Undo
+  registerOpenReposAsSet({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   // after an own Update or Push the stand against the target is looked at again
   registerBatchCommands({ engine, log: deps.log, changed, reg, afterGit: () => (behind.forget(), void mgr.run("own")) });
   registerPullRequestCommand({ engine, log: deps.log, changed, reg, refreshPrs: () => prs.refresh(true).then(() => undefined) });

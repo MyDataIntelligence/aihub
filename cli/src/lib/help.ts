@@ -155,6 +155,7 @@ export const USAGES: Record<string, Load> = {
   pipeline: async () =>
     join("aihub pipeline follow|status|runs [--name P] [--branch B] [--run N] [--json] | logs --run N [--failed] [--tail N] | run --name P [--branch B] [--params-file f] | rerun [--run N] (after a pushed fix: the new run, followed in the background) | retry --run N | list [--mine] [--today] [--status running|queued|failed|succeeded|canceled] [--branch B] [--top N] [--repo-dir D]... [--rows-repo-dir D] | show --run N | log --run N [--step id|name] [--tail N] [--from-line K] | poll --run N | run-again --run N [--plan] [--commit same|latest] [--changes-file F] (list/show/log/poll/run-again always print JSON)", (await import("../commands/pipeline-admin.js")).USAGE),
   browse: async () => (await import("../commands/browse.js")).BROWSE_USAGE.replace(/^usage: /, ""),
+  stories: async () => (await import("../commands/stories.js")).STORIES_USAGE.replace(/^usage: /, ""),
   batch: async () => 'aihub batch --select "<query>" --run "<aihub subcommand with {target}>" [--parallel N] [--json] | --retry-failed <id>',
   work: async () => "aihub work [--json]   (my open stories, PRs and runs in one view)",
   story: async () =>
@@ -224,6 +225,7 @@ export const EXAMPLES: Record<string, string> = {
   branch: "aihub branch update",
   pipeline: "aihub pipeline logs --failed",
   browse: "aihub browse file --project test-project --repo test-consumer --path /README.md",
+  stories: "aihub stories list --view sprint --project test-project",
   batch: 'aihub batch --select "my prs" --run "pr checks --pr {target}"',
   work: "aihub work",
   story: 'aihub story create --title "Export orders to CSV" --body-file story.md',

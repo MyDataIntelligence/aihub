@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -99,7 +99,8 @@ describe("behind the target branch", () => {
     const calls: { args: string[]; cwd: string }[] = [];
     const r = await manager(u, calls).run("open");
     expect(log.asked).toEqual([{ message: "Repo A is 2 commits behind staging · no conflicts", buttons: ["Update", "Always Update Automatically", "Later"] }]);
-    expect(calls).toEqual([{ args: ["branch", "update", "--no-push"], cwd: w.repos[0].path }]);
+    // the target the bar measured against goes along, also when it is derived (here: cut from staging)
+    expect(calls).toEqual([{ args: ["branch", "update", "--no-push", "--target", "staging"], cwd: w.repos[0].path }]);
     expect(r.updated.map((x) => x.line)).toEqual(["Repo A updated from staging (2 commits)"]);
     expect(sh(w.repos[0].path, "rev-list", "--count", "HEAD..origin/staging").trim()).toBe("0");
   });
@@ -232,6 +233,52 @@ describe("behind the target branch", () => {
     log.mode = "off";
     await m.run("menu");
     expect(fetches).toBe(2);
+  });
+
+  it("the look at opening without focus is owed, not lost: it runs once at the first focus and updates a branch behind without a conflict (persona round 3, N4)", async () => {
+    const w = world(["Repo A"]);
+    w.advance(w.repos[0], "new.txt", "n");
+    let fetches = 0;
+    const gate = new FetchGate(async (cwd, args) => (fetches++, gitRun(cwd, args)), () => 1_000_000);
+    const { u, log } = ui(w.repos, {}, "auto");
+    const m = manager(u, [], { gate });
+    log.focused = false;
+    const atOpen = await m.run("open");
+    expect(atOpen.updated).toEqual([]);
+    expect(fetches).toBe(0);
+    expect(m.openPending).toBe(true);
+    // focus comes back: once, the look at opening, which updates by itself with Undo
+    log.focused = true;
+    expect(await m.focusGained()).toEqual({ ran: true });
+    expect(m.openPending).toBe(false);
+    expect(fetches).toBe(1);
+    expect(log.said.some((l) => /updated from staging/.test(l) && /Undo/.test(l))).toBe(true);
+    expect(sh(w.repos[0].path, "rev-list", "--count", "HEAD..origin/staging").trim()).toBe("0");
+    expect(log.asked).toEqual([]);
+    // a second focus owes nothing
+    expect(await m.focusGained()).toEqual({ ran: false });
+    expect(fetches).toBe(1);
+  });
+
+  it("the look at opening is not owed when the setting is off, nor after it ran with focus", async () => {
+    const w = world(["Repo A"]);
+    const { u, log } = ui(w.repos, {}, "off");
+    const m = manager(u);
+    log.focused = false;
+    await m.run("open");
+    expect(m.openPending).toBe(false);
+    log.mode = "auto";
+    log.focused = true;
+    await m.run("open");
+    expect(m.openPending).toBe(false);
+    expect(await m.focusGained()).toEqual({ ran: false });
+  });
+
+  it("the focus handler runs the owed look, no timer for it", () => {
+    const src = readFileSync(join(__dirname, "..", "src", "bar", "register.ts"), "utf8");
+    expect(src).toMatch(/if \(behindMgr\.openPending\) void behindMgr\.focusGained\(\);/);
+    const run = readFileSync(join(__dirname, "..", "src", "bar", "behindRun.ts"), "utf8");
+    expect(run).not.toMatch(/setTimeout|setInterval/);
   });
 
   it("five repositories, three behind: one message for the set; Update All updates the three", async () => {
@@ -442,7 +489,7 @@ describe("auto only when nothing tracked has changed (review D)", () => {
 });
 
 describe("the target branch per repository (review E)", () => {
-  it("a hotfix branch cut from main is measured against main, not staging; --target is not passed for a derived target", async () => {
+  it("a hotfix branch cut from main is measured against main, not staging; the update passes that derived target", async () => {
     const w = world(["Repo A"]);
     const { path } = w.repos[0];
     sh(path, "switch", "-c", "hotfix/9-x", "main");
@@ -454,10 +501,13 @@ describe("the target branch per repository (review E)", () => {
     sh(w.repos[0].other, "push", "origin", "main");
     const { targetInfo } = await import("../src/bar/repoStatus");
     expect(targetInfo(path, "Repo A")).toEqual({ target: "main", sure: false });
-    const { u, log } = ui(w.repos, {}, "ask");
+    const { u, log } = ui(w.repos, { Update: "Update" }, "ask");
     const calls: { args: string[]; cwd: string }[] = [];
     await manager(u, calls).run("open");
     expect(log.asked[0].message).toBe("Repo A is 1 commit behind main · no conflicts");
+    // the CLI gets the target the bar measured against, also when it is derived: never its own guess (staging)
+    expect(calls[0].args).toEqual(["branch", "update", "--no-push", "--target", "main"]);
+    expect(log.said[0]).toBe("Repo A updated from main (1 commit)");
   });
 
   it("team.yaml first, then the base of the set file, both sure; then what the branch was cut from; then staging, origin/HEAD, main", async () => {
@@ -491,7 +541,14 @@ describe("the target branch per repository (review E)", () => {
     expect(derivedTarget(path, "feature/6-y")).toBe("main");
   });
 
-  it("the update passes --target only when team.yaml or the set file named it", async () => {
+  it("the update passes --target when team.yaml or the set file named it, and also when the target is derived", async () => {
+    const d = world(["Repo D"]);
+    d.advance(d.repos[0], "new.txt", "n");
+    const { u: du } = ui(d.repos, { Update: "Update" });
+    const dcalls: { args: string[]; cwd: string }[] = [];
+    await manager(du, dcalls).run("open");
+    expect(dcalls[0].args).toEqual(["branch", "update", "--no-push", "--target", "staging"]);
+
     const w = world(["Repo A"]);
     w.advance(w.repos[0], "new.txt", "n");
     const { path } = w.repos[0];
@@ -503,6 +560,26 @@ describe("the target branch per repository (review E)", () => {
     const calls: { args: string[]; cwd: string }[] = [];
     await manager(u, calls).run("open");
     expect(calls[0].args).toEqual(["branch", "update", "--no-push", "--target", "staging"]);
+  });
+});
+
+describe("the line after an update says what happened", () => {
+  it("updated only when the branch moved; else already up to date with the target, never together with 'nothing changed'", async () => {
+    const { updateLine, updateRepo } = await import("../src/bar/behind");
+    expect(updateLine("repo-a", "staging", "aaa", "bbb", 2)).toBe("repo-a updated from staging (2 commits)");
+    expect(updateLine("repo-a", "staging", "aaa", "aaa", 2)).toBe("repo-a is already up to date with staging");
+    const w = world(["Repo A"]);
+    w.advance(w.repos[0], "new.txt", "n");
+    const { path } = w.repos[0];
+    const head = sh(path, "rev-parse", "HEAD").trim();
+    // a CLI that answers but changes nothing (another target on the same commit)
+    const res = await updateRepo(async () => "", gitRun, { name: "Repo A", path, branch: "feature/5-x", target: "staging", behind: 1, targetSha: "x", head, conflicts: [], overlap: [], tracked: 0, sure: false });
+    expect(res.line).toBe("Repo A is already up to date with staging");
+    expect(res.line).not.toMatch(/updated from|nothing changed/);
+    const src = readFileSync(join(__dirname, "..", "src", "bar", "batchUi.ts"), "utf8");
+    expect(src).toMatch(/await cli\(\["branch", "update", "--no-push", "--target", t\], r\.path\);/);
+    expect(src).toMatch(/already up to date with \$\{t\}/);
+    expect(src).not.toMatch(/nothing changed/);
   });
 });
 

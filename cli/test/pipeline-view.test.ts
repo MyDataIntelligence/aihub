@@ -490,3 +490,45 @@ describe("aihub pipeline run-again", () => {
     expect(r).toEqual({ run: 2046, retried: ["Test"], webUrl: "https://dev.azure.com/ferron-org/test-project/_build/results?buildId=2046" });
   });
 });
+
+describe("a run outside every repository: --project (and --org)", () => {
+  function nowhere(routes: Route[]) {
+    const f = fakeFetch(routes);
+    const c = ctxFor(tmp(), f.fn);
+    c.ctx.now = () => NOW;
+    return { ...c, f };
+  }
+
+  it("show, poll, log and run-again --plan work with --project in a folder that is no repository", async () => {
+    const w = nowhere(baseRoutes(build(2046, { result: "failed" })));
+    const show = await json(["pipeline", "show", "--run", "2046", "--project", "test-project", "--org", "ferron-org"], w as never);
+    expect(show.summary.stoppedStep).toBe("Run pytest");
+    expect(show.run.webUrl).toBe("https://dev.azure.com/ferron-org/test-project/_build/results?buildId=2046");
+    expect(w.f.calls.every((c) => c.url.startsWith("https://dev.azure.com/ferron-org/"))).toBe(true);
+    w.lines.length = 0;
+    expect((await json(["pipeline", "poll", "--run", "2046", "--project", "test-project", "--org", "ferron-org"], w as never)).failedStage).toBe("Test");
+    w.lines.length = 0;
+    expect((await json(["pipeline", "log", "--run", "2046", "--project", "test-project", "--org", "ferron-org"], w as never)).step.name).toBe("Run pytest");
+    w.lines.length = 0;
+    expect((await json(["pipeline", "run-again", "--run", "2046", "--plan", "--project", "test-project", "--org", "ferron-org"], w as never)).stages.length).toBe(3);
+  });
+
+  it("the organisation comes from AIHUB_ADO_ORG when --org is left out", async () => {
+    const w = nowhere(baseRoutes(build(2046)));
+    w.ctx.env.AIHUB_ADO_ORG = "ferron-org";
+    expect((await json(["pipeline", "poll", "--run", "2046", "--project", "test-project"], w as never)).id).toBe(2046);
+  });
+
+  it("retry and cancel take --project too", async () => {
+    const w = nowhere([
+      { match: /build\/builds\/2046\/timeline/, respond: () => ({ body: { records: TL } }) },
+      { method: "PATCH", match: /build\/builds\/2046\/stages\/Test/, respond: () => ({ body: {} }) },
+      { match: /build\/builds\/2049\?/, respond: () => ({ body: build(2049, { status: "inProgress", result: undefined, definition: { id: 7, name: "orders-ci" } }) }) },
+      { method: "PATCH", match: /build\/builds\/2049\?/, respond: () => ({ body: {} }) },
+    ]);
+    expect(await json(["pipeline", "retry", "--run", "2046", "--json", "--project", "test-project", "--org", "ferron-org"], w as never)).toMatchObject({ retried: ["Test"] });
+    w.lines.length = 0;
+    expect(await json(["pipeline", "cancel", "--run", "2049", "--json", "--project", "test-project", "--org", "ferron-org"], w as never)).toEqual({ run: 2049, cancelled: true });
+    expect(w.f.calls.find((c) => c.method === "PATCH" && /2049/.test(c.url))!.url).toContain("ferron-org/test-project/_apis/build/builds/2049");
+  });
+});

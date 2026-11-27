@@ -22,10 +22,11 @@ import {
   workItemFromBranch,
   git,
 } from "./git.js";
-import { compose, DEFAULT_EMPTY, checkDescriptionLength, editSection, mergeSections, parseSections, resolveTemplate, templateSourceText, type CodeValues } from "./templates.js";
+import { compose, DEFAULT_EMPTY, checkDescriptionLength, editSection, headingsMatch, mergeSections, parseSections, renderSections, resolveTemplate, templateSourceText, type CodeValues } from "./templates.js";
 import { CONTEXT_RE, notesText, readNotes, unwovenNotes, weaveNotes } from "./notes.js";
 import { loadTeam, readUtf8 } from "./team.js";
 import { checkActionSections } from "./prActions.js";
+import { checkNoise } from "./prNoise.js";
 import { impactWarning } from "./prImpact.js";
 import { derivedNote, targetFor } from "./baseBranch.js";
 
@@ -104,7 +105,8 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
       changes: changesText(commits, diffSummary(root, mergeBase(root, target))),
       tests: team.language === "nl" ? "Nog niet uitgevoerd." : "Not run yet.",
     };
-    const c = compose({ template: tpl.content, body, code, emptyText, fallback });
+    const c = compose({ template: tpl.content, body, code, emptyText, fallback, dropExtra: !o.asIs });
+    for (const h of c.dropped) ctx.err(`warning: section "${h}" is not in the team template; left out`);
     description = c.text;
     const by = (k: string) => c.filled.filter((f) => f.by === k).map((f) => f.heading);
     summary = [
@@ -112,6 +114,7 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
       by("code").length ? `code: ${by("code").join(", ")}` : "",
       by("empty").length ? `${emptyText}: ${by("empty").join(", ")}` : "",
       by("extra").length ? `extra: ${by("extra").join(", ")}` : "",
+      c.dropped.length ? `left out (not in the team template): ${c.dropped.join(", ")}` : "",
     ]
       .filter(Boolean)
       .concat(tplSource)
@@ -121,6 +124,7 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
     description = [body.trim(), extra].filter(Boolean).join("\n\n") + "\n";
     summary = tplSource;
   }
+  if (!o.asIs) checkNoise(given, "created");
   if (!o.asIs) checkActionSections({ description, configured: team.pullRequest?.actionSections, emptyText, template: tpl?.content, verb: "created" });
   const note = derivedNote(derived);
   if (note) summary = [summary, note].filter(Boolean).join("; ");
@@ -224,9 +228,28 @@ export async function updatePr(ctx: Ctx, o: UpdateOpts): Promise<string> {
   const pr = await resolvePr(ctx, client, root, o.pr);
   let description = pr.description ?? "";
   const changed: string[] = [];
-  if (o.bodyFile) {
-    description = mergeSections(description, readUtf8(o.bodyFile));
-    changed.push("body");
+  // the headings the team template of the target has, plus those the PR already has: nothing else is added (no own headings)
+  const tplOfTarget = resolveTemplate(shortBranch(pr.targetRefName), { readRef: (b, p) => showFile(root, b, p), listRef: (b) => listRefFiles(root, b), localRoot: root });
+  const known = (h: string) =>
+    [...parseSections(description).sections.map((s) => s.heading), ...(tplOfTarget ? parseSections(tplOfTarget.content).sections.map((s) => s.heading) : [])].some((k) => headingsMatch(k, h));
+  const appendText0 = o.appendText ?? (o.appendFile ? readUtf8(o.appendFile) : undefined);
+  const replaceText0 = o.replaceText ?? (o.replaceFile ? readUtf8(o.replaceFile) : undefined);
+  const bodyText = o.bodyFile ? readUtf8(o.bodyFile) : undefined;
+  let leftOut = 0;
+  if (!o.asIs) for (const t of [bodyText, appendText0, replaceText0]) if (t) checkNoise(t, "updated");
+  if (bodyText !== undefined) {
+    let patch = bodyText;
+    const parsed = parseSections(bodyText);
+    if (!o.asIs && parsed.sections.length) {
+      const left = parsed.sections.filter((s) => !known(s.heading));
+      leftOut = left.length;
+      for (const s of left) ctx.err(`warning: section "${s.heading}" is not in the team template; left out`);
+      patch = renderSections(parsed.sections.filter((s) => known(s.heading)));
+    }
+    if (patch.trim()) {
+      description = mergeSections(description, patch);
+      changed.push("body");
+    }
   }
   if (!o.noNotes && (o.bodyFile || o.section)) {
     // private branch notes join the context section as plain prose, once
@@ -240,6 +263,7 @@ export async function updatePr(ctx: Ctx, o: UpdateOpts): Promise<string> {
   const appendText = o.appendText ?? (o.appendFile ? readUtf8(o.appendFile) : undefined);
   const replaceText = o.replaceText ?? (o.replaceFile ? readUtf8(o.replaceFile) : undefined);
   if (o.section) {
+    if (!o.asIs && !known(o.section)) throw new AihubError(`section "${o.section}" is not in the team template or in this PR; use one of its headings (or --as-is)`);
     if (appendText === undefined && replaceText === undefined) throw new AihubError("--section needs --append-text, --append-file, --replace-text or --replace-file");
     description = editSection(description, o.section, replaceText !== undefined ? { replace: replaceText } : { append: appendText! });
     changed.push(`section ${o.section}`);
@@ -260,6 +284,7 @@ export async function updatePr(ctx: Ctx, o: UpdateOpts): Promise<string> {
   if (o.title) (patch.title = o.title), changed.push("title");
   if (o.draft !== undefined) (patch.isDraft = o.draft), changed.push(o.draft ? "draft" : "ready");
   if (o.target) (patch.targetRefName = branchRef(o.target)), changed.push(`target ${shortBranch(branchRef(o.target))}`);
+  if (!changed.length && leftOut) throw new AihubError("nothing updated: every section of the body is not in the team template (see the warnings)");
   if (!changed.length) throw new AihubError("nothing to update: pass --body-file, --section, --title, --draft or --target");
 
   await client.patch(`${client.repoPath()}/pullrequests/${pr.pullRequestId}`, patch);
