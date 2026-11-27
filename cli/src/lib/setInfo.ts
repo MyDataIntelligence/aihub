@@ -5,6 +5,8 @@ import { readSetFile, repoBranch, type SetKind } from "./setFile.js";
 export interface SetInfo {
   folder: string;
   story: number;
+  /** the story title kept in the set file (shown when the work item cannot be read) */
+  storyTitle?: string;
   /** repo group name of a set made by `aihub worktree open` (story is 0 then) */
   group?: string;
   branch: string;
@@ -37,6 +39,7 @@ export function findSet(cwd: string): SetInfo | undefined {
       return {
         folder: dir,
         story: m.story,
+        storyTitle: m.storyTitle,
         group: m.group,
         branch: m.branch,
         total: m.repos.length,

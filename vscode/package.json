@@ -993,7 +993,7 @@
             "auto",
             "off"
           ],
-          "default": "ask",
+          "default": "auto",
           "enumDescriptions": [
             "Ask once per new stand when a repository is behind its target branch (team.yaml, else staging, else main).",
             "Update by itself when there are no conflicts and no uncommitted work in the way; otherwise ask. A line with Undo follows.",
