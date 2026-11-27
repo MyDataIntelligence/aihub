@@ -129,7 +129,9 @@ export async function getStatus(ctx: Ctx): Promise<Status> {
 
   const storyId = workItemFromBranch(branch);
   const wi = storyId ? await remote("story", () => getWorkItem(client, storyId)) : undefined;
-  const story = storyId ? { id: storyId, title: wi?.title ?? "(unknown)", state: wi?.state ?? "?" } : null;
+  // the work item could not be read (not signed in, no access): the title the set file keeps, else "(unknown)"
+  const setTitle = storyId && !wi?.title ? findSet(ctx.cwd)?.storyTitle : undefined;
+  const story = storyId ? { id: storyId, title: wi?.title ?? (setTitle || "(unknown)"), state: wi?.state ?? "?" } : null;
 
   const active = await remote("pull request", () => findActivePr(client, branch));
   const done = !active ? await remote("pull request", () => completedPr(client, branch)) : undefined;

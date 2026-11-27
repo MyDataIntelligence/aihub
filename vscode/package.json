@@ -2,7 +2,7 @@
   "name": "ai-context-hub",
   "displayName": "AI Context Hub",
   "description": "A thin status bar and panel over the aihub CLI: story, branch, pull request, pipeline, review threads, Fabric runs and watch events. Actions open in your chat (Copilot Chat or opencode).",
-  "version": "3.7.0",
+  "version": "3.7.1",
   "publisher": "FerronHooi",
   "license": "MIT",
   "private": true,
@@ -1073,7 +1073,7 @@
             "auto",
             "off"
           ],
-          "default": "ask",
+          "default": "auto",
           "enumDescriptions": [
             "Ask once per new stand when a repository is behind its target branch (team.yaml, else staging, else main).",
             "Update by itself when there are no conflicts and no uncommitted work in the way; otherwise ask. A line with Undo follows.",

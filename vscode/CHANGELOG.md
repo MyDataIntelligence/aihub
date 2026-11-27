@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.7.1
+
+- Behind the target updates by itself by default (aiContextHub.behindTarget: auto): no conflicts, no overlap, never a push, with Undo; a conflict asks.
+- Create Pull Requests: progress per repository, Open Pull Request(s) with the links, the pull requests read again, a message when nothing is ticked; a timed-out call stops its whole process tree.
+- The pull requests of a set are read per branch of the set (anyone, any state), so an older one or a colleague's shows instead of "none yet".
+- Update All offers Update from Target for a branch with commits of its own; a repository that is not on Azure DevOps is not "not signed in"; the status bar never says "(unknown)".
+- Open Story by number names the branch after the title, never feature/<id>-. The aihub.bar.browse* commands of the pipeline browser. The buttons need aihub 1.8.2. Notes: docs/releases/3.7.1.md.
+
 ## 3.7.0
 
 - `aihub.bar.pipeline*` commands for pipelines in the PyCharm Git bar (runs, run, log, status, rerun plan, rerun, rerun failed, cancel, fix in chat, retry): CLI JSON or a typed error, no popups; lasting failures remembered 5 minutes per folder; the rerun changes go through a private temp file that is removed at once.
