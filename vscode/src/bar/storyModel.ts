@@ -1,6 +1,6 @@
 import type { SeenStory } from "../../../cli/src/lib/storyCache";
 import type { ScanRepo } from "../../../cli/src/lib/machineScan";
-import { storyBranchSuggestion } from "../repoSetModel";
+import { slugify } from "../../../cli/src/lib/slug";
 import type { BranchRowJson } from "../storyModel";
 
 /**
@@ -86,9 +86,15 @@ export function storyRepoRows(rows: BranchRowJson[], clones: Pick<ScanRepo, "nam
   return { rows: out, notOnThisPc };
 }
 
+/**
+ * The new branch of a story, named as the CLI names it: feature/<id>-<slug of the title> (the same slugify), "story" when the
+ * title is not known. Never a dash at the end ("feature/3747-" came from Open Story by number before the title was read).
+ */
+export const storyBranchFor = (story: StoryRef): string => `feature/${story.id}-${slugify(story.title ?? "")}`;
+
 /** `aihub worktree open ...` for the ticked repositories: linked ones on their branch, the others on a new story branch. */
 export function openStoryArgs(story: StoryRef, ticked: StoryRepoRow[], from?: string): string[] {
-  const fresh = storyBranchSuggestion(story);
+  const fresh = storyBranchFor(story);
   const setBranch = (ticked.find((r) => r.branch && r.linked !== false) ?? ticked.find((r) => r.branch))?.branch ?? fresh;
   const pairs = ticked.map((r) => `${r.repo}=${r.branch ?? fresh}`);
   // the clone the user sees is the clone that is used: its folder goes in, its repository name (the remote's) names the entry
@@ -97,7 +103,7 @@ export function openStoryArgs(story: StoryRef, ticked: StoryRepoRow[], from?: st
 
 /** feature/<id>-<slug>-<n>: the first number (2, 3, ...) that no branch of the story has yet. */
 export function nextStoryBranch(story: StoryRef, existing: string[]): string {
-  const base = storyBranchSuggestion(story);
+  const base = storyBranchFor(story);
   const taken = new Set(existing);
   if (!taken.has(base) && !existing.some((b) => /-\d+$/.test(b) && b.startsWith(`${base}-`))) return `${base}-2`;
   let n = 2;
