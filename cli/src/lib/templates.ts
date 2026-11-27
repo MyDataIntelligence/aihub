@@ -188,12 +188,16 @@ export interface ComposeInput {
   optionalSections?: string[];
   /** Used only where the agent wrote nothing: a Changes section from the commits, an honest not-run line for Tests. */
   fallback?: { changes?: string; tests?: string };
+  /** Sections of the body that the template does not have are left out (and listed in `dropped`) instead of appended. */
+  dropExtra?: boolean;
 }
 
 export interface Composed {
   text: string;
   /** heading -> how it was filled */
   filled: { heading: string; by: "body" | "code" | "empty" | "extra" }[];
+  /** Headings of the body that the template does not have and that were left out (only with `dropExtra`). */
+  dropped: string[];
 }
 
 export function compose(input: ComposeInput): Composed {
@@ -242,15 +246,19 @@ export function compose(input: ComposeInput): Composed {
     filled.push({ heading: s.heading, by: text ? by : "empty" });
   }
 
-  // Never lose prose: sections the template does not know are appended in order.
+  // Sections the template does not know: appended in order (never lose prose), or left out when the caller keeps to the team template.
+  const dropped: string[] = [];
   for (const p of pool) {
     const t = stripComments(p.body);
-    if (!p.used && t) {
-      out.push({ heading: p.heading, body: t });
-      filled.push({ heading: p.heading, by: "extra" });
+    if (p.used || !t) continue;
+    if (input.dropExtra) {
+      dropped.push(p.heading);
+      continue;
     }
+    out.push({ heading: p.heading, body: t });
+    filled.push({ heading: p.heading, by: "extra" });
   }
-  return { text: capLength(renderSections(out), input.code.commits), filled };
+  return { text: capLength(renderSections(out), input.code.commits), filled, dropped };
 }
 
 /** Azure DevOps caps descriptions at 4000 characters; shrink the commit list first. */

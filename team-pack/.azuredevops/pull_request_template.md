@@ -1,21 +1,8 @@
 ## Samenvatting
 <wat verandert er, waarom en voor wie>
 
-## Validatie
-<één wijziging: verwacht gedrag en waarneming of openstaande controle>
-<meerdere wijzigingen: één rij per wijziging, verwachting en waarneming of bewijslink>
-
-## Gebruikersacties
-<!-- aihub:optional -->
-<betrokken gebruikers en bestanden, oude en nieuwe situatie en controle>
-
-## Uitrol
-<!-- aihub:optional -->
-<gerelateerde wijzigingen, vereiste versies of uitrolvolgorde>
-
-## Open reviewpunten
-<!-- aihub:optional -->
-<onbevestigd gedrag, reden en resterende beslissing>
+## Tests
+<functionele tests die echt zijn uitgevoerd, met hun resultaat; één regel "Nog niet uitgevoerd." voor een test die nog niet is gedaan>
 
 ## Gerelateerd
 Story: <link naar het werkitem>

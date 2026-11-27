@@ -18,10 +18,10 @@ In a worktree set (`Set:` in `aihub status`) add `--all-repos`. Show the PR link
 
 Optional, only when the user gave more: `--title "<t>"`, `--draft`, `--target <branch>`, `--work-item <id>`, `--body-file pr.md` (`## <template heading>` sections).
 
-For supplied criteria or review points, read them first. Use `--body-file` to pair expected behavior with observations for each change under the team headings. Keep a small change to one sentence. Include user impact, rollout dependencies and open reviewer decisions only when applicable.
+Write short, for the reviewer, only under the team template's headings (others are left out): what changes, why, what users must do. Tests only if the template has them: functional tests really done with result, else "Not run yet." Never unit-test counts, pre-push or environment problems, tools that could not run, runs without outcome or coordination: refused (`--as-is` only if the user says so).
 
 ## Actions for the platform's users
-First run `aihub pr impact`. The section for the platform's users (user actions, migration, breaking changes) says what changes for THEM in THEIR files (the template's own heading). Start with one line "Who is affected" unless everyone is. Per action: their files (names or pattern + count, from the impact output), the field old -> new or the new required field with an example, and how to check. Internal changes stay out; contract untouched: the empty text only. Never "compare", "review", "migrate" or "ensure" without saying what. The CLI refuses vague text; `--as-is` only when the user says so.
+First run `aihub pr impact`. The section for the platform's users (user actions, migration, breaking changes) says what changes for THEM in THEIR files (the template's own heading). Per action: their files (names or pattern + count, from the impact output), the field old -> new or the new required field with an example, and how to check. Internal changes stay out; contract untouched: the empty text only. The CLI refuses vague text; `--as-is` only when the user says so.
 Good: "- jobs/orders_ingest.yaml: rename target_table -> destination.table; check: make validate-jobs"
 
 ## What the CLI fills
