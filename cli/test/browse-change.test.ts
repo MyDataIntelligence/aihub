@@ -86,7 +86,7 @@ describe("change with agent: the workspace", () => {
     expect(task).toContain("Filter actieve klanten");
     expect(task).toContain(`aihub browse change read --id ${s.id}`);
     expect(task).toContain("Do not push, commit, merge or run git");
-    expect(s.agentPrompt).toContain(s.taskFile);
+    expect(s.agentPrompt).toBe("Read TASK.md and make the change it describes in the files under ./files. Do not push or commit.");
     expect(w.pushes).toEqual([]);
     const sel = await changeStart(w.b(), { project: "test-project", repo: "repo-a", prompt: "x", selection: { path: "/src/a.py", startLine: 2, endLine: 3 } });
     expect(sel.materialized).toEqual(["/src/a.py"]);

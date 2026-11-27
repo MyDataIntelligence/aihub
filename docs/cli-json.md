@@ -251,7 +251,7 @@ the base is the head of `--ref` (default: the default branch); the branch name c
 ```json
 {"id":"test-consumer-20261127-221709-ebdb","dir":"…/changes/<id>","filesDir":"…/changes/<id>/files","project":"test-project","repo":"test-consumer",
  "base":{"branch":"main","commit":"<sha>"},"branch":"feature/4711-filter-actieve-klanten","story":4711,"materialized":["/consumer/report.py"],
- "limits":{"maxFiles":20,"never":["main","master","staging","develop"]},"taskFile":"…/TASK.md","agentPrompt":"Read …/TASK.md and make the change it describes, in the files under …/files. Do not push or commit."}
+ "limits":{"maxFiles":20,"never":["main","master","staging","develop"]},"taskFile":"…/TASK.md","agentPrompt":"Read TASK.md and make the change it describes in the files under ./files. Do not push or commit."}
 ```
 
 `change read --id ID --path /p` puts the base version in `files/` (once) and answers `{id,path,file,modified,binary,content}`.

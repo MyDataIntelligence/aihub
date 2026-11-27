@@ -210,7 +210,8 @@ export async function changeStart(b: Browse, o: { project: string; repo: string;
   }
   const taskFile = join(dir, "TASK.md");
   writeFileSync(taskFile, taskText(meta, { selection: o.selection, materialized, selectedText }), "utf8");
-  const agentPrompt = `Read ${taskFile} and make the change it describes, in the files under ${filesDir(dir)}. Do not push or commit.`;
+  // relative to the workspace (the agent starts there): no path, no quote, so it survives every shell
+  const agentPrompt = "Read TASK.md and make the change it describes in the files under ./files. Do not push or commit.";
   return { id, dir, filesDir: filesDir(dir), project: row.project, repo: row.repo, base: meta.base, branch, story: o.story ?? null, materialized, limits: { maxFiles: MAX_CHANGED_FILES, never: ["main", "master", "staging", "develop", row.defaultBranch].filter((x, i, a) => x && a.indexOf(x) === i) }, taskFile, agentPrompt };
 }
 
