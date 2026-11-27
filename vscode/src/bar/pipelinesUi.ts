@@ -1,7 +1,8 @@
+import { homedir } from "node:os";
 import * as vscode from "vscode";
 import { openFacts } from "./engine";
 import { cli, jsonOf } from "./runner";
-import { errorOf, fixText, logArgs, PipelineMemo, removeRerunFile, rerunFile, runIdOf, runsArgs, type LogArg, type PipelineError, type RerunArg, type RunArg, type RunsArg } from "./pipelines";
+import { errorOf, fixText, logArgs, PipelineMemo, placeOf, removeRerunFile, rerunFile, runIdOf, runsArgs, type LogArg, type PipelineError, type RerunArg, type RunArg, type RunsArg } from "./pipelines";
 import { BAR_COMMANDS } from "./types";
 
 /** The repository folders of this window (a set: all of them), from files only. */
@@ -11,15 +12,14 @@ const windowDirs = (): string[] => {
 };
 
 const noRun = (): PipelineError => ({ error: { kind: "failed", message: "no run id given ({ run: <id> })" } });
-const noRepo = (): PipelineError => ({ error: { kind: "notARepository", message: "no repository in this window" } });
+const noRepo = (): PipelineError => ({ error: { kind: "notARepository", message: "no repository in this window and no project given ({ run, project })" } });
 
 /** Registers the aihub.bar.pipeline* commands; `reg` is the bar's registration (one error path for all). */
 export function registerPipelineCommands(reg: (id: string, f: (...a: any[]) => unknown) => void, toChat: (text: string) => Promise<void> | void): void {
   const memo = new PipelineMemo();
   const json = async (args: string[], cwd: string) => jsonOf<unknown>(await cli(args, cwd));
-  const dirOf = (a?: { repoDir?: string }) => a?.repoDir || windowDirs()[0];
-  // a lasting failure (signed out, CLI too old) is the same for every read of that folder: remembered per folder
-  const read = (name: string, args: string[], cwd: string) => memo.read(`${name}|${cwd}|${args.join(" ")}`, () => json(args, cwd), cwd);
+  // a lasting failure (signed out, CLI too old) is the same for every read of that folder or project: remembered per place
+  const read = (name: string, args: string[], p: { cwd: string; key: string }) => memo.read(`${name}|${p.key}|${args.join(" ")}`, () => json(args, p.cwd), p.key);
   const act = async (args: string[], cwd: string) => {
     try {
       return await json(args, cwd);
@@ -27,59 +27,53 @@ export function registerPipelineCommands(reg: (id: string, f: (...a: any[]) => u
       return errorOf(e);
     }
   };
+  /** run id and place (repository folder, or project without a clone), or the error to answer with */
+  const target = (a: RunArg | undefined): { run: number; place: NonNullable<ReturnType<typeof placeOf>> } | PipelineError => {
+    const run = runIdOf(a);
+    if (!run) return noRun();
+    const place = placeOf(a, windowDirs(), homedir());
+    return place ? { run, place } : noRepo();
+  };
+  const isError = (x: unknown): x is PipelineError => !!x && typeof x === "object" && "error" in x;
 
   reg(BAR_COMMANDS.pipelineRuns, (a: RunsArg = {}) => {
     const dirs = a.repoDirs?.length ? a.repoDirs : windowDirs();
     if (!dirs.length) return noRepo();
-    return read("runs", runsArgs(a, dirs), dirs[0]);
+    return read("runs", runsArgs(a, dirs), { cwd: dirs[0], key: dirs[0] });
   });
   reg(BAR_COMMANDS.pipelineRun, (a?: RunArg) => {
-    const run = runIdOf(a);
-    const cwd = dirOf(a);
-    if (!run) return noRun();
-    return cwd ? read("run", ["pipeline", "show", "--run", String(run)], cwd) : noRepo();
+    const t = target(a);
+    return isError(t) ? t : read("run", ["pipeline", "show", "--run", String(t.run), ...t.place.extra], t.place);
   });
   reg(BAR_COMMANDS.pipelineStatus, (a?: RunArg) => {
-    const run = runIdOf(a);
-    const cwd = dirOf(a);
-    if (!run) return noRun();
-    return cwd ? read("status", ["pipeline", "poll", "--run", String(run)], cwd) : noRepo();
+    const t = target(a);
+    return isError(t) ? t : read("status", ["pipeline", "poll", "--run", String(t.run), ...t.place.extra], t.place);
   });
   reg(BAR_COMMANDS.pipelineLog, (a?: LogArg) => {
-    const run = runIdOf(a);
-    const cwd = dirOf(a);
-    if (!run || !a) return noRun();
-    return cwd ? read("log", logArgs({ ...a, run }), cwd) : noRepo();
+    const t = target(a);
+    return isError(t) ? t : read("log", [...logArgs({ ...a!, run: t.run }), ...t.place.extra], t.place);
   });
   reg(BAR_COMMANDS.pipelineRerunPlan, (a?: RunArg) => {
-    const run = runIdOf(a);
-    const cwd = dirOf(a);
-    if (!run) return noRun();
-    return cwd ? read("plan", ["pipeline", "run-again", "--run", String(run), "--plan"], cwd) : noRepo();
+    const t = target(a);
+    return isError(t) ? t : read("plan", ["pipeline", "run-again", "--run", String(t.run), "--plan", ...t.place.extra], t.place);
   });
   reg(BAR_COMMANDS.pipelineRerun, async (a?: RerunArg) => {
-    const run = runIdOf(a);
-    const cwd = dirOf(a);
-    if (!run || !a) return noRun();
-    if (!cwd) return noRepo();
-    const { args, file } = rerunFile({ ...a, run });
+    const t = target(a);
+    if (isError(t)) return t;
+    const { args, file } = rerunFile({ ...a!, run: t.run });
     try {
-      return await act(args, cwd);
+      return await act([...args, ...t.place.extra], t.place.cwd);
     } finally {
       removeRerunFile(file);
     }
   });
   reg(BAR_COMMANDS.pipelineRerunFailed, (a?: RunArg & { stage?: string }) => {
-    const run = runIdOf(a);
-    const cwd = dirOf(a);
-    if (!run) return noRun();
-    return cwd ? act(["pipeline", "retry", "--run", String(run), ...(a?.stage ? ["--stage", a.stage] : []), "--json"], cwd) : noRepo();
+    const t = target(a);
+    return isError(t) ? t : act(["pipeline", "retry", "--run", String(t.run), ...(a?.stage ? ["--stage", a.stage] : []), "--json", ...t.place.extra], t.place.cwd);
   });
   reg(BAR_COMMANDS.pipelineCancel, (a?: RunArg) => {
-    const run = runIdOf(a);
-    const cwd = dirOf(a);
-    if (!run) return noRun();
-    return cwd ? act(["pipeline", "cancel", "--run", String(run), "--json"], cwd) : noRepo();
+    const t = target(a);
+    return isError(t) ? t : act(["pipeline", "cancel", "--run", String(t.run), "--json", ...t.place.extra], t.place.cwd);
   });
   reg(BAR_COMMANDS.pipelineFix, async (a?: RunArg & { pipeline?: string; branch?: string }) => {
     const run = runIdOf(a);

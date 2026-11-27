@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { classify, errorOf, fixText, logArgs, PipelineMemo, REMEMBER_FAILURE_MS, removeRerunFile, rerunFile, runIdOf, runsArgs } from "../src/bar/pipelines";
+import { classify, errorOf, fixText, logArgs, PipelineMemo, placeOf, REMEMBER_FAILURE_MS, removeRerunFile, rerunFile, runIdOf, runsArgs } from "../src/bar/pipelines";
 import { BAR_COMMANDS } from "../src/bar/types";
 
 describe("pipelines in the bar: arguments", () => {
@@ -24,6 +24,14 @@ describe("pipelines in the bar: arguments", () => {
     expect(JSON.parse(readFileSync(r.file!, "utf8"))).toEqual({ parameters: { runIntegration: true }, variables: { debugLogging: "true" }, skipStages: ["DeployDev"] });
     removeRerunFile(r.file);
     expect(existsSync(r.file!)).toBe(false);
+  });
+
+  it("place of a run: repoDir first, then the project without a clone, then this window's repository", () => {
+    expect(placeOf({ repoDir: "C:/s/repo-a", project: "test-project" }, ["C:/w"], "C:/home")).toEqual({ cwd: "C:/s/repo-a", extra: [], key: "C:/s/repo-a" });
+    expect(placeOf({ project: "test-project", org: "ferron-test" }, [], "C:/home")).toEqual({ cwd: "C:/home", extra: ["--project", "test-project", "--org", "ferron-test"], key: "project|ferron-test|test-project" });
+    expect(placeOf({ project: "test-project" }, ["C:/w"], "C:/home")).toMatchObject({ cwd: "C:/w", extra: ["--project", "test-project"] });
+    expect(placeOf({}, ["C:/w"], "C:/home")).toEqual({ cwd: "C:/w", extra: [], key: "C:/w" });
+    expect(placeOf(undefined, [], "C:/home")).toBeUndefined();
   });
 
   it("run ids from a number, text, an object or a build link", () => {

@@ -368,8 +368,8 @@ export async function pipelineRun(ctx: Ctx, o: { name?: string; branch?: string;
 }
 
 /** Re-runs the failed stage(s) of a finished run (or the named one); a run without stages is queued again as a new run. */
-export async function pipelineRetry(ctx: Ctx, o: { run: number; stage?: string; json?: boolean }): Promise<string> {
-  const { client } = repoClient(ctx);
+export async function pipelineRetry(ctx: Ctx, o: { run: number; stage?: string; json?: boolean; project?: string; org?: string }): Promise<string> {
+  const client = o.project ? await (await import("./pipelineView.js")).runClient(ctx, { project: o.project, org: o.org }) : repoClient(ctx).client;
   const t = await client.get<{ records?: (TimelineRecord & { identifier?: string })[] }>(`build/builds/${o.run}/timeline`);
   const stages = (t.records ?? []).filter((r) => r.type === "Stage");
   if (!stages.length) {

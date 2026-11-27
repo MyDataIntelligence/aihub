@@ -92,6 +92,20 @@ export interface RunArg {
   run: number;
   /** the repository the run belongs to (RunRow.repoDir); default: the first repository of this window */
   repoDir?: string;
+  /** the run's project when no clone of its repository is at hand (the pipeline browser): used when repoDir is not given */
+  project?: string;
+  /** the organisation of that project; default: the one of this window's clone, the last one used, or AIHUB_ADO_ORG */
+  org?: string;
+}
+
+/**
+ * Where the CLI reads a run: repoDir first; else, with a project, the project itself (no clone needed, the CLI runs in this
+ * window's folder or the home folder); else the first repository of this window. `key` scopes the remembered failures.
+ */
+export function placeOf(a: Pick<RunArg, "repoDir" | "project" | "org"> | undefined, windowDirs: string[], home: string): { cwd: string; extra: string[]; key: string } | undefined {
+  if (a?.repoDir) return { cwd: a.repoDir, extra: [], key: a.repoDir };
+  if (a?.project) return { cwd: windowDirs[0] ?? home, extra: ["--project", a.project, ...(a.org ? ["--org", a.org] : [])], key: `project|${a.org ?? ""}|${a.project}`.toLowerCase() };
+  return windowDirs[0] ? { cwd: windowDirs[0], extra: [], key: windowDirs[0] } : undefined;
 }
 
 export interface LogArg extends RunArg {

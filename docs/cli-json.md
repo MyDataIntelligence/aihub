@@ -62,6 +62,8 @@ run and finish time and kept in `~/.aihub/pipeline-red-runs.json`.
  "today":{"total":7,"running":1,"queued":0,"failed":2,"succeeded":4,"canceled":0,"capped":false},"errors":[{"repoDir":"…","error":"…"}]}
 ```
 
+`show`, `poll`, `log`, `run-again`, `retry` and `cancel` also take `--project P [--org O]` instead of `--repo-dir`: the run is read from that project without a clone (a run opened from the pipeline browser); `--repo-dir` wins when both are given.
+
 `aihub pipeline show --run N`: `run` (trigger: `reason`, `manual`, `requestedFor`, `branch`, `commit {id,short,message}`, `pr {id,webUrl}`,
 `waitSeconds`, `durationSeconds`, `agent`), `stages[] {id,identifier,name,state,durationSeconds,dependsOn,notRunReason,errorCount,webUrl,
 jobs[] {id,name,state,durationSeconds,agent,webUrl, steps[] {id,name,state,durationSeconds,logId,errorCount,warningCount,webUrl}}}`,
@@ -260,10 +262,10 @@ remembered 5 minutes, nothing polls. Commands: `aihub.bar.browsePipelines` and t
   default branch with `pipelines/draft-N.yml` (a copy of that pipeline's YAML, or one stage with one script step), then the pipeline
   `draft-N` in `\Drafts` that runs that file from that branch. main, master, staging, develop, release/* and an existing branch are
   refused; when the pipeline cannot be made the branch is removed again. `{pipeline{id,name,folder},repo,branch,startedFrom,yamlPath,commit,webUrl}`.
-- `drafts --project P`: `drafts[] {id,name,repo,branch,yamlPath,runs,latestRun,branchAhead,mine,webUrl}`.
-- `draft-delete --project P --pipeline ID`: only a `draft-*` pipeline in `\Drafts` that you made (else `badInput` / `noAccess`, nothing
+- `drafts --project P`: `drafts[] {id,name,repo,branch,yamlPath,runs,latestRun,branchAhead,createdAt,mine,webUrl}` (`createdAt`: when the pipeline's newest revision was saved; for a draft that was not edited, when it was made).
+- `draft-delete --project P --pipeline ID [--keep-branch]`: only a `draft-*` pipeline in `\Drafts` that you made (else `badInput` / `noAccess`, nothing
   changes). The runs go first with their own retention lease (a run another lease keeps stays: `runsKept`), then the pipeline; its branch goes when its name holds `draft-` and it is not protected or the default branch
-  (else `branchKept` says why). `{deleted{pipeline{id,name},runs,branch,repo},runsKept,branchKept}`.
+  (else, or with `--keep-branch`, `branchKept` says why). `{deleted{pipeline{id,name},runs,branch,repo},runsKept,branchKept}`.
 
 ## Wiki browser: `aihub wiki browse ...`
 
