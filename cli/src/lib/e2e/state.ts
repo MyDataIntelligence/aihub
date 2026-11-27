@@ -95,4 +95,8 @@ export interface RunState {
   steps: string[];
   updatedAt: string;
   action?: string;
+  /** the options of the run (planFirst, fabric, setActive; draft/anyway for story-pr), read by `prompt render` */
+  options?: Record<string, boolean>;
+  /** the user pressed Stop */
+  stopped?: boolean;
 }

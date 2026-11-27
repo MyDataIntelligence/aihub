@@ -10,6 +10,8 @@ import { storyEdit, type Conflict, type Saved } from "../stories/write.js";
 import { criterionKey, parseCriteria, renderCriteria, vagueness, type Criterion, type Lang } from "./criteria.js";
 import { readState, stateFile, writeState, type CriteriaState, type Result } from "./state.js";
 
+export const isBug = (type: string) => /^bug$/i.test(type.trim());
+
 export const langOf = (s: Pick<Stories, "teamCfg">): Lang => (String((s.teamCfg as { language?: string }).language ?? "nl").toLowerCase().startsWith("en") ? "en" : "nl");
 
 export interface ItemCriteria {
@@ -28,6 +30,8 @@ export interface ItemCriteria {
 export async function readCriteria(s: Stories, id: number): Promise<ItemCriteria> {
   const w = await s.c.get<{ id: number; rev: number; fields: Record<string, any> }>(`wit/workitems/${id}`);
   const type = String(w.fields[F.type] ?? "");
+  // a bug has no acceptance criteria: it is proven by its Repro Steps (Reproduce, Fix End to End)
+  if (isBug(type)) throw new BrowseError("badInput", `${id} is a ${type}: bugs have no acceptance criteria; use Reproduce or Fix End to End`);
   const tpl = await templateOf(s, type);
   const secs = fieldsToSections(s.teamCfg, w.fields, tpl.headings, tpl.layout);
   const sec = secs.find((x) => partOf(x.heading) === "criteria");

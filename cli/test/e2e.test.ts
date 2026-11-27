@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import { main } from "../src/router.js";
 import { htmlToMd, mdToHtml } from "../src/lib/story.js";
 import { criterionKey, howKind, parseCriteria, renderCriteria, vagueness } from "../src/lib/e2e/criteria.js";
-import { ACTIONS, checkAction, fill, findPrompt, listPrompts, renderPrompt, resetPrompt, savePrompt, TEAM_PROMPT_DIR } from "../src/lib/e2e/prompts.js";
+import { ACTIONS, checkAction, conditionals, fill, findPrompt, listPrompts, renderPrompt, resetPrompt, runOptions, savePrompt, TEAM_PROMPT_DIR } from "../src/lib/e2e/prompts.js";
+import { storyActivate } from "../src/lib/stories/write.js";
 import { criteriaTable, notProvenError, provenLine, withCriteria } from "../src/lib/e2e/prSection.js";
 import { LIMIT_DENY, progress, stepsView, yolo } from "../src/lib/e2e/run.js";
 import { setFolderOf, stateFile } from "../src/lib/e2e/state.js";
@@ -246,5 +247,71 @@ describe("run progress and YOLO", () => {
     expect(existsSync(on.file)).toBe(false);
     writeFileSync(on.file, "{}");
     expect(() => yolo(t.ctx, { on: true })).toThrow(/not from aihub/);
+  });
+});
+
+describe("the options of Run End to End and bugs", () => {
+  it("conditional blocks on their own lines and inside a line", () => {
+    const t = "a\n{{#if x}}\nX line\n{{/if}}\nb{{#if y}} and y{{/if}}.\n";
+    expect(conditionals(t, { x: true, y: false })).toBe("a\nX line\nb.\n");
+    expect(conditionals(t, { x: false, y: true })).toBe("a\nb and y.\n");
+    expect(runOptions({}, true)).toEqual({ planFirst: true, fabric: true, setActive: false, draft: false, anyway: false });
+    expect(runOptions({ planFirst: "false", fabric: "true" }, false)).toMatchObject({ planFirst: false, fabric: true });
+  });
+
+  it("the dialog's options from the run state fill story-run; the PR choice fills story-pr", async () => {
+    const t = world();
+    const s = t.s();
+    s.teamCfg = { language: "nl", fabric: { workspaces: [{ name: "ws-feature-101", environment: "feature", branches: ["feature/101-*"] }] } } as never;
+    const all = await renderPrompt(t.ctx, s, "story-run", 101);
+    expect(all.workspace).toBe("ws-feature-101");
+    expect(all.options).toEqual({ planFirst: true, fabric: true, setActive: false, draft: false, anyway: false });
+    expect(all.text).toContain("## Plan first");
+    expect(all.text).toContain("een Fabric-run in ws-feature-101");
+    expect(all.text).not.toContain("Resolved");
+    progress(t.ctx, { id: 101, action: "story-run", options: { planFirst: false, fabric: false, setActive: true } });
+    const none = await renderPrompt(t.ctx, s, "story-run", 101);
+    expect(none.text).not.toContain("## Plan first");
+    expect(none.text).not.toContain("Fabric-run in");
+    expect(none.text).toContain("Draai niets op Fabric.");
+    expect(none.text).toContain("aihub workitem state --id 101 --to Resolved");
+    expect(none.text.includes("{{")).toBe(false);
+    expect(none.text.includes("\n\n\n")).toBe(false);
+    expect((await renderPrompt(t.ctx, s, "story-pr", 101)).text).toContain("Leg de keuze aan mij voor");
+    const draft = await renderPrompt(t.ctx, s, "story-pr", 101, { draft: true });
+    expect(draft.text).toContain("Ik koos: als concept; gebruik `--draft`.");
+    expect(draft.text).not.toContain("Leg de keuze aan mij voor");
+  });
+
+  it("Stop marks the run stopped; a new action starts a new run", () => {
+    const t = world();
+    progress(t.ctx, { id: 101, action: "story-run", step: 3, total: 8, label: "Testen" });
+    const st = progress(t.ctx, { id: 101, stop: true });
+    expect([st.running, st.stopped]).toEqual([false, true]);
+    const again = progress(t.ctx, { id: 101, action: "story-run" });
+    expect([again.step, again.stopped, again.steps]).toEqual([0, false, []]);
+  });
+
+  it("a bug has no acceptance criteria: refused, and Fix End to End does not ask for them", async () => {
+    const t = world();
+    const s = t.s();
+    await expect(readCriteria(s, 301)).rejects.toThrow(/bugs have no acceptance criteria/);
+    await expect(criteriaRecord(t.ctx, s, { id: 301, criterion: 1, result: "pass", evidence: "x" })).rejects.toThrow(/bugs have no acceptance criteria/);
+    const r = await renderPrompt(t.ctx, s, "bug-run", 301);
+    expect(r.text).toContain("Los Bug #301");
+    expect(r.text).not.toMatch(/criteri/i);
+    expect(readFileSync(findPrompt(s, "bug-reproduce").file, "utf8")).not.toMatch(/criteri/i);
+    expect(ACTIONS).toContain("bug-run");
+    expect(ACTIONS).toContain("story-pr-review");
+    expect(ACTIONS).not.toContain("bug-fix-e2e");
+  });
+
+  it("activate: a new item goes to the first InProgress state and to me; an active one keeps its state", async () => {
+    const t = world();
+    const r = await storyActivate(t.s(), { id: 301 });
+    expect(r).toMatchObject({ status: "saved", state: "Active", assignedTo: "Test User" });
+    expect(t.items[301].fields["System.AssignedTo"]).toBe("test.user@example.test");
+    const again = await storyActivate(t.s(), { id: 101 });
+    expect(again).toMatchObject({ status: "saved", state: "Active", changed: [] });
   });
 });

@@ -1,6 +1,6 @@
 ---
 title: Review Pull Request Comments
-slash: /story-review
+slash: /story-pr-review
 goal: Elke reviewthread beantwoord of verwerkt.
 reads: De open threads van de PR van de story.
 produces: Antwoorden en fixes, threads op opgelost.

@@ -14,7 +14,7 @@ Maak of werk de pull request bij voor story #{{story.id}} {{story.title}} van {{
 2. `aihub pr create --body-file <bestand>` (bestaat de PR al, dan werkt hetzelfde commando hem bij). De sectie
    Acceptatiecriteria en "N/M bewezen" maakt aihub zelf.
 3. Zijn niet alle criteria bewezen, dan stopt aihub met de keuzes: eerst testen (/story-test-fabric {{story.id}}), als
-   concept (`--draft`) of toch (`--anyway`). Leg de keuze aan mij voor; kies niet zelf `--anyway`.
+   concept (`--draft`) of toch (`--anyway`).{{#if draft}} Ik koos: als concept; gebruik `--draft`.{{/if}}{{#if anyway}} Ik koos: toch maken; gebruik `--anyway`.{{/if}}{{#if askChoice}} Leg de keuze aan mij voor; kies niet zelf `--anyway`.{{/if}}
 4. Meld de PR-link en hoeveel criteria bewezen zijn.
 
 ## Grenzen
