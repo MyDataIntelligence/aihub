@@ -1,4 +1,7 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { writeLookIn } from "../src/lib/machineScan.js";
 import { main } from "../src/router.js";
 import { browseOf, errorJson, kindOf, normPath, parseRef, BrowseError } from "../src/lib/browse/core.js";
 import { hunks, merge3, edits, splitLines } from "../src/lib/browse/lineDiff.js";
@@ -41,6 +44,7 @@ function setup(extra: Route[] = []) {
   const { ctx, lines, errs } = ctxFor(tmp(), f.fn);
   ctx.env.AIHUB_ADO_ORG = "ferron-test";
   ctx.now = () => NOW;
+  ctx.env.AIHUB_COMMON_ROOTS = "none"; // never scan the real folders of this PC
   return { ctx, lines, errs, calls: f.calls, b: (refresh = false) => browseOf(ctx, { refresh }) };
 }
 
@@ -93,6 +97,23 @@ describe("browse projects", () => {
     expect(s.calls.length).toBe(n);
     await browseProjects(s.b(true));
     expect(s.calls.length).toBeGreaterThan(n);
+  });
+
+  it("knows the clones from the same scan as the bar: Folders to Look In, nothing outside them", async () => {
+    const s = setup();
+    const base = tmp();
+    const fakeClone = (dir: string, url: string) => {
+      mkdirSync(join(dir, ".git", "refs", "heads"), { recursive: true });
+      writeFileSync(join(dir, ".git", "HEAD"), "ref: refs/heads/feature/4711-x\n");
+      writeFileSync(join(dir, ".git", "config"), `[core]\n\tbare = false\n[remote "origin"]\n\turl = ${url}\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n`);
+    };
+    fakeClone(join(base, "clones", "repo-a-copy"), "https://ferron-test@dev.azure.com/ferron-test/test-project/_git/repo-a");
+    fakeClone(join(base, "elsewhere", "agile-repo"), "https://dev.azure.com/ferron-test/test-project-agile/_git/agile-repo");
+    writeLookIn(s.ctx.env, [join(base, "clones")]);
+    const r = await browseProjects(s.b(true));
+    const all = r.projects.flatMap((p) => p.repos);
+    expect(all.find((x) => x.repo === "repo-a")?.clone).toEqual({ path: join(base, "clones", "repo-a-copy"), branch: "feature/4711-x" });
+    expect(all.find((x) => x.repo === "agile-repo")?.clone).toBeNull();
   });
 
   it("remembers not signed in for 5 minutes", async () => {

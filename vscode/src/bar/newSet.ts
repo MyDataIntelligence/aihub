@@ -1,44 +1,26 @@
 /**
- * New Set… (the left menu) and Open as Set… (several repositories ticked in the left menu or the repository browser): a set of
- * repositories the user picks, on one new feature branch or on an existing branch per repository, with a story or without.
- * Pure parts here (the CLI call, which remote repositories can be cloned); the dialogs in storyUi.ts. No vscode.
+ * New Set… (the left menu) and Open as Set… (repositories ticked in the left menu): the questions — which repositories, which
+ * branch, which story. The work is aihub.bar.openReposAsSet (clone what is not on this PC, one story is one set, the set in a
+ * new window, Undo); this file builds its argument. No vscode.
  */
+import type { OpenReposArg, SetRepoArg } from "./openReposAsSet";
 
-export interface SetPick {
+/** A repository of the set as the questions know it: on this PC (its clone), or on Azure DevOps (to clone). */
+export interface NewSetRepo {
   name: string;
-  /** the clone */
-  path: string;
-  /** the branch the clone is on now */
-  current: string;
-  /** the branch it joins the set on */
-  branch: string;
+  /** its clone folder; undefined when it is cloned first */
+  path?: string;
+  project?: string;
+  remoteUrl?: string;
 }
 
-/** A repository whose clone is on the chosen branch is used where it is (the CLI reuses it); every other one gets a worktree. */
-export const reusedInPlace = (p: SetPick): boolean => p.branch === p.current;
-
 /**
- * `aihub worktree open` for a new set (`--new-set`: never a switch in the set of the window it runs from). The repositories that
- * get a worktree come first, so the first folder of the set is inside the set folder (where the CLI and the extension find the
- * set from); `--branch` is the new feature branch, or the first repository's branch.
+ * The argument of aihub.bar.openReposAsSet. `all`: one new branch for every repository (made from each one's target branch);
+ * else an existing branch per repository (`branches`, by name). The set opens in a new window.
  */
-export function newSetArgs(picks: SetPick[], setBranch: string, story?: number): string[] {
-  const ordered = [...picks.filter((p) => !reusedInPlace(p)), ...picks.filter(reusedInPlace)];
-  return [
-    "worktree",
-    "open",
-    "--repos",
-    ordered.map((p) => p.path).join(","),
-    "--branch",
-    setBranch,
-    "--branch-for",
-    ordered.map((p) => `${p.name}=${p.branch}`).join(","),
-    ...(story ? ["--story", String(story)] : []),
-    "--new-set",
-    "--window",
-    "none",
-    "--json",
-  ];
+export function openReposArgOf(repos: NewSetRepo[], choice: { all: string } | { branches: Record<string, string> }, story?: number): OpenReposArg {
+  const one = (r: NewSetRepo): SetRepoArg => ({ name: r.name, ...(r.project ? { project: r.project } : {}), ...(r.remoteUrl && !r.path ? { remoteUrl: r.remoteUrl } : {}), ...("branches" in choice ? { branch: choice.branches[r.name] } : {}) });
+  return { repos: repos.map(one), ...("all" in choice ? { newBranch: choice.all } : {}), ...(story ? { story } : {}), window: "new" };
 }
 
 /** The Azure DevOps repositories that are not on this PC yet (by name), sorted, for "Clone from Azure DevOps…". */
@@ -47,7 +29,7 @@ export function notOnThisPc<T extends { name: string }>(remote: T[], local: { na
   return remote.filter((r) => !have.has(r.name.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** The paths of `{ repos }` (Open as Set… from the left menu or the repository browser), as keys to tick. */
+/** The paths of `{ repos }` (Open as Set… from the left menu), as keys to tick. */
 export function preTicked(arg: unknown): Set<string> {
   const repos = arg && typeof arg === "object" && Array.isArray((arg as { repos?: unknown }).repos) ? ((arg as { repos: unknown[] }).repos.filter((p) => typeof p === "string") as string[]) : [];
   return new Set(repos.map((p) => p.replace(/[\\/]+$/, "").toLowerCase()));

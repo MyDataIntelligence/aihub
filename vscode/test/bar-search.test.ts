@@ -3,10 +3,10 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { refsFromFiles, walk } from "../../cli/src/lib/machineScan";
+import { refsFromFiles, remoteOfFolder, walk } from "../../cli/src/lib/machineScan";
 import { cloneParent, cloneWithProgress, folderName, progressOf, removeFolderPatiently, stopTree, untouched } from "../src/bar/cloneRepo";
 import { gitRun } from "../src/bar/ownWindow";
-import { isSignInError, notOnThisPc, REMOTE_FAILURE_MS, REMOTE_TTL_MS, RemoteRepos } from "../src/bar/remoteRepos";
+import { adoCloneOf, isSignInError, notOnThisPc, REMOTE_FAILURE_MS, REMOTE_TTL_MS, RemoteRepos } from "../src/bar/remoteRepos";
 import { checkoutsOf } from "../src/bar/state";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "aihub-search-"));
@@ -246,5 +246,25 @@ describe("removing a clone while a file in it is still in use (Undo, Cancel)", (
     const r = await removeFolderPatiently("x", { tries: 4, waitMs: 1, remove: () => void calls++, exists: () => true });
     expect(r.gone).toBe(false);
     expect(calls).toBe(4);
+  });
+});
+
+describe("the Azure DevOps list of the search needs one folder of Azure DevOps (persona round 3, S1)", () => {
+  it("the remote of a clone and of a linked worktree (its config is in the main clone, git's commondir)", () => {
+    const root = tmp();
+    const main = join(root, "test-consumer");
+    const wt = join(root, "sets", "3758", "test-consumer");
+    clone(main, "main", [{ name: "test-consumer", path: wt, head: "feature/3758-x" }]);
+    writeFileSync(join(main, ".git", "worktrees", "test-consumer", "commondir"), "../..");
+    expect(remoteOfFolder(main)).toBe("https://dev.azure.com/org/proj/_git/test-consumer");
+    expect(remoteOfFolder(wt)).toBe("https://dev.azure.com/org/proj/_git/test-consumer");
+    expect(remoteOfFolder(join(root, "nothing"))).toBeUndefined();
+  });
+
+  it("a clone of the scan first; someone who works only in worktree sets gets a repository of a set; none: undefined", () => {
+    const ado = (p: string) => (p.includes("ado") ? "https://dev.azure.com/org/proj/_git/x" : "https://github.com/x/y");
+    expect(adoCloneOf({ repos: [{ path: "C:/gh", remote: "https://github.com/x/y" }, { path: "C:/a", remote: "https://ferron@dev.azure.com/org/p/_git/a" }], sets: [] }, ado)).toBe("C:/a");
+    expect(adoCloneOf({ repos: [{ path: "C:/gh", remote: "https://github.com/x/y" }], sets: [{ repos: [{ path: "C:/sets/1/gone-ado", exists: false }, { path: "C:/sets/1/gh", exists: true }, { path: "C:/sets/1/ado-repo", exists: true }] }] }, ado)).toBe("C:/sets/1/ado-repo");
+    expect(adoCloneOf({ repos: [], sets: [{ repos: [{ path: "C:/sets/1/gh", exists: true }] }] }, ado)).toBeUndefined();
   });
 });

@@ -143,6 +143,22 @@ function gitDirOf(dir: string): { gitDir: string; linked: boolean } | undefined 
   }
 }
 
+/**
+ * The origin url (without credentials) of a clone or of a linked worktree (its config is in the main clone: `commondir`); undefined
+ * without git or without origin. A repository of a worktree set is no clone of its own in the scan, but it has a remote all the same.
+ */
+export function remoteOfFolder(dir: string): string | undefined {
+  const g = gitDirOf(dir);
+  if (!g) return undefined;
+  if (!g.linked) return remoteOf(g.gitDir);
+  try {
+    const common = readFileSync(join(g.gitDir, "commondir"), "utf8").trim();
+    return remoteOf(resolve(g.gitDir, common || "."));
+  } catch {
+    return remoteOf(g.gitDir);
+  }
+}
+
 /** The folder with HEAD for a clone or a linked worktree (a worktree's is inside the main clone's .git); undefined when `dir` has no git. */
 export const gitDirFor = (dir: string): string | undefined => gitDirOf(dir)?.gitDir;
 
