@@ -14,6 +14,7 @@ Two ways to get them:
 | `.agents/skills/_shared/references/team.yaml` | Team settings, every key explained. Replace the example values (`ferron-test`, `test-project`). |
 | `.agents/skills/_shared/assets/story-template.md`, `commit-template.txt` | Story and commit templates in Dutch. |
 | `.agents/skills/_shared/assets/*.en.*`, `.azuredevops/pull_request_template.en.md` | English variants: delete the Dutch file and remove `.en` from the name. `aihub init --language en` does this for you. |
+| `.agents/skills/_shared/prompts/<action>.md` (optional) | Your own team prompt for an agent action (`story-run`, `story-criteria`, `story-test-fabric`, ...): it replaces the default of aihub for every story. Start from `aihub prompt render <action> --id <n>` or the defaults in the aihub repository (`prompts/`). |
 | `.azuredevops/pull_request_template.md` | Pull request template (Dutch). Skip it if your repository already has one. |
 | `.github/instructions/aihub.instructions.md`, `.github/guidelines/aihub.md` | Example hook for your own guidelines (GitHub Copilot instructions plus a guideline file listed under `guidelines:` in `team.yaml`). Only copied by hand; `aihub init` does not write them. |
 

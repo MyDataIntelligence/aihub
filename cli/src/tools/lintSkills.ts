@@ -33,7 +33,6 @@ export const COMMANDS: CommandSpec[] = [
   { name: "pr-update", skill: "pr-update", description: "Update the open pull request", hint: "optional remarks" },
   { name: "cherry-pick", skill: "branch-sync", description: "Cherry-pick a PR to other branches", hint: "PR id and target branches" },
   { name: "story", skill: "story-create", description: "Create a story", hint: "what the story is about" },
-  { name: "story-run", skill: "story-run", description: "Run a story end to end to a green PR", hint: "story id or link" },
   { name: "fix", skill: "pipeline-fix", description: "Fix a failed build or Fabric run on your own branch", hint: "run link or id (empty: newest failed run of this branch)" },
   { name: "standup", skill: "standup", description: "What I did since yesterday, in 3 to 5 lines", hint: "optional window, e.g. 2d" },
   { name: "handoff", skill: "standup", description: "Hand over my open work as a short note", hint: "optional name of the colleague" },
@@ -51,6 +50,35 @@ export const COMMANDS: CommandSpec[] = [
   { name: "leer", skill: "learn", description: "Explain a change or the repository with pictures", hint: "PR id, branch or repository" },
   { name: "wiki", skill: "wiki", description: "Write or update a wiki page", hint: "page and subject" },
 ];
+
+/** The slash commands of the team prompts (prompts/<action>.md): each renders its prompt for a story and hands it to the agent. */
+export interface PromptCommandSpec {
+  name: string;
+  title: string;
+  what: "story" | "bug";
+}
+
+/** One command per file in prompts/ (its `title:` line); files must equal expectedPromptCommand(). */
+export function promptCommands(promptsDir: string): PromptCommandSpec[] {
+  if (!fs.existsSync(promptsDir)) return [];
+  return fs
+    .readdirSync(promptsDir)
+    .filter((f) => f.endsWith(".md"))
+    .sort()
+    .map((f) => {
+      const name = f.slice(0, -3);
+      const title = /^title:\s*(.+)$/m.exec(fs.readFileSync(path.join(promptsDir, f), "utf8"))?.[1].trim() ?? name;
+      return { name, title, what: name.startsWith("bug-") ? "bug" : "story" };
+    });
+}
+
+export function expectedPromptCommand(kind: "opencode" | "copilot", c: PromptCommandSpec): string {
+  const what = c.what;
+  if (kind === "opencode") {
+    return `---\ndescription: "${c.title} (${what} id)"\n---\nRun \`aihub prompt render ${c.name} --id $ARGUMENTS\` and carry out the prompt it prints as your task, exactly as written (it is the team's prompt for this action, filled in with the ${what}).\nIf the command fails, show its error and stop. Without an id, ask for the ${what} number.\n`;
+  }
+  return `---\nmode: agent\ndescription: "${c.title} (${what} id)"\n---\nRun \`aihub prompt render ${c.name} --id \${input:args:${what} id}\` and carry out the prompt it prints as your task, exactly as written (it is the team's prompt for this action, filled in with the ${what}).\nIf the command fails, show its error and stop.\n`;
+}
 
 export function expectedCommand(kind: "opencode" | "copilot", c: CommandSpec): string {
   const load = `Load the \`${c.skill}\` skill and follow it exactly.${c.extra ? `
@@ -165,9 +193,15 @@ export function lintSkills(skillsDir: string, opts: LintOptions = {}): string[] 
           errors.push(`${file}: does not match the skill "${c.skill}" (expected generated content)`);
         }
       }
+      const prompts = promptCommands(path.resolve(commandsDir, "..", "prompts"));
+      for (const c of prompts) {
+        const file = path.join(commandsDir, kind, kind === "opencode" ? `${c.name}.md` : `${c.name}.prompt.md`);
+        if (!fs.existsSync(file)) errors.push(`${file}: missing`);
+        else if (fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n") !== expectedPromptCommand(kind, c)) errors.push(`${file}: does not match prompts/${c.name}.md (expected generated content)`);
+      }
       const dir = path.join(commandsDir, kind);
       if (fs.existsSync(dir)) {
-        const known = new Set(COMMANDS.map((c) => commandFileName(kind, c)));
+        const known = new Set([...COMMANDS.map((c) => commandFileName(kind, c)), ...prompts.map((c) => (kind === "opencode" ? `${c.name}.md` : `${c.name}.prompt.md`))]);
         for (const f of fs.readdirSync(dir)) if (!known.has(f)) errors.push(`${path.join(dir, f)}: unknown command file`);
         for (const f of fs.readdirSync(dir)) {
           const p = path.join(dir, f);

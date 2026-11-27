@@ -42,6 +42,8 @@ export interface CreateOpts {
   noNotes?: boolean;
   /** skip the check of the sections that list actions for the reader */
   asIs?: boolean;
+  /** create it although not every acceptance criterion of the story is proven */
+  anyway?: boolean;
   json?: boolean;
 }
 
@@ -128,6 +130,15 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
   }
   if (!o.asIs) checkNoise(given, "created");
   if (!o.asIs) checkActionSections({ description, configured: team.pullRequest?.actionSections, emptyText, template: tpl?.content, verb: "created" });
+  // the story's acceptance criteria with their test status: the required section, "N/M proven" on top; not all proven
+  // stops here (nothing written) unless the user chose --draft or --anyway
+  const crit = wi ? await (await import("./e2e/prSection.js")).prCriteria(ctx, client, wi, team.language as string | undefined).catch(() => undefined) : undefined;
+  if (crit) {
+    const ps = await import("./e2e/prSection.js");
+    description = ps.withCriteria(description, crit.status, crit.lang);
+    summary = [summary, `criteria ${crit.status.proven}/${crit.status.total} proven`].filter(Boolean).join("; ");
+    if (crit.status.proven < crit.status.total && !o.dryRun && !o.draft && !o.anyway) throw ps.notProvenError(crit.status, wi!, crit.lang);
+  }
   const note = derivedNote(derived);
   if (note) summary = [summary, note].filter(Boolean).join("; ");
   const warn = impactWarning(root, mergeBase(root, target), team, description);

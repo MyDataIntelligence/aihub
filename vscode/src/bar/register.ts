@@ -17,6 +17,7 @@ import { registerOpenReposAsSet } from "./openReposAsSetUi";
 import { registerWikiCommands } from "./wikiUi";
 import { registerStoryBrowserCommands } from "./storiesUi";
 import { registerTeamCommands } from "./teamUi";
+import { registerE2eCommands } from "./e2eUi";
 import { SizeMemo } from "./setSize";
 import { showFailure } from "./failureUi";
 import { withCloneRecovery } from "./missingCloneUi";
@@ -65,6 +66,8 @@ export interface BarDeps {
   extraPlaces?: () => string[];
   /** puts a prompt in the chat ("Fix in chat" on a review thread) */
   toChat?: (text: string) => Promise<void>;
+  /** starts (or finds) the opencode tab of this window and sends a slash command with Enter; false when opencode could not start */
+  toOpencode?: (text: string) => Promise<boolean>;
 }
 
 export interface BarHandle {
@@ -459,6 +462,8 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   registerStoryBrowserCommands(reg);
   // team settings: one aihub process per call, only when the page asks
   registerTeamCommands(reg);
+  // Run End to End: the slash command goes to the opencode tab of this window (or of the set's window when it opens)
+  registerE2eCommands(reg, async (t) => (deps.toOpencode ? deps.toOpencode(t) : false));
 
   // the overview menu opens: read the pull requests again (at most once per call, a failed call is remembered like a good one)
   reg(BAR_COMMANDS.refreshStatus, async () => {
