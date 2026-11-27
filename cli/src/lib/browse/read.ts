@@ -480,7 +480,7 @@ export async function readFileAt(b: Browse, project: string, repo: string, path:
   };
   const flagged = !!x.contentMetadata?.isBinary || BINARY_EXT.test(path);
   if (flagged || (size !== null && size > maxBytes)) return { ...head, sizeBytes: size, binary: flagged, tooLarge: !flagged, content: null };
-  const withContent = await rc.get<RawItem>(`${rc.repoPath()}/items`, { path, includeContent: true, ...versionQuery({ name: x.commitId || spec.name, kind: x.commitId ? "commit" : spec.kind }) });
+  const withContent = await rc.get<RawItem>(`${rc.repoPath()}/items`, { path, includeContent: true, ...versionQuery(spec) });
   const raw = withContent.content ?? "";
   const bytes = size ?? Buffer.byteLength(raw, "utf8");
   const binary = !!withContent.contentMetadata?.isBinary || looksBinary(raw);
