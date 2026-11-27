@@ -8,11 +8,13 @@ import { answerExisting, showOpened } from "../repoSetUi";
 import { browseErrorOf } from "./browse";
 import { cloneParent, cloneWithProgress, folderName } from "./cloneRepo";
 import { cli } from "./runner";
+import { gitRun } from "./ownWindow";
+import { headBranchOf } from "../../../cli/src/lib/machineScan";
 import type { StoryHooks } from "./storyUi";
 import { BAR_COMMANDS } from "./types";
 import { withUndo } from "./undoUi";
-import { windowChoice } from "./window";
-import { cliNameOf, cloneOf, openArgs, parseOpenRepos, remoteKey, resultOf, type OpenReposError, type OpenReposResult, type OpenReposRow, type SetRepoArg } from "./openReposAsSet";
+import { openPath, windowChoice } from "./window";
+import { cliNameOf, cloneOf, openArgs, parseOpenRepos, remoteKey, resultOf, placeOwn, type OpenReposArg, type OpenReposError, type OpenReposResult, type OpenReposRow, type SetRepoArg } from "./openReposAsSet";
 
 const fail = (kind: OpenReposError["error"]["kind"], message: string): OpenReposError => ({ error: { kind, message } });
 
@@ -29,7 +31,7 @@ export function registerOpenReposAsSet(h: Pick<StoryHooks, "engine" | "log" | "c
     const window = arg.window ?? windowChoice();
 
     // one story is one set: when it has one, that set opens and nothing is made
-    if (arg.story) {
+    if (arg.story && !arg.noSet) {
       const have = setOfStory(h.engine.scan({ refresh: true }), arg.story);
       if (have && have.repos.some((r) => r.exists)) {
         h.log(`open repos as set: story ${arg.story} has the set ${have.id}; that one opens`);
@@ -98,6 +100,7 @@ export function registerOpenReposAsSet(h: Pick<StoryHooks, "engine" | "log" | "c
       if (stopped) return fail("cancelled", `the clone was cancelled; the half clone was removed${cloned.length ? ` (cloned before: ${cloned.join(", ")})` : ""}`);
     }
     if (!present.length) return resultOf(undefined, { opened: false, cloned, failed });
+    if (arg.noSet) return openWithoutSet(h, arg, present[0], cloned, window);
 
     // one set, with Undo while nothing was changed in it (clones made above stay)
     const args = openArgs(arg, present);
@@ -128,4 +131,30 @@ export function registerOpenReposAsSet(h: Pick<StoryHooks, "engine" | "log" | "c
       return fail(err.kind === "cliMissing" || err.kind === "cliTooOld" ? err.kind : "failed", err.message);
     }
   });
+}
+
+/**
+ * noSet (Open in New Window…): one repository in a window of its own, no set file. On `branch`: its clone when the clone is on
+ * it, else the worktree that has it, else a new worktree next to the clone. On `newBranch`: a new worktree with that branch from
+ * origin/<from> (else origin's default branch); never pushed.
+ */
+async function openWithoutSet(h: Pick<StoryHooks, "log" | "changed" | "afterGit">, arg: OpenReposArg, p: { name: string; path: string }, cloned: string[], window: "new" | "this"): Promise<OpenReposResult | OpenReposError> {
+  const r = arg.repos[0];
+  const worktreeRoot = String(vscode.workspace.getConfiguration("worktreeMaker").get("worktreeRoot", "") ?? "");
+  const wasCloned = cloned.some((c) => c.toLowerCase() === r.name.toLowerCase());
+  const newBranch = r.newBranch ?? (!r.branch ? arg.newBranch : undefined);
+  const branch = newBranch ?? r.branch!;
+  try {
+    const res = await placeOwn({ git: gitRun, clone: p.path, current: headBranchOf(p.path), branch, newBranch, from: r.from ?? arg.from, worktreeRoot });
+    const path = res.path;
+    const state = res.state;
+    h.log(`open repo in its own window: ${res.note}`);
+    forgetScan(process.env);
+    h.afterGit?.();
+    h.changed();
+    await openPath(path, window);
+    return { opened: true, repos: [{ repo: r.name, ok: true, branch, path, ...(wasCloned ? { cloned: true } : {}), state }] };
+  } catch (e) {
+    return { opened: false, repos: [{ repo: r.name, ok: false, branch, ...(wasCloned ? { cloned: true } : {}), error: (e as Error).message }] };
+  }
 }
