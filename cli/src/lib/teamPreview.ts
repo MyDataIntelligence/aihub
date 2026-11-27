@@ -8,7 +8,7 @@ import { createPr } from "./pr.js";
 import { findSet } from "./setInfo.js";
 import { storyShow, findStoryTemplate } from "./story.js";
 import { loadTeam, readUtf8 } from "./team.js";
-import { compose, DEFAULT_EMPTY, parseSections, renderSections } from "./templates.js";
+import { codeKindOf, compose, DEFAULT_EMPTY, fallbackKindOf, parseSections, renderSections } from "./templates.js";
 import { COMMIT_TEMPLATE } from "./teamSettings.js";
 import { findTypeTemplate } from "./workItemType.js";
 import { AihubError } from "./errors.js";
@@ -91,17 +91,30 @@ export async function teamPreview(ctx: Ctx, o: { kind: PreviewKind; repo?: strin
       filled?: { heading: string; by: string }[];
       emptyText?: string;
       commits?: number;
+      files?: string;
     };
+    const nl = team.language === "nl";
+    j.files = /(\d+) files? changed/.exec(j.description)?.[0]?.replace(" changed", "");
     const pattern = team.pullRequest?.title || undefined;
     const title = pattern ? fillTitle(pattern, { storyId: j.workItem, storyTitle: j.workItemTitle, branch }) : j.title;
     const empty = j.emptyText || emptyText;
     const sources: ValueSource[] = [];
     if (j.workItem) sources.push({ what: "{storyId} {storyTitle}", value: `${j.workItem} ${j.workItemTitle ?? ""}`.trim(), from: "work item in Azure DevOps", how: "filled" });
     sources.push({ what: "{branch}", value: branch, from: `git, ${name}`, how: "filled" });
+    const commitsText = j.commits ? `${j.commits} commit${j.commits === 1 ? "" : "s"}` : "no commits";
+    const codeSource = (heading: string): ValueSource => {
+      const kind = codeKindOf(heading);
+      if (kind === "story") return { what: heading, value: j.workItem ? `link to #${j.workItem}` : "", from: "work item", how: "filled" };
+      if (kind === "commits") return { what: heading, value: commitsText, from: `git log ${j.target}..branch`, how: "filled" };
+      if (kind === "linked") return { what: heading, value: "linked pull requests", from: `work item ${j.workItem ?? ""}`.trim(), how: "filled" };
+      const fb = fallbackKindOf(heading);
+      if (fb === "tests") return { what: heading, value: nl ? "Nog niet uitgevoerd." : "Not run yet.", from: "no test result yet: the agent fills it after a real run", how: "empty" };
+      return { what: heading, value: `${commitsText}${j.files ? `, ${j.files}` : ""}`, from: `git log ${j.target}..branch`, how: "filled" };
+    };
     for (const f of j.filled ?? [])
       sources.push(
         f.by === "code"
-          ? { what: f.heading, value: /commit|wijzig|change/i.test(f.heading) && j.commits ? `${j.commits} commit${j.commits === 1 ? "" : "s"}` : "from the data", from: `git log ${j.target}..${branch}${j.workItem ? `, work item ${j.workItem}` : ""}`, how: "filled" }
+          ? codeSource(f.heading)
           : f.by === "empty"
             ? { what: f.heading, value: empty, from: "pullRequest.emptySection", how: "empty" }
             : { what: f.heading, value: "", from: "the agent writes it when the pull request is made", how: "agent" },

@@ -145,7 +145,7 @@ export function display(v: unknown, key = ""): string {
 export function flatten(team: TeamConfig, schema: SchemaNode, repo?: string): KeyRow[] {
   const rows: KeyRow[] = [];
   const add = (key: string, value: unknown, explainKey = key, marker?: string) => {
-    if (isTemplateKey(key) || key === "workItems.templates") return; // in the Templates card
+    if (isTemplateKey(key) || key === "workItems.templates" || key === "teamName") return; // in the Templates card and the source card
     const top = key.split(".")[0];
     rows.push({ key, group: GROUP_OF[REPO_KEYS.includes(key) ? "repositories" : top] ?? "general", value, display: display(value, key), explain: explainOf(schema, explainKey), ...(marker ? { repo: marker } : {}) });
   };

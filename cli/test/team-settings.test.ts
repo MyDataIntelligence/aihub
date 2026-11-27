@@ -214,6 +214,7 @@ describe("team source", () => {
   it("parses a team repository and stores it per set or for everything", () => {
     expect(parseTeamRepo("orders/team-config", () => false)).toEqual({ project: "orders", repo: "team-config" });
     expect(parseTeamRepo("org/orders/team-config", () => false)).toEqual({ org: "org", project: "orders", repo: "team-config" });
+    expect(parseTeamRepo("orders/team-config@bench-abc123-teamcfg", () => false)).toEqual({ project: "orders", repo: "team-config", branch: "bench-abc123-teamcfg" });
     expect(() => parseTeamRepo("x", () => false)).toThrow(/not a team repository/);
     const env = { AIHUB_CONFIG_HOME: mkdtempSync(join(tmpdir(), "aihub-src-")) } as NodeJS.ProcessEnv;
     expect(teamRepoFor(env, "/a")).toBeUndefined();

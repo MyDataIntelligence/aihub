@@ -93,12 +93,15 @@ export function writeCopy(env: NodeJS.ProcessEnv, r: TeamRepo, c: TeamCopy): voi
   writeJson(copyFile(env, r), c);
 }
 
-/** `orders/team-config`, `org/orders/team-config` or a folder -> a team repository */
+/** `orders/team-config`, `org/orders/team-config` (each with an optional `@branch`) or a folder -> a team repository */
 export function parseTeamRepo(arg: string, exists: (p: string) => boolean = existsSync): TeamRepo {
   const a = arg.trim();
   if (exists(a)) return { localPath: resolve(a) };
-  const parts = a.split("/").map((x) => x.trim()).filter(Boolean);
-  if (parts.length === 2) return { project: parts[0], repo: parts[1] };
-  if (parts.length === 3) return { org: parts[0], project: parts[1], repo: parts[2] };
-  throw new Error(`'${arg}' is not a team repository: use <project>/<repository>, <organization>/<project>/<repository> or a local folder`);
+  const at = a.lastIndexOf("@");
+  const branch = at > 0 ? a.slice(at + 1).trim() : "";
+  const parts = (at > 0 ? a.slice(0, at) : a).split("/").map((x) => x.trim()).filter(Boolean);
+  const b = branch ? { branch } : {};
+  if (parts.length === 2) return { project: parts[0], repo: parts[1], ...b };
+  if (parts.length === 3) return { org: parts[0], project: parts[1], repo: parts[2], ...b };
+  throw new Error(`'${arg}' is not a team repository: use <project>/<repository>[@branch], <organization>/<project>/<repository>[@branch] or a local folder`);
 }
