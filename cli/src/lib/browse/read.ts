@@ -1,5 +1,10 @@
 import { spawnSync } from "../proc.js";
-import { adoKey, localRepos } from "../repoPicker.js";
+import { statSync } from "node:fs";
+import { join } from "node:path";
+import { adoKey, readPreferredClones } from "../repoPicker.js";
+import { machineFolders } from "../machineFolders.js";
+import { scanMachine } from "../machineScan.js";
+import { pathKey } from "../recentUse.js";
 import { rowOf, type RawBuild, type RunRow } from "../pipelineView.js";
 import {
   BrowseError,
@@ -107,13 +112,45 @@ export function commitOf(c: RawCommit, me: MeInfo): CommitInfo {
 
 // ---- clones on this PC -----------------------------------------------------------------------------------------------
 
-/** `org/project/repo` (lower case) -> the clone used for it, read from the file system (no git per repository). */
+/**
+ * `org/project/repo` (lower case) -> the clone used for it: the same scan of this PC as the bar (Folders to Look In when the user
+ * set them, else the known places), read from the files only (no git per repository) and kept 5 minutes (`--refresh` reads again).
+ * More clones of one remote, as the bar picks: the preferred one (`aihub repos prefer`), else the last used, else the one in the first folder to look in.
+ */
 export function clonesOf(b: Browse): Map<string, Clone> {
   const out = new Map<string, Clone>();
+  let repos: { path: string; branch: string; remote?: string }[] = [];
+  let folders: string[] = [];
   try {
-    for (const r of localRepos(b.ctx).repos) if (r.key) out.set(r.key, { path: r.path, branch: r.branch });
+    folders = machineFolders(b.env, b.ctx.cwd);
+    repos = scanMachine(b.env, folders, { refresh: b.refresh, now: b.now() }).repos;
   } catch {
-    /* no repos root: nothing is cloned as far as we know */
+    return out; // nothing scanned: nothing is cloned as far as we know
+  }
+  const preferred = readPreferredClones(b.env);
+  const rank = (p: string) => {
+    const k = pathKey(p);
+    const i = folders.findIndex((f) => k === pathKey(f) || k.startsWith(`${pathKey(f)}/`));
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const used = (p: string) => {
+    try {
+      return statSync(join(p, ".git", "HEAD")).mtimeMs;
+    } catch {
+      return 0;
+    }
+  };
+  const groups = new Map<string, typeof repos>();
+  for (const r of repos) {
+    const key = adoKey(r.remote);
+    if (!key) continue;
+    groups.set(key, [...(groups.get(key) ?? []), r]);
+  }
+  for (const [key, list] of groups) {
+    const name = key.split("/").pop() ?? "";
+    const pref = Object.entries(preferred).find(([n]) => n.toLowerCase() === name)?.[1];
+    const pick = (pref ? list.find((r) => pathKey(r.path) === pathKey(pref)) : undefined) ?? [...list].sort((x, y) => used(y.path) - used(x.path) || rank(x.path) - rank(y.path))[0];
+    out.set(key, { path: pick.path, branch: pick.branch });
   }
   return out;
 }
