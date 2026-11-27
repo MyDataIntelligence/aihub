@@ -16,7 +16,13 @@ describe("Run End to End in the bar: arguments", () => {
     expect(e2eArgs.open({ id: 4711 })).toEqual(["story", "open", "--id", "4711", "--window", "none", "--existing", "reuse", "--json"]);
     expect(e2eArgs.start({ id: 4711, repos: ["repo-a", "repo-b"] })).toEqual(["stories", "start", "--id", "4711", "--open", "none", "--repos", "repo-a,repo-b"]);
     expect(e2eArgs.yolo("C:/sets/4711", true)).toEqual(["story", "yolo", "--on", "--folder", "C:/sets/4711", "--json"]);
-    expect(slashCommand("bug-fix-e2e", 12)).toBe("/bug-fix-e2e 12");
+    expect(slashCommand("bug-run", 12)).toBe("/bug-run 12");
+    expect(e2eArgs.options(4711, "story-run", { planFirst: true, yolo: true, fabric: false, setActive: true } as never)).toEqual(["story", "progress", "--id", "4711", "--action", "story-run", "--options", "planFirst=true,fabric=false,setActive=true", "--json"]);
+    expect(e2eArgs.options(4711, "story-pr", { draft: true })).toEqual(["story", "progress", "--id", "4711", "--action", "story-pr", "--options", "draft=true", "--json"]);
+    expect(e2eArgs.options(4711, "story-explain", {})).toEqual(["story", "progress", "--id", "4711", "--action", "story-explain", "--json"]);
+    expect(e2eArgs.activate(4711, { project: "test-project" })).toEqual(["stories", "activate", "--id", "4711", "--project", "test-project"]);
+    expect(e2eArgs.stop(4711)).toEqual(["story", "progress", "--id", "4711", "--stop", "--json"]);
+    expect(STORY_ACTIONS).toEqual(expect.arrayContaining(["story-pr-review", "bug-run"]));
   });
 
   it("refuses an unknown action, a missing id or an empty apply", () => {

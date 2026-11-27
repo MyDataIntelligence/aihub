@@ -83,6 +83,7 @@ export function withCriteria(description: string, st: CriteriaStatus, lang: Lang
  */
 export async function prCriteria(ctx: Ctx, client: AdoClient, story: number, language?: string): Promise<{ status: CriteriaStatus; lang: Lang } | undefined> {
   const w = await client.get<{ fields?: Record<string, unknown> }>(`wit/workitems/${story}`); // all fields: a type without the criteria field would refuse a named list
+  if (/^bug$/i.test(String(w.fields?.["System.WorkItemType"] ?? "").trim())) return undefined; // bugs have no acceptance criteria
   const ac = htmlToMd(String(w.fields?.[ACCEPTANCE] ?? ""));
   const fromDesc = parseSections(htmlToMd(String(w.fields?.[DESCRIPTION] ?? ""))).sections.find((x) => partOf(x.heading) === "criteria")?.body ?? "";
   const criteria = parseCriteria(ac.trim() ? ac : fromDesc);

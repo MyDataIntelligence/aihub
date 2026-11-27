@@ -10,7 +10,7 @@ import { BrowseError, errorJson } from "../lib/browse/core.js";
  */
 
 export const PROMPT_USAGE = `usage: aihub prompt render <action> --id N [--json] | list [--json] | save <action> --id N --text-file f | reset <action> --id N
-  actions: story-start, story-run, story-criteria, story-refine, story-test-fabric, story-tests, story-pr, story-review, story-fix-pipeline, story-explain, bug-reproduce, bug-fix-e2e
+  actions: story-start, story-run, story-criteria, story-refine, story-test-fabric, story-tests, story-pr, story-pr-review, story-fix-pipeline, story-explain, bug-reproduce, bug-run
   the team prompt (.agents/skills/_shared/prompts/<action>.md) wins over the default; placeholders come from the story, its set and team.yaml`;
 
 export const CRITERIA_USAGE = `usage: aihub criteria show|status --id N [--json] | record --id N --criterion K --result pass|fail|notrun [--evidence <link>] [--reason <text>]
@@ -60,7 +60,7 @@ async function stories(ctx: Ctx, v: V) {
 export async function runPrompt(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
   if (!["render", "list", "save", "reset"].includes(sub ?? "")) throw new AihubError(PROMPT_USAGE);
-  const p = parse(rest, { ...COMMON, "text-file": { type: "string" } }, true);
+  const p = parse(rest, { ...COMMON, "text-file": { type: "string" }, option: { type: "string" } }, true);
   const v = p.values as V;
   const json = !!v.json;
   await answer(ctx, json, async () => {
@@ -74,7 +74,8 @@ export async function runPrompt(argv: string[], ctx: Ctx): Promise<void> {
     const id = idOf(v);
     if (sub === "save") return { data: { action, id, ...pr.savePrompt(s, id, action, fileText(need(v, "text-file"))) }, text: `prompt ${action} for ${id} saved` };
     if (sub === "reset") return { data: { action, id, ...pr.resetPrompt(s, id, action) }, text: `prompt ${action} for ${id} back to the team version` };
-    const r = await pr.renderPrompt(ctx, s, action, id);
+    const given = Object.fromEntries(String(v.option ?? "").split(",").map((x) => x.trim()).filter(Boolean).map((x) => (x.includes("=") ? x.split("=", 2) : [x, "true"])));
+    const r = await pr.renderPrompt(ctx, s, action, id, given);
     return { data: r, text: r.text };
   });
 }
@@ -93,6 +94,7 @@ export async function runCriteria(argv: string[], ctx: Ctx): Promise<void> {
       return { data: c, text: c.criteria.length ? c.markdown : `story ${id} has no acceptance criteria yet (/story-criteria ${id})` };
     }
     if (sub === "proposal-file") {
+      await w.readCriteria(s, id); // refuses a bug
       const f = w.proposalFileFor(s, id);
       return { data: { id, proposalFile: f }, text: f };
     }
@@ -118,7 +120,7 @@ export async function runCriteria(argv: string[], ctx: Ctx): Promise<void> {
 /** aihub story progress --id N [--step k --total n --label t] [--steps a|b|c] [--done] | aihub story yolo --on|--off [--folder F] */
 export async function runStoryE2e(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
-  const v = parse(rest, { ...COMMON, step: { type: "string" }, total: { type: "string" }, label: { type: "string" }, steps: { type: "string" }, done: { type: "boolean" }, action: { type: "string" }, on: { type: "boolean" }, off: { type: "boolean" }, folder: { type: "string" } }).values as V;
+  const v = parse(rest, { ...COMMON, step: { type: "string" }, total: { type: "string" }, label: { type: "string" }, steps: { type: "string" }, done: { type: "boolean" }, stop: { type: "boolean" }, options: { type: "string" }, action: { type: "string" }, on: { type: "boolean" }, off: { type: "boolean" }, folder: { type: "string" } }).values as V;
   const json = !!v.json;
   await answer(ctx, json, async () => {
     const run = await import("../lib/e2e/run.js");
@@ -134,9 +136,11 @@ export async function runStoryE2e(argv: string[], ctx: Ctx): Promise<void> {
       label: str(v, "label"),
       steps: str(v, "steps")?.split("|").map((x) => x.trim()).filter(Boolean),
       done: !!v.done,
+      stop: !!v.stop,
       action: str(v, "action"),
+      options: str(v, "options") ? Object.fromEntries(str(v, "options")!.split(",").map((x) => x.trim()).filter(Boolean).map((x) => (x.includes("=") ? [x.split("=")[0], /^(true|yes|1)$/i.test(x.split("=")[1])] : [x, true]))) : undefined,
     });
     const data = { ...r, stepsView: run.stepsView(r) };
-    return { data, text: r.running ? `story ${r.id}: step ${r.step}/${r.total} ${r.label}` : `story ${r.id}: ${r.step ? `done (${r.total} steps)` : "no run"}` };
+    return { data, text: r.running ? `story ${r.id}: step ${r.step}/${r.total} ${r.label}` : `story ${r.id}: ${r.stopped ? "stopped" : r.step ? `done (${r.total} steps)` : "no run"}` };
   });
 }
