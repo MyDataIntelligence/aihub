@@ -21,6 +21,7 @@ export const DRAFT_PREFIX = "draft-";
 interface DefRaw {
   id: number;
   name: string;
+  createdDate?: string;
   path?: string;
   repository?: { id?: string; name?: string; type?: string; defaultBranch?: string };
   process?: { type?: number; yamlFilename?: string };
@@ -521,6 +522,8 @@ export interface DraftRow {
   runs: number;
   latestRun: LatestRun | null;
   branchAhead: number | null;
+  /** when the pipeline's newest revision was saved: for a draft (never edited here) when it was made */
+  createdAt: string | null;
   mine: boolean;
   webUrl: string;
 }
@@ -548,14 +551,14 @@ export async function browseDrafts(b: Browse, project: string): Promise<{ projec
     const drafts: DraftRow[] = [];
     for (const d of defs) {
       const row = rowOfDef(b, project, d, me.id);
-      drafts.push({ id: d.id, name: d.name, repo: row.repo, branch: row.defaultBranch, yamlPath: row.yamlPath, runs: await runCount(c, d.id), latestRun: row.latestRun, branchAhead: await aheadOf(b, project, d.repository?.id, row.defaultBranch), mine: row.mine, webUrl: row.webUrl });
+      drafts.push({ id: d.id, name: d.name, repo: row.repo, branch: row.defaultBranch, yamlPath: row.yamlPath, runs: await runCount(c, d.id), latestRun: row.latestRun, branchAhead: await aheadOf(b, project, d.repository?.id, row.defaultBranch), createdAt: d.createdDate ?? null, mine: row.mine, webUrl: row.webUrl });
     }
     return { project, drafts };
   });
 }
 
 /** Removes a draft pipeline and its branch; only `draft-*` in `\Drafts`, made by the signed-in user, on a branch that is not protected. */
-export async function browseDraftDelete(b: Browse, project: string, id: number): Promise<{ deleted: { pipeline: { id: number; name: string }; runs: number; branch: string | null; repo: string | null }; runsKept: number; branchKept: string | null }> {
+export async function browseDraftDelete(b: Browse, project: string, id: number, o: { keepBranch?: boolean } = {}): Promise<{ deleted: { pipeline: { id: number; name: string }; runs: number; branch: string | null; repo: string | null }; runsKept: number; branchKept: string | null }> {
   const me = await meOf(b);
   const c = b.client.forProject(project);
   return guarded(b, project, async () => {
@@ -584,7 +587,8 @@ export async function browseDraftDelete(b: Browse, project: string, id: number):
     let branchGone: string | null = null;
     let kept: string | null = null;
     // only a branch made for the draft goes with it: its name holds "draft-" (New Draft Pipeline names it so)
-    if (branch && !/draft-/i.test(branch)) kept = `branch ${branch} is kept: its name does not say it was made for the draft`;
+    if (branch && o.keepBranch) kept = `branch ${branch} is kept, as asked`;
+    else if (branch && !/draft-/i.test(branch)) kept = `branch ${branch} is kept: its name does not say it was made for the draft`;
     else if (branch && protectedBranch(branch)) kept = `branch ${branch} is protected and is kept`;
     else if (branch && d.repository?.id) {
       const rc = repoClientOf(b, project, d.repository.id);

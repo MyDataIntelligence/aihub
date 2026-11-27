@@ -1,6 +1,9 @@
 import { trace } from "./trace.js";
 import { readFileSync } from "node:fs";
-import type { AdoClient } from "./ado.js";
+import { AdoClient } from "./ado.js";
+import { makeAuth } from "./auth.js";
+import { resolveOrg } from "./browse/core.js";
+import { remoteOf } from "./pipelineView.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { inferEnv } from "./fabric.js";
@@ -15,6 +18,7 @@ export const COMMON_FLAGS = {
   top: { type: "string" },
   filter: { type: "string" },
   "allow-env": { type: "string" },
+  org: { type: "string" },
 } as const;
 
 export type Flags = Record<string, string | boolean | undefined>;
@@ -25,8 +29,24 @@ export function flags(argv: string[], extra: Record<string, { type: "string" | "
 
 /** The project client of the repository in the current folder; `--project` points it at another project of the organisation. */
 export function devopsClient(ctx: Ctx, v: Flags): { client: AdoClient; root: string } {
+  const project = typeof v.project === "string" && v.project ? v.project : undefined;
+  const org = typeof v.org === "string" && v.org ? v.org : undefined;
+  // --project outside a clone (or --org): a client of that project of the organisation, no repository
+  if (project && (org || !inRepo(ctx))) {
+    const o = resolveOrg(ctx, org);
+    return { client: new AdoClient({ org: o, project, repo: "", orgUrl: `https://dev.azure.com/${encodeURIComponent(o)}` }, makeAuth({ env: ctx.env, exec: ctx.exec, cacheFile: ctx.tokenCache }), ctx.fetch), root: ctx.cwd };
+  }
   const { client, root } = repoClient(ctx);
-  return { client: typeof v.project === "string" && v.project ? client.forProject(v.project) : client, root };
+  return { client: project ? client.forProject(project) : client, root };
+}
+
+function inRepo(ctx: Ctx): boolean {
+  try {
+    remoteOf(ctx.cwd);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function emit(ctx: Ctx, v: Flags, data: unknown, text: string): void {

@@ -386,9 +386,11 @@ export const pipeBrowseArgs = {
     else out.push("--empty");
     return common({ org: a.org }, out);
   },
-  draftDelete: (a: PipelineArg) => {
+  draftDelete: (a: PipelineArg & { keepBranch?: boolean }) => {
     needAll(a, ["project", "pipeline"], "browseDraftDelete");
-    return common({ org: a.org }, ["browse", "draft-delete", "--project", a.project, "--pipeline", idOf(a.pipeline, "pipeline")]);
+    const out = ["browse", "draft-delete", "--project", a.project, "--pipeline", idOf(a.pipeline, "pipeline")];
+    if (a.keepBranch) out.push("--keep-branch");
+    return common({ org: a.org }, out);
   },
 };
 

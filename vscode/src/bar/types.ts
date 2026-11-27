@@ -263,6 +263,7 @@ export const BAR_COMMANDS = {
    * carries failedStage, failedStep and tests. The menu of one repository: `{ branch, top: 3, rowsRepoDir: <its path> }`.
    */
   pipelineRuns: "aihub.bar.pipelineRuns",
+  // every run command below also takes `project` (and `org`) instead of repoDir: the run is read from that project without a clone (a run tab opened from the pipeline browser)
   /** `{ run, repoDir? }` -> `aihub pipeline show`: tree, trigger, parameters, variables, summary */
   pipelineRun: "aihub.bar.pipelineRun",
   /** `{ run, repoDir?, step?, tail?, fromLine? }` -> `aihub pipeline log` (default step: the failed one) */
@@ -331,8 +332,8 @@ export const BAR_COMMANDS = {
   browseArtifactOpen: "aihub.bar.browseArtifactOpen",
   /** `{ project, repo, name, branch, fromPipeline? | empty: true }` -> `aihub browse draft-create`: draft-<name> in the folder Drafts on a new branch from the default branch */
   browseDraftCreate: "aihub.bar.browseDraftCreate",
-  /** `{ project }` -> `aihub browse drafts`: the draft-* pipelines in the folder Drafts (runs, branchAhead, mine) */
+  /** `{ project }` -> `aihub browse drafts`: the draft-* pipelines in the folder Drafts (runs, branchAhead, createdAt, mine) */
   browseDrafts: "aihub.bar.browseDrafts",
-  /** `{ project, pipeline }` -> `aihub browse draft-delete`: only your own draft-* in the folder Drafts; the pipeline and its draft branch go */
+  /** `{ project, pipeline, keepBranch? }` -> `aihub browse draft-delete`: only your own draft-* in the folder Drafts; the pipeline and (unless keepBranch) its draft branch go */
   browseDraftDelete: "aihub.bar.browseDraftDelete",
 } as const;
