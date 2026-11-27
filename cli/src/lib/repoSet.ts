@@ -33,6 +33,8 @@ export interface OpenSetOpts {
   /** the story the set belongs to; else the id in the branch name */
   storyId?: number;
   from?: string;
+  /** per repository another base than `from` for a branch that is made new (`--from-for repo=target`) */
+  froms?: Record<string, string>;
   mode?: OpenMode;
   window?: OpenWindow;
   root?: string;
@@ -253,7 +255,10 @@ export function openSet(setCtx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = la
   const pattern = storyPatternOf(team);
   const setsRoot = resolve(o.root ?? worktreeRootOf(team, root) ?? defaultSetsRootFor(setsBase, root, dirs[0].dir));
   const storyId = o.storyId ?? storyIdFromBranch(branch, pattern);
-  const stray = Object.keys(o.branches ?? {}).filter((n) => !dirs.some((d) => d.name === n) && !missing.includes(n));
+  const strayOf = (m: Record<string, string> | undefined) => Object.keys(m ?? {}).filter((n) => !dirs.some((d) => d.name === n) && !missing.includes(n));
+  const strayFrom = strayOf(o.froms);
+  if (strayFrom.length) throw new AihubError(`--from-for names ${strayFrom.join(", ")}, which is not in --repos/--group (${dirs.map((d) => d.name).join(", ")}); nothing was changed`);
+  const stray = strayOf(o.branches);
   if (stray.length) throw new AihubError(`--branch-for names ${stray.join(", ")}, which is not in --repos/--group (${dirs.map((d) => d.name).join(", ")}); nothing was changed`);
   const branchOf = (name: string) => o.branches?.[name] ?? branch;
   // a story's worktrees go to <root>/<id>-<slug>/<repo>[--variant]; other branches keep one folder per branch
@@ -265,7 +270,7 @@ export function openSet(setCtx: Ctx, o: OpenSetOpts, launcher: CodeLauncher = la
   const policy = o.existing ?? readWhenExists(setCtx.env);
   const lists = mode === "worktree" ? checkExisting(dirs.map((d) => ({ repo: d.name, source: d.dir, branch: branchOf(d.name), target: pathFor ? pathFor(d) : join(folder, d.name) })), { folder, policy, again }) : new Map<string, Worktree[]>();
   const how = policy === "ask" ? undefined : policy;
-  const repos = dirs.map((d) => openRepo(d, { branch: branchOf(d.name), from: o.from, mode, folder, team, path: pathFor, existing: how, discardLocalWork: o.discardLocalWork, again, worktrees: lists.get(d.dir) }));
+  const repos = dirs.map((d) => openRepo(d, { branch: branchOf(d.name), from: o.froms?.[d.name] ?? o.from, mode, folder, team, path: pathFor, existing: how, discardLocalWork: o.discardLocalWork, again, worktrees: lists.get(d.dir) }));
   for (const m of missing) repos.push({ repo: m, ok: false, state: "failed", branch, note: "folder not found on this PC" });
   let workspace: string | undefined;
   const okRepos = repos.filter((r) => r.ok && r.path);

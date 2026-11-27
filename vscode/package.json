@@ -617,6 +617,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.openReposAsSet",
+        "title": "Open Repositories as a Set",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.browseProjects",
         "title": "Repositories: Projects",
         "category": "AI Context Hub"
@@ -1920,6 +1925,10 @@
         },
         {
           "command": "aihub.bar.pipelineRetryNow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.openReposAsSet",
           "when": "false"
         },
         {
