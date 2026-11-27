@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.8.0
+
+- One engine for a set of the repositories the user picks: aihub.bar.openReposAsSet (New Set, Open as Set, noSet for one repository in its own window), cloning when needed, with Undo.
+- Add Repository in the window of a single repository makes it a set.
+- A set whose first folder is outside the set folder is found through the workspace file.
+- aihub.bar.wiki* and aihub.bar.story* commands for the wiki and story browsers.
+- A pipeline run opens in a window without its repository; the Azure DevOps search also reads from a repository of a worktree set.
+- The look at the target branch at opening runs at the first focus when the window had none; Update from Target always passes --target and says nothing changed when nothing did.
+- The buttons need aihub 1.9.0.
+
 ## 3.7.1
 
 - Behind the target updates by itself by default (aiContextHub.behindTarget: auto): no conflicts, no overlap, never a push, with Undo; a conflict asks.
