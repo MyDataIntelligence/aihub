@@ -161,6 +161,8 @@ export interface PushArg extends Common {
   draft?: boolean;
   /** "Rebase my change" after a conflict */
   rebase?: boolean;
+  /** the pipeline whose YAML this is: the answer says whether it can run on the new branch */
+  pipeline?: number;
 }
 export interface PrArg extends Common {
   project: string;
@@ -270,6 +272,7 @@ export function pushFiles(a: PushArg): { args: string[]; dir: string } {
     if (a.draft) args.push("--draft");
   }
   if (a.rebase) args.push("--rebase");
+  if (posInt(a.pipeline)) args.push("--pipeline", String(a.pipeline));
   return { args: common({ org: a.org }, args), dir };
 }
 
@@ -285,4 +288,127 @@ export function removePushFiles(dir: string | undefined): void {
 /** The failure-memory scope of a call: per organisation and repository (or the whole organisation). */
 export function scopeOf(a: { org?: string; project?: string; repo?: string } | undefined, what: string): string {
   return [what, a?.org ?? "", a?.project ?? "", a?.repo ?? ""].join("|").toLowerCase();
+}
+
+// ---- the pipeline browser (docs/cli-json.md "Pipeline browser") ---------------------------------------------------------
+
+export interface PipelinesArg extends Common {
+  project: string;
+}
+export interface PipelineArg extends Common {
+  project: string;
+  pipeline: number;
+  /** latest runs to show: 8 on the pipeline page, 3 in the tree */
+  top?: number;
+}
+export interface RunPlanArg extends Common {
+  project: string;
+  pipeline: number;
+  /** a branch, `tag:v1` or `commit:<sha>`; default the pipeline's default branch */
+  ref?: string;
+}
+export interface BrowseRunArg extends Common {
+  project: string;
+  pipeline: number;
+  branch?: string;
+  tag?: string;
+  commit?: string;
+  /** only what the user changed */
+  parameters?: Record<string, string | number | boolean>;
+  /** only what the user changed; a secret only when typed */
+  variables?: Record<string, string>;
+  skipStages?: string[];
+}
+export interface ArtifactsArg extends Common {
+  project: string;
+  run: number;
+}
+export interface ArtifactArg extends ArtifactsArg {
+  artifact: string;
+  /** a file inside the artifact; without it the whole artifact (zip) */
+  path?: string;
+  maxBytes?: number;
+}
+export interface DraftCreateArg extends Common {
+  project: string;
+  repo: string;
+  /** without the prefix draft- */
+  name: string;
+  branch: string;
+  fromPipeline?: number;
+  empty?: boolean;
+}
+
+const needAll = (a: object | undefined, keys: string[], what: string) => {
+  const o = (a ?? {}) as Record<string, unknown>;
+  for (const k of keys) if (o[k] === undefined || o[k] === null || o[k] === "") throw new Error(`${what} needs ${k}`);
+};
+const idOf = (v: unknown, what: string): string => {
+  const n = posInt(v);
+  if (!n) throw new Error(`${what} must be a number`);
+  return String(n);
+};
+
+export const pipeBrowseArgs = {
+  pipelines: (a: PipelinesArg) => {
+    needAll(a, ["project"], "browsePipelines");
+    return common(a, ["browse", "pipelines", "--project", a.project]);
+  },
+  pipeline: (a: PipelineArg) => {
+    needAll(a, ["project", "pipeline"], "browsePipeline");
+    return common(a, opt(["browse", "pipeline", "--project", a.project, "--pipeline", idOf(a.pipeline, "pipeline")], "--top", a.top));
+  },
+  runPlan: (a: RunPlanArg) => {
+    needAll(a, ["project", "pipeline"], "browseRunPlan");
+    return common(a, opt(["browse", "run-plan", "--project", a.project, "--pipeline", idOf(a.pipeline, "pipeline")], "--ref", a.ref));
+  },
+  artifacts: (a: ArtifactsArg) => {
+    needAll(a, ["project", "run"], "browseArtifacts");
+    return common(a, ["browse", "artifacts", "--project", a.project, "--run", idOf(a.run, "run")]);
+  },
+  artifactFiles: (a: ArtifactArg) => {
+    needAll(a, ["project", "run", "artifact"], "browseArtifactFiles");
+    return common(a, ["browse", "artifact-files", "--project", a.project, "--run", idOf(a.run, "run"), "--artifact", a.artifact]);
+  },
+  artifactOpen: (a: ArtifactArg) => {
+    needAll(a, ["project", "run", "artifact"], "browseArtifactOpen");
+    return common(a, opt(opt(["browse", "artifact-open", "--project", a.project, "--run", idOf(a.run, "run"), "--artifact", a.artifact], "--path", a.path), "--max-bytes", a.maxBytes));
+  },
+  drafts: (a: PipelinesArg) => {
+    needAll(a, ["project"], "browseDrafts");
+    return common(a, ["browse", "drafts", "--project", a.project]);
+  },
+  draftCreate: (a: DraftCreateArg) => {
+    needAll(a, ["project", "repo", "name", "branch"], "browseDraftCreate");
+    if (!a.fromPipeline && !a.empty) throw new Error("browseDraftCreate needs fromPipeline or empty: true");
+    const out = ["browse", "draft-create", "--project", a.project, "--repo", a.repo, "--name", a.name, "--branch", a.branch];
+    if (a.fromPipeline) out.push("--from-pipeline", idOf(a.fromPipeline, "fromPipeline"));
+    else out.push("--empty");
+    return common({ org: a.org }, out);
+  },
+  draftDelete: (a: PipelineArg) => {
+    needAll(a, ["project", "pipeline"], "browseDraftDelete");
+    return common({ org: a.org }, ["browse", "draft-delete", "--project", a.project, "--pipeline", idOf(a.pipeline, "pipeline")]);
+  },
+};
+
+/** The run's changes go in a private file (a secret never shows in the process list); removed right after. */
+export function runFiles(a: BrowseRunArg): { args: string[]; dir?: string } {
+  needAll(a, ["project", "pipeline"], "browseRun");
+  if (s(a.branch) && s(a.tag)) throw new Error("browseRun takes branch or tag, not both");
+  const args = ["browse", "run", "--project", a.project, "--pipeline", idOf(a.pipeline, "pipeline")];
+  if (s(a.tag)) args.push("--tag", a.tag);
+  else opt(args, "--branch", a.branch);
+  opt(args, "--commit", a.commit);
+  const changes: Record<string, unknown> = {};
+  if (a.parameters && Object.keys(a.parameters).length) changes.parameters = a.parameters;
+  const vars = Object.fromEntries(Object.entries(a.variables ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== ""));
+  if (Object.keys(vars).length) changes.variables = vars;
+  if (a.skipStages?.length) changes.skipStages = a.skipStages;
+  if (!Object.keys(changes).length) return { args: common({ org: a.org }, args) };
+  const dir = mkdtempSync(join(tmpdir(), "aihub-run-"));
+  const file = join(dir, "changes.json");
+  writeFileSync(file, JSON.stringify(changes), { encoding: "utf8", mode: 0o600 });
+  args.push("--changes-file", file);
+  return { args: common({ org: a.org }, args), dir };
 }

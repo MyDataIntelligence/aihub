@@ -314,6 +314,27 @@ export const BAR_COMMANDS = {
   /** `{ project, repo, branch, target?, story?, prTitle?, draft? }` -> `aihub browse pr`: Create Pull Request after a push; `{ pr: { id, title, webUrl }, existing }` (an active PR of the branch is returned, not a second one) */
   browseCreatePr: "aihub.bar.browseCreatePr",
   browseRetryNow: "aihub.bar.browseRetryNow",
+  // ---- pipeline browser (docs/cli-json.md "Pipeline browser"; the same error shape and failure memory as the repository browser; nothing polls) ----
+  /** `{ project, org?, refresh? }` -> `aihub browse pipelines`: folders and pipelines (repo, YAML, default branch, isDraft, mine, latestRun); one call per project, kept 15 minutes */
+  browsePipelines: "aihub.bar.browsePipelines",
+  /** `{ project, pipeline, top?, refresh? }` -> `aihub browse pipeline`: the pipeline with its latest runs (message, branch or PR, who, duration) and `yaml` for browseFile */
+  browsePipeline: "aihub.bar.browsePipeline",
+  /** `{ project, pipeline, ref? }` -> `aihub browse run-plan`: the run form from the YAML on that ref (parameters, settable variables, stages) */
+  browseRunPlan: "aihub.bar.browseRunPlan",
+  /** `{ project, pipeline, branch? | tag?, commit?, parameters?, variables?, skipStages? }` (only what changed; a secret only when typed) -> `aihub browse run`: the new run */
+  browseRun: "aihub.bar.browseRun",
+  /** `{ project, run }` -> `aihub browse artifacts`: name, type, bytes */
+  browseArtifacts: "aihub.bar.browseArtifacts",
+  /** `{ project, run, artifact }` -> `aihub browse artifact-files`: the files in it (null with tooLarge over 100 MB) */
+  browseArtifactFiles: "aihub.bar.browseArtifactFiles",
+  /** `{ project, run, artifact, path?, maxBytes? }` -> `aihub browse artifact-open`: the file (or the zip) in a temporary folder; content for text, log and HTML */
+  browseArtifactOpen: "aihub.bar.browseArtifactOpen",
+  /** `{ project, repo, name, branch, fromPipeline? | empty: true }` -> `aihub browse draft-create`: draft-<name> in the folder Drafts on a new branch from the default branch */
+  browseDraftCreate: "aihub.bar.browseDraftCreate",
+  /** `{ project }` -> `aihub browse drafts`: the draft-* pipelines in the folder Drafts (runs, branchAhead, mine) */
+  browseDrafts: "aihub.bar.browseDrafts",
+  /** `{ project, pipeline }` -> `aihub browse draft-delete`: only your own draft-* in the folder Drafts; the pipeline and its draft branch go */
+  browseDraftDelete: "aihub.bar.browseDraftDelete",
   // ---- wiki browser (one `aihub wiki browse` process each, JSON as in docs/cli-json.md "Wiki browser"; failures as the
   // repository browser; a code wiki is edited with browsePush using the `code` of the wikiPage answer; nothing polls) ----
   /** `{ org?, refresh? }` -> `wiki browse wikis`: every project and code wiki, `projects` with their wiki count */

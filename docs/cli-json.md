@@ -235,6 +235,36 @@ is `--story` or the number in the branch name (`feature/4711-...`). An active pu
 
 `aihub browse suggest-branch [--story N] --path /file [--title t]`: `{"branch":"feature/4711-orders-export"}` (no network).
 
+## Pipeline browser: `aihub browse pipelines|pipeline|run-plan|run|artifacts|artifact-files|artifact-open|draft-create|drafts|draft-delete`
+
+Like the repository browser: always JSON, `--org`/`--refresh`, a failure is `{"error":{"kind","message"}}`, lasting failures are
+remembered 5 minutes, nothing polls. Commands: `aihub.bar.browsePipelines` and the others in `vscode/src/bar/types.ts`.
+
+- `pipelines --project P`: one call per project, kept 15 minutes (`readAt`, `cached`). `folders[] {path,name,parent,pipelines}` (pipelines
+  counts the folder and below) and `pipelines[] {id,name,folder,repo,yamlPath,defaultBranch,isDraft,mine,latestRun{id,number,state,branch,pr,queuedAt,finishedAt},webUrl}`.
+  `isDraft`: named `draft-` in `\Drafts`; `mine`: you made the pipeline.
+- `pipeline --project P --pipeline ID [--top 8]`: the same row plus `yaml {project,repo,path,defaultBranch}` (open it with `browse file`),
+  `runs[] {id,number,state,branch,pr,message,requestedFor{name,isMe},queuedAt,startedAt,finishedAt,durationSeconds,webUrl}` (commit
+  messages in one batch call), `allRunsUrl`. Kept 2 minutes.
+- `push ... --pipeline ID`: the push answer gets `pipeline {id,name,runnable,reason}`: can that pipeline run on the new branch.
+- `run-plan --project P --pipeline ID [--ref branch|tag:T|commit:SHA]`: `{pipeline,ref{name,kind,commit,message},parameters[],variables[],stages[],dependencySource}`
+  read from the YAML on that ref (default: the pipeline's default branch); shapes as in `pipeline run-again --plan`; stages in templates
+  give `dependencySource: "unknown"` and no stage list.
+- `run --project P --pipeline ID (--branch B | --tag T) [--commit SHA] [--changes-file F]`: F as for `run-again`; only changed values are
+  sent. `{id,number,pipeline,branch,tag,commit,skipped,changed,webUrl}`; a wrong value or skip is `badInput` and queues nothing.
+- `artifacts --project P --run N`: `{run, artifacts[] {name,type,bytes,files:null}}`. `artifact-files ... --artifact A`: `{files[] {path,bytes}, tooLarge}`
+  (the artifact's zip is downloaded once to a temporary folder; over 100 MB `files` is null). `artifact-open ... --artifact A [--path p] [--max-bytes 2097152]`:
+  `{file,bytes,kind: text|html|log|binary|zip,content}`; `content` for text, log and HTML up to `--max-bytes`, the file is in a temporary
+  folder (without `--path`: the whole zip). Nothing is written in a work folder.
+- `draft-create --project P --repo R --name N --branch feature/x (--from-pipeline ID | --empty)`: a new branch from the repository's
+  default branch with `pipelines/draft-N.yml` (a copy of that pipeline's YAML, or one stage with one script step), then the pipeline
+  `draft-N` in `\Drafts` that runs that file from that branch. main, master, staging, develop, release/* and an existing branch are
+  refused; when the pipeline cannot be made the branch is removed again. `{pipeline{id,name,folder},repo,branch,startedFrom,yamlPath,commit,webUrl}`.
+- `drafts --project P`: `drafts[] {id,name,repo,branch,yamlPath,runs,latestRun,branchAhead,mine,webUrl}`.
+- `draft-delete --project P --pipeline ID`: only a `draft-*` pipeline in `\Drafts` that you made (else `badInput` / `noAccess`, nothing
+  changes). The runs go first with their own retention lease (a run another lease keeps stays: `runsKept`), then the pipeline; its branch goes when its name holds `draft-` and it is not protected or the default branch
+  (else `branchKept` says why). `{deleted{pipeline{id,name},runs,branch,repo},runsKept,branchKept}`.
+
 ## Wiki browser: `aihub wiki browse ...`
 
 Every project wiki and code wiki of the organisation, read and edited without a clone. Same rules as the repository browser: always JSON,

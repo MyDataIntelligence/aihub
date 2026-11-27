@@ -772,6 +772,56 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.browsePipelines",
+        "title": "Browse Pipelines",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browsePipeline",
+        "title": "Browse Pipeline",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseRunPlan",
+        "title": "Run Pipeline: Read the Form",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseRun",
+        "title": "Run Pipeline...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseArtifacts",
+        "title": "Run Artifacts",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseArtifactFiles",
+        "title": "Run Artifact Files",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseArtifactOpen",
+        "title": "Open Run Artifact",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseDraftCreate",
+        "title": "New Draft Pipeline...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseDrafts",
+        "title": "Draft Pipelines",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.browseDraftDelete",
+        "title": "Delete Draft Pipeline",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.commitAll",
         "title": "Commit All Repositories of the Set...",
         "category": "AI Context Hub"
@@ -1869,6 +1919,46 @@
         },
         {
           "command": "aihub.bar.wikiRetryNow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browsePipelines",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browsePipeline",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseRunPlan",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseRun",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseArtifacts",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseArtifactFiles",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseArtifactOpen",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseDraftCreate",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseDrafts",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.browseDraftDelete",
           "when": "false"
         }
       ],
