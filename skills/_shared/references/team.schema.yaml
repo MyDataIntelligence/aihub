@@ -5,6 +5,7 @@
 
 version: 1                         # integer, schema version (required)
 language: en                       # content language of stories, PRs, comments, e.g. en or nl (required)
+teamName: <team>                   # name of the team, shown on the Team settings page (optional)
 
 azureDevOps:                       # where the CLI talks to (required)
   organization: <organization>     # Azure DevOps organization name (required)
@@ -21,6 +22,7 @@ pullRequest:                       # pull request settings (required)
   template: .azuredevops/pull_request_template.md   # path in the repo to the PR template (required)
   title: "{storyId}: {storyTitle}" # title pattern; placeholders {storyId} {storyTitle} {branch} (optional)
   emptySection: "-"                # text the CLI writes into a template section left empty (optional)
+  optionalSections: []             # headings of template sections that are left out when nothing is written there (optional)
   actionSections: ["Required user actions"]   # headings of sections that list what readers must do after the merge; vague text there is refused (optional; common headings count without it)
   userImpact:                      # optional: audience (who the actions section is for), contractPaths (globs; a change there touches users), userFiles ([{repository, paths}] where users keep their files); read by `aihub pr impact`
     contractPaths: ["schema/*.yaml"]
@@ -31,6 +33,12 @@ workItems:                         # work item settings (required)
   templates:                       # optional: template path per work item type for `aihub workitem create`
     Bug: .agents/skills/_shared/assets/bug-template.md
     Task: .agents/skills/_shared/assets/task-template.md
+  emptySection: "-"                # text written into an empty work item section (optional)
+  sectionFields:                   # optional: template heading -> Azure DevOps field reference name
+    <heading>: <field>             # e.g. "Acceptance criteria": Microsoft.VSTS.Common.AcceptanceCriteria (optional)
+  areaPath: <area>                 # area path of new work items (optional)
+  iterationPath: <iteration>       # iteration path of new work items (optional)
+  tags: []                         # tags put on new work items (optional)
   states:                          # optional: states set by story start / finish
     active: Active                 # set when a story is started (default Active)
     finished: Done                 # set when a story is finished (default Done)
@@ -40,6 +48,10 @@ branches:                          # branch rules (required)
   protected:                            # branches the CLI never pushes to or force-updates (optional)
     - main
     - release/*
+
+worktrees:                         # worktree sets (optional)
+  storyPattern: <regex>            # regex whose first group is the story id in a branch name (optional)
+  root: <folder>                   # folder where new worktree sets are made (optional)
 
 cherryPick:                        # cherry-pick settings (optional)
   groups:                          # named sets of target branches, usable as --to <group> (optional)
@@ -60,6 +72,8 @@ fabric:                            # Fabric workspaces for `aihub fabric` (optio
       id: <guid>                   # workspace id (optional; looked up by name when absent)
       environment: dev             # dev | feature | test | acc | prd (optional); acc and prd are never run by the CLI
       branches: []                 # branch patterns tested in this workspace, e.g. ["feature/*"]; several matches run in each (optional)
+      servicePrincipal: <name>     # name of a service principal registered on this PC; the secret is never here (optional)
+  branchWorkspacePrefixes: []      # prefixes of per-branch workspaces "<prefix> <branch label>" for aihub fabric failures (optional)
   environments:                    # which git branch and deployment pipeline stage an environment is, for `aihub release plan --from DEV --to ACC` (optional)
     DEV:                           # environment name you say (DEV, ACC, ...)
       branch: develop              # git branch that holds it (optional; needed for release plan --from/--to)

@@ -100,6 +100,7 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
   const emptyText = team.pullRequest?.emptySection || DEFAULT_EMPTY;
   let description: string;
   let summary: string;
+  let filled: { heading: string; by: string }[] = [];
   if (tpl) {
     const fallback = {
       changes: changesText(commits, diffSummary(root, mergeBase(root, target))),
@@ -108,6 +109,7 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
     const c = compose({ template: tpl.content, body, code, emptyText, fallback, dropExtra: !o.asIs });
     for (const h of c.dropped) ctx.err(`warning: section "${h}" is not in the team template; left out`);
     description = c.text;
+    filled = c.filled;
     const by = (k: string) => c.filled.filter((f) => f.by === k).map((f) => f.heading);
     summary = [
       by("body").length ? `body: ${by("body").join(", ")}` : "",
@@ -133,7 +135,7 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
 
   if (o.dryRun) {
     return o.json
-      ? JSON.stringify({ dryRun: true, title, target, source: branch, workItem: wi, template: tpl?.path, description })
+      ? JSON.stringify({ dryRun: true, title, target, source: branch, workItem: wi, workItemTitle: wiTitle, template: tpl?.path, description, filled, emptyText, commits: commits.length })
       : `dry-run: '${title}' ${branch} -> ${target} (${summary})\n${description}`;
   }
 

@@ -8,11 +8,17 @@ import { loadTeam, TEAM_FILE } from "../lib/team.js";
 import { detectAll } from "../lib/team-detect.js";
 import { effective, parseValue, proposalYaml, questions, setKey, specOf, writeProposal, type Effective, type Question } from "../lib/team-guide.js";
 import { teamLearn } from "../lib/teamLearn.js";
+import { teamShow } from "../lib/teamSettings.js";
+import { validateCmd, editCmd, initCmd } from "./team-settings.js";
 
 export const TEAM_USAGE = [
   "aihub team setup [--refresh] [--json]   (detects what it can, writes a proposed team.yaml when there is none, lists only the open questions)",
   "aihub team set <key> <value>   (changes one key, keeps comments; lists: a,b)",
-  "aihub team show [--missing] [--json]   (effective values with their source: team.yaml, detected, default)",
+  "aihub team show [--missing] [--json [--no-detect]] [--repo <name>] [--refresh]   (effective values with their source; --json adds the Team settings page: which team.yaml applies, every key per repository, overrides, templates)",
+  "aihub team validate [--file <team.yaml>] [--json]   (YAML errors, unknown keys and wrong values with line and fix)",
+  "aihub team preview --template pr|story|bug|commit [--repo <name>] [--json]   (the template filled with the data of this branch; nothing is created)",
+  "aihub team edit [--template pr|story|bug|commit] [--repo <name>] [--content-file f --branch <feature/...> [--title t] [--base-commit sha]] [--json]   (where the file lives; with --content-file: a new branch and a pull request in the team repository, never main)",
+  "aihub team init --from-pack [--repo <name>] | --team-repo <project>/<repo>|<folder> [--everywhere] [--json]   (create team.yaml from the team pack as a pull request, or point this set to the team repository)",
   'aihub team learn "<one sentence rule>" [--rule-file <file>] [--json]   (adds it to the team guidelines through a pull request)',
 ].join("\n");
 
@@ -64,8 +70,37 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const p = parse(rest, { refresh: { type: "boolean" }, json: { type: "boolean" } });
     return void ctx.out((await setup(ctx, { refresh: !!p.values.refresh, json: !!p.values.json })).join("\n"));
   }
+  if (sub === "validate") return validateCmd(rest, ctx);
+  if (sub === "preview") {
+    const p = parse(rest, { template: { type: "string" }, repo: { type: "string" }, json: { type: "boolean" } });
+    const { teamPreview, parseKind } = await import("../lib/teamPreview.js");
+    const r = await teamPreview(ctx, { kind: parseKind(p.values.template), repo: p.values.repo });
+    if (p.values.json) return void ctx.out(JSON.stringify(r));
+    ctx.out(`${r.kind} template (${r.template.source}) with the data of ${r.repo} ${r.branch}${r.title ? `
+title: ${r.title.text}` : ""}
+
+${r.markdown.trimEnd()}`);
+    if (r.note) ctx.out(`
+note: ${r.note}`);
+    return;
+  }
+  if (sub === "edit") return editCmd(rest, ctx);
+  if (sub === "init") return initCmd(rest, ctx);
   if (sub === "show") {
-    const p = parse(rest, { missing: { type: "boolean" }, json: { type: "boolean" } });
+    const p = parse(rest, { missing: { type: "boolean" }, json: { type: "boolean" }, "no-detect": { type: "boolean" }, repo: { type: "string" }, refresh: { type: "boolean" } });
+    if (p.values.json && !p.values.missing) {
+      const page = await teamShow(ctx, { refresh: !!p.values.refresh, repo: p.values.repo });
+      let compat: { values?: unknown; questions?: unknown } = {};
+      if (!p.values["no-detect"]) {
+        try {
+          const eff = effective(loadTeam(repoRoot(ctx.cwd)), await detectAll(ctx, repoRoot(ctx.cwd)));
+          compat = { values: eff, questions: questions(eff, 99) };
+        } catch {
+          compat = {};
+        }
+      }
+      return void ctx.out(JSON.stringify({ ...compat, ...page }));
+    }
     const root = repoRoot(ctx.cwd);
     const eff = effective(loadTeam(root), await detectAll(ctx, root));
     const qs = questions(eff, 99);

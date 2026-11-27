@@ -313,3 +313,14 @@ Always JSON. A failure is `{"error":{"kind","message"}}` with exit 1; kinds as i
 - `form --type T`; `new --type T --title t [--sections-file f] [--system-info-file f] [--severity] [--priority] [--parent N] [--iteration current|path] [--area] [--assign me]` -> `{ id, rev, type, title, url, template }`
 - `draft-ask --type T --title t [--notes-file f]` -> `{ prompt, draftFile }`; `draft --draft-file f` -> `{ sections:[{heading,markdown}] }`
 - `link --id N (--set <folder> | --repo R --branch B)` -> `{ linked:[{repo,branch,added}], prs:[{repo,id,added}] }`; `fix-branch --id N [--repo R] [--base B]` -> `bugfix/<id>-<slug>` (team.yaml `branches.bugfix` wins), pushed and linked
+  (else `branchKept` says why). `{deleted{pipeline{id,name},runs,branch,repo},runsKept,branchKept}`.
+
+## Team settings: `aihub team show|validate|preview|edit|init --json`
+
+The extension's `aihub.bar.team*` commands run these and pass the JSON on; a failure is `{ "error": { kind, message } }` like the repository browser.
+
+- `team show --json --no-detect`: `{ scope: { kind: set|repo, folder, story?, title?, current }, source: { kind: teamRepo|repo|none, team, label, project?, repo?, branch?, path, commit?, short?, date?, schema?, readAt, readError? }, repos: [{ name, path, branch, uses: own|teamRepo|none, teamFile: { exists, path, commit?, date?, sameAsSource? } }], groups: [{ id, title, collapsed? }], views: { "*": KeyRow[], "<repo>": KeyRow[] }, overrides: [{ key, values: [{ repo, display }] }], templates: [{ kind: pr|story|bug|commit, title, key, path, exists? }], looked: [{ what, found, note }] }`; `KeyRow = { key, group, value, display, explain, repo? }` (`repo`: the value holds for that repository only). Without `--no-detect` also `values` and `questions` of the detection.
+- `team validate --json [--file f]`: `{ file, ok, errors, warnings, problems: [{ severity, code: yaml|unknownKey|type|missingFile|missingKey, line, col, key?, message, fix?: { label, replace?: { line, from, to }, createFromPack? }, known?, closest? }] }`. `--schema`: `{ keys: [{ key, explain, required, kind }], examples: { <top-level key>: yaml } }`.
+- `team preview --json --template k`: `{ kind, repo, branch, story?, template: { path?, source }, title?: { pattern?, text, target?, source?, createTitle? }, markdown, emptyText, sources: [{ what, value, from, how: filled|empty|agent }], note? }`.
+- `team edit --json`: `{ what, kind: teamRepo|repo, org?, project?, repo?, localPath?, branch?, path, suggestedBranch, prTitle }`; with `--content-file`: `{ validation?, target, push }` where `push` is the `browse push` answer.
+- `team init --json`: `--team-repo`: `{ teamRepo, scope, commit, branch }`; `--from-pack`: the `aihub init` result (`created`, `pr`, `questions`).

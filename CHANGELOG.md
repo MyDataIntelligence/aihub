@@ -2,6 +2,9 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## Unreleased
+- Team settings: `aihub team show --json` gives the whole Team settings page in one read (which team.yaml applies, every key per repository with its explanation, overrides, templates); `team validate` (errors with line and fix), `team preview --template pr|story|bug|commit`, `team edit` (a new branch and a pull request in the team repository, never main) and `team init --from-pack | --team-repo`. Repositories without their own team.yaml use the team repository once one is set. The schema documents `teamName`, `worktrees`, more `workItems` keys and two Fabric keys.
+
 ## 1.9.0
 
 - `aihub wiki browse`: the engine of the wiki browser (tree, page with the work items it names, publish with a conflict check, history, diff, move to another parent), for a project wiki and a code wiki.
@@ -17,7 +20,6 @@ One `## <version>` heading per release, one bullet per change. `aihub update` sh
 - `aihub pr create`: a branch already on origin gets origin/<branch> as its upstream, so it no longer shows commits to push after the pull request.
 - `aihub status`: the story title kept in the set file when the work item cannot be read, instead of "(unknown)".
 - The engine of the pipeline browser: `aihub browse pipelines|pipeline|run-plan|run|artifacts|artifact-files|artifact-open|draft-create|drafts|draft-delete`. Release notes: docs/releases/1.8.2.md.
-
 ## 1.8.1
 - Diagnose failures with a representative check before queuing a full run. Explicit monitoring continues to an observed outcome. Pipeline reruns retain template parameters and pin the source revision.
 - Generic PR templates and skills link expectations to observations. Optional migration, rollout and review sections appear when filled. Section updates prefer an exact heading and reject oversized descriptions before sending.
