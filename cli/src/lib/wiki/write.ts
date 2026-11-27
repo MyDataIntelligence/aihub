@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { BrowseError, kindOf, meOf, TTL, cached, type Browse } from "../browse/core.js";
 import { hunks, type Hunk } from "../browse/lineDiff.js";
-import { bumpGeneration, fileToName, generationOf, gitPathToPage, nameOf, nameToFile, pagePath, relToWiki, webPageUrl, wikiOf, type WikiInfo } from "./core.js";
+import { bumpGeneration, fileToName, generationOf, gitPathToPage, nameOf, nameToFile, pagePath, parentOf, relToWiki, webPageUrl, wikiOf, type WikiInfo } from "./core.js";
 import { changeOf, commitsOf, fileOfPage, pagesApi, projectClient, type LastChange, type RawPage } from "./read.js";
 import { templateText } from "./templates.js";
 import { readZip } from "./zip.js";
@@ -272,9 +272,16 @@ export async function wikiMove(b: Browse, o: { project: string; wiki: string; pa
   const plan = o.updateLinks === false ? null : await wikiMovePlan({ ...b, refresh: true }, o);
   const pc = projectClient(b, w);
   const comment = (o.comment ?? "").trim() || `Moved ${from} to ${to}`;
+  // Azure DevOps needs newOrder when the parent changes ("Nullable object must have a value"): last under the new parent.
+  // A rename within the same parent keeps its place without one.
+  let order = o.order;
+  if (order === undefined && parentOf(from).toLowerCase() !== parentOf(to).toLowerCase()) {
+    const level = await pc.get<RawPage>(pagesApi(w), { path: parentOf(to), recursionLevel: "oneLevel" }).catch(() => ({ path: parentOf(to), subPages: [] }) as RawPage);
+    order = (level.subPages ?? []).length;
+  }
   await pc.request("POST", `wiki/wikis/${encodeURIComponent(w.id)}/pagemoves`, {
     query: { "api-version": "7.1", comment },
-    body: { path: from, newPath: to, ...(o.order !== undefined ? { newOrder: o.order } : {}) },
+    body: { path: from, newPath: to, ...(order !== undefined ? { newOrder: order } : {}) },
   });
   bumpGeneration(b, w.id);
   const linksUpdated: MoveResult["linksUpdated"] = [];
