@@ -248,6 +248,8 @@ export const BAR_COMMANDS = {
   signInAzureDevOps: "aihub.bar.signInAzureDevOps",
   /** `{ name, project, remoteUrl }`: a pick (Clone and Open, Clone and Add to the set of this window, Choose Another Folder…), then git clone with progress, Cancel and Undo */
   cloneRepository: "aihub.bar.cloneRepository",
+  /** `{ repos?: string[] }` (clone folders, ticked already): New Set… / Open as Set… — pick repositories (Clone from Azure DevOps… too), a new branch for all or an existing one per repository, "Link to a story?"; a story with a set opens that set; else a new set (aihub worktree open --new-set) opens in a new window, with Undo */
+  newSet: "aihub.bar.newSet",
   /** `{ repo, branch, path, where, setId? }` (a BarCheckout), or `{ repo, branch, path, where: "none" }` for a branch checked out nowhere (path: the clone): a pick, then the folder (or the whole set) opens in a new window; the set never changes */
   openCheckout: "aihub.bar.openCheckout",
   /** `{ repo, threadId }` (from openComments): opens the file on the line and unfolds the thread (counts as read); a general comment shows its text with Open Pull Request */
