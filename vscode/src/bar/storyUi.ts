@@ -119,10 +119,15 @@ function pickStory(engine: BarEngine, cwd: string | undefined): Promise<Picked |
 
 // ---- Open Story ----------------------------------------------------------------------------------------------
 
-async function storyRows(story: StoryRef, picked: Picked, cwd: string): Promise<StoryJson["branches"]> {
-  if (picked.rows) return picked.rows;
+/** The branches of the story and its title (the one read that Open Story by number needs before it names anything). */
+async function storyRead(story: StoryRef, picked: Picked, cwd: string): Promise<{ branches: StoryJson["branches"]; title?: string }> {
+  if (picked.rows && story.title) return { branches: picked.rows };
   const r = await readJson<{ stories: StoryJson[] }>(runner(), ["story", "branches", "--id", String(story.id)], cwd);
-  return r.stories[0]?.branches ?? [];
+  return { branches: picked.rows ?? r.stories[0]?.branches ?? [], title: r.stories[0]?.title || undefined };
+}
+
+async function storyRows(story: StoryRef, picked: Picked, cwd: string): Promise<StoryJson["branches"]> {
+  return (await storyRead(story, picked, cwd)).branches;
 }
 
 /** Tick the repositories: the story's linked branches ticked, the others (all on this PC) unticked with "new branch". */
@@ -155,7 +160,7 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
   const given = idArg(arg);
   const picked: Picked | undefined = given ? { story: { id: given, title: readSeenStories(process.env)[given]?.title ?? "" } } : await pickStory(h.engine, cwd);
   if (!picked) return;
-  const story = picked.story;
+  let story = picked.story;
   // the story of this window: nothing to open, one quiet line
   const here = openFacts(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath).set;
   if (here && here.story === story.id) return void vscode.window.showInformationMessage(`AI Context Hub: #${story.id} is already open in this window.`);
@@ -171,7 +176,10 @@ async function openStory(h: StoryHooks, arg: unknown): Promise<void> {
     return;
   }
   if (!cwd) return void vscode.window.showWarningMessage("AI Context Hub: no repository is known on this PC yet. Add a folder with Folders to Look In...");
-  const rows = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Reading story ${story.id}...` }, () => storyRows(story, picked, cwd));
+  const read = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Reading story ${story.id}...` }, () => storyRead(story, picked, cwd));
+  const rows = read.branches;
+  // by number the title is not known yet: it comes with this read, before the branch and the folder are named
+  if (!story.title && read.title) story = { ...story, title: read.title };
   const { rows: repoRows, notOnThisPc } = storyRepoRows(rows, repositories);
   if (!repoRows.length) return void vscode.window.showWarningMessage("AI Context Hub: there are no repositories on this PC. Add a folder with Folders to Look In...");
   const ticked = await pickRepos(story, repoRows, notOnThisPc);
