@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
-import { spawn } from "../proc.js";
+import { randomBytes } from "node:crypto";
+import { tmpdir } from "node:os";
+import { spawn, spawnSync } from "../proc.js";
 import type { PipelineStep } from "./pipelineYaml.js";
 
 /**
@@ -182,6 +184,23 @@ export function commandFor(step: PipelineStep, input: CommandInput, o: { sh: She
     default:
       return { file: "", args: [], display: "", missing: step.task ?? step.kind };
   }
+}
+
+/** A new folder name for one run's scripts under the user's temp folder (outside the repository, which may be synced). */
+export const runTempDir = (): string => join(tmpdir(), `aihub-preflight-${process.pid}-${randomBytes(4).toString("hex")}`);
+
+/**
+ * Creates `dir` for the current user only: mode 700 on Unix; on Windows without inherited entries and with full control
+ * for the current user alone (one icacls call per run). Returns a note when Windows refused the ACL; the folder is then
+ * as private as the user's temp folder.
+ */
+export function privateDir(dir: string, platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (platform !== "win32") return undefined;
+  const user = env.USERDOMAIN && env.USERNAME ? `${env.USERDOMAIN}\\${env.USERNAME}` : env.USERNAME;
+  if (!user) return "the script folder keeps the ACL of the temp folder (no USERNAME to restrict it to)";
+  const r = spawnSync("icacls", [dir, "/inheritance:r", "/grant:r", `${user}:(OI)(CI)F`], { encoding: "utf8", windowsHide: true });
+  return r.status === 0 ? undefined : `the script folder keeps the ACL of the temp folder (icacls: ${String(r.stderr || r.stdout || r.error?.message || "").trim().split("\n")[0]})`;
 }
 
 /** The part of `process` that `withTempDir` listens to. */
