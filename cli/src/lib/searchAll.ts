@@ -29,6 +29,10 @@ export interface SearchHit {
   state?: string;
   wiki?: string;
   line?: number;
+  /** a closed work item (Done, Closed, Removed) or a completed / abandoned pull request: shown last and greyed */
+  closed?: boolean;
+  /** a repository cloned on this PC: where (the UI shows "cloned" and the path as its tooltip) */
+  localPath?: string;
   url?: string;
 }
 
@@ -120,7 +124,8 @@ async function repos(b: Browse, q: string, top: number, project?: string): Promi
   const repoHits = rank(inScope.flatMap((p) => p.repos).filter((r) => r.canOpen), (r) => r.repo, q).map<SearchHit>((r) => ({
     kind: "repos",
     title: r.repo,
-    detail: `${r.project}${r.clone ? " · cloned on this PC" : ""}`,
+    detail: r.project,
+    ...(r.clone ? { localPath: r.clone.path } : {}),
     project: r.project,
     repo: r.repo,
     branch: r.defaultBranch || undefined,
@@ -195,7 +200,37 @@ interface RawItem {
   fields?: Record<string, unknown>;
 }
 
-const ITEM_FIELDS = ["System.Id", "System.Title", "System.WorkItemType", "System.State", "System.TeamProject"];
+const ITEM_FIELDS = ["System.Id", "System.Title", "System.WorkItemType", "System.State", "System.TeamProject", "System.ChangedDate"];
+
+/** States that mean the work is over, in the processes of Azure DevOps (Agile, Scrum, CMMI, Basic). */
+export const CLOSED_STATES = ["done", "closed", "removed", "completed", "cut", "inactive"];
+
+/**
+ * How well a title matches the text: the whole title, its start, a word start, anywhere, every word somewhere; 0 = not at all.
+ * Ranks work items and pull requests within open and closed.
+ */
+export function titleScore(title: string, q: string): number {
+  const t = title.toLowerCase().trim();
+  const s = q.toLowerCase().replace(/^[#!]/, "").trim();
+  if (!s) return 0;
+  if (t === s) return 100;
+  if (t.startsWith(s)) return 80;
+  if (new RegExp(`(^|[^a-z0-9])${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(t)) return 60;
+  if (t.includes(s)) return 40;
+  const words = s.split(/\s+/).filter(Boolean);
+  return words.length > 1 && words.every((w) => t.includes(w)) ? 20 : 0;
+}
+
+/** Open before closed; within each the best title match, then the most recently changed. */
+export function rankItems<T>(rows: T[], o: { title: (x: T) => string; closed: (x: T) => boolean; changed: (x: T) => number }, q: string): T[] {
+  return rows
+    .map((x) => ({ x, c: o.closed(x) ? 1 : 0, s: titleScore(o.title(x), q), t: o.changed(x) }))
+    .sort((a, b) => a.c - b.c || b.s - a.s || b.t - a.t)
+    .map((r) => r.x);
+}
+
+const itemClosed = (x: RawItem) => CLOSED_STATES.includes(String(x.fields?.["System.State"] ?? "").toLowerCase());
+const itemChanged = (x: RawItem) => Date.parse(String(x.fields?.["System.ChangedDate"] ?? "")) || 0;
 
 function itemHit(b: Browse, x: RawItem): SearchHit {
   const f = x.fields ?? {};
@@ -208,6 +243,7 @@ function itemHit(b: Browse, x: RawItem): SearchHit {
     type: String(f["System.WorkItemType"] ?? "") || undefined,
     state: String(f["System.State"] ?? "") || undefined,
     project: project || undefined,
+    ...(itemClosed(x) ? { closed: true } : {}),
     url: `${b.client.remote.orgUrl}/${encodeURIComponent(project)}/_workitems/edit/${x.id}`,
   };
 }
@@ -235,11 +271,9 @@ async function workitems(b: Browse, q: string, top: number, project?: string): P
     const items = await b.client.request<{ value?: RawItem[] }>("POST", "wit/workitemsbatch", { orgLevel: true, body: { ids: ids.slice(0, 50), fields: ITEM_FIELDS } }).then((r) => r.data.value ?? []);
     return { ids, items };
   });
-  const byId = new Map(found.data.items.map((x) => [x.id, x]));
-  for (const id of found.data.ids) {
-    const x = byId.get(id);
-    if (x && id !== n) out.push(itemHit(b, x));
-  }
+  // the exact #number first (above), then open before Done/Closed, the best title match, the most recently changed
+  const rows = found.data.items.filter((x) => x.id !== n);
+  for (const x of rankItems(rows, { title: (r) => String(r.fields?.["System.Title"] ?? ""), closed: itemClosed, changed: itemChanged }, q)) out.push(itemHit(b, x));
   return { route: n ? "id+wiql" : "wiql", count: out.length, results: out.slice(0, top) };
 }
 
@@ -267,6 +301,7 @@ function prHit(b: Browse, x: RawPr, projectName?: string): SearchHit {
     repo,
     branch: src || undefined,
     state: x.isDraft && x.status === "active" ? "draft" : x.status,
+    ...(x.status && x.status !== "active" ? { closed: true } : {}),
     url: `${b.client.remote.orgUrl}/${encodeURIComponent(project)}/_git/${encodeURIComponent(repo)}/pullrequest/${x.pullRequestId}`,
   };
 }
@@ -299,12 +334,12 @@ async function prs(b: Browse, q: string, top: number, project?: string): Promise
   });
   const q2 = q.replace(/^[!#]/, "");
   const match = (x: RawPr) => contains(x.title, q2) || contains(x.sourceRefName?.replace(/^refs\/heads\//, ""), q2) || (n !== undefined && x.pullRequestId === n);
-  // active first, then the newest number
-  const order = (s?: string) => (s === "active" ? 0 : s === "completed" ? 1 : 2);
-  const hits = rows
-    .filter((r) => match(r.pr) && r.pr.pullRequestId !== n)
-    .sort((a, c) => order(a.pr.status) - order(c.pr.status) || c.pr.pullRequestId - a.pr.pullRequestId)
-    .map((r) => prHit(b, r.pr, r.project));
+  // active before completed and abandoned; within each the best title match, then the newest
+  const hits = rankItems(
+    rows.filter((r) => match(r.pr) && r.pr.pullRequestId !== n),
+    { title: (r) => r.pr.title ?? "", closed: (r) => r.pr.status !== "active", changed: (r) => r.pr.pullRequestId },
+    q2,
+  ).map((r) => prHit(b, r.pr, r.project));
   out.push(...hits);
   const notes = [skipped ? `${skipped} projects not searched (at most ${MAX_PROJECTS})` : "", failed ? `${failed} project${failed === 1 ? "" : "s"} could not be read` : ""].filter(Boolean);
   if (failed && failed === names.length && !out.length) throw new BrowseError("failed", "no project's pull requests could be read");
