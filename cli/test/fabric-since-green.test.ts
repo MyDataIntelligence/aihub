@@ -230,6 +230,8 @@ describe("aihub fabric failures --since-green", () => {
     expect(none.out).toContain("other repositories of the run: not available");
     const changed = await go(all(undefined, undefined, { repos: { 101: repos(C1, sha("3f9a1c2")), 104: repos(C3, sha("5b5b5b5")) } }), [...args, "--since-green"]);
     expect(changed.out).toContain("other repositories of the run: central 3f9a1c2 -> 5b5b5b5");
+    expect(changed.out).toContain("another repository of the run changed (central 3f9a1c2 -> 5b5b5b5): its commits are not read here, so look there too");
+    expect(none.out).not.toContain("another repository of the run changed");
   });
 
   it("nothingDeployed: the cause is outside the code", async () => {

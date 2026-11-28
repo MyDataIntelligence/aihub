@@ -246,6 +246,9 @@ export async function sinceGreen(s: Setup, fabric: FabricClient, t: Target, f: {
       r.suspects.forEach((x, i) => lines.push(`    ${i + 1}. ${label(x)} "${x.title}"${x.stories.length ? ` (${storyText(x.stories)})` : ""}`, `       ${x.reason}: ${x.touched.slice(0, 3).join(", ")}${x.touched.length > 3 ? ` and ${x.touched.length - 3} more` : ""}`));
     }
     for (const x of r.unrelated) lines.push(`  not suspect: ${label(x)} "${x.title}" touches only ${areas(x.paths)}`);
+    // a changed template repository changes what is deployed without a commit here: say it where the reader decides
+    const moved = data.otherRepositories.filter((x) => x.changed);
+    if (moved.length) data.notes.push(`another repository of the run changed (${moved.map((x) => `${x.alias} ${short(x.before) || "-"} -> ${short(x.after) || "-"}`).join(", ")}): its commits are not read here, so look there too`);
     for (const n of data.notes) lines.push(`  ${n}`);
     data.outcome = r.suspects.length ? "suspects" : "deployedUnrelated";
     lines.push(`  outcome: ${data.outcome}`);
