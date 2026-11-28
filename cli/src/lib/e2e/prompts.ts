@@ -5,7 +5,7 @@ import { configHome } from "../configHome.js";
 import type { Ctx } from "../context.js";
 import { chooseWorkspace, fabricWorkspaces } from "../fabric.js";
 import { originDefaultBranch } from "../git.js";
-import { packRoot } from "../pack.js";
+import { promptsRoot } from "../pack.js";
 import { readSetFile, repoBranch } from "../setFile.js";
 import { me, type Stories } from "../stories/core.js";
 import { readItem } from "../stories/read.js";
@@ -79,25 +79,40 @@ function teamRoots(s: Stories, set?: string): string[] {
   return roots;
 }
 
+/** A prompt file with its text; a missing or empty one is a clear error, never an empty prompt. */
+export function promptText(file: string): string {
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    throw new BrowseError("notFound", `prompt file not found: ${file}`);
+  }
+  if (!splitFront(text).body.trim()) throw new BrowseError("failed", `prompt file is empty: ${file}; fix it or remove it to use the default`);
+  return text;
+}
+
 export function findPrompt(s: Stories, action: Action, o: { id?: number; set?: string } = {}): { source: Source; file: string; text: string } {
   if (o.id) {
     const f = storyPromptFile(s, o.id, action);
-    if (existsSync(f)) return { source: "story", file: f, text: readFileSync(f, "utf8") };
+    if (existsSync(f)) return { source: "story", file: f, text: promptText(f) };
   }
   for (const r of teamRoots(s, o.set)) {
     const f = join(r, TEAM_PROMPT_DIR, `${action}.md`);
-    if (existsSync(f)) return { source: "team", file: f, text: readFileSync(f, "utf8") };
+    if (existsSync(f)) return { source: "team", file: f, text: promptText(f) };
   }
   // the default in the team's language (team.yaml `language`; English when it says nothing): prompts/en/, or prompts/ (Dutch) for a Dutch team
-  const en = join(packRoot(), "prompts", "en", `${action}.md`);
-  const f = langOf(s) === "en" && existsSync(en) ? en : join(packRoot(), "prompts", `${action}.md`);
-  return { source: "default", file: f, text: readFileSync(f, "utf8") };
+  const root = promptsRoot();
+  const en = join(root, "en", `${action}.md`);
+  const f = langOf(s) === "en" && existsSync(en) ? en : join(root, `${action}.md`);
+  return { source: "default", file: f, text: promptText(f) };
 }
 
-export function limitsText(lang: "nl" | "en", workspace: string): string {
+/** The fixed limits; the workspace is named only when team.yaml knows it (never a placeholder or a note in brackets). */
+export function limitsText(lang: "nl" | "en", workspace?: string): string {
+  const ws = workspace ? (lang === "nl" ? ` (${workspace})` : ` (${workspace})`) : "";
   return lang === "nl"
-    ? `Nooit pushen naar of mergen in main of staging. Nooit ACC of PRD. Alleen de Fabric-workspace van de featurebranch (${workspace}). Nooit een pull request mergen of completen.`
-    : `Never push to or merge into main or staging. Never ACC or PRD. Only the Fabric workspace of the feature branch (${workspace}). Never merge or complete a pull request.`;
+    ? `Nooit pushen naar of mergen in main of staging. Nooit ACC of PRD. Alleen de Fabric-workspace van de featurebranch${ws}. Nooit een pull request mergen of completen.`
+    : `Never push to or merge into main or staging. Never ACC or PRD. Only the Fabric workspace of the feature branch${ws}. Never merge or complete a pull request.`;
 }
 
 export interface Rendered {
@@ -165,7 +180,8 @@ export async function valuesFor(ctx: Ctx, s: Stories, id: number): Promise<Recor
   const firstRepo = top?.repos[0]?.name ?? s.root?.split(/[\\/]/).pop() ?? "";
   const target = defaultTargetFor(s.teamCfg, firstRepo) ?? (s.root ? originDefaultBranch(s.root) : "") ?? "";
   const ws = chooseWorkspace(fabricWorkspaces(s.teamCfg).filter((w) => w.environment !== "acc" && w.environment !== "prd"), { branch });
-  const workspace = ws?.name ?? (lang === "nl" ? "(geen Fabric-workspace in team.yaml)" : "(no Fabric workspace in team.yaml)");
+  // without a workspace in team.yaml a plain phrase, so a sentence around it still reads well
+  const workspace = ws?.name ?? (lang === "nl" ? "de workspace van de featurebranch (team.yaml noemt er geen)" : "the workspace of the feature branch (team.yaml names none)");
   const none = lang === "nl" ? "geen" : "none";
   const criteria = crit?.criteria.length
     ? renderCriteria(crit.criteria, lang)
@@ -177,6 +193,13 @@ export async function valuesFor(ctx: Ctx, s: Stories, id: number): Promise<Recor
       : "  (no acceptance criteria yet)";
   return {
     "story.id": String(id),
+    "story.rev": String(item.rev),
+    // the text of the story without its criteria (they come separately): enough for criteria and refine without a second read
+    "story.description":
+      item.sections
+        .filter((x) => !/acceptatiecriteria|acceptance ?criteria|criteria/i.test(x.heading) && x.markdown.trim())
+        .map((x) => `${x.heading}: ${x.markdown.trim().replace(/\s*\n\s*/g, " ")}`)
+        .join("; ") || (lang === "nl" ? "(leeg)" : "(empty)"),
     "story.title": item.title,
     "story.type": item.type,
     "story.state": item.state,
@@ -195,7 +218,8 @@ export async function valuesFor(ctx: Ctx, s: Stories, id: number): Promise<Recor
     workspace,
     "team.fabric.featureWorkspace": workspace,
     language: lang === "nl" ? "Nederlands" : "English",
-    limits: limitsText(lang, workspace),
+    limits: limitsText(lang, ws?.name),
+    "workspace.known": ws ? "true" : "",
   };
 }
 
@@ -206,7 +230,7 @@ export async function renderPrompt(ctx: Ctx, s: Stories, action: Action, id: num
   // a prompt edited for one story has no front matter: the title and summary come from the team or default version
   const meta = found.source === "story" ? { ...splitFront(findPrompt(s, action, { set }).text).meta, ...own } : own;
   const values = await valuesFor(ctx, s, id);
-  const hasWs = !/^\(/.test(values.workspace);
+  const hasWs = values["workspace.known"] === "true";
   const { readState, stateFile } = await import("./state.js");
   const run = readState<{ options?: Partial<RunOptions> }>(stateFile(ctx, id, "run"), {});
   const options = runOptions({ ...run.options, ...given }, hasWs);
@@ -228,13 +252,19 @@ export async function renderPrompt(ctx: Ctx, s: Stories, action: Action, id: num
 }
 
 /** Every action with its title, slash command, summary and where its prompt comes from (no story needed). */
-export function listPrompts(ctx: Ctx, s: Stories): { prompts: { action: Action; title: string; slash: string; goal: string; reads: string; produces: string; source: Source; file: string }[] } {
+export function listPrompts(ctx: Ctx, s: Stories): { prompts: { action: Action; title: string; slash: string; goal: string; reads: string; produces: string; source: Source; file: string; text: string }[] } {
   const set = setFolderOf(ctx.cwd);
+  const repo = s.root?.split(/[\\/]/).pop() ?? "";
+  // team.yaml's target branch, else the default branch of the repository this runs in, else a plain word
+  const listTarget = defaultTargetFor(s.teamCfg, repo) || (s.root ? originDefaultBranch(s.root) : "") || (langOf(s) === "en" ? "the target branch" : "de doelbranch");
   return {
     prompts: ACTIONS.map((a) => {
       const p = findPrompt(s, a, { set });
-      const { meta } = splitFront(p.text);
-      return { action: a, title: meta.title ?? a, slash: meta.slash ?? `/${a}`, goal: meta.goal ?? "", reads: meta.reads ?? "", produces: meta.produces ?? "", source: p.source, file: p.file };
+      const { meta, body } = splitFront(p.text);
+      // the full prompt with its placeholders, for the Prompts page (no story is needed)
+      // the summary has no story: {{target}} becomes the team's target branch (or a plain word), never a raw placeholder
+      const goal = fill(meta.goal ?? "", { target: listTarget }).text;
+      return { action: a, title: meta.title ?? a, slash: meta.slash ?? `/${a}`, goal, reads: meta.reads ?? "", produces: meta.produces ?? "", source: p.source, file: p.file, text: body.trim() + "\n" };
     }),
   };
 }

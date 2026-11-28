@@ -8,10 +8,12 @@ produces: A proposal in the proposal file; the user ticks what is saved.
 # Define Acceptance Criteria
 Propose testable acceptance criteria for story #{{story.id}} {{story.title}}. Write nothing to Azure DevOps.
 
-## Read
-- The story: `aihub stories show --id {{story.id}}` (description, current criteria, tasks).
+## The story
+- Description: {{story.description}}
 - Current criteria:
 {{criteria}}
+- Tasks: {{tasks}}
+Nothing more is needed; do not read the story again.
 
 ## Do
 1. Turn every criterion into an observable result. Vague words ("fast", "good", "clean") become a number or a concrete
@@ -25,7 +27,9 @@ Propose testable acceptance criteria for story #{{story.id}} {{story.title}}. Wr
       How tested: <kind>: <how>
       Proof: <what>
    ```
-4. Then answer only "Proposal ready" and stop. The user ticks in the story browser what is saved.
+4. Show the proposal as a numbered list (criterion, how tested, proof), in {{language}}, and stop. Saving is the user's
+   call: in the story browser, or here by naming the numbers; then run
+   `aihub criteria apply --id {{story.id}} --rev {{story.rev}} --take <numbers>`.
 
 ## Limits
 {{limits}}

@@ -20,6 +20,15 @@ Without `--publish` nothing is written. Use `--wiki <name>` when the project has
 
 Example: "werk de wiki bij met de nieuwe zoekfunctie" is a body file, the diff, a question, then the command with `--publish`.
 
+## Pages from source files
+When the user names pages (or a whole wiki) and repositories, folders or files to take the context from:
+
+```sh
+aihub wiki update start --project test-project --wiki test-project.wiki --path "/Runbooks/Order export" --sources-file sources.json
+```
+
+`sources.json` is `[{"project":"test-project","repo":"orders-ingest","path":"/docs"}]` (add `"local"` for a clone). Then follow the TASK.md in the answer's `dir`: edit the files under `pages/`, check with `aihub wiki update diff --id <id>`. Publish only after a yes per page: `aihub wiki update apply --id <id> --path "/Runbooks/Order export"`. A conflict means the page changed meanwhile: nothing was written.
+
 ## What the CLI fills
 Wiki selection, page lookup, the page version (no overwrite of a newer edit), the diff and creation of a new page when it does not exist.
 

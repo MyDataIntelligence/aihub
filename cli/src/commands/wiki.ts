@@ -5,12 +5,14 @@ import { wikiAttach, wikiCreate, wikiCreateWiki, wikiDelete, wikiHistory, wikiLi
 import { wikiUpdate } from "../lib/wiki.js";
 
 export const USAGE =
-  "aihub wiki list | pages [--path p] | read --page p | create --page p --body-file f | update --page p --body-file f [--publish] | move --page p --to q | delete --page p --yes | attach --file f [--name n] | history --page p | create-wiki --name n [--code --repo r --branch b --folder f]   (--wiki <name> picks the wiki) | browse <sub> (the wiki browser, always JSON: aihub wiki browse --help)";
+  "aihub wiki list | pages [--path p] | read --page p | create --page p --body-file f | update --page p --body-file f [--publish] | move --page p --to q | delete --page p --yes | attach --file f [--name n] | history --page p | create-wiki --name n [--code --repo r --branch b --folder f]   (--wiki <name> picks the wiki) | browse <sub> (the wiki browser, always JSON: aihub wiki browse --help) | update <sub> (pages updated by an agent from source files, published only on apply: aihub wiki update --help)";
 
 /** The project wiki: read, list, search (aihub search wiki), create, update, move, delete, attach, history. */
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
   if (sub === "browse") return (await import("./wiki-browse.js")).runWikiBrowse(rest, ctx);
+  // `wiki update start|read|write|diff|apply|discard|list` is the agent flow; `wiki update --page` stays the one-page update
+  if (sub === "update" && /^(start|read|write|diff|apply|discard|list)$/.test(rest[0] ?? "")) return (await import("./wiki-update.js")).runWikiUpdate(rest, ctx);
   const v = flags(rest, {
     page: { type: "string" },
     "body-file": { type: "string" },

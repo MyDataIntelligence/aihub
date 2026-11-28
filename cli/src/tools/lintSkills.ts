@@ -76,9 +76,9 @@ export function promptCommands(promptsDir: string): PromptCommandSpec[] {
 export function expectedPromptCommand(kind: "opencode" | "copilot", c: PromptCommandSpec): string {
   const what = c.what;
   if (kind === "opencode") {
-    return `---\ndescription: "${c.title} (${what} id)"\n---\nRun \`aihub prompt render ${c.name} --id $ARGUMENTS\` and carry out the prompt it prints as your task, exactly as written (it is the team's prompt for this action, filled in with the ${what}).\nIf the command fails, show its error and stop. Without an id, ask for the ${what} number.\n`;
+    return `---\ndescription: "${c.title} (${what} id)"\n---\nRun \`aihub prompt render ${c.name} --id $ARGUMENTS\` and carry out the prompt it prints as your task, exactly as written (it is the team's prompt for this action, filled in with the ${what}). Load no skill first: the prompt is the whole task.\nIf the command fails, show its error and stop. Without an id, ask for the ${what} number.\n`;
   }
-  return `---\nmode: agent\ndescription: "${c.title} (${what} id)"\n---\nRun \`aihub prompt render ${c.name} --id \${input:args:${what} id}\` and carry out the prompt it prints as your task, exactly as written (it is the team's prompt for this action, filled in with the ${what}).\nIf the command fails, show its error and stop.\n`;
+  return `---\nmode: agent\ndescription: "${c.title} (${what} id)"\n---\nRun \`aihub prompt render ${c.name} --id \${input:args:${what} id}\` and carry out the prompt it prints as your task, exactly as written (it is the team's prompt for this action, filled in with the ${what}). Load no skill first: the prompt is the whole task.\nIf the command fails, show its error and stop.\n`;
 }
 
 export function expectedCommand(kind: "opencode" | "copilot", c: CommandSpec): string {
