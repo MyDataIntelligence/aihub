@@ -6,7 +6,7 @@ import { setPreflightDeps } from "../src/commands/preflight.js";
 import { loadJob } from "../src/lib/preflight/pipelineYaml.js";
 import { evalCondition, expand } from "../src/lib/preflight/expr.js";
 import { masker, readLog } from "../src/lib/preflight/vso.js";
-import { commandFor, pythonFor, scriptShell, splitArgs, type Shells } from "../src/lib/preflight/exec.js";
+import { commandFor, pathShells, posixPaths, pythonFor, scriptShell, splitArgs, type Shells } from "../src/lib/preflight/exec.js";
 import { localImports, writeCalls } from "../src/lib/preflight/drift.js";
 import { validateTeamText } from "../src/lib/teamValidate.js";
 import { ctxFor, fakeFetch, makeRepo, sh, tmp, write } from "./helpers.js";
@@ -295,6 +295,28 @@ describe("preflight: how a step becomes a process", () => {
     const p = commandFor(step("script"), { inline: "Write-Host 1" }, o(fakeShells(["pwsh"]), { shell: "pwsh" }));
     expect(p.file).toBe("pwsh");
     expect(p.script?.content).toContain("$ErrorActionPreference = 'Stop'");
+  });
+
+  it("Windows: bash is Git for Windows' bash, also when only git is on PATH; WSL's bash never counts; the full path is spawned", () => {
+    const root = tmp();
+    write(root, "Windows/System32/bash.exe", "wsl");
+    write(root, "Git/cmd/git.exe", "git");
+    write(root, "Git/bin/bash.exe", "bash");
+    const env = { PATH: [join(root, "Windows", "System32"), join(root, "Git", "cmd")].join(";"), PATHEXT: ".exe" };
+    const win = pathShells(env, "win32");
+    expect(win.which("bash")).toBe(join(root, "Git", "bin", "bash.exe"));
+    expect(scriptShell(win)).toBe("bash");
+    const b = commandFor(step("script"), { inline: "echo 1" }, o(win));
+    expect(b.file).toBe(join(root, "Git", "bin", "bash.exe")); // by name, Windows would start the first bash.exe on PATH: WSL's
+    // no Git at all: WSL's bash alone is not bash, script steps fall back to cmd
+    expect(pathShells({ PATH: join(root, "Windows", "System32"), PATHEXT: ".exe" }, "win32").which("bash")).toBeUndefined();
+  });
+
+  it("Windows paths in a bash script get forward slashes, so an unquoted $(Build.SourcesDirectory) keeps its separators", () => {
+    const base = "C:\\Users\\dev\\my repos\\test-repo\\.git\\aihub\\preflight";
+    const s = `${base}\\s`;
+    expect(posixPaths(`ls ${s}/jobs && cd "${s}" && echo ${base}`, [base, s])).toBe('ls C:/Users/dev/my repos/test-repo/.git/aihub/preflight/s/jobs && cd "C:/Users/dev/my repos/test-repo/.git/aihub/preflight/s" && echo C:/Users/dev/my repos/test-repo/.git/aihub/preflight');
+    expect(posixPaths("echo C:\\other", [base, s])).toBe("echo C:\\other");
   });
 
   it("PythonScript@0: preflight.python, else python3 or python; a missing program is reported, not guessed", () => {

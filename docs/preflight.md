@@ -73,6 +73,10 @@ committed), laid out like an Azure Pipelines multi-checkout:
 Steps may write there freely; each run resets both checkouts (ignored files such as a virtual environment stay).
 `git worktree list` shows the two detached worktrees. `--verbose` prints the scratch path and every output line.
 
+On Windows, bash is Git for Windows' bash, also when only `git.exe` is on PATH (a PowerShell or VS Code terminal); WSL's
+bash never counts. A bash script gets the preflight folders (`$(Build.SourcesDirectory)` and the others) with forward
+slashes, as on a Linux agent. Without bash, `script:` steps run with cmd.exe and the output says so.
+
 ## Variables
 
 `$(Name)`, `${{ parameters.x }}` and `${{ variables.x }}` are expanded in arguments, env values, inline scripts and
