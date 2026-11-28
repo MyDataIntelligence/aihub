@@ -647,6 +647,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.changeVerify",
+        "title": "Change with Agent: Run Checks (temporary copy)",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.changeToWorkingCopy",
         "title": "Change with Agent: Open as Working Copy",
         "category": "AI Context Hub"
@@ -2089,6 +2094,10 @@
         },
         {
           "command": "aihub.bar.changeStop",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeVerify",
           "when": "false"
         },
         {

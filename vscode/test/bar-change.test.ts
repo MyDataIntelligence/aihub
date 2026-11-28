@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { addPending, externalTerminal, opencodeLine, parseChangeStart, PENDING_TTL_MS, startArgs, takePending, workingCopyTask } from "../src/bar/change";
+import { addPending, externalTerminal, opencodeLine, parseChangeStart, PENDING_TTL_MS, progressLines, startArgs, takePending, verifyArgs, workingCopyTask } from "../src/bar/change";
 import { BAR_COMMANDS } from "../src/bar/types";
 import { vscodeRipgrep } from "../src/bar/browse";
 
@@ -55,7 +55,7 @@ describe("change with agent in the bar: the argument and the calls", () => {
   });
 
   it("every change command is in the contract", () => {
-    for (const id of ["changeStart", "changeState", "changePush", "changeDiscard", "changeStop", "changeToWorkingCopy", "askStart", "askState", "askAllow", "askApply", "askOpenAsSet", "askDiscard"]) expect((BAR_COMMANDS as Record<string, string>)[id]).toBe(`aihub.bar.${id}`);
+    for (const id of ["changeStart", "changeState", "changePush", "changeDiscard", "changeStop", "changeVerify", "changeToWorkingCopy", "askStart", "askState", "askAllow", "askApply", "askOpenAsSet", "askDiscard"]) expect((BAR_COMMANDS as Record<string, string>)[id]).toBe(`aihub.bar.${id}`);
   });
 });
 
@@ -65,5 +65,19 @@ describe("text in files: VS Code's own ripgrep for the local fallback", () => {
     expect(vscodeRipgrep("C:/vsc/resources/app", seen("C:/vsc/resources/app/node_modules/@vscode/ripgrep/bin/rg.exe"), "win32")?.replace(/\\/g, "/")).toBe("C:/vsc/resources/app/node_modules/@vscode/ripgrep/bin/rg.exe");
     expect(vscodeRipgrep("/opt/vsc/app", seen("/opt/vsc/app/node_modules.asar.unpacked/@vscode/ripgrep/bin/rg"), "linux")?.replace(/\\/g, "/")).toBe("/opt/vsc/app/node_modules.asar.unpacked/@vscode/ripgrep/bin/rg");
     expect(vscodeRipgrep("/x", () => false, "linux")).toBeUndefined();
+  });
+});
+
+describe("Run Checks (temporary copy)", () => {
+  it("lint by default, tests on request, always with progress", () => {
+    expect(verifyArgs({ id: "c1" })).toEqual(["browse", "change", "verify", "--id", "c1", "--progress"]);
+    expect(verifyArgs({ id: "c1", tests: true })).toEqual(["browse", "change", "verify", "--id", "c1", "--tests", "--progress"]);
+    expect(verifyArgs({ id: "c1", lint: false, tests: true })).toEqual(["browse", "change", "verify", "--id", "c1", "--tests-only", "--progress"]);
+    expect(() => verifyArgs({ id: "c1", lint: false })).toThrow(/nothing to check/);
+    expect(() => verifyArgs({})).toThrow(/which change/);
+  });
+  it("reads the progress lines out of stderr and skips the rest", () => {
+    const text = ['{"progress":{"id":"c1","step":"clone","n":1,"total":5,"message":"copying"}}', "a warning", '{"progress":{"id":"c1","step":"lint","n":4,'].join("\n");
+    expect(progressLines(text)).toEqual([{ id: "c1", step: "clone", n: 1, total: 5, message: "copying" }]);
   });
 });

@@ -268,6 +268,9 @@ prompt>`. A file that changed on the base branch since the base commit gives `{"
 and nothing is pushed; `--rebase` re-applies changes that do not overlap on the newest version. Pushed:
 `{"status":"pushed",branch,commit:{id,short,webUrl},startedFrom,rebased,files,pr|null,prError,webUrl}`; the change is then `pushed`.
 
+`change verify --id ID [--tests | --tests-only] [--progress]` (Run Checks, temporary copy): a shallow, blob-less copy of the base commit in the temp folder (outside every repository; for lint only the folders of the changed files, sparse; for tests the whole tree), the change applied, `aihub guidelines check` (the team's linters, changed lines only) and with `--tests` the tests of the changed files (`aihub test changed --run`). The copy is always removed, also on a failure; nothing is pushed; git signs in as usual. `--progress` writes one line per step on stderr: `{"progress":{"id","step":"clone"|"checkout"|"apply"|"lint"|"test"|"cleanup","n","total","message"}}`. Answer (also kept as `verify` in `change diff`):
+`{"id","ok":false,"base":{"branch","commit"},"files":["/src/a.py"],"checks":[{"name":"ruff","kind":"lint","status":"passed"|"failed"|"skipped","errors":[{"path","line"?,"message"}],"tookMs","command"?,"reason"?}],"tookMs","copyRemoved":true,"at","notes":[]}` (at most 20 errors per check; `skipped` with a `reason`: not installed, no tests for these files).
+
 `change apply --id ID --dir D` (Open as Working Copy): the changed files written into a working copy; a file with its own change there is
 skipped: `{id,target,branch,applied:[paths],skipped:[{path,why}]}`. `change discard --id ID` removes the workspace; `change list` lists them.
 ### Ask Agent about Selected: `aihub browse ask ...`
