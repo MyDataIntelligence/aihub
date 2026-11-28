@@ -120,7 +120,7 @@ async function repos(b: Browse, q: string, top: number, project?: string): Promi
   const repoHits = rank(inScope.flatMap((p) => p.repos).filter((r) => r.canOpen), (r) => r.repo, q).map<SearchHit>((r) => ({
     kind: "repos",
     title: r.repo,
-    detail: `${r.project}${r.clone ? `  (cloned: ${r.clone.path})` : ""}`,
+    detail: `${r.project}${r.clone ? " · cloned on this PC" : ""}`,
     project: r.project,
     repo: r.repo,
     branch: r.defaultBranch || undefined,
