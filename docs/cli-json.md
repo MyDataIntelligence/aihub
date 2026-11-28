@@ -235,6 +235,41 @@ a pull request from the head of `B` to `--target` (default: the default branch),
 is `--story` or the number in the branch name (`feature/4711-...`). An active pull request of the branch is returned as it is:
 `{"pr":{"id":77,"title":"4711 Orderexport","webUrl":"…"},"existing":false}`.
 
+### Change with Agent: `aihub browse change ...`
+
+An agent changes files of a repository that is not cloned. Each change is a workspace in `<config>/aihub/changes/<id>/`
+(never in a repository): `files/` holds the files the agent read or changed at their repository paths, `.base/` their version at
+the base commit, `TASK.md` the task, `summary.md` the agent's summary. A file is changed when `files/` differs from `.base/`.
+Nothing is pushed before `push`. Fixed limits: never main/master/staging/develop/the default branch, only this repository, at most
+20 files, no secrets (keys, passwords, tokens), no pipeline definitions, variable groups or `.env` files (kinds `protectedBranch`,
+`tooManyFiles`, `secret`, `forbiddenFile`).
+
+`change start --project P --repo R [--ref B] [--branch feature/x] [--story N] [--paths /a,/b] [--selection /a:16-23] [--prompt-file F]`:
+the base is the head of `--ref` (default: the default branch); the branch name comes from team.yaml `branches.feature`
+(`feature/<story>-<slug>`, the slug from the prompt) unless `--branch`. The named files and the file of the selection are put in `files/`.
+
+```json
+{"id":"test-consumer-20261127-221709-ebdb","dir":"…/changes/<id>","filesDir":"…/changes/<id>/files","project":"test-project","repo":"test-consumer",
+ "base":{"branch":"main","commit":"<sha>"},"branch":"feature/4711-filter-actieve-klanten","story":4711,"materialized":["/consumer/report.py"],
+ "limits":{"maxFiles":20,"never":["main","master","staging","develop"]},"taskFile":"…/TASK.md","agentPrompt":"Read TASK.md and make the change it describes in the files under ./files. Do not push or commit."}
+```
+
+`change read --id ID --path /p` puts the base version in `files/` (once) and answers `{id,path,file,modified,binary,content}`.
+`change write --id ID --path /p --content-file F` and `change rm --id ID --path /p` check the limits at once and answer
+`{id,path,deleted,changedFiles,problems}`; the agent may also edit under `files/` with its own tools (the limits are then checked by
+`diff` and `push`). `change summary --id ID --file F` keeps the agent's summary.
+
+`change diff --id ID`: `{id,status,project,repo,branch,base,dir,filesDir,files:[{path,status:"modified"|"added"|"deleted",additions,deletions,hunks}],
+totals:{files,additions,deletions},summary,problems:[{path?,kind,message}],pushed?}` (`hunks` as in `browse diff`).
+
+`change push --id ID [--message-file M] [--branch B] [--pr [--target T] [--story N] [--pr-title t] [--draft]] [--rebase]`: ONE commit on a
+NEW branch from the base commit (edit, add, delete) through the Pushes API; the message defaults to `#<story> <first line of the summary or
+prompt>`. A file that changed on the base branch since the base commit gives `{"status":"conflict","files":[{path,latest:{id,short,message,at,by},overlap}]}`
+and nothing is pushed; `--rebase` re-applies changes that do not overlap on the newest version. Pushed:
+`{"status":"pushed",branch,commit:{id,short,webUrl},startedFrom,rebased,files,pr|null,prError,webUrl}`; the change is then `pushed`.
+
+`change apply --id ID --dir D` (Open as Working Copy): the changed files written into a working copy; a file with its own change there is
+skipped: `{id,target,branch,applied:[paths],skipped:[{path,why}]}`. `change discard --id ID` removes the workspace; `change list` lists them.
 `aihub browse suggest-branch [--story N] --path /file [--title t]`: `{"branch":"feature/4711-orders-export"}` (no network).
 
 ## Pipeline browser: `aihub browse pipelines|pipeline|run-plan|run|artifacts|artifact-files|artifact-open|draft-create|drafts|draft-delete`

@@ -32,11 +32,14 @@ export const BROWSE_USAGE = `usage: aihub browse <sub> [--org O] [--refresh]   (
   draft-delete --project P --pipeline ID [--keep-branch]      only your own draft-* in \Drafts: the pipeline and its branch
   (push takes --pipeline ID too: the answer says whether that pipeline can run on the new branch)`;
 
-const SUBS = ["projects", "project", "repo", "items", "file", "branches", "history", "diff", "blame", "find", "search", "push", "pr", "suggest-branch", "pipelines", "pipeline", "run-plan", "run", "artifacts", "artifact-files", "artifact-open", "draft-create", "drafts", "draft-delete"];
+const SUBS = ["change", "projects", "project", "repo", "items", "file", "branches", "history", "diff", "blame", "find", "search", "push", "pr", "suggest-branch", "pipelines", "pipeline", "run-plan", "run", "artifacts", "artifact-files", "artifact-open", "draft-create", "drafts", "draft-delete"];
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
-  const [sub, ...rest] = argv;
-  if (!sub || !SUBS.includes(sub)) throw new AihubError(BROWSE_USAGE);
+  const [sub0, ...rest0] = argv;
+  // `browse change <action>`: the action is the sub command
+  const sub = sub0 === "change" ? `change-${rest0[0] ?? ""}` : sub0;
+  const rest = sub0 === "change" ? rest0.slice(1) : rest0;
+  if (!sub0 || !SUBS.includes(sub0)) throw new AihubError(BROWSE_USAGE);
   const v = parse(rest, {
     org: { type: "string" },
     project: { type: "string" },
@@ -67,6 +70,13 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     title: { type: "string" },
     draft: { type: "boolean" },
     rebase: { type: "boolean" },
+    id: { type: "string" },
+    paths: { type: "string" },
+    "prompt-file": { type: "string" },
+    file: { type: "string" },
+    dir: { type: "string" },
+    delete: { type: "boolean" },
+    selection: { type: "string" },
     local: { type: "boolean" },
     json: { type: "boolean" },
     pipeline: { type: "string" },
@@ -99,6 +109,7 @@ const str = (v: V, flag: string) => (typeof v[flag] === "string" ? (v[flag] as s
 const list = (s: string | undefined) => (s ? s.split(",").map((x) => x.trim()).filter(Boolean) : undefined);
 
 async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
+  if (sub.startsWith("change-")) return changeAnswer(sub.slice(7), v, ctx);
   if (sub === "suggest-branch") {
     const { suggestBranch } = await import("../lib/browse/push.js");
     return { branch: suggestBranch(num(str(v, "story"), "--story"), str(v, "path") ?? "", str(v, "title")) };
@@ -189,5 +200,39 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
       return pushed;
     }
   }
+  throw new AihubError(BROWSE_USAGE);
+}
+
+/** --selection /path:16-23 */
+function selectionOf(s: string | undefined): { path: string; startLine: number; endLine: number } | undefined {
+  if (!s) return undefined;
+  const m = /^(.+):(\d+)(?:-(\d+))?$/.exec(s.trim());
+  if (!m) throw new AihubError("--selection is /path:<from>-<to>, for example /notebooks/load_orders.py:16-23");
+  return { path: m[1], startLine: Number(m[2]), endLine: Number(m[3] ?? m[2]) };
+}
+
+async function changeAnswer(action: string, v: V, ctx: Ctx): Promise<unknown> {
+  const c = await import("../lib/browse/change.js");
+  const { readText } = await import("../lib/browse/push.js");
+  if (action === "list") return c.changeList(ctx.env);
+  if (action === "discard") return c.changeDiscard(ctx.env, need(v, "id"));
+  if (action === "summary") return c.changeSummary(ctx.env, need(v, "id"), readText(need(v, "file")));
+  if (action === "start") {
+    const b = browseOf(ctx, { org: str(v, "org"), refresh: !!v.refresh });
+    return c.changeStart(b, { project: need(v, "project"), repo: need(v, "repo"), ref: str(v, "ref"), branch: str(v, "branch"), story: num(str(v, "story"), "--story"), paths: list(str(v, "paths")), prompt: str(v, "prompt-file") ? readText(str(v, "prompt-file")!) : undefined, selection: selectionOf(str(v, "selection")) });
+  }
+  // the other actions belong to an existing change: its organisation is in the change
+  const id = need(v, "id");
+  const b = browseOf(ctx, { org: c.readMeta(ctx.env, id).meta.org, refresh: !!v.refresh });
+  if (action === "read") return c.changeRead(b, id, need(v, "path"));
+  if (action === "write") return c.changeWrite(b, id, need(v, "path"), { content: readText(need(v, "content-file")) });
+  if (action === "rm") return c.changeWrite(b, id, need(v, "path"), { delete: true });
+  if (action === "diff") {
+    const { contents: _c, ...d } = await c.changeDiff(b, id);
+    return d;
+  }
+  if (action === "push")
+    return c.changePush(b, id, { message: str(v, "message-file") ? readText(str(v, "message-file")!) : undefined, branch: str(v, "branch"), pr: !!v.pr, target: str(v, "target"), story: num(str(v, "story"), "--story"), prTitle: str(v, "pr-title"), draft: !!v.draft, rebase: !!v.rebase });
+  if (action === "apply") return c.changeApply(b, id, need(v, "dir"));
   throw new AihubError(BROWSE_USAGE);
 }
