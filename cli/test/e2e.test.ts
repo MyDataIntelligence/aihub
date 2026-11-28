@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { main } from "../src/router.js";
 import { htmlToMd, mdToHtml } from "../src/lib/story.js";
 import { criterionKey, howKind, parseCriteria, renderCriteria, vagueness } from "../src/lib/e2e/criteria.js";
-import { ACTIONS, checkAction, conditionals, fill, findPrompt, listPrompts, renderPrompt, resetPrompt, runOptions, savePrompt, TEAM_PROMPT_DIR } from "../src/lib/e2e/prompts.js";
+import { ACTIONS, checkAction, conditionals, limitsText, fill, findPrompt, listPrompts, renderPrompt, resetPrompt, runOptions, savePrompt, TEAM_PROMPT_DIR } from "../src/lib/e2e/prompts.js";
 import { storyActivate } from "../src/lib/stories/write.js";
 import { criteriaTable, notProvenError, provenLine, withCriteria } from "../src/lib/e2e/prSection.js";
 import { LIMIT_DENY, progress, stepsView, yolo } from "../src/lib/e2e/run.js";
@@ -171,7 +171,7 @@ describe("team prompts", () => {
     mkdirSync(join(repo, TEAM_PROMPT_DIR), { recursive: true });
     writeFileSync(join(repo, TEAM_PROMPT_DIR, "story-test-fabric.md"), "---\ntitle: Test op Fabric (team)\n---\nTest #{{story.id}} in {{workspace}}.\n");
     expect(findPrompt(s, "story-test-fabric", { set: t.set }).source).toBe("team");
-    expect((await renderPrompt(t.ctx, s, "story-test-fabric", 101)).text).toBe("Test #101 in (geen Fabric-workspace in team.yaml).\n");
+    expect((await renderPrompt(t.ctx, s, "story-test-fabric", 101)).text).toBe("Test #101 in de workspace van de featurebranch (team.yaml noemt er geen).\n");
     savePrompt(s, 101, "story-test-fabric", "Eigen prompt voor #101.");
     const own = await renderPrompt(t.ctx, s, "story-test-fabric", 101);
     expect([own.source, own.text, own.title]).toEqual(["story", "Eigen prompt voor #101.\n", "Test op Fabric (team)"]);
@@ -342,6 +342,28 @@ describe("a colleague without the extension", () => {
     expect(a.sections.map((x) => x.heading)).toContain("Technical notes");
     expect(a.prompt).not.toContain("aihub story show");
     expect(a.prompt).toContain("aihub stories refine-apply --id 101 --rev 4");
+  });
+});
+
+describe("no leftovers in a filled prompt", () => {
+  it("no prompt or limits text has a placeholder or a note in double brackets, with and without a workspace", async () => {
+    for (const teamCfg of [{ language: "nl" }, { language: "en" }, { language: "nl", fabric: { workspaces: [{ name: "ws-feature-101", environment: "feature", branches: ["feature/101-*"] }] } }]) {
+      const t = world();
+      const s = t.s();
+      s.teamCfg = teamCfg as never;
+      for (const a of ACTIONS) {
+        const id = a.startsWith("bug-") ? 301 : 101;
+        const r = await renderPrompt(t.ctx, s, a, id);
+        for (const text of [r.text, r.summary.limits, r.summary.goal]) {
+          expect(text, `${a} ${JSON.stringify(teamCfg)}`).not.toMatch(/\{\{|\}\}|\(\(|\)\)/);
+        }
+      }
+    }
+  });
+
+  it("the limits name the workspace only when team.yaml knows it", () => {
+    expect(limitsText("en")).toBe("Never push to or merge into main or staging. Never ACC or PRD. Only the Fabric workspace of the feature branch. Never merge or complete a pull request.");
+    expect(limitsText("nl", "ws-feature-101")).toContain("Alleen de Fabric-workspace van de featurebranch (ws-feature-101).");
   });
 });
 
