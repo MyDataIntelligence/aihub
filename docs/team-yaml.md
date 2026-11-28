@@ -131,7 +131,7 @@ preflight:
     destructive: [{ step: Get workspace ids, pattern: "DROP" }]   # that step's output matches: --apply needs --yes
 ```
 
-Also `python`, `shell` (bash | cmd | pwsh), `setup` (commands run once in the source checkout when its dependency files change) and `cd.pipeline` (--apply waits while it runs on
+Also `python`, `shell` (bash | cmd | pwsh), `setup` (commands run in the source checkout, once per commit of it and of its dependency files) and `cd.pipeline` (--apply waits while it runs on
 the branch). `aihub preflight [--plan | --apply [--yes]] [--step "<name>"] [--dry-run] [--json]` runs the listed steps of the job in a snapshot of the working tree; a step in no list
 never runs. `aihub preflight steps --job <path> [--source <repo>]` lists every step with its kind and works without the block. Details: [preflight.md](preflight.md).
 

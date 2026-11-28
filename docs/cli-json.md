@@ -432,4 +432,5 @@ One object; exit code 1 when a step failed or was blocked, or apply was held bac
 - `steps[].level`: `local` | `read` | `apply` | `skip` | `unknown` (in no list). `kind`: the task (`PythonScript@0`) or `script` | `bash` | `pwsh` | `powershell` | `other`.
 - `steps[].status`: `passed` | `failed` | `blocked` (a variable nobody can fill, or a local step that asks for a token) | `notRun` (condition false or not evaluable, held back, dry run) | `unknown` | `skipped` (other level, `skip`, after `--step`, a kind that does not run here) | `cannotRun` (listed, but a kind or program this PC cannot run). `--dry-run` adds `command` (the expanded command).
 - `afterFailure`: ran after an earlier step failed. `uncertain`: comes after an unknown step.
+- A failed step also has `excerpt` (the lines of its output that say why, at most 10, secrets masked) and `log` (the file with all of its output).
 - `preflight steps --json`: `{ source, job, steps:[{ index, name, kind, level, script, condition, runnable, note }], drift, notes }`.

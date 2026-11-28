@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type { Ctx } from "../context.js";
 import { AihubError } from "../errors.js";
@@ -39,6 +39,27 @@ export interface StepResult {
   uncertain: boolean;
   /** --dry-run: the fully expanded command (secrets masked) */
   command?: string;
+  /** a failed step: the lines of its output that say why (secrets masked), and the file with all of it */
+  excerpt?: string[];
+  log?: string;
+}
+
+const WHY = /error|fout|ongeldig|invalid|fail|exception|traceback|denied|forbidden|unauthorized|not found|niet gevonden|mislukt/i;
+const EXCERPT_LINES = 10;
+const EXCERPT_WIDTH = 240;
+
+/**
+ * The lines of a failed step's output that say why: the ones that read like an error (a validator names the file and the
+ * rule in the middle of its output, long before the last line), else the last lines. Capped and cut to width.
+ */
+export function excerptOf(output: string): string[] {
+  const all = output.split("\n").map((l) => l.replace(/\s+$/, "")).filter((l) => l.trim() && !l.trim().startsWith("##vso["));
+  const cut = (l: string) => (l.length > EXCERPT_WIDTH ? `${l.slice(0, EXCERPT_WIDTH)}…` : l);
+  const hits = all.filter((l) => WHY.test(l));
+  const pick = hits.length ? hits : all.slice(-EXCERPT_LINES);
+  const out = pick.slice(0, EXCERPT_LINES).map(cut);
+  if (pick.length > EXCERPT_LINES) out.push(`(${pick.length - EXCERPT_LINES} more line(s) in the log)`);
+  return out;
 }
 
 export interface PreflightResult {
@@ -179,6 +200,7 @@ function builtins(p: Prepared, now: () => number): Record<string, string> {
     "Pipeline.Workspace": p.sources.base,
     "System.StageName": "preflight",
     "System.StageAttempt": "1",
+    "System.Debug": "false",
     "System.DefaultWorkingDirectory": p.sources.sourcesDir,
     "Agent.TempDirectory": join(p.sources.base, "_temp"),
   };
@@ -488,7 +510,7 @@ export async function runPreflight(ctx: Ctx, o: PreflightOpts, deps: PreflightDe
       set("notRun", `dry run; needs $(${[...rec.missing][0]}) at run time: set by an earlier step, or add it under preflight.variables`);
     } else if (rec.missing.size) {
       const m = [...rec.missing][0];
-      set("blocked", m.startsWith("{workspace") ? `needs ${m}, which is only known with --plan or --apply` : m.startsWith("{") ? `needs ${m}, which preflight could not work out` : m.startsWith("parameters.") ? `needs ${m}: add it under preflight.parameters in team.yaml` : `needs variable ${m}: add it under preflight.variables in team.yaml`);
+      set("blocked", m.startsWith("{workspace") ? `needs ${m}, which is only known with --plan or --apply` : m.startsWith("{") ? `needs ${m}, which preflight could not work out` : m.startsWith("parameters.") ? `needs ${m}: add it under preflight.parameters in team.yaml` : lvl === "local" ? `needs variable ${m}: when a read step sets it, list this step under preflight.steps.read so it runs with --plan; else add it under preflight.variables in team.yaml` : `needs variable ${m}: add it under preflight.variables in team.yaml`);
       anyBlocked = true;
       continue;
     }
@@ -562,6 +584,17 @@ export async function runPreflight(ctx: Ctx, o: PreflightOpts, deps: PreflightDe
       if (!r.issues.length) {
         const tail = res.output.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("##vso[")).pop();
         if (tail) r.issues.push(mask(tail.slice(0, 300)));
+      }
+      // why it failed, and all of it in a file: the reader should not have to run it again to see the cause
+      r.excerpt = excerptOf(res.output).map((l) => mask(l));
+      try {
+        const dir = join(sources.base, "logs");
+        mkdirSync(dir, { recursive: true });
+        const file = join(dir, `${String(step.index).padStart(2, "0")}-${step.name.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "step"}.log`);
+        writeFileSync(file, res.output.split("\n").map((l) => mask(maskCommandLine(l))).join("\n"), "utf8");
+        r.log = file;
+      } catch {
+        /* the excerpt is enough when the log cannot be written */
       }
       anyFailed = true;
     } else {
@@ -682,11 +715,15 @@ function defaultCdRuns(ctx: Ctx): (pipeline: string, branch: string) => Promise<
 
 // ---- setup -------------------------------------------------------------------------------------------------------------
 
-/** preflight.setup in the source checkout, once per fingerprint of its dependency files. */
+/**
+ * preflight.setup in the source checkout, once per commit of the source repository and fingerprint of its dependency
+ * files. Per commit, because a setup such as `pip install .` copies the scripts' own package: a copy of an older commit
+ * would be imported by the steps of a newer one.
+ */
 export function runSetup(p: { cfg: PreflightConfig; sources: Sources; state: State }, say: (l: string) => void): void {
   if (!p.cfg.setup.length) return;
   const dir = p.sources.source.dir;
-  const fp = setupFingerprint(dir, p.cfg.setup);
+  const fp = `${p.sources.source.commit}:${setupFingerprint(dir, p.cfg.setup)}`;
   if (p.state.setup[p.sources.source.name] === fp) return;
   for (const c of p.cfg.setup) {
     say(`setup: ${c}`);
@@ -727,16 +764,20 @@ export function formatResult(r: PreflightResult): string {
       const why = s.issues[0] ?? s.reason;
       lines.push(`  ${LABEL[s.status].padEnd(8)} ${s.name}${s.seconds ? `  ${s.seconds}s` : ""}${why ? `  ${why}` : ""}${extra ? `  (${extra})` : ""}`);
       if (s.command) lines.push(...s.command.split("\n").map((c) => `      ${c}`));
+      // the lines that say why (the one above is only the first issue or the last line)
+      for (const e of (s.excerpt ?? []).filter((x) => x.trim() !== (why ?? "").trim())) lines.push(`      | ${e}`);
+      if (s.log) lines.push(`      log: ${s.log}`);
     }
   }
   for (const s of r.steps.filter((x) => x.status === "cannotRun")) lines.push(`cannot run: ${s.name} (${s.level}): ${s.reason}`);
   const skipped = r.steps.filter((s) => (s.status === "skipped" && s.level !== "local" && s.level !== "read" && s.level !== "apply") || (s.status === "notRun" && s.level === "unknown"));
   if (skipped.length) lines.push(`not run here · ${skipped.length} step(s): ${skipped.map((s) => s.name).join(", ")}`);
   const d = r.drift;
-  for (const u of d.unknown) {
-    const ren = d.renamed.find((x) => x.to === u);
-    lines.push(ren ? `drift: "${u}" looks renamed from "${ren.from}" (same script and arguments): rename it in preflight.steps of team.yaml` : `drift: unknown step "${u}": not run, and the steps after it are uncertain; add it to preflight.steps (local, read, apply or skip) in team.yaml`);
-  }
+  for (const ren of d.renamed.filter((x) => d.unknown.includes(x.to))) lines.push(`drift: "${ren.to}" looks renamed from "${ren.from}" (same script and arguments): rename it in preflight.steps of team.yaml`);
+  // one line for all the steps in no list: a first run names every step of the job
+  const fresh = d.unknown.filter((u) => !d.renamed.some((x) => x.to === u));
+  if (fresh.length === 1) lines.push(`drift: unknown step "${fresh[0]}": not run, and the steps after it are uncertain; add it to preflight.steps (local, read, apply or skip) in team.yaml`);
+  else if (fresh.length) lines.push(`drift: ${fresh.length} steps are in no list (not run, and the steps after the first are uncertain): ${fresh.map((u) => `"${u}"`).join(", ")}; add each to preflight.steps (local, read, apply or skip) in team.yaml`);
   for (const m of d.missing.filter((x) => !d.renamed.some((y) => y.from === x))) lines.push(`drift: team.yaml lists "${m}", but ${r.job} has no such step: remove it or fix the name`);
   for (const c of d.changed) lines.push(`drift: the script of "${c}" changed since your last run here`);
   for (const n of r.notes) lines.push(`note: ${n}`);
@@ -752,7 +793,7 @@ export function resultJson(r: PreflightResult): unknown {
     workspace: r.workspace,
     level: r.level,
     dryRun: r.dryRun,
-    steps: r.steps.map((s) => ({ name: s.name, level: s.level, kind: s.kind, status: s.status, reason: s.reason ?? null, seconds: s.seconds, issues: s.issues, afterFailure: s.afterFailure, uncertain: s.uncertain, ...(s.command !== undefined ? { command: s.command } : {}) })),
+    steps: r.steps.map((s) => ({ name: s.name, level: s.level, kind: s.kind, status: s.status, reason: s.reason ?? null, seconds: s.seconds, issues: s.issues, afterFailure: s.afterFailure, uncertain: s.uncertain, ...(s.command !== undefined ? { command: s.command } : {}), ...(s.excerpt?.length ? { excerpt: s.excerpt } : {}), ...(s.log ? { log: s.log } : {}) })),
     drift: r.drift,
     ok: r.ok,
     notes: r.notes,

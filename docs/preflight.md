@@ -30,7 +30,7 @@ preflight:
   watch: ["jobs/**", "ddl/**"]       # the files this is about
   python: python                     # PythonScript@0 interpreter; default python on Windows, python3 elsewhere
   shell: bash                        # script: steps: bash | cmd | pwsh; default bash when found, else the platform shell
-  setup: ["python -m pip install ."] # run once in the source checkout when its dependency files change
+  setup: ["python -m pip install ."] # run in the source checkout, once per commit of it and of its dependency files
   parameters:
     workspaceName: "DEV-test-project {branchName}"
   variables:
@@ -79,9 +79,10 @@ Steps may write there freely; each run resets both checkouts (ignored files such
 working directories, from (in this order) outputs of earlier steps, `preflight.variables`/`parameters`, the YAML's own
 compile-time `variables:`, the built-ins (`Build.SourcesDirectory`, `Build.Repository.Name`, `Build.SourceBranch`,
 `Build.SourceBranchName`, `Build.SourceVersion`, `Build.BuildId`, `Pipeline.Workspace`, `System.StageName`,
-`System.StageAttempt`, `System.DefaultWorkingDirectory`, `Agent.TempDirectory`; also as environment variables such as
+`System.StageAttempt`, `System.Debug` (false), `System.DefaultWorkingDirectory`, `Agent.TempDirectory`; also as environment variables such as
 `BUILD_SOURCESDIRECTORY`), then token variables. A step that needs a variable nobody can fill is `blocked` with its
-name: add one line to `preflight.variables`. A more complex template expression makes the step "not run: cannot
+name: add one line to `preflight.variables`, or, when a read step sets it, list the step under `steps.read` so it
+runs after that step with `--plan`. A more complex template expression makes the step "not run: cannot
 evaluate". In an inline script an all-lowercase `$(name)` nobody defines is left alone (shell command substitution).
 
 Steps hand values on with `##vso[task.setvariable variable=NAME;isOutput=true;issecret=true]VALUE`, as on the agent
@@ -97,7 +98,7 @@ is `notRun` with "condition could not be evaluated".
 Preflight reads the YAML and the scripts of `origin/<ref>` every run, so most changes come along by themselves.
 
 - A runnable step in no list is `unknown`: not run, and every later step is `uncertain` (it may depend on it). An
-  uncertain apply step does not run.
+  uncertain apply step does not run. Several such steps are named in one line.
 - A listed name that is not in the YAML is a warning.
 - A renamed step is recognised by its fingerprint (kind, script path, arguments, env names, inline text): "looks renamed
   from A to B".
@@ -125,7 +126,10 @@ The fingerprints are kept in `state.json` in the scratch area.
 ## Output
 
 Text: per level one line per step (status, name, seconds, the first issue or the reason), then drift and one verdict
-line ("nothing was written" when no apply step ran). `--json`: see [cli-json.md](cli-json.md). The exit code is 1 when
+line ("nothing was written" when no apply step ran). Under a failed step come the lines of its output that say why
+(`| ...`: the lines that read like an error, else the last ones, at most 10, cut to 240 characters) and `log:` with the
+file that holds all of its output (in `logs/` of the scratch area, secrets masked): a validator names the file and the
+rule in the middle of its output, long before its last line. `--json`: see [cli-json.md](cli-json.md). The exit code is 1 when
 a step failed or was blocked, or apply was held back. `--step "<name>"` runs up to and including that step.
 `--dry-run` runs nothing and prints each step with its level and expanded command (secrets masked).
 

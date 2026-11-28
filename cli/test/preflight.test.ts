@@ -393,10 +393,50 @@ describe("aihub preflight", () => {
     const w = world({ job: "steps:\n  - script: node $(Build.SourcesDirectory)/shared-templates/scripts/check.js $(ENVIRONMENT)\n    displayName: Validate configs\n  - script: node -e 1\n    displayName: Use the check\n" });
     const r = await pf(w.consumer, ["--json"]);
     expect(r.code).toBe(1);
-    expect(step(r.json, "Validate configs")).toMatchObject({ status: "blocked", reason: "needs variable ENVIRONMENT: add it under preflight.variables in team.yaml" });
+    // a local step: the variable may be the output of a read step, so the reason names both ways out
+    expect(step(r.json, "Validate configs")).toMatchObject({ status: "blocked", reason: "needs variable ENVIRONMENT: when a read step sets it, list this step under preflight.steps.read so it runs with --plan; else add it under preflight.variables in team.yaml" });
     expect(step(r.json, "Use the check").status).toBe("passed");
     expect(r.json.ok).toBe(false);
     expect(r.json.drift.missing).toEqual(["Get workspace ids", "Plan changes", "Deploy items", "Publish artifact"]);
+  });
+
+  it("a failed step shows the lines that say why, not only the last line, and keeps the whole output in a log", async () => {
+    // a validator names the file and the rule in the middle of its output; its last line only says that something is wrong
+    const validate = `console.log("Validating jobs/a.yaml");
+console.log("Errors in jobs/a.yaml:");
+console.log("- columns.0.type: invalid column type 'varchar' " + "x".repeat(400));
+for (let i = 0; i < 30; i++) console.log("Validating jobs/ok" + i + ".yaml: valid");
+console.log("Stopped: one or more files are wrong.");
+process.exit(1);`;
+    const w = world({ scripts: { "scripts/validate.js": validate }, job: "steps:\n  - script: node $(Build.SourcesDirectory)/shared-templates/scripts/validate.js\n    displayName: Validate configs\n", team: preflightYaml("", "local: [Validate configs]") });
+    const r = await pf(w.consumer, ["--json"]);
+    const s = step(r.json, "Validate configs");
+    expect(s).toMatchObject({ status: "failed", issues: ["Stopped: one or more files are wrong."] });
+    expect(s.excerpt[0]).toBe("Errors in jobs/a.yaml:");
+    expect(s.excerpt[1]).toMatch(/^- columns\.0\.type: invalid column type 'varchar' x+…$/);
+    expect(s.excerpt[1].length).toBeLessThanOrEqual(241);
+    expect(s.excerpt.some((l: string) => /ok\d+\.yaml: valid/.test(l) && !/invalid/.test(l))).toBe(false);
+    expect(readFileSync(s.log, "utf8")).toContain("Validating jobs/ok29.yaml: valid");
+    const text = await pf(w.consumer, []);
+    expect(text.out).toMatch(/FAILED\s+Validate configs.*Stopped: one or more files are wrong\./);
+    expect(text.out).toContain("      | Errors in jobs/a.yaml:");
+    expect(text.out).toMatch(/\n {6}log: .*Validate-configs\.log/);
+    // a step that passes has neither
+    const ok = await pf(world().consumer, ["--json"]);
+    expect(step(ok.json, "Validate configs").excerpt).toBeUndefined();
+    expect(step(ok.json, "Validate configs").log).toBeUndefined();
+  });
+
+  it("System.Debug is a built-in (false); several steps in no list are one drift line", async () => {
+    const job = "steps:\n  - script: node -e \"console.log('debug=' + process.argv[1])\" $(System.Debug)\n    displayName: Validate configs\n  - script: node -e 1\n    displayName: New step one\n  - script: node -e 1\n    displayName: New step two\n";
+    const w = world({ job, team: preflightYaml("", "local: [Validate configs]") });
+    setPreflightDeps({});
+    const a = ctxFor(w.consumer, fakeFetch([]).fn);
+    await main(["preflight", "--verbose"], a.ctx);
+    expect(a.errs.join("\n")).toContain("debug=false");
+    const text = await pf(w.consumer, []);
+    expect(text.out).toContain('drift: 2 steps are in no list (not run, and the steps after the first are uncertain): "New step one", "New step two"; add each to preflight.steps (local, read, apply or skip) in team.yaml');
+    expect(text.out.match(/^drift:/gm)?.length).toBe(1);
   });
 
   it("a local step that asks for a token is blocked; read steps get it with --plan", async () => {
@@ -558,7 +598,7 @@ describe("aihub preflight", () => {
     expect(t.out).toContain("not in team.yaml yet: 5 runnable step(s)");
   });
 
-  it("setup runs once per fingerprint of the source's dependency files; {lastPushed} and {head} are filled", async () => {
+  it("setup runs once per commit of the source repository and its dependency files; {lastPushed} and {head} are filled", async () => {
     const setup = `node -e "require('fs').appendFileSync('setup.log', 'x')"`;
     const w = world({
       job: "steps:\n  - script: node -e \"console.log('pushed=' + process.argv[1] + ' head=' + process.argv[2])\" $(LAST) $(HEAD)\n    displayName: Validate configs\n",
@@ -582,6 +622,15 @@ describe("aihub preflight", () => {
     sh(w.source, ["push", "origin", "main"]);
     await pf(w.consumer, []);
     expect(readFileSync(log, "utf8")).toBe("xx");
+    // a new commit of the source repository without a dependency change runs setup again as well: a setup such as
+    // `pip install .` copies the scripts' own package, and a copy of the older commit must not be imported
+    write(w.source, "scripts/check.js", "console.log('changed');\n");
+    sh(w.source, ["commit", "-am", "script only"]);
+    sh(w.source, ["push", "origin", "main"]);
+    await pf(w.consumer, []);
+    expect(readFileSync(log, "utf8")).toBe("xxx");
+    await pf(w.consumer, []);
+    expect(readFileSync(log, "utf8")).toBe("xxx");
   });
 
   it("help and team validate know the command and the block", async () => {

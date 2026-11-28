@@ -30,4 +30,4 @@ The steps and their scripts from the pipeline YAML of `origin/<ref>` of the sour
 - A read step with a new write call: show it; `aihub preflight accept "<step>"` only when the user agrees.
 - No `preflight:` block: `aihub preflight steps --job <path> --source <repo>`, then help fill it. Not signed in: `az login`.
 
-Rules: never ACC or PRD; `--apply` only on the user's request and only on the branch's feature workspace. Report each failed step with its first issue. Details: `docs/preflight.md` of aihub.
+Rules: never ACC or PRD; `--apply` only on the user's request and only on the branch's feature workspace. Report each failed step with the `|` lines under it (they say why); `log:` has all of its output. Details: `docs/preflight.md` of aihub.

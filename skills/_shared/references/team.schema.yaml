@@ -155,7 +155,7 @@ preflight:                         # optional: used by `aihub preflight` (runs s
   watch: ["jobs/**", "ddl/**"]     # globs of the files preflight is about, used in messages (optional)
   python: python                   # interpreter for PythonScript@0 steps; default python on Windows, python3 elsewhere (optional)
   shell: bash                      # shell for script steps: bash, cmd or pwsh; default bash when found, else the platform shell (optional)
-  setup: []                        # commands run once in the source checkout when its dependency files change, e.g. ["python -m pip install ."] (optional)
+  setup: []                        # commands run in the source checkout, once per commit of it and of its dependency files, e.g. ["python -m pip install ."] (optional)
   parameters:                      # values for ${{ parameters.x }} of the job template; placeholders {repo} {branch} {branchName} {head} {lastPushed} {workspace} {workspaceId} {sources} {work} {source} (optional)
     <name>: <value>                # e.g. workspaceName: "DEV-test-project {branchName}" (optional)
   variables:                       # values for $(X) and variables['X'] that preflight cannot work out; same placeholders (optional)
