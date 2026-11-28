@@ -10,7 +10,9 @@ import { browseFind, browseSearch, nameScore, recentRepos } from "./browse/searc
  */
 
 export const SEARCH_KINDS = ["repos", "files", "text", "branches", "workitems", "prs", "wiki", "pipelines"] as const;
-export type SearchKind = (typeof SEARCH_KINDS)[number];
+/** Searched only when asked (`--kinds logs`): pipeline logs cost downloads. */
+export const EXTRA_KINDS = ["logs"] as const;
+export type SearchKind = (typeof SEARCH_KINDS)[number] | (typeof EXTRA_KINDS)[number];
 
 export interface SearchHit {
   kind: SearchKind;
@@ -29,6 +31,11 @@ export interface SearchHit {
   state?: string;
   wiki?: string;
   line?: number;
+  /** a pipeline log: the run, its step (timeline record id), the pipeline and the marked ranges of the line */
+  run?: number;
+  stepId?: string;
+  pipelineId?: number;
+  ranges?: [number, number][];
   /** a closed work item (Done, Closed, Removed) or a completed / abandoned pull request: shown last and greyed */
   closed?: boolean;
   /** a repository cloned on this PC: where (the UI shows "cloned" and the path as its tooltip) */
@@ -48,6 +55,8 @@ export interface SearchPart {
   /** what was not searched (repositories not cloned, projects over the limit) */
   note?: string;
   error?: { kind: BrowseErrorKind | "timeout"; message: string };
+  /** logs: a wider period to search next, in days ("search older…") */
+  older?: number;
   tookMs: number;
 }
 
@@ -67,6 +76,8 @@ export interface SearchAllOptions {
   onPart?: (p: SearchPart) => void;
   /** a kind that takes longer than this fails with `timeout`, the others still come */
   timeoutMs?: number;
+  /** logs only: days back (30), only failed runs, a pipeline (id or part of its name), a branch, step logs per search (200) */
+  logs?: { sinceDays?: number; failedOnly?: boolean; pipeline?: string; branch?: string; maxLogs?: number };
 }
 
 /** At most this many projects are read for the per-project kinds (pull requests, pipelines). */
@@ -76,11 +87,11 @@ export const MAX_BRANCH_REPOS = 12;
 
 export function parseKinds(s: string | undefined): SearchKind[] {
   if (!s) return [...SEARCH_KINDS];
-  const alias: Record<string, SearchKind> = { repositories: "repos", repo: "repos", file: "files", code: "text", branch: "branches", items: "workitems", stories: "workitems", "work-items": "workitems", pr: "prs", "pull-requests": "prs", pullrequests: "prs", wikis: "wiki", pipeline: "pipelines" };
+  const alias: Record<string, SearchKind> = { log: "logs", "pipeline-logs": "logs", repositories: "repos", repo: "repos", file: "files", code: "text", branch: "branches", items: "workitems", stories: "workitems", "work-items": "workitems", pr: "prs", "pull-requests": "prs", pullrequests: "prs", wikis: "wiki", pipeline: "pipelines" };
   const out: SearchKind[] = [];
   for (const raw of s.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)) {
-    const k = (SEARCH_KINDS as readonly string[]).includes(raw) ? (raw as SearchKind) : alias[raw];
-    if (!k) throw new BrowseError("badInput", `unknown kind '${raw}'; kinds: ${SEARCH_KINDS.join(", ")}`);
+    const k = ([...SEARCH_KINDS, ...EXTRA_KINDS] as readonly string[]).includes(raw) ? (raw as SearchKind) : alias[raw];
+    if (!k) throw new BrowseError("badInput", `unknown kind '${raw}'; kinds: ${[...SEARCH_KINDS, ...EXTRA_KINDS].join(", ")}`);
     if (!out.includes(k)) out.push(k);
   }
   return out;
@@ -412,7 +423,32 @@ async function pipelines(b: Browse, q: string, top: number, project?: string): P
   return { route: "lists", count: out.length, results: out.slice(0, top), ...(notes.length ? { note: notes.join("; ") } : {}) };
 }
 
-const RUN: Record<SearchKind, (b: Browse, q: string, top: number, project?: string) => Promise<Found>> = {
+const LOG_STATE: Record<string, string> = { failed: "failed", partiallySucceeded: "partially succeeded", succeeded: "succeeded", canceled: "canceled" };
+
+async function logs(b: Browse, q: string, top: number, project: string | undefined, o: SearchAllOptions["logs"] = {}): Promise<Found & { older?: number }> {
+  const { searchLogs } = await import("./logSearch.js");
+  const r = await searchLogs(b, { text: q, top, project, ...o });
+  const hits = r.hits.map<SearchHit>((h) => ({
+    kind: "logs",
+    title: h.text,
+    detail: [h.pipeline.name, `run ${h.runNumber}`, [h.stage, h.job, h.step].filter(Boolean).join(" / "), h.finishedAt ? h.finishedAt.slice(0, 10) : "", LOG_STATE[h.result] ?? h.result].filter(Boolean).join(" · "),
+    project: h.project,
+    branch: h.branch || undefined,
+    id: h.run,
+    run: h.run,
+    stepId: h.stepId,
+    pipelineId: h.pipeline.id,
+    type: h.pipeline.name,
+    state: h.result,
+    line: h.line,
+    ranges: h.ranges,
+    url: `${b.client.remote.orgUrl}/${encodeURIComponent(h.project)}/_build/results?buildId=${h.run}&view=logs`,
+  }));
+  const note = `searched ${r.logs} log${r.logs === 1 ? "" : "s"} of ${r.runsSearched} of ${r.runs} run${r.runs === 1 ? "" : "s"} in the last ${r.sinceDays} days${o.failedOnly ? " (failed only)" : ", failed first"}${r.fromCache ? ` · ${r.fromCache} from the cache` : ""}`;
+  return { route: "logs", count: r.count, results: hits, note, ...(r.older ? { older: r.older } : {}) };
+}
+
+const RUN: Record<SearchKind, (b: Browse, q: string, top: number, project?: string, o?: SearchAllOptions) => Promise<Found>> = {
   repos,
   files: (b, q, top) => files(b, q, top),
   text,
@@ -421,6 +457,7 @@ const RUN: Record<SearchKind, (b: Browse, q: string, top: number, project?: stri
   prs,
   wiki,
   pipelines,
+  logs: (b, q, top, project, o) => logs(b, q, top, project, o?.logs),
 };
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -440,9 +477,10 @@ export async function searchAll(b: Browse, o: SearchAllOptions): Promise<SearchA
       const t0 = Date.now();
       let part: SearchPart;
       try {
-        const f = await withTimeout(RUN[kind](b, q, top, o.project), timeoutMs);
+        // a log search downloads (4 at a time): it gets four times the time
+        const f = (await withTimeout(RUN[kind](b, q, top, o.project, o), kind === "logs" ? timeoutMs * 4 : timeoutMs)) as Found & { older?: number };
         const count = f.count ?? f.results.length;
-        part = { kind, status: "ok", route: f.route, count, more: count > f.results.length, results: f.results, ...(f.note ? { note: f.note } : {}), tookMs: Date.now() - t0 };
+        part = { kind, status: "ok", route: f.route, count, more: count > f.results.length, results: f.results, ...(f.note ? { note: f.note } : {}), ...(f.older ? { older: f.older } : {}), tookMs: Date.now() - t0 };
       } catch (e) {
         const timeout = !!(e as { timeout?: boolean }).timeout;
         part = { kind, status: "failed", count: 0, more: false, results: [], error: { kind: timeout ? "timeout" : kindOf(e), message: String((e as Error)?.message ?? e).replace(/^aihub:\s*/, "") }, tookMs: Date.now() - t0 };
@@ -454,7 +492,7 @@ export async function searchAll(b: Browse, o: SearchAllOptions): Promise<SearchA
   return { org: b.org, text: q, kinds: parts };
 }
 
-const LABEL: Record<SearchKind, string> = { repos: "Repositories", files: "Files", text: "Text", branches: "Branches", workitems: "Work Items", prs: "Pull Requests", wiki: "Wiki", pipelines: "Pipelines" };
+const LABEL: Record<SearchKind, string> = { repos: "Repositories", files: "Files", text: "Text", branches: "Branches", workitems: "Work Items", prs: "Pull Requests", wiki: "Wiki", pipelines: "Pipelines", logs: "Logs" };
 
 /** The answer as text for a chat (the agent reads it): one group per kind, a failed kind says why. */
 export function searchAllText(r: SearchAllResult): string {

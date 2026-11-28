@@ -29,6 +29,9 @@ describe("Search Everywhere in the bar", () => {
       "search", "all", "--text", "#12", "--kinds", "workitems,prs", "--top", "50", "--project", "test-project", "--org", "ferron-test", "--refresh", "--stream", "--json",
     ]);
     expect(() => searchAllArgs({ text: " " })).toThrow(/search text/);
+    expect(searchAllArgs({ text: "klantnummer", kinds: ["logs"], since: 90, failed: true, pipeline: "orders-ci", branch: "main", maxLogs: 100 })).toEqual([
+      "search", "all", "--text", "klantnummer", "--kinds", "logs", "--since", "90d", "--failed", "--pipeline", "orders-ci", "--branch", "main", "--max-logs", "100", "--stream", "--json",
+    ]);
     expect(BAR_COMMANDS.searchAll).toBe("aihub.bar.searchAll");
   });
 

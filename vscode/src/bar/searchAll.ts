@@ -8,7 +8,7 @@ import { killTree } from "../cli";
  * search stops the older process (the user typed on). The JSON shape is in docs/cli-json.md ("Search Everywhere").
  */
 
-export const SEARCH_ALL_KINDS = ["repos", "files", "text", "branches", "workitems", "prs", "wiki", "pipelines"] as const;
+export const SEARCH_ALL_KINDS = ["repos", "files", "text", "branches", "workitems", "prs", "wiki", "pipelines", "logs"] as const;
 export type SearchAllKind = (typeof SEARCH_ALL_KINDS)[number];
 
 export interface SearchAllArg {
@@ -18,6 +18,12 @@ export interface SearchAllArg {
   project?: string;
   org?: string;
   refresh?: boolean;
+  /** logs only: days back, only failed runs, a pipeline (id or part of its name), a branch, step logs per search */
+  since?: number;
+  failed?: boolean;
+  pipeline?: string;
+  branch?: string;
+  maxLogs?: number;
   /** a command of the caller, run with `{ text, part }` for every kind as soon as it is ready */
   onPart?: string;
 }
@@ -32,6 +38,11 @@ export function searchAllArgs(a: SearchAllArg): string[] {
   if (a.project) out.push("--project", a.project);
   if (a.org) out.push("--org", a.org);
   if (a.refresh) out.push("--refresh");
+  if (a.since) out.push("--since", `${Math.round(a.since)}d`);
+  if (a.failed) out.push("--failed");
+  if (a.pipeline) out.push("--pipeline", a.pipeline);
+  if (a.branch) out.push("--branch", a.branch);
+  if (a.maxLogs) out.push("--max-logs", String(a.maxLogs));
   out.push("--stream", "--json");
   return out;
 }

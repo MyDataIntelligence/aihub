@@ -1,6 +1,6 @@
 ---
 name: pipeline-fix
-description: "Use when a build or pipeline failed: 'waarom is de pipeline rood', 'waarom faalt de build', '/fix <run url>', 'pipeline is rood', 'fix the build', 'de build faalt', 'tests falen in CI', a failed check on a pull request."
+description: "Use when a build or pipeline failed: 'waarom is de pipeline rood', 'waarom faalt de build', '/fix <run url>', 'pipeline is rood', 'fix the build', 'de build faalt', 'tests falen in CI', 'waar zag ik deze fout eerder', a failed check on a pull request."
 ---
 # Diagnose or fix a failing run
 
@@ -9,7 +9,7 @@ Explain, repair or monitor a failed run.
 
 ## Steps
 A red Fabric run in a CD-filled workspace after a deployment: first `aihub fabric failures --workspace W --since-green`.
-1. Read the failing step: `aihub pipeline logs --failed --run 123`. Follow a wrapper failure to its child activity, exception or artifact. For an explanation, report the observed error and location and stop.
+1. Read the failing step: `aihub pipeline logs --failed --run 123`. Seen before? `aihub search all "<error>" --kinds logs` (last 30 days). Follow a wrapper failure to its child activity, exception or artifact. For an explanation, report the observed error and location and stop.
 2. For a repair, inspect an existing working implementation. Choose the smallest check that answers the open question: an existing test, a temporary probe using the real helper, or one scenario. Match the failing input, runtime, dependency features and identity where relevant. Reproduce the failure and rerun that check after the fix when feasible. Keep tests meaningful. Use a topic branch and PR for protected branches.
 3. Commit the fix with `aihub commit --type fix --subject "handle empty input"`. Add `--push` when ready. Check whether the push already triggered the intended run. Before queuing an expensive run inspect `aihub pipeline run-again --run 123 --plan`: verify repositories, branch, revision, parameters and scope against the request. Record actual checked-out revisions from the run where available. Broaden validation when the remaining question involves several components.
 4. For example, after verifying the latest commit and the original parameters, run `aihub pipeline run-again --run 123 --commit latest`. For a requested replay of the same revision use `--commit same`. Retry transient infrastructure once without code changes.
