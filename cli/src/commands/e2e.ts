@@ -17,7 +17,7 @@ export const CRITERIA_USAGE = `usage: aihub criteria show|status --id N [--json]
        aihub criteria proposal-file --id N | proposal --id N [--json] | apply --id N --rev R --take 1,2,3
   criteria live in the criteria field of the work item, each with "Hoe getest:" and "Bewijs:" under it; the status is kept in the set or branch`;
 
-export const STORY_E2E_SUBS = ["progress", "yolo"];
+export const STORY_E2E_SUBS = ["progress", "yolo", "plan-file"];
 
 type V = Record<string, string | boolean | undefined>;
 
@@ -120,10 +120,20 @@ export async function runCriteria(argv: string[], ctx: Ctx): Promise<void> {
 /** aihub story progress --id N [--step k --total n --label t] [--steps a|b|c] [--done] | aihub story yolo --on|--off [--folder F] */
 export async function runStoryE2e(argv: string[], ctx: Ctx): Promise<void> {
   const [sub, ...rest] = argv;
-  const v = parse(rest, { ...COMMON, step: { type: "string" }, total: { type: "string" }, label: { type: "string" }, steps: { type: "string" }, done: { type: "boolean" }, stop: { type: "boolean" }, options: { type: "string" }, action: { type: "string" }, on: { type: "boolean" }, off: { type: "boolean" }, folder: { type: "string" } }).values as V;
+  const v = parse(rest, { ...COMMON, step: { type: "string" }, total: { type: "string" }, label: { type: "string" }, steps: { type: "string" }, done: { type: "boolean" }, stop: { type: "boolean" }, options: { type: "string" }, action: { type: "string" }, waiting: { type: "string" }, "plan-file": { type: "string" }, resume: { type: "boolean" }, on: { type: "boolean" }, off: { type: "boolean" }, folder: { type: "string" } }).values as V;
   const json = !!v.json;
   await answer(ctx, json, async () => {
     const run = await import("../lib/e2e/run.js");
+    if (sub === "plan-file") {
+      // the plan of a run goes next to the proposals: a folder opencode may write to without asking
+      const { mkdirSync } = await import("node:fs");
+      const { dirname } = await import("node:path");
+      const { criteriaProposalFile } = await import("../lib/e2e/workitem.js");
+      const s = await stories(ctx, v);
+      const f = criteriaProposalFile(s, idOf(v)).replace(/-criteria\.md$/, "-plan.md");
+      mkdirSync(dirname(f), { recursive: true });
+      return { data: { id: idOf(v), planFile: f }, text: f };
+    }
     if (sub === "yolo") {
       if (!v.on === !v.off) throw new BrowseError("badInput", "pass --on or --off");
       const r = run.yolo(ctx, { on: !!v.on, folder: str(v, "folder") });
@@ -137,10 +147,14 @@ export async function runStoryE2e(argv: string[], ctx: Ctx): Promise<void> {
       steps: str(v, "steps")?.split("|").map((x) => x.trim()).filter(Boolean),
       done: !!v.done,
       stop: !!v.stop,
+      waiting: str(v, "waiting"),
+      planFile: str(v, "plan-file"),
+      resume: !!v.resume,
       action: str(v, "action"),
       options: str(v, "options") ? Object.fromEntries(str(v, "options")!.split(",").map((x) => x.trim()).filter(Boolean).map((x) => (x.includes("=") ? [x.split("=")[0], /^(true|yes|1)$/i.test(x.split("=")[1])] : [x, true]))) : undefined,
     });
     const data = { ...r, stepsView: run.stepsView(r) };
-    return { data, text: r.running ? `story ${r.id}: step ${r.step}/${r.total} ${r.label}` : `story ${r.id}: ${r.stopped ? "stopped" : r.step ? `done (${r.total} steps)` : "no run"}` };
+    const waits = r.waiting ? ` (waits for ${r.waitingFor}${r.planFile ? `: ${r.planFile}` : ""})` : "";
+    return { data, text: r.running ? `story ${r.id}: step ${r.step}/${r.total} ${r.label}${waits}` : `story ${r.id}: ${r.stopped ? "stopped" : r.step ? `done (${r.total} steps)` : "no run"}` };
   });
 }
