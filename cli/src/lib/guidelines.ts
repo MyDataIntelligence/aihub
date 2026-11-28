@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync } from "./proc.js";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { chooseTarget } from "./branch.js";
@@ -329,7 +329,8 @@ export async function guidelinesCheck(ctx: Ctx, o: { base?: string; json?: boole
     const cmd = l.command.includes("{files}") ? l.command.replace("{files}", mine.map(quote).join(" ")) : `${l.command} ${mine.map(quote).join(" ")}`;
     const r = spawnSync(cmd, { cwd: root, shell: true, encoding: "utf8", timeout: 120_000, windowsHide: true });
     const out = `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
-    if (r.error || /not recognized as an internal or external command|command not found|No module named/i.test(out)) {
+    // 127: the shell did not find the command; Windows says it in words; a Python linter that is missing says No module named
+    if (r.error || r.status === 127 || /not recognized as an internal or external command|command not found|No module named/i.test(out)) {
       skipped.push({ name: l.name, why: r.error ? r.error.message : "not installed" });
       continue;
     }
