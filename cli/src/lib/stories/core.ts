@@ -102,6 +102,22 @@ export function storiesOf(ctx: Ctx, o: StoriesOpts, needProject = true): Stories
   return { b, project, team, settings: sameProject ? settings : {}, c, tc: c.forTeam(team), root, teamCfg: root ? loadTeam(root) : {} };
 }
 
+/**
+ * A work item id is unique in the organisation, and Azure DevOps answers it under any project of it. Everything about
+ * one item (its link, area, iteration, template, team, set) must come from the item's own project, not from the saved or
+ * default one: the browser shows several projects at once. One read of System.TeamProject per item (kept 4 hours).
+ */
+export async function storiesForItem(ctx: Ctx, s: Stories, id: number): Promise<Stories> {
+  const project = (
+    await cached(s.b, `stories|${s.b.org}|item-project|${id}`, TTL.lists, async () => {
+      const r = await s.b.client.request<{ fields?: Record<string, unknown> }>("GET", `wit/workitems/${id}`, { orgLevel: true, query: { fields: F.project } });
+      return String(r.data.fields?.[F.project] ?? "");
+    })
+  ).data;
+  if (!project || project.toLowerCase() === s.project.toLowerCase()) return s;
+  return storiesOf(ctx, { org: s.b.org, project, refresh: s.b.refresh });
+}
+
 // ---- cache generation ------------------------------------------------------------------------------------------------
 
 const genKey = (s: Stories) => `stories-gen|${s.b.org}|${s.project}`;
@@ -143,6 +159,7 @@ export const F = {
   changed: "System.ChangedDate",
   systemInfo: "Microsoft.VSTS.TCM.SystemInfo",
   history: "System.History",
+  project: "System.TeamProject",
   storyPoints: "Microsoft.VSTS.Scheduling.StoryPoints",
   effort: "Microsoft.VSTS.Scheduling.Effort",
   size: "Microsoft.VSTS.Scheduling.Size",

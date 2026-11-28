@@ -54,7 +54,11 @@ async function answer(ctx: Ctx, json: boolean, work: () => Promise<{ data: unkno
 }
 
 async function stories(ctx: Ctx, v: V) {
-  return (await import("../lib/stories/core.js")).storiesOf(ctx, { org: str(v, "org"), project: str(v, "project"), team: str(v, "team"), refresh: !!v.refresh });
+  const core = await import("../lib/stories/core.js");
+  const s = core.storiesOf(ctx, { org: str(v, "org"), project: str(v, "project"), team: str(v, "team"), refresh: !!v.refresh });
+  // with an id: the item's own project (its link, area, iteration, template), never the saved or default project
+  const id = str(v, "id");
+  return id && /^(AB#)?\d+$/i.test(id) ? core.storiesForItem(ctx, s, Number(id.replace(/^AB#/i, ""))) : s;
 }
 
 export async function runPrompt(argv: string[], ctx: Ctx): Promise<void> {
