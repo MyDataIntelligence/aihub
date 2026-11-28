@@ -164,14 +164,15 @@ export function taskText(meta: ChangeMeta, o: { selection?: Selection; materiali
     "- Change and add files under ./files with your normal edit tools.",
     `- Remove a file: \`aihub browse change rm --id ${id} --path /path/in/repo\`.`,
     `- See your change: \`aihub browse change diff --id ${id}\`.`,
-    `- When done: write a short summary for the reviewer in a file and run \`aihub browse change summary --id ${id} --file <file>\`. Say that tests were not run.`,
+    `- Check it before the summary: \`aihub browse change verify --id ${id}\` lints the changed lines in a temporary copy (add \`--tests\` for the tests of the changed files); fix what it reports and run it again.`,
+    `- When done: write a short summary for the reviewer in a file and run \`aihub browse change summary --id ${id} --file <file>\`; say which checks of \`change verify\` passed, or that they were not run.`,
     "",
     "## Fixed limits",
     "",
     "- Do not push, commit, merge or run git: the user pushes from the review.",
     `- Never ${["main", "master", "staging", "develop"].join(", ")}; only this repository; at most ${MAX_CHANGED_FILES} files.`,
     "- No secrets (keys, passwords, tokens), no pipeline definitions, variable groups or .env files.",
-    "- Tests cannot run here (no clone).",
+    "- There is no clone: tests and linters run only through `change verify` (a temporary copy that is removed after).",
     "",
   ].join("\n");
 }
@@ -373,6 +374,14 @@ export async function changeDiff(b: Browse, id: string) {
     summary,
     problems,
     ...(meta.pushed ? { pushed: meta.pushed } : {}),
+    // the last `change verify` (lint and tests in a temporary copy), or null
+    verify: (() => {
+      try {
+        return JSON.parse(readFileSync(join(dir, "verify.json"), "utf8")) as unknown;
+      } catch {
+        return null;
+      }
+    })(),
     contents: Object.fromEntries(files.map((f) => [f.path, f.content])),
   };
 }

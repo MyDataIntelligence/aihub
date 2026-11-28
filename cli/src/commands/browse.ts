@@ -21,6 +21,17 @@ export const BROWSE_USAGE = `usage: aihub browse <sub> [--org O] [--refresh]   (
   related  --project P --repo R --path /file [--top 10]   "+ related files": users (Code Search), tests and same-name files
   pr       --project P --repo R --branch B [--target T] [--story N] [--pr-title t] [--draft]   Create Pull Request after a push
   suggest-branch [--story N] --path /file [--title t]
+  change start --project P --repo R [--ref B] [--branch feature/x] [--story N] [--paths /a,/b] [--selection /a:16-23] [--prompt-file F]
+           Change with Agent without a clone; writes TASK.md for the agent (agentPrompt starts it)
+  change read|write|rm --id ID --path /file [--content-file F] | change summary --id ID --file F | change diff --id ID
+  change verify --id ID [--tests | --tests-only] [--progress]   lint (and test) the change in a temporary shallow copy, removed after
+  change push --id ID [--message-file M] [--branch B] [--pr [--target T] [--story N] [--pr-title t] [--draft]] [--rebase]
+  change apply --id ID --dir <working copy> | change list | change discard --id ID
+           never main/master/staging/develop, at most 20 files, no secrets, pipelines or variable groups; nothing is pushed before push
+  ask start --scope P,P/R,... --prompt-file F [--story N] [--limit 200]   Ask Agent about Selected: read only, writes TASK.md
+  ask read --id ID --project P --repo R --path /f (counted) | ask allow --id ID [--more 200] | ask report --id ID --file report.json
+  ask propose --id ID --project P --repo R --path /f --content-file F | ask state --id ID | ask list | ask discard --id ID
+  ask apply --id ID --project P --repo R [--branch B] [--story N]   a change with the proposals of that repository
   pipelines --project P                                       pipelines of a project: folders, repo, YAML, default branch, latest run
   pipeline  --project P --pipeline ID [--top 8]               one pipeline with its latest runs
   run-plan  --project P --pipeline ID [--ref <branch|tag:T|commit:SHA>]   the run form from the YAML on that ref
@@ -78,6 +89,9 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     dir: { type: "string" },
     delete: { type: "boolean" },
     selection: { type: "string" },
+    tests: { type: "boolean" },
+    "tests-only": { type: "boolean" },
+    progress: { type: "boolean" },
     limit: { type: "string" },
     scope: { type: "string" },
     more: { type: "string" },
@@ -244,6 +258,11 @@ async function changeAnswer(action: string, v: V, ctx: Ctx): Promise<unknown> {
   if (action === "push")
     return c.changePush(b, id, { message: str(v, "message-file") ? readText(str(v, "message-file")!) : undefined, branch: str(v, "branch"), pr: !!v.pr, target: str(v, "target"), story: num(str(v, "story"), "--story"), prTitle: str(v, "pr-title"), draft: !!v.draft, rebase: !!v.rebase });
   if (action === "apply") return c.changeApply(b, id, need(v, "dir"));
+  if (action === "verify") {
+    const { changeVerify } = await import("../lib/browse/verify.js");
+    // --progress: one JSON line per step on stderr ({"progress":{step,n,total,message}}), for the bar; stdout keeps the one answer
+    return changeVerify(b, id, { lint: !v["tests-only"], tests: !!v.tests || !!v["tests-only"], progress: v.progress ? (e) => ctx.err(JSON.stringify({ progress: e })) : undefined });
+  }
   throw new AihubError(BROWSE_USAGE);
 }
 
