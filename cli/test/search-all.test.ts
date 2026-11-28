@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { main } from "../src/router.js";
 import { browseOf } from "../src/lib/browse/core.js";
 import { rememberRepo } from "../src/lib/browse/search.js";
-import { numberOf, parseKinds, searchAll, searchAllText, wiqlText, type SearchPart } from "../src/lib/searchAll.js";
+import { numberOf, parseKinds, rankItems, searchAll, searchAllText, titleScore, wiqlText, type SearchPart } from "../src/lib/searchAll.js";
 import { ctxFor, fakeFetch, tmp, type Route } from "./helpers.js";
 
 const NOW = Date.parse("2026-11-28T10:00:00Z");
@@ -42,8 +42,8 @@ const base: Route[] = [
     respond: () => ({
       body: {
         value: [
-          { id: 3, fields: { "System.Title": "Load orders daily", "System.WorkItemType": "User Story", "System.State": "New", "System.TeamProject": "test-project" } },
-          { id: 7, fields: { "System.Title": "Orders report", "System.WorkItemType": "Task", "System.State": "Closed", "System.TeamProject": "test-project", "System.AssignedTo": { displayName: "Test User" } } },
+          { id: 3, fields: { "System.Title": "Load orders daily", "System.WorkItemType": "User Story", "System.State": "New", "System.TeamProject": "test-project", "System.ChangedDate": "2026-11-01T10:00:00Z" } },
+          { id: 7, fields: { "System.Title": "Orders report", "System.WorkItemType": "Task", "System.State": "Closed", "System.TeamProject": "test-project", "System.ChangedDate": "2026-11-27T10:00:00Z" } },
         ],
       },
     }),
@@ -102,6 +102,26 @@ describe("search all: helpers", () => {
   });
 });
 
+describe("search all: ranking", () => {
+  it("scores a title: whole, start, word start, anywhere, every word", () => {
+    expect(titleScore("Orders", "orders")).toBe(100);
+    expect(titleScore("Orders report", "orders")).toBe(80);
+    expect(titleScore("Daily orders load", "orders")).toBe(60);
+    expect(titleScore("Preorders", "orders")).toBe(40);
+    expect(titleScore("Load the daily orders", "daily load")).toBe(20);
+    expect(titleScore("Something else", "orders")).toBe(0);
+  });
+  it("open before closed, then the best title match, then the most recently changed", () => {
+    const rows = [
+      { t: "Orders report", c: true, d: 9 },
+      { t: "Fix the orders export", c: false, d: 1 },
+      { t: "Orders", c: false, d: 2 },
+      { t: "Something with orders", c: false, d: 5 },
+    ];
+    expect(rankItems(rows, { title: (x) => x.t, closed: (x) => x.c, changed: (x) => x.d }, "orders").map((x) => x.t)).toEqual(["Orders", "Something with orders", "Fix the orders export", "Orders report"]);
+  });
+});
+
 describe("search all", () => {
   it("finds every kind at once, each part as soon as it is ready", async () => {
     const s = setup();
@@ -112,15 +132,19 @@ describe("search all", () => {
     expect(r.kinds.map((p) => p.kind)).toEqual(["repos", "files", "text", "branches", "workitems", "prs", "wiki", "pipelines"]);
     expect(r.kinds.every((p) => p.status === "ok")).toBe(true);
     expect(part(r, "repos").results.map((h) => h.title)).toEqual(["orders-etl", "agile-orders"]);
+    expect(part(r, "repos").results[0].detail).toBe("test-project");
     expect(part(r, "files").results[0]).toMatchObject({ title: "load_orders.py", project: "test-project", repo: "orders-etl", path: "/notebooks/load_orders.py" });
     expect(part(r, "branches").results[0]).toMatchObject({ title: "feature/orders-retry", repo: "orders-etl", branch: "feature/orders-retry" });
-    // newest changed first, as WIQL ordered them
-    expect(part(r, "workitems").results.map((h) => [h.id, h.type, h.state])).toEqual([
-      [7, "Task", "Closed"],
-      [3, "User Story", "New"],
+    // open before closed, even when the closed one changed later; the closed one is marked
+    expect(part(r, "workitems").results.map((h) => [h.id, h.type, h.state, !!h.closed])).toEqual([
+      [3, "User Story", "New", false],
+      [7, "Task", "Closed", true],
     ]);
     // the title or the source branch; active first
-    expect(part(r, "prs").results.map((h) => h.id)).toEqual([41, 40]);
+    expect(part(r, "prs").results.map((h) => [h.id, !!h.closed])).toEqual([
+      [41, false],
+      [40, true],
+    ]);
     expect(part(r, "wiki").results[0]).toMatchObject({ title: "Orders load", wiki: "test-project.wiki", detail: "restart the orders load" });
     expect(part(r, "pipelines").results[0]).toMatchObject({ title: "orders-etl-ci", id: 5, project: "test-project" });
     expect(searchAllText(r)).toMatch(/Pull Requests \(2\)\n {2}!41 Report layout/);

@@ -327,12 +327,12 @@ remembered 5 minutes, nothing polls. Commands: `aihub.bar.browsePipelines` and t
 One text over everything the user can open in the organisation, every kind at the same time: `repos` (projects and repositories by name),
 `files` (file names: Code Search, else the trees of recently opened repositories), `text` (Code Search, else ripgrep in the clones on this
 PC), `branches` (refs that contain the text, in the cloned, recently opened and name-matching repositories, at most 12), `workitems` (`#n`
-exact, else WIQL `Title CONTAINS`, newest changed first), `prs` (`!n`/`#n` exact, else title or source branch, active first, at most 25
+exact first, else WIQL `Title CONTAINS`; open before Done/Closed (`closed: true`), then the best title match, then the most recently changed), `prs` (`!n`/`#n` exact, else title or source branch; active before completed/abandoned (`closed: true`), then the best title match, then the newest; at most 25
 projects), `wiki` (Wiki Search, else page titles) and `pipelines` (name or folder). A kind that fails or takes longer than 30 s is a part with
 `status:"failed"` and `error:{kind,message}` (`kind` `timeout`, `searchUnavailable`, `signedOut`, ...); the others still come. Reads go through
 the browse cache (lists 4 hours, searches 2 minutes).
 
-`{org, text, kinds:[{kind, status:"ok"|"failed", route, count, more, results:[{kind,title,detail,project?,repo?,path?,branch?,id?,type?,state?,wiki?,line?,url?}], note?, error?, tookMs}]}`
+`{org, text, kinds:[{kind, status:"ok"|"failed", route, count, more, results:[{kind,title,detail,project?,repo?,path?,branch?,id?,type?,state?,wiki?,line?,url?,closed?,localPath?}], note?, error?, tookMs}]}`
 in the asked order. `--stream`: each part as soon as it is ready as one line `{"part":{...}}` on stderr (stdout keeps the one answer).
 Without `--json` it prints one group per kind for a chat. The extension's `aihub.bar.searchAll` runs it.
 
