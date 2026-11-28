@@ -200,7 +200,10 @@ export function proposalYaml(eff: Effective[]): string {
   const doc = parseDocument(src);
   const val = (k: string) => eff.find((e) => e.key === k)?.value;
   const language = String(val("language") ?? "en");
+  // the language is a question until someone answers it: never written as a guess (it decides every text aihub writes)
+  const langOpen = eff.some((e) => e.key === "language" && ((e.source === "default" && specOf("language")?.askWhenUnknown) || (e.source === "detected" && e.confidence === "guess")));
   for (const e of eff) {
+    if (e.key === "language" && langOpen) continue;
     if (e.value === undefined || e.key === "fabric.workspaces") continue;
     setKeep(doc, pathOf(e.key), e.value);
   }
@@ -213,6 +216,8 @@ export function proposalYaml(eff: Effective[]): string {
   if (ws !== undefined) setKeep(doc, ["fabric", "workspaces"], ws);
   doc.deleteIn(["guidelines"]);
   doc.deleteIn(["cherryPick"]);
+  // the key and its explanation stay, without a value: the answer fills it (aihub team set language nl|en)
+  if (langOpen) setKeep(doc, ["language"], null);
   return `${PROPOSAL_MARK} (aihub team setup): check every value; 'aihub init' proposes it to the team as a pull request.\n` + String(doc).replace(/^# Team file for aihub\.[^\n]*\n(# Full schema[^\n]*\n)?/, "# One line of explanation per key; schema: docs/team-yaml.md in the aihub repository.\n");
 }
 
