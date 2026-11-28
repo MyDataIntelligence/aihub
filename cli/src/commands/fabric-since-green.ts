@@ -100,6 +100,39 @@ export async function deployedCmd(s: Setup): Promise<void> {
 
 // ---- aihub fabric failures --since-green --------------------------------------------------------------------------------
 
+/**
+ * `failures --since-green` without --workspace: since green is about a CD-filled workspace, so not the branch's feature
+ * workspace but the environment of team.yaml (with deployedBy) whose workspace holds --item, or the only one without
+ * --item. Sets s.v.workspace and returns the line that says so; undefined leaves the branch workspace rule.
+ */
+export async function environmentWorkspace(s: Setup, client: FabricClient): Promise<string | undefined> {
+  if ((s.v.workspace as string[] | undefined)?.length || !s.root) return undefined;
+  let envs: DeployEnv[];
+  try {
+    envs = deployEnvs(loadTeam(s.root), repoClientAt(s.ctx, s.root).client.remote.repo).filter((e) => e.workspace && isConfigured(e));
+  } catch {
+    return undefined;
+  }
+  if (!envs.length) return undefined;
+  const item = typeof s.v.item === "string" && s.v.item ? s.v.item : undefined;
+  let hits = envs;
+  if (item) {
+    const all = await client.workspaces();
+    hits = [];
+    for (const e of envs) {
+      const w = all.find((x) => x.displayName.toLowerCase() === e.workspace!.toLowerCase());
+      if (!w) continue;
+      const items = await client.items(w.id).catch(() => [] as FabricItem[]);
+      if (items.some((i) => i.displayName.toLowerCase() === item.toLowerCase() || i.id.toLowerCase() === item.toLowerCase())) hits.push(e);
+    }
+  }
+  if (hits.length > 1)
+    throw new AihubError(`${item ? `${item} is in` : "team.yaml has"} ${hits.length} environment workspaces; pick one: ${hits.map((e) => `--workspace "${e.workspace}" (${e.name})`).join(", ")}`);
+  if (hits.length !== 1) return undefined;
+  s.v.workspace = [hits[0].workspace!];
+  return `workspace: ${hits[0].workspace} (fabric.environments.${hits[0].name} of team.yaml${item ? `, holds ${item}` : ""}; --workspace picks another)`;
+}
+
 export type Outcome = "suspects" | "deployedUnrelated" | "nothingDeployed" | "noGreenRun" | "notConfigured" | "unavailable";
 
 export interface SinceGreen {

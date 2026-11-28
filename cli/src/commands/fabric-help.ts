@@ -20,7 +20,7 @@ const COMMANDS: [string, string, string][] = [
   ["run", "job cancel", "job cancel --workspace W --item I --job J   (or: run --cancel J --item I)"],
   ["run", "job show", "job show --workspace W --item I --job J"],
   ["why", "failures", "failures --workspace W   (newest failed run: failed cell, exception, likely cause)"],
-  ["why", "failures --since-green", "failures --workspace W --since-green [--item I]   (what was deployed since the last green run, suspects first)"],
+  ["why", "failures --since-green", "failures --item I --since-green [--workspace W]   (what was deployed since the last green run, suspects first; without --workspace the team.yaml environment that holds the item)"],
   ["why", "deployed", "deployed --workspace W | --env ENV   (which commit runs in a CD-filled workspace, from which CD run)"],
   ["why", "logs", "logs --workspace W --item I --job J [--out file] [--search text] [--tail N]   (a short digest; the full log only with --out)"],
   ["why", "logs --since", "logs --workspace W [--since 24h] [--status failed] [--item I]   (runs of a workspace)"],
