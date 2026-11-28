@@ -8,7 +8,7 @@ export interface TeamConfig {
   repositories?: { name?: string; defaultTarget?: string }[];
   pullRequest?: {
     template?: string;
-    /** title pattern: {storyId} {storyTitle} {branch} (shown by aihub team preview) */
+    /** title pattern: {storyId} {storyTitle} {branch}; used by aihub pr create (a pattern naming the story only when the story is known) */
     title?: string;
     emptySection?: string;
     optionalSections?: string[];

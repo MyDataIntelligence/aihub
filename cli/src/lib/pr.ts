@@ -25,6 +25,7 @@ import {
 import { compose, DEFAULT_EMPTY, checkDescriptionLength, editSection, headingsMatch, mergeSections, parseSections, renderSections, resolveTemplate, templateSourceText, type CodeValues } from "./templates.js";
 import { CONTEXT_RE, notesText, readNotes, unwovenNotes, weaveNotes } from "./notes.js";
 import { loadTeam, readUtf8 } from "./team.js";
+import { prTitle } from "./prTitle.js";
 import { checkActionSections } from "./prActions.js";
 import { checkNoise } from "./prNoise.js";
 import { impactWarning } from "./prImpact.js";
@@ -78,7 +79,7 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
   const wi = o.workItem ?? workItemFromBranch(branch);
   const wiTitle = wi ? await getWorkItemTitle(client, wi) : undefined;
   const commits = commitsSince(root, mergeBase(root, target));
-  const title = o.title ?? (wi && wiTitle ? `${wi} ${wiTitle}` : (commits[0]?.subject ?? branch));
+  const title = prTitle({ given: o.title, pattern: team?.pullRequest?.title, storyId: wi, storyTitle: wiTitle, branch, firstCommit: commits[0]?.subject });
 
   const existing = o.dryRun ? undefined : await findActivePr(client, branch);
   const linkedIds = wi ? (await getWorkItemPrIds(client, wi)).filter((id) => id !== existing?.pullRequestId) : [];
