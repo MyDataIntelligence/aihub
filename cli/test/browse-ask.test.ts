@@ -62,8 +62,9 @@ describe("ask agent about selected", () => {
     const w = world();
     const s = askStart(w.b(), { scope: SCOPE, prompt: "x", limit: 2 });
     expect(await askRead(w.b(), s.id, { project: "test-project", repo: "repo-a", path: "/src/load.py" })).toMatchObject({ read: 1, commit: C1, content: FILES["repo-a"]["/src/load.py"] });
-    await askRead(w.b(), s.id, { project: "test-project", repo: "repo-a", path: "/src/load.py" });
-    await askRead(w.b(), s.id, { project: "test-project", repo: "repo-a", path: "/src/b.py" });
+    // the agent reads several files at once: every read counts once
+    await Promise.all([askRead(w.b(), s.id, { project: "test-project", repo: "repo-a", path: "/src/load.py" }), askRead(w.b(), s.id, { project: "test-project", repo: "repo-a", path: "/src/b.py" })]);
+    expect((await askState(w.b(), s.id)).reads).toEqual({ count: 2, limit: 2 });
     await expect(askRead(w.b(), s.id, { project: "test-project", repo: "repo-a", path: "/src/c.py" })).rejects.toMatchObject({ kind: "readLimit" });
     expect((await askState(w.b(), s.id)).needsApproval).toBe(true);
     expect(askAllow(w.ctx.env, s.id, 5)).toEqual({ id: s.id, read: 2, limit: 7 });

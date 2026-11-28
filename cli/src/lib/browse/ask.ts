@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { configHome } from "../configHome.js";
 import { BrowseError, normPath, type Browse } from "./core.js";
@@ -54,10 +55,39 @@ const metaFile = (dir: string) => join(dir, "ask.json");
 const keyOf = (project: string, repo: string) => `${project}/${repo}`;
 const propDir = (dir: string, project: string, repo: string) => join(dir, "proposals", project, repo);
 
+/**
+ * The reads and the bases are one small file each (an agent reads several files at once: one shared JSON would lose some).
+ * `meta.reads` and `meta.bases` are filled from them on every read of the question.
+ */
+const readsDir = (dir: string) => join(dir, "reads");
+const basesDir = (dir: string) => join(dir, "bases");
+const fileKey = (k: string) => createHash("sha1").update(k.toLowerCase()).digest("hex");
+
+function recordRead(dir: string, key: string): void {
+  mkdirSync(readsDir(dir), { recursive: true });
+  writeFileSync(join(readsDir(dir), fileKey(key)), key, "utf8");
+}
+
+function recordBase(dir: string, key: string, base: { branch: string; commit: string }): void {
+  mkdirSync(basesDir(dir), { recursive: true });
+  writeFileSync(join(basesDir(dir), `${fileKey(key)}.json`), JSON.stringify({ key, ...base }), "utf8");
+}
+
+function filled(dir: string, meta: AskMeta): AskMeta {
+  const list = (d: string) => (existsSync(d) ? readdirSync(d) : []);
+  const reads = list(readsDir(dir)).map((f) => readFileSync(join(readsDir(dir), f), "utf8"));
+  const bases: AskMeta["bases"] = {};
+  for (const f of list(basesDir(dir))) {
+    const x = JSON.parse(readFileSync(join(basesDir(dir), f), "utf8")) as { key: string; branch: string; commit: string };
+    bases[x.key] = { branch: x.branch, commit: x.commit };
+  }
+  return { ...meta, reads: reads.sort(), bases };
+}
+
 export function readAsk(env: NodeJS.ProcessEnv, id: string): { dir: string; meta: AskMeta } {
   const dir = dirOf(env, id);
   try {
-    return { dir, meta: JSON.parse(readFileSync(metaFile(dir), "utf8")) as AskMeta };
+    return { dir, meta: filled(dir, JSON.parse(readFileSync(metaFile(dir), "utf8")) as AskMeta) };
   } catch {
     throw new BrowseError("notFound", `there is no question '${id}' on this PC (aihub browse ask list)`);
   }
@@ -65,7 +95,8 @@ export function readAsk(env: NodeJS.ProcessEnv, id: string): { dir: string; meta
 
 const save = (dir: string, meta: AskMeta) => {
   mkdirSync(dir, { recursive: true });
-  writeFileSync(metaFile(dir), JSON.stringify(meta, null, 2), "utf8");
+  const { reads: _r, bases: _b, ...rest } = meta;
+  writeFileSync(metaFile(dir), JSON.stringify({ ...rest, reads: [], bases: {} }, null, 2), "utf8");
 };
 
 const inScope = (scope: ScopeItem[], project: string, repo: string) => scope.some((x) => x.project.toLowerCase() === project.toLowerCase() && (!x.repo || x.repo.toLowerCase() === repo.toLowerCase()));
@@ -93,6 +124,12 @@ export function askTask(meta: AskMeta): string {
     `- A fix you propose: write the WHOLE new file to a temp file and run \`aihub browse ask propose --id ${id} --project P --repo R --path /file --content-file <file>\`. It changes nothing; the user decides per repository.`,
     `- The report: a JSON file \`{"summary": "...", "repos": [{"project": "P", "repo": "R", "finding": "...", "refs": [{"path": "/file", "line": 12, "note": "..."}]}]}\`, then \`aihub browse ask report --id ${id} --file <file>\`. One entry per repository you looked at, also "nothing found".`,
     "",
+    "## Finish (required: the user sees only what these commands store)",
+    "",
+    "1. For every fix you suggest: `aihub browse ask propose ...` with the whole new file (printing a diff is not enough).",
+    "2. The report: `aihub browse ask report ...` with the JSON above (printing it is not enough).",
+    "3. Then say in one line that the report is stored.",
+    "",
     "## Fixed limits",
     "",
     "- Read only: never change, commit, push or clone anything; no git.",
@@ -117,7 +154,7 @@ export function askStart(b: Browse, o: { scope: ScopeItem[]; prompt: string; sto
   save(dir, meta);
   const taskFile = join(dir, "TASK.md");
   writeFileSync(taskFile, askTask(meta), "utf8");
-  return { id, dir, scope: meta.scope, limit: meta.limit, taskFile, agentPrompt: "Read TASK.md and answer the question with a report. Read only: do not change, commit or push anything." };
+  return { id, dir, scope: meta.scope, limit: meta.limit, taskFile, agentPrompt: "Read TASK.md and answer the question. Store every proposed fix with aihub browse ask propose and the report with aihub browse ask report. Read only: do not change, commit or push anything." };
 }
 
 /** The base of a repository for this question: its default branch's head, the first time it is used (kept, so reads and proposals agree). */
@@ -128,7 +165,7 @@ async function baseOf(b: Browse, dir: string, meta: AskMeta, project: string, re
   const head = await headOf(b, row.project, row.repo, row.defaultBranch);
   if (!head) throw new BrowseError("notFound", `${repo} has no default branch`);
   meta.bases[k] = { branch: row.defaultBranch, commit: head };
-  save(dir, meta);
+  recordBase(dir, k, meta.bases[k]);
   return meta.bases[k];
 }
 
@@ -140,11 +177,9 @@ export async function askRead(b: Browse, id: string, o: { project: string; repo:
   if (!meta.reads.includes(k) && meta.reads.length >= meta.limit) throw new BrowseError("readLimit", `${meta.reads.length} files read: the limit of ${meta.limit} is reached. Ask the user; they allow more with aihub browse ask allow --id ${id}`);
   const base = await baseOf(b, dir, meta, o.project, o.repo);
   const f = await readFileAt(b, o.project, o.repo, p, { name: base.commit, kind: "commit" });
-  if (!meta.reads.includes(k)) {
-    meta.reads.push(k);
-    save(dir, meta);
-  }
-  return { id, project: o.project, repo: o.repo, path: p, commit: base.commit, read: meta.reads.length, limit: meta.limit, binary: f.binary, tooLarge: f.tooLarge, content: f.content };
+  recordRead(dir, k);
+  const read = readAsk(b.env, id).meta.reads.length;
+  return { id, project: o.project, repo: o.repo, path: p, commit: base.commit, read, limit: meta.limit, binary: f.binary, tooLarge: f.tooLarge, content: f.content };
 }
 
 export function askAllow(env: NodeJS.ProcessEnv, id: string, more = READ_LIMIT) {
@@ -244,7 +279,7 @@ export async function askState(b: Browse, id: string) {
   }
   const keys = new Set([...(report?.repos ?? []).map((r) => keyOf(r.project, r.repo)), ...Object.keys(meta.bases).filter((k) => existsSync(propDir(dir, ...(k.split("/") as [string, string]))))]);
   const repos = [];
-  for (const k of keys) {
+  for (const k of [...keys].sort((x, y) => x.localeCompare(y))) {
     const [project, repo] = k.split("/");
     const r = report?.repos.find((x) => keyOf(x.project, x.repo) === k);
     repos.push({ project, repo, base: meta.bases[k] ?? null, finding: r?.finding ?? null, refs: r?.refs ?? [], proposals: (await proposalsOf(b, dir, meta, project, repo)).list, change: meta.applied[k] ?? null });
