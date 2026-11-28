@@ -333,7 +333,7 @@ projects), `wiki` (Wiki Search, else page titles) and `pipelines` (name or folde
 the browse cache (lists 4 hours, searches 2 minutes).
 
 `{org, text, kinds:[{kind, status:"ok"|"failed", route, count, more, results:[{kind,title,detail,project?,repo?,path?,branch?,id?,type?,state?,wiki?,line?,url?,closed?,localPath?}], note?, error?, tookMs}]}`
-in the asked order. `--stream`: each part as soon as it is ready as one line `{"part":{...}}` on stderr (stdout keeps the one answer).
+in the asked order. `logs` (only with `--kinds logs`, never in the default kinds): the step logs of finished runs of the last `--since 30d` in the projects you can read, failed and partially succeeded runs first (`--failed`: only those), `--pipeline ID|name`, `--branch B`, at most `--max-logs 200` logs; a hit is a matching line with `run`, `stepId`, `pipelineId`, `line` and `ranges`, the part has `older` (a wider period in days). A log of a finished run is kept compressed in `<config>/aihub/cache/logs/`, at most 200 MB (`AIHUB_LOG_CACHE_MB`), the least recently used go first; downloads run 4 at a time, a log search gets 120 s. `--stream`: each part as soon as it is ready as one line `{"part":{...}}` on stderr (stdout keeps the one answer).
 Without `--json` it prints one group per kind for a chat. The extension's `aihub.bar.searchAll` runs it.
 
 ## Wiki browser: `aihub wiki browse ...`
