@@ -102,6 +102,12 @@ export function applyToOf(text: string): string[] {
     .filter(Boolean);
 }
 
+/** One rule on one line, at most 200 characters (the source line has the rest). */
+const short = (s: string): string => {
+  const one = s.replace(/\s+/g, " ");
+  return one.length > 200 ? `${one.slice(0, 199).trimEnd()}…` : one;
+};
+
 /**
  * The rules of a guideline file: its list items (`-`, `*`, `1.`), outside code blocks and front matter. A file without
  * list items gives its first plain lines (at most 12). Each rule with its line.
@@ -126,11 +132,11 @@ export function rulesOf(text: string, path: string): GuidelineRule[] {
     const item = /^\s*(?:[-*+]|\d+[.)])\s+(.*\S)\s*$/.exec(l);
     if (item) {
       // a continuation line of the same item is not read: one line per rule keeps it short
-      out.push({ text: item[1].replace(/\s+/g, " "), source: `${path}:${i + 1}` });
+      out.push({ text: short(item[1]), source: `${path}:${i + 1}` });
       continue;
     }
     const t = l.trim();
-    if (t && !/^#/.test(t) && !/^[|>]/.test(t) && plain.length < 12) plain.push({ text: t.replace(/\s+/g, " "), source: `${path}:${i + 1}` });
+    if (t && !/^#/.test(t) && !/^[|>]/.test(t) && plain.length < 12) plain.push({ text: short(t), source: `${path}:${i + 1}` });
   }
   return out.length ? out : plain;
 }
