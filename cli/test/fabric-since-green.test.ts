@@ -183,17 +183,25 @@ describe("aihub fabric failures --since-green", () => {
     expect(sg).toContain('not suspect: PR 409 "PR title 409" touches only governance/');
     expect(sg).toContain("outcome: suspects");
     expect(r.out.trimEnd().endsWith("next: aihub pr explain --pr 412")).toBe(true);
-    // the commit range: compare from the green commit to the red commit
+    // the commit range: as Azure DevOps answers it (measured), itemVersion is the green (older) commit, compareVersion the red one
     const q = r.calls.find((c) => /commits\?/.test(c.url))!.url;
-    expect(q).toContain(`searchCriteria.itemVersion.version=${C3}`);
-    expect(q).toContain(`searchCriteria.compareVersion.version=${C1}`);
+    expect(q).toContain(`searchCriteria.itemVersion.version=${C1}`);
+    expect(q).toContain(`searchCriteria.compareVersion.version=${C3}`);
     // timeline of the run queued after the red run is never read
     expect(r.calls.some((c) => /builds\/105\/timeline/.test(c.url))).toBe(false);
   });
 
+  it("Azure DevOps as measured (itemVersion = older, compareVersion = newer): the range in one call", async () => {
+    const realApi: Route = { match: /_apis\/git\/repositories\/test-repo\/commits\?/, respond: (call) => ({ body: { value: call.url.includes(`searchCriteria.itemVersion.version=${C1}`) ? CHANGES.map((c) => ({ commitId: c.sha, comment: c.title })) : [] } }) };
+    const r = await go([realApi, ...all()], [...args, "--since-green", "--json"]);
+    const sg = JSON.parse(r.out).result.sinceGreen;
+    expect(sg.commits.map((c: { commit: string }) => c.commit)).toEqual([C3, C4, C2]);
+    expect(r.calls.filter((c) => /commits\?/.test(c.url)).length).toBe(1);
+  });
+
   it("the commit range is checked: when the first answer does not hold the red commit, the two versions are swapped once", async () => {
-    // an Azure DevOps that reads itemVersion as the older side: the first query answers nothing, the swapped one the range
-    const swappedApi: Route = { match: /_apis\/git\/repositories\/test-repo\/commits\?/, respond: (call) => ({ body: { value: call.url.includes(`searchCriteria.itemVersion.version=${C1}`) ? CHANGES.map((c) => ({ commitId: c.sha, comment: c.title })) : [] } }) };
+    // an Azure DevOps that reads itemVersion as the newer side: the first query answers nothing, the swapped one the range
+    const swappedApi: Route = { match: /_apis\/git\/repositories\/test-repo\/commits\?/, respond: (call) => ({ body: { value: call.url.includes(`searchCriteria.itemVersion.version=${C3}`) ? CHANGES.map((c) => ({ commitId: c.sha, comment: c.title })) : [] } }) };
     const r = await go([swappedApi, ...all()], [...args, "--since-green", "--json"]);
     const sg = JSON.parse(r.out).result.sinceGreen;
     expect(sg.outcome).toBe("suspects");
