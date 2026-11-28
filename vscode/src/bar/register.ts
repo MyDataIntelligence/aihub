@@ -14,6 +14,8 @@ import { registerSearchCommands } from "./searchUi";
 import { registerPipelineCommands } from "./pipelinesUi";
 import { registerBrowseCommands } from "./browseUi";
 import { registerOpenReposAsSet } from "./openReposAsSetUi";
+import { registerChangeCommands, startPendingAgent } from "./changeUi";
+import { trackedTimeout } from "../perf/probe";
 import { registerWikiCommands } from "./wikiUi";
 import { registerStoryBrowserCommands } from "./storiesUi";
 import { registerTeamCommands } from "./teamUi";
@@ -576,6 +578,10 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   registerStoryCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   // Open as Set… (repository browser) and New Set… (title bar): clones what is missing, one aihub worktree open, the window, Undo
   registerOpenReposAsSet({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
+  // Change with Agent: aihub browse change (remote) or a working copy; opencode in the panel, a new window or a terminal
+  registerChangeCommands({ reg, log: deps.log, changed });
+  // a window opened for a change starts opencode: one look at one small file, once, a moment after the window is up
+  trackedTimeout("change.pendingAgent", () => startPendingAgent(deps.log), 2000);
   // after an own Update or Push the stand against the target is looked at again
   registerBatchCommands({ engine, log: deps.log, changed, reg, afterGit: () => (behind.forget(), void mgr.run("own")) });
   registerPullRequestCommand({ engine, log: deps.log, changed, reg, refreshPrs: () => prs.refresh(true).then(() => undefined) });

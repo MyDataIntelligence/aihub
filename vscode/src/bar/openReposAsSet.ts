@@ -30,6 +30,8 @@ export interface OpenReposArg {
   from?: string;
   /** one repository in a window of its own, no set file (Open in New Window…): its clone when it is on the branch, else a worktree */
   noSet?: boolean;
+  /** noSet only: false = make the working copy but open no window (Change with Agent opens it itself, or a terminal) */
+  openWindow?: boolean;
 }
 
 export type OpenReposErrorKind = "badInput" | "cancelled" | "failed" | "cliMissing" | "cliTooOld";
@@ -91,7 +93,7 @@ export function parseOpenRepos(a: unknown): OpenReposArg | { problem: string } {
   const window = o.window === "this" ? "this" : o.window === "new" ? "new" : undefined;
   const noSet = o.noSet === true;
   if (noSet && repos.length !== 1) return { problem: "noSet opens exactly one repository" };
-  return { repos, story: posInt(o.story), window, newBranch, from: str(o.from), ...(noSet ? { noSet } : {}) };
+  return { repos, story: posInt(o.story), window, newBranch, from: str(o.from), ...(noSet ? { noSet } : {}), ...(noSet && o.openWindow === false ? { openWindow: false } : {}) };
 }
 
 /** `org/project/repo` of an Azure DevOps url (https, user@, visualstudio.com, ssh), lower case; else the url without user and .git. */

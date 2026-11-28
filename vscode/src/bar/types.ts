@@ -300,6 +300,26 @@ export const BAR_COMMANDS = {
    * `newBranch` makes a worktree from origin/`from` (else origin's default branch). Answer `{ opened, repos: [one row] }`. Failure of the whole call: `{ error: { kind: badInput|cancelled|failed|cliMissing|cliTooOld, message } }`.
    */
   openReposAsSet: "aihub.bar.openReposAsSet",
+  // ---- Change with Agent (aihub browse change; docs/cli-json.md "Change with Agent"; a failure is { error: { kind, message } }) ----
+  /**
+   * `{ project, repo, branch?, paths?, selection?: { path, startLine, endLine }, prompt, mode: "remote"|"workingCopy",
+   * where: "panel"|"newWindow"|"terminal", newBranch?, story?, remoteUrl?, org? }`. remote: an `aihub browse change` workspace (no
+   * clone) -> `{ id, mode, where, dir, filesDir, branch, base, agent }`; watch `filesDir` (a FileSystemWatcher on that folder) and call
+   * changeState after a debounce. workingCopy: a worktree on the new branch (cloned when needed) -> `{ mode, where, path, branch, cloned,
+   * taskFile, agent }`. The agent is opencode: a terminal in this window (panel), a new window that starts it (newWindow) or Windows
+   * Terminal (terminal). Nothing is pushed.
+   */
+  changeStart: "aihub.bar.changeStart",
+  /** `{ id }` -> `aihub browse change diff`: files with status, additions, deletions and hunks; totals; summary; problems; plus `agent`: "working" (its terminal in this window is open) | "stopped" | "closed" | "unknown" (Windows Terminal or another window) */
+  changeState: "aihub.bar.changeState",
+  /** `{ id, message?, pr?, target?, story?, prTitle?, draft?, rebase?, branch? }` -> `{ status: "pushed", ... }` or `{ status: "conflict", files }` */
+  changePush: "aihub.bar.changePush",
+  /** `{ id }` -> `{ id, discarded: true }` */
+  changeDiscard: "aihub.bar.changeDiscard",
+  /** `{ id }` (or `{ path }` of a working-copy change): ends the agent's terminal in this window; the files stay -> `{ id, stopped, agent, reason? }` */
+  changeStop: "aihub.bar.changeStop",
+  /** `{ id, where?: "newWindow"|"terminal"|"panel"|"here", remoteUrl? }`: a worktree on the change's branch with the change in it -> `{ id, path, branch, cloned, applied, skipped }` */
+  changeToWorkingCopy: "aihub.bar.changeToWorkingCopy",
   browseProjects: "aihub.bar.browseProjects",
   /** `{ project, days?, org?, refresh? }` -> `aihub browse project`: repositories with language and last activity, recent files, active authors */
   browseProject: "aihub.bar.browseProject",
