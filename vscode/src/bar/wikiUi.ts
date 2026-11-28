@@ -67,6 +67,7 @@ export function registerWikiCommands(reg: (id: string, f: (...a: any[]) => unkno
   reg(BAR_COMMANDS.wikiCreate, write<CreateArg>("create"));
   reg(BAR_COMMANDS.wikiMove, write<MoveArg>("move"));
   reg(BAR_COMMANDS.wikiUpload, once(wikiArgs.upload));
+  reg(BAR_COMMANDS.wikiDelete, once(wikiArgs.delete));
   reg(BAR_COMMANDS.wikiAskAgent, async (a?: AskArg) => {
     if (!a?.project || !a.wiki || !a.path) return bad(new Error("wikiAskAgent needs { project, wiki, path }"));
     await toChat(askText(a));

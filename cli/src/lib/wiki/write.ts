@@ -304,6 +304,29 @@ export async function wikiMove(b: Browse, o: { project: string; wiki: string; pa
   return { status: "moved", from, to, linksUpdated, linkErrors, webUrl: webPageUrl(b, w, to) };
 }
 
+// ---- delete ----------------------------------------------------------------------------------------------------------
+
+/** Deletes a page of a project wiki; its subpages go with it (Azure DevOps deletes the whole subtree). The caller asks first. */
+export async function wikiDeletePage(b: Browse, o: { project: string; wiki: string; path: string; comment?: string }): Promise<{ status: "deleted"; path: string; subpages: string[] }> {
+  const w = await wikiOf(b, o.project, o.wiki);
+  needProjectWiki(w, "deleting a page");
+  const path = pagePath(o.path);
+  if (path === "/") throw new BrowseError("badInput", "the wiki's root cannot be deleted");
+  const pc = projectClient(b, w);
+  // the subpages, named so the user knows what goes; a page that is not there is notFound
+  const tree = await pc.get<RawPage>(pagesApi(w), { path, recursionLevel: "full" }).catch((e) => {
+    if (kindOf(e) === "notFound") throw new BrowseError("notFound", `page ${path} not found in ${w.name}`);
+    throw e;
+  });
+  const subpages: string[] = [];
+  const collect = (p: RawPage) => (p.subPages ?? []).forEach((s) => (subpages.push(s.path), collect(s)));
+  collect(tree);
+  const comment = (o.comment ?? "").trim();
+  await pc.request("DELETE", pagesApi(w), { query: { path, ...(comment ? { comment } : {}) } });
+  bumpGeneration(b, w.id);
+  return { status: "deleted", path, subpages };
+}
+
 // ---- attachments -----------------------------------------------------------------------------------------------------
 
 export async function wikiUpload(b: Browse, o: { project: string; wiki: string; file: string; name?: string }): Promise<{ name: string; ref: string; markdown: string; bytes: number }> {

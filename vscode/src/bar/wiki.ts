@@ -129,6 +129,8 @@ export const wikiArgs = {
     if (!s(a?.ref)) throw new Error("the attachment is needed ({ ref })");
     return common(a, opt(wikiFlags("attachment", a).concat("--ref", a.ref), "--page", a.pagePath));
   },
+  /** asks nothing: the extension confirms first */
+  delete: (a: PageArg) => common({ org: a.org }, wikiFlags("delete", a).concat("--path", needPath(a))),
   upload: (a: UploadArg) => {
     if (!s(a?.file)) throw new Error("a file is needed ({ file })");
     return common({ org: a.org }, opt(wikiFlags("upload", a).concat("--file", a.file), "--name", a.name));

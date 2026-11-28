@@ -17,9 +17,10 @@ export const WIKI_BROWSE_USAGE = `usage: aihub wiki browse <sub> [--org O] [--re
   diff       --project P --wiki W --path /Page --to SHA [--from SHA]   the change between two versions (from: the version before)
   search     --text T [--project P] [--wiki W] [--top 50] [--skip 0]   Azure DevOps wiki search
   attachment --project P --wiki W --ref /.attachments/x.png [--page /Page]   download for a preview (a cached file)
-  upload     --project P --wiki W --file F [--name N]          project wiki: add an attachment, answers the markdown`;
+  upload     --project P --wiki W --file F [--name N]          project wiki: add an attachment, answers the markdown
+  delete     --project P --wiki W --path /Page [--comment-file C]   project wiki: the page and its subpages (asks nothing: the caller asks first)`;
 
-const SUBS = ["wikis", "tree", "page", "templates", "publish", "create", "move-plan", "move", "history", "diff", "search", "attachment", "upload"];
+const SUBS = ["wikis", "tree", "page", "templates", "publish", "create", "move-plan", "move", "history", "diff", "search", "attachment", "upload", "delete"];
 
 type V = Record<string, string | boolean | undefined>;
 
@@ -95,6 +96,8 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
       return (await import("../lib/wiki/write.js")).wikiMovePlan(b, { ...at(), path: need(v, "path"), to: need(v, "to") });
     case "move":
       return (await import("../lib/wiki/write.js")).wikiMove(b, { ...at(), path: need(v, "path"), to: need(v, "to"), updateLinks: !v["no-links"], order: str(v, "order") === "0" ? 0 : num(str(v, "order"), "--order"), comment: file(v, "comment-file") });
+    case "delete":
+      return (await import("../lib/wiki/write.js")).wikiDeletePage(b, { ...at(), path: need(v, "path"), comment: file(v, "comment-file") });
     case "upload":
       return (await import("../lib/wiki/write.js")).wikiUpload(b, { ...at(), file: need(v, "file"), name: str(v, "name") });
   }

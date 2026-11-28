@@ -8,7 +8,7 @@ import { fileInRepo, gitPathToPage, nameToFile, pagePath, pageToGitPath, wikiLis
 import { attachmentFile, attachmentsOf, mapTree, wikiAttachment, wikiHistory, wikiPage, wikiRevisionDiff, wikiTree } from "../src/lib/wiki/read.js";
 import { hitLines, mapSearch, wikiSearch } from "../src/lib/wiki/search.js";
 import { templateText, WIKI_TEMPLATES } from "../src/lib/wiki/templates.js";
-import { rewriteLinks, wikiCreate, wikiMove, wikiMovePlan, wikiPublish, wikiUpload } from "../src/lib/wiki/write.js";
+import { rewriteLinks, wikiCreate, wikiDeletePage, wikiMove, wikiMovePlan, wikiPublish, wikiUpload } from "../src/lib/wiki/write.js";
 import { readZip } from "../src/lib/wiki/zip.js";
 import { ctxFor, fakeFetch, tmp, type Route } from "./helpers.js";
 
@@ -376,6 +376,18 @@ describe("wiki writes", () => {
     await wikiMove(s.b(), { project: "test-project", wiki: "orders.wiki", path: "/Runbooks/Backfill", to: "/Runbooks/Backfill v2", updateLinks: false });
     expect(s.calls.find((c) => c.method === "POST")!.body).toEqual({ path: "/Runbooks/Backfill", newPath: "/Runbooks/Backfill v2" });
     expect(s.calls.some((c) => /recursionLevel=oneLevel/.test(c.url))).toBe(false);
+  });
+  it("deletes a page and names the subpages that go with it; refuses a code wiki and the root", async () => {
+    const s = setup([
+      { match: /wikis\/w-orders\/pages\?path=%2FRunbooks%2FBackfill&recursionLevel=full/, respond: () => ({ body: { path: "/Runbooks/Backfill", subPages: [{ path: "/Runbooks/Backfill/Dag herstellen", subPages: [{ path: "/Runbooks/Backfill/Dag herstellen/Stap 1" }] }, { path: "/Runbooks/Backfill/Controle" }] } }) },
+      { method: "DELETE", match: /wikis\/w-orders\/pages\?path=%2FRunbooks%2FBackfill/, respond: () => ({ body: {} }) },
+    ]);
+    const r = await wikiDeletePage(s.b(), { project: "test-project", wiki: "orders.wiki", path: "/Runbooks/Backfill" });
+    expect(r).toEqual({ status: "deleted", path: "/Runbooks/Backfill", subpages: ["/Runbooks/Backfill/Dag herstellen", "/Runbooks/Backfill/Dag herstellen/Stap 1", "/Runbooks/Backfill/Controle"] });
+    expect(s.calls.filter((c) => c.method === "DELETE")).toHaveLength(1);
+    await expect(wikiDeletePage(s.b(), { project: "test-project", wiki: "ingest.wiki", path: "/A" })).rejects.toMatchObject({ kind: "badInput" });
+    await expect(wikiDeletePage(s.b(), { project: "test-project", wiki: "orders.wiki", path: "/" })).rejects.toMatchObject({ kind: "badInput" });
+    await expect(wikiDeletePage(s.b(), { project: "test-project", wiki: "orders.wiki", path: "/Nope" })).rejects.toMatchObject({ kind: "notFound" });
   });
   it("uploads an attachment and answers its markdown", async () => {
     const s = setup([{ method: "PUT", match: /wikis\/w-orders\/attachments\?name=flow-diagram\.png/, respond: () => ({ body: { name: "flow-diagram.png", path: "/.attachments/flow-diagram.png" } }) }]);

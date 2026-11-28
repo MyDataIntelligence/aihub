@@ -20,6 +20,7 @@ describe("wiki browser in the bar: arguments", () => {
     expect(wikiArgs.revisionDiff({ ...W, path: "/A", to: C1 })).toEqual(["wiki", "browse", "diff", "--project", "test-project", "--wiki", "orders.wiki", "--path", "/A", "--to", C1]);
     expect(wikiArgs.search({ text: "afstemming", project: "test-project", top: 25, skip: 0 })).toEqual(["wiki", "browse", "search", "--text", "afstemming", "--project", "test-project", "--top", "25", "--skip", "0"]);
     expect(wikiArgs.attachment({ ...W, ref: "/.attachments/flow.png" })).toEqual(["wiki", "browse", "attachment", "--project", "test-project", "--wiki", "orders.wiki", "--ref", "/.attachments/flow.png"]);
+    expect(wikiArgs.delete({ ...W, path: "/Runbooks/Backfill" })).toEqual(["wiki", "browse", "delete", "--project", "test-project", "--wiki", "orders.wiki", "--path", "/Runbooks/Backfill"]);
     expect(wikiArgs.upload({ ...W, file: "C:/tmp/flow.png" })).toEqual(["wiki", "browse", "upload", "--project", "test-project", "--wiki", "orders.wiki", "--file", "C:/tmp/flow.png"]);
   });
 
@@ -68,7 +69,7 @@ describe("wiki browser in the bar: agent texts and failures", () => {
   });
   it("has a command id for every wiki action", () => {
     const ids = Object.entries(BAR_COMMANDS).filter(([k]) => k.startsWith("wiki")).map(([, v]) => v);
-    expect(ids).toHaveLength(20);
+    expect(ids).toHaveLength(21);
     const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf8")) as { contributes: { commands: { command: string }[] } };
     for (const id of ids) expect(pkg.contributes.commands.some((c) => c.command === id)).toBe(true);
   });
