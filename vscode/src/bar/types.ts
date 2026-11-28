@@ -320,6 +320,19 @@ export const BAR_COMMANDS = {
   changeStop: "aihub.bar.changeStop",
   /** `{ id, where?: "newWindow"|"terminal"|"panel"|"here", remoteUrl? }`: a worktree on the change's branch with the change in it -> `{ id, path, branch, cloned, applied, skipped }` */
   changeToWorkingCopy: "aihub.bar.changeToWorkingCopy",
+  // ---- Ask Agent about Selected (aihub browse ask; read only; docs/cli-json.md "Ask Agent about Selected") ----
+  /** `{ scope: [{ project, repo? }], prompt, where?: "panel"|"newWindow"|"terminal", story?, limit? }` -> `{ id, where, dir, limit, agent, terminal? }`; changeStop `{ id }` stops it too */
+  askStart: "aihub.bar.askStart",
+  /** `{ id }` -> `{ id, prompt, scope, status: "open"|"answered", reads: { count, limit }, needsApproval, summary, branch, repos: [{ project, repo, base, finding, refs, proposals: [{ path, status, additions, deletions, hunks }], change }], agent }` */
+  askState: "aihub.bar.askState",
+  /** `{ id, more? }` (the user allows more than the limit of 200 files read) -> `{ id, read, limit }` */
+  askAllow: "aihub.bar.askAllow",
+  /** `{ id, project, repo, branch?, story? }` (Apply in Feature Branch): a change with the proposals of that repository, the same branch for every repository -> the changeStart answer + `applied` */
+  askApply: "aihub.bar.askApply",
+  /** `{ id, branch?, story?, window? }` (Open These Repos as Set): the repositories of the report through openReposAsSet on the question's branch */
+  askOpenAsSet: "aihub.bar.askOpenAsSet",
+  /** `{ id }` -> `{ id, discarded: true }` */
+  askDiscard: "aihub.bar.askDiscard",
   browseProjects: "aihub.bar.browseProjects",
   /** `{ project, days?, org?, refresh? }` -> `aihub browse project`: repositories with language and last activity, recent files, active authors */
   browseProject: "aihub.bar.browseProject",

@@ -55,7 +55,7 @@ describe("change with agent in the bar: the argument and the calls", () => {
   });
 
   it("every change command is in the contract", () => {
-    for (const id of ["changeStart", "changeState", "changePush", "changeDiscard", "changeStop", "changeToWorkingCopy"]) expect((BAR_COMMANDS as Record<string, string>)[id]).toBe(`aihub.bar.${id}`);
+    for (const id of ["changeStart", "changeState", "changePush", "changeDiscard", "changeStop", "changeToWorkingCopy", "askStart", "askState", "askAllow", "askApply", "askOpenAsSet", "askDiscard"]) expect((BAR_COMMANDS as Record<string, string>)[id]).toBe(`aihub.bar.${id}`);
   });
 });
 

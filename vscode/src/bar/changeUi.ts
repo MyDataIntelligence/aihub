@@ -187,6 +187,71 @@ export function registerChangeCommands(h: { reg: (id: string, f: (...a: any[]) =
     }
   });
 
+  // ---- Ask Agent about Selected: read only, a report per repository; Apply makes a change per repository ----
+  h.reg(BAR_COMMANDS.askStart, async (raw?: { scope?: { project?: string; repo?: string }[]; prompt?: string; where?: ChangeWhere; story?: number; limit?: number }) => {
+    const scope = (raw?.scope ?? []).filter((x) => typeof x?.project === "string" && x.project.trim()).map((x) => (x.repo ? `${x.project}/${x.repo}` : x.project!));
+    if (!scope.length) return fail("badInput", "which repositories or projects? ({ scope: [{ project, repo? }] })");
+    if (!raw?.prompt?.trim()) return fail("badInput", "what is the question? ({ prompt })");
+    const where: ChangeWhere = raw.where === "newWindow" || raw.where === "terminal" ? raw.where : "panel";
+    try {
+      const s = await withFile("question.txt", raw.prompt, (f) => json<{ id: string; dir: string; agentPrompt: string; limit: number }>(["browse", "ask", "start", "--scope", scope.join(","), "--prompt-file", f, ...(raw.story ? ["--story", String(raw.story)] : []), ...(raw.limit ? ["--limit", String(raw.limit)] : [])], cwdOf()));
+      const agent = await startAgent(where, s.dir, s.agentPrompt, `${scope.length} repositories`, h.log);
+      track(s.id, agent.terminal);
+      return { id: s.id, where, dir: s.dir, limit: s.limit, agent: agent.how, ...(agent.terminal ? { terminal: { name: agent.terminal.name } } : {}) };
+    } catch (e) {
+      return browseErrorOf(e);
+    }
+  });
+  h.reg(BAR_COMMANDS.askState, async (a?: { id?: string }) => {
+    if (!a?.id) return fail("badInput", "which question? ({ id })");
+    try {
+      return { ...(await json<Record<string, unknown>>(["browse", "ask", "state", "--id", a.id], cwdOf())), agent: agentOf(a.id) };
+    } catch (e) {
+      return browseErrorOf(e);
+    }
+  });
+  h.reg(BAR_COMMANDS.askAllow, async (a?: { id?: string; more?: number }) => {
+    if (!a?.id) return fail("badInput", "which question? ({ id })");
+    try {
+      return await json<unknown>(["browse", "ask", "allow", "--id", a.id, ...(a.more ? ["--more", String(a.more)] : [])], cwdOf());
+    } catch (e) {
+      return browseErrorOf(e);
+    }
+  });
+  h.reg(BAR_COMMANDS.askApply, async (a?: { id?: string; project?: string; repo?: string; branch?: string; story?: number }) => {
+    if (!a?.id || !a.project || !a.repo) return fail("badInput", "which question and repository? ({ id, project, repo })");
+    try {
+      const out = await json<unknown>(["browse", "ask", "apply", "--id", a.id, "--project", a.project, "--repo", a.repo, ...(a.branch ? ["--branch", a.branch] : []), ...(a.story ? ["--story", String(a.story)] : [])], cwdOf());
+      h.changed();
+      return out;
+    } catch (e) {
+      return browseErrorOf(e);
+    }
+  });
+  // Open These Repos as Set: the repositories of the report on the question's branch (one branch, the story), cloned when needed
+  h.reg(BAR_COMMANDS.askOpenAsSet, async (a?: { id?: string; story?: number; branch?: string; window?: "new" | "this" }) => {
+    if (!a?.id) return fail("badInput", "which question? ({ id })");
+    try {
+      const st = await json<{ branch: string | null; repos: { project: string; repo: string }[] }>(["browse", "ask", "state", "--id", a.id], cwdOf());
+      if (!st.repos.length) return fail("badInput", "the question has no repositories in its report yet");
+      const branch = a.branch ?? st.branch ?? undefined;
+      const p = await json<{ projects: { name: string; repos: { repo: string; remoteUrl: string }[] }[] }>(["browse", "projects"], cwdOf()).catch(() => undefined);
+      const urlOf = (project: string, repo: string) => p?.projects.find((x) => x.name === project)?.repos.find((r) => r.repo === repo)?.remoteUrl;
+      if (!branch) return fail("badInput", "which branch for the set? ({ branch }, or apply a repository first)");
+      return await vscode.commands.executeCommand(BAR_COMMANDS.openReposAsSet, { repos: st.repos.map((r) => ({ name: r.repo, project: r.project, remoteUrl: urlOf(r.project, r.repo) })), newBranch: branch, story: a.story, window: a.window });
+    } catch (e) {
+      return browseErrorOf(e);
+    }
+  });
+  h.reg(BAR_COMMANDS.askDiscard, async (a?: { id?: string }) => {
+    if (!a?.id) return fail("badInput", "which question? ({ id })");
+    try {
+      return await json<unknown>(["browse", "ask", "discard", "--id", a.id], cwdOf());
+    } catch (e) {
+      return browseErrorOf(e);
+    }
+  });
+
   h.reg(BAR_COMMANDS.changeToWorkingCopy, async (a?: { id?: string; where?: ChangeWhere | "here"; remoteUrl?: string }) => {
     if (!a?.id) return fail("badInput", "which change? ({ id })");
     try {
