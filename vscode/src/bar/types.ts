@@ -310,12 +310,14 @@ export const BAR_COMMANDS = {
    * Terminal (terminal). Nothing is pushed.
    */
   changeStart: "aihub.bar.changeStart",
-  /** `{ id }` -> `aihub browse change diff`: files with status, additions, deletions and hunks; totals; summary; problems */
+  /** `{ id }` -> `aihub browse change diff`: files with status, additions, deletions and hunks; totals; summary; problems; plus `agent`: "working" (its terminal in this window is open) | "stopped" | "closed" | "unknown" (Windows Terminal or another window) */
   changeState: "aihub.bar.changeState",
   /** `{ id, message?, pr?, target?, story?, prTitle?, draft?, rebase?, branch? }` -> `{ status: "pushed", ... }` or `{ status: "conflict", files }` */
   changePush: "aihub.bar.changePush",
   /** `{ id }` -> `{ id, discarded: true }` */
   changeDiscard: "aihub.bar.changeDiscard",
+  /** `{ id }` (or `{ path }` of a working-copy change): ends the agent's terminal in this window; the files stay -> `{ id, stopped, agent, reason? }` */
+  changeStop: "aihub.bar.changeStop",
   /** `{ id, where?: "newWindow"|"terminal"|"panel"|"here", remoteUrl? }`: a worktree on the change's branch with the change in it -> `{ id, path, branch, cloned, applied, skipped }` */
   changeToWorkingCopy: "aihub.bar.changeToWorkingCopy",
   browseProjects: "aihub.bar.browseProjects",

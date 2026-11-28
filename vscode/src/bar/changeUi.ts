@@ -20,6 +20,21 @@ import { openPath } from "./window";
 
 const fail = (kind: string, message: string) => ({ error: { kind, message } }) as BrowseError;
 
+/**
+ * The agents this window started, per change: its terminal (panel) and what became of it. A terminal of another program
+ * (Windows Terminal) or another window cannot be seen from here: its state is "unknown".
+ */
+export type AgentState = "working" | "stopped" | "closed" | "unknown";
+const agents = new Map<string, { terminal?: vscode.Terminal; state: AgentState }>();
+let watching: vscode.Disposable | undefined;
+function track(key: string, terminal: vscode.Terminal | undefined): void {
+  agents.set(key, { terminal, state: terminal ? "working" : "unknown" });
+  watching ??= vscode.window.onDidCloseTerminal((t) => {
+    for (const a of agents.values()) if (a.terminal === t && a.state === "working") a.state = "closed";
+  });
+}
+const agentOf = (key: string): AgentState => agents.get(key)?.state ?? "unknown";
+
 /** A temp file with private content, removed after the call. */
 async function withFile<T>(name: string, text: string, f: (path: string) => Promise<T>): Promise<T> {
   const dir = mkdtempSync(join(tmpdir(), "aihub-change-"));
@@ -41,14 +56,14 @@ function agentName(): string | undefined {
 }
 
 /** Starts opencode where the user asked. `folder` is where it works; `prompt` its first message. */
-async function startAgent(where: ChangeWhere, folder: string, prompt: string, label: string, log: (l: string) => void): Promise<{ started: boolean; how: string }> {
+async function startAgent(where: ChangeWhere, folder: string, prompt: string, label: string, log: (l: string) => void): Promise<{ started: boolean; how: string; terminal?: vscode.Terminal }> {
   const line = opencodeLine(prompt, agentName());
   if (where === "panel") {
     const t = vscode.window.createTerminal({ name: `opencode · ${label}`, cwd: folder });
     t.show(false);
     t.sendText(line, true);
     log(`change: opencode in a terminal of this window (${folder})`);
-    return { started: true, how: "panel" };
+    return { started: true, how: "panel", terminal: t };
   }
   if (where === "terminal") {
     const hasWt = !!process.env.LOCALAPPDATA && existsSync(join(process.env.LOCALAPPDATA, "Microsoft", "WindowsApps", "wt.exe"));
@@ -106,7 +121,8 @@ export function registerChangeCommands(h: { reg: (id: string, f: (...a: any[]) =
       if (a.mode === "remote") {
         const s = await withFile("prompt.txt", a.prompt, async (f) => vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Preparing the change in ${a.repo}...` }, () => json<StartJson>(startArgs(a, f), cwdOf())) as Promise<StartJson>);
         const agent = await startAgent(a.where, s.dir, s.agentPrompt, a.repo, h.log);
-        return { id: s.id, mode: a.mode, where: a.where, dir: s.dir, filesDir: s.filesDir, branch: s.branch, base: s.base, agent: agent.how };
+        track(s.id, agent.terminal);
+        return { id: s.id, mode: a.mode, where: a.where, dir: s.dir, filesDir: s.filesDir, branch: s.branch, base: s.base, agent: agent.how, ...(agent.terminal ? { terminal: { name: agent.terminal.name } } : {}) };
       }
       return await startWorkingCopy(a, h.log);
     } catch (e) {
@@ -117,10 +133,23 @@ export function registerChangeCommands(h: { reg: (id: string, f: (...a: any[]) =
   h.reg(BAR_COMMANDS.changeState, async (a?: { id?: string }) => {
     if (!a?.id) return fail("badInput", "which change? ({ id })");
     try {
-      return await json<unknown>(["browse", "change", "diff", "--id", a.id], cwdOf());
+      const d = await json<Record<string, unknown>>(["browse", "change", "diff", "--id", a.id], cwdOf());
+      return { ...d, agent: agentOf(a.id) };
     } catch (e) {
       return browseErrorOf(e);
     }
+  });
+
+  // Stop: the agent's terminal in this window goes (opencode ends with it); the workspace and its files stay for the review
+  h.reg(BAR_COMMANDS.changeStop, (a?: { id?: string; path?: string }) => {
+    const key = a?.id ?? a?.path;
+    if (!key) return fail("badInput", "which change? ({ id } or, for a working copy, { path })");
+    const ag = agents.get(key);
+    if (!ag?.terminal) return { id: key, stopped: false, agent: agentOf(key), reason: "the agent does not run in a terminal of this window (Windows Terminal or another window): stop it there" };
+    ag.terminal.dispose();
+    ag.state = "stopped";
+    h.log(`change: stopped the agent of ${key}`);
+    return { id: key, stopped: true, agent: "stopped" as AgentState };
   });
 
   h.reg(BAR_COMMANDS.changePush, async (a?: { id?: string; message?: string; pr?: boolean; target?: string; story?: number; prTitle?: string; draft?: boolean; rebase?: boolean; branch?: string }) => {
@@ -205,5 +234,6 @@ async function startWorkingCopy(a: ChangeStartArg, log: (l: string) => void) {
   const task = join(dir, `task-${a.repo.replace(/[^\w.-]+/g, "-")}-${Date.now()}.md`);
   writeFileSync(task, workingCopyTask(a, branch, a.branch ?? "the default branch"), "utf8");
   const agent = await startAgent(a.where, wc.path, `Read the task in ${task.replace(/\\/g, "/")} and make the change in this working copy. Do not push.`, a.repo, log);
-  return { mode: a.mode, where: a.where, path: wc.path, branch, cloned: wc.cloned, taskFile: task, agent: agent.how };
+  track(wc.path, agent.terminal);
+  return { mode: a.mode, where: a.where, path: wc.path, branch, cloned: wc.cloned, taskFile: task, agent: agent.how, ...(agent.terminal ? { terminal: { name: agent.terminal.name } } : {}) };
 }

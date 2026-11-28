@@ -642,6 +642,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.changeStop",
+        "title": "Change with Agent: Stop",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.changeToWorkingCopy",
         "title": "Change with Agent: Open as Working Copy",
         "category": "AI Context Hub"
@@ -2045,6 +2050,10 @@
         },
         {
           "command": "aihub.bar.changeDiscard",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeStop",
           "when": "false"
         },
         {

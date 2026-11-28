@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { addPending, externalTerminal, opencodeLine, parseChangeStart, PENDING_TTL_MS, startArgs, takePending, workingCopyTask } from "../src/bar/change";
 import { BAR_COMMANDS } from "../src/bar/types";
+import { vscodeRipgrep } from "../src/bar/browse";
 
 describe("change with agent in the bar: the argument and the calls", () => {
   it("needs a repository and a prompt; remote and the panel by default", () => {
@@ -54,6 +55,15 @@ describe("change with agent in the bar: the argument and the calls", () => {
   });
 
   it("every change command is in the contract", () => {
-    for (const id of ["changeStart", "changeState", "changePush", "changeDiscard", "changeToWorkingCopy"]) expect((BAR_COMMANDS as Record<string, string>)[id]).toBe(`aihub.bar.${id}`);
+    for (const id of ["changeStart", "changeState", "changePush", "changeDiscard", "changeStop", "changeToWorkingCopy"]) expect((BAR_COMMANDS as Record<string, string>)[id]).toBe(`aihub.bar.${id}`);
+  });
+});
+
+describe("text in files: VS Code's own ripgrep for the local fallback", () => {
+  it("finds rg in node_modules, else in node_modules.asar.unpacked", () => {
+    const seen = (want: string) => (p: string) => p.replace(/\\/g, "/") === want;
+    expect(vscodeRipgrep("C:/vsc/resources/app", seen("C:/vsc/resources/app/node_modules/@vscode/ripgrep/bin/rg.exe"), "win32")?.replace(/\\/g, "/")).toBe("C:/vsc/resources/app/node_modules/@vscode/ripgrep/bin/rg.exe");
+    expect(vscodeRipgrep("/opt/vsc/app", seen("/opt/vsc/app/node_modules.asar.unpacked/@vscode/ripgrep/bin/rg"), "linux")?.replace(/\\/g, "/")).toBe("/opt/vsc/app/node_modules.asar.unpacked/@vscode/ripgrep/bin/rg");
+    expect(vscodeRipgrep("/x", () => false, "linux")).toBeUndefined();
   });
 });

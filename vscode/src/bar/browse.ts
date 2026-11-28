@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -414,4 +414,14 @@ export function runFiles(a: BrowseRunArg): { args: string[]; dir?: string } {
   writeFileSync(file, JSON.stringify(changes), { encoding: "utf8", mode: 0o600 });
   args.push("--changes-file", file);
   return { args: common({ org: a.org }, args), dir };
+}
+
+/** The rg that ships with VS Code (in node_modules, or node_modules.asar.unpacked in older builds). */
+export function vscodeRipgrep(appRoot: string, exists: (p: string) => boolean = existsSync, platform = process.platform): string | undefined {
+  const exe = platform === "win32" ? "rg.exe" : "rg";
+  for (const nm of ["node_modules", "node_modules.asar.unpacked"]) {
+    const p = join(appRoot, nm, "@vscode", "ripgrep", "bin", exe);
+    if (exists(p)) return p;
+  }
+  return undefined;
 }
