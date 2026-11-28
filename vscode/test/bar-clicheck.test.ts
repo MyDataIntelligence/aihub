@@ -9,20 +9,20 @@ const stub = (answer: string | Error) => {
 
 describe("the buttons check the aihub CLI once and say it in a plain sentence", () => {
   it("a good CLI passes and is asked once, not at every click", async () => {
-    const s = stub("1.9.0\n");
+    const s = stub("1.10.0\n");
     const memo: CliMemo = {};
-    expect(await ensureCli(s.run, "C:/x", memo)).toBe("1.9.0");
+    expect(await ensureCli(s.run, "C:/x", memo)).toBe("1.10.0");
     await ensureCli(s.run, "C:/x", memo);
     await ensureCli(s.run, "C:/y", memo);
     expect(s.calls).toEqual([["--version"]]);
   });
 
-  it("a CLI older than 1.9.0 gives the version, the needed one and the update command; never usage text", async () => {
-    const s = stub("1.8.2");
+  it("a CLI older than 1.10.0 gives (1.9.0 is older: numbers, not text) the version, the needed one and the update command; never usage text", async () => {
+    const s = stub("1.9.0");
     const e = await ensureCli(s.run, "C:/x", {}).catch((x) => x);
     expect(e).toBeInstanceOf(CliProblem);
     expect(e.kind).toBe("old");
-    expect(e.message).toBe("The aihub CLI on this PC is 1.8.2; the buttons need 1.9.0 or newer. Update it with: npm i -g @ferronhooi/aihub");
+    expect(e.message).toBe("The aihub CLI on this PC is 1.9.0; the buttons need 1.10.0 or newer. Update it with: npm i -g @ferronhooi/aihub");
     expect(e.updateCommand).toBe("npm i -g @ferronhooi/aihub");
     expect(e.message).not.toContain("usage");
   });
