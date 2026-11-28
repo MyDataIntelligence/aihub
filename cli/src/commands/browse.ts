@@ -81,7 +81,6 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     scope: { type: "string" },
     more: { type: "string" },
     local: { type: "boolean" },
-    scope: { type: "string" },
     json: { type: "boolean" },
     pipeline: { type: "string" },
     run: { type: "string" },
