@@ -3,7 +3,7 @@ import { dirname, join, relative, sep } from "node:path";
 import { configHome } from "../configHome.js";
 import { BrowseError, normPath, repoClientOf, shortSha, webCommitUrl, webRepoUrl, type Browse } from "./core.js";
 import { hunks, merge3, splitLines, type Hunk } from "./lineDiff.js";
-import { contentAt, createRemotePr, headOf, isProtected, teamOf, verifyTests } from "./push.js";
+import { contentAt, createRemotePr, criteriaGate, headOf, isProtected, teamOf, verifyTests } from "./push.js";
 import { browseHistory, readFileAt, repoRowOf } from "./read.js";
 
 /**
@@ -170,6 +170,7 @@ export function taskText(meta: ChangeMeta, o: { selection?: Selection; materiali
     "## Fixed limits",
     "",
     "- Do not push, commit, merge or run git: the user pushes from the review.",
+    `- Only when the user asks you to push it with a pull request: \`aihub browse change push --id ${id} --pr --draft\` (a draft unless the user says otherwise; with --anyway only on the user's word).`,
     `- Never ${["main", "master", "staging", "develop"].join(", ")}; only this repository; at most ${MAX_CHANGED_FILES} files.`,
     "- No secrets (keys, passwords, tokens), no pipeline definitions, variable groups or .env files.",
     "- There is no clone: tests and linters run only through `change verify` (a temporary copy that is removed after).",
@@ -392,7 +393,7 @@ export type ChangePushResult =
   | { status: "pushed"; branch: string; commit: { id: string; short: string; webUrl: string }; startedFrom: string; rebased: boolean; files: string[]; pr: { id: number; title: string; webUrl: string } | null; prError: string | null; webUrl: string }
   | { status: "conflict"; files: { path: string; latest: { id: string; short: string; message: string; at: string | null; by: { name: string; email: string; isMe: boolean } } | null; overlap: boolean }[] };
 
-export async function changePush(b: Browse, id: string, o: { message?: string; pr?: boolean; target?: string; story?: number; prTitle?: string; draft?: boolean; rebase?: boolean; branch?: string }): Promise<ChangePushResult> {
+export async function changePush(b: Browse, id: string, o: { message?: string; pr?: boolean; anyway?: boolean; target?: string; story?: number; prTitle?: string; draft?: boolean; rebase?: boolean; branch?: string }): Promise<ChangePushResult> {
   const { dir, meta } = readMeta(b.env, id);
   openOnly(meta);
   const d = await changeDiff(b, id);
@@ -403,7 +404,8 @@ export async function changePush(b: Browse, id: string, o: { message?: string; p
   const rc = repoClientOf(b, meta.project, meta.repo);
   const repoInfo = await rc.get<{ defaultBranch?: string }>(rc.repoPath());
   const def = (repoInfo.defaultBranch ?? "").replace(/^refs\/heads\//, "");
-  const team = await teamOf(b, meta.project, meta.repo, def || meta.base.branch);
+  // the team file of the branch the change started from (where the team's settings were read), else of the default branch
+  const team = await teamOf(b, meta.project, meta.repo, meta.base.branch || def);
   if (isProtected(branch, team, [def, meta.base.branch])) throw new BrowseError("protectedBranch", `pushing to '${branch}' is refused: a change goes to a new feature branch`);
   if (await headOf(b, meta.project, meta.repo, branch)) throw new BrowseError("branchExists", `branch '${branch}' already exists in ${meta.repo}: choose another name`);
   const head = await headOf(b, meta.project, meta.repo, meta.base.branch);
@@ -441,6 +443,8 @@ export async function changePush(b: Browse, id: string, o: { message?: string; p
     else changes.push({ changeType: (await exists(f.path)) ? "edit" : "add", item: { path: f.path }, newContent: { content: contents.get(f.path) ?? "", contentType: "rawtext" } });
   }
   const message = (o.message?.trim() || defaultMessage(meta, d.summary)).trim();
+  // a story whose criteria are not all proven: the user chooses first (test, --draft or --anyway); nothing is pushed until then
+  if (o.pr) await criteriaGate(b, { project: meta.project, story: o.story ?? meta.story, draft: o.draft, anyway: o.anyway, team });
   const pushed = await rc.post<{ commits?: { commitId: string }[]; refUpdates?: { newObjectId: string }[] }>(`${rc.repoPath()}/pushes`, {
     refUpdates: [{ name: `refs/heads/${branch}`, oldObjectId: ZERO }],
     commits: [{ comment: message, parents: [startFrom], changes }],

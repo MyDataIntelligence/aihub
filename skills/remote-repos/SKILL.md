@@ -14,15 +14,15 @@ The work is in an Azure DevOps repository that is not on this PC, or spans sever
 4. Push only after the user says so:
 
 ```sh
-aihub browse change push --id ID --pr --story 4711
+aihub browse change push --id ID --pr --draft --story 4711
 ```
 
 Example: "zet in repo orders-ingest de filter op actieve klanten, zonder clone" is `change start` with the file, the edit under `files/`, `change diff`, a yes, then the push above.
 
 ## What the CLI fills
-Base commit, branch name from team.yaml, the PR template and story link, conflicts when the base branch moved (`--rebase`), and the limits: never main, master, staging or develop, at most 20 files, no secrets, pipelines or variable groups.
+Base commit, branch name, the PR (template, story, criteria), conflicts (`--rebase`), and the limits: never main, master, staging or develop, at most 20 files, no secrets, pipelines or variable groups.
 
 ## If it fails
-`searchUnavailable`: Code Search is off; the CLI searches the clones on this PC and says what it skipped. `conflict`: show both changes and offer `--rebase`. `aihub doctor` for sign-in.
+`searchUnavailable`: Code Search is off; the CLI searches the clones on this PC and says what it skipped. `conflict`: offer `--rebase`. Exit 5 (`criteriaNotProven`): ask test first, `--draft` or `--anyway`; `--draft` unless the user says otherwise. `aihub doctor` for sign-in.
 
 Rules: read only until the user asks for a change; never push without a yes.

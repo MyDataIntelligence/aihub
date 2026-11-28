@@ -173,7 +173,7 @@ export function registerChangeCommands(h: { reg: (id: string, f: (...a: any[]) =
     return { id: key, stopped: true, agent: "stopped" as AgentState };
   });
 
-  h.reg(BAR_COMMANDS.changePush, async (a?: { id?: string; message?: string; pr?: boolean; target?: string; story?: number; prTitle?: string; draft?: boolean; rebase?: boolean; branch?: string }) => {
+  h.reg(BAR_COMMANDS.changePush, async (a?: { id?: string; message?: string; pr?: boolean; anyway?: boolean; target?: string; story?: number; prTitle?: string; draft?: boolean; rebase?: boolean; branch?: string }) => {
     if (!a?.id) return fail("badInput", "which change? ({ id })");
     const run = (messageFile?: string) =>
       json<unknown>(
@@ -185,7 +185,7 @@ export function registerChangeCommands(h: { reg: (id: string, f: (...a: any[]) =
           a.id!,
           ...(messageFile ? ["--message-file", messageFile] : []),
           ...(a.branch ? ["--branch", a.branch] : []),
-          ...(a.pr ? ["--pr", ...(a.target ? ["--target", a.target] : []), ...(a.story ? ["--story", String(a.story)] : []), ...(a.prTitle ? ["--pr-title", a.prTitle] : []), ...(a.draft ? ["--draft"] : [])] : []),
+          ...(a.pr ? ["--pr", ...(a.target ? ["--target", a.target] : []), ...(a.story ? ["--story", String(a.story)] : []), ...(a.prTitle ? ["--pr-title", a.prTitle] : []), ...(a.draft ? ["--draft"] : []), ...(a.anyway ? ["--anyway"] : [])] : []),
           ...(a.rebase ? ["--rebase"] : []),
         ],
         cwdOf(),

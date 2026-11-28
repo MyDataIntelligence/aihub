@@ -82,6 +82,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     title: { type: "string" },
     draft: { type: "boolean" },
     rebase: { type: "boolean" },
+    anyway: { type: "boolean" },
     id: { type: "string" },
     paths: { type: "string" },
     "prompt-file": { type: "string" },
@@ -201,7 +202,7 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
     case "related":
       return (await import("../lib/browse/search.js")).relatedFiles(b, { ...repoArgs(), path: need(v, "path"), top: num(str(v, "top"), "--top") });
     case "pr":
-      return (await import("../lib/browse/push.js")).browsePr(b, { ...repoArgs(), branch: need(v, "branch"), target: str(v, "target"), story: num(str(v, "story"), "--story"), prTitle: str(v, "pr-title"), draft: !!v.draft });
+      return (await import("../lib/browse/push.js")).browsePr(b, { ...repoArgs(), branch: need(v, "branch"), target: str(v, "target"), story: num(str(v, "story"), "--story"), prTitle: str(v, "pr-title"), draft: !!v.draft, anyway: !!v.anyway });
     case "push": {
       const p = await import("../lib/browse/push.js");
       const pushed = await p.browsePush(b, {
@@ -217,6 +218,7 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
         story: num(str(v, "story"), "--story"),
         prTitle: str(v, "pr-title"),
         draft: !!v.draft,
+        anyway: !!v.anyway,
         rebase: !!v.rebase,
       });
       // --pipeline: can that pipeline run on the branch just pushed?
@@ -256,7 +258,7 @@ async function changeAnswer(action: string, v: V, ctx: Ctx): Promise<unknown> {
     return d;
   }
   if (action === "push")
-    return c.changePush(b, id, { message: str(v, "message-file") ? readText(str(v, "message-file")!) : undefined, branch: str(v, "branch"), pr: !!v.pr, target: str(v, "target"), story: num(str(v, "story"), "--story"), prTitle: str(v, "pr-title"), draft: !!v.draft, rebase: !!v.rebase });
+    return c.changePush(b, id, { message: str(v, "message-file") ? readText(str(v, "message-file")!) : undefined, branch: str(v, "branch"), pr: !!v.pr, target: str(v, "target"), story: num(str(v, "story"), "--story"), prTitle: str(v, "pr-title"), draft: !!v.draft, anyway: !!v.anyway, rebase: !!v.rebase });
   if (action === "apply") return c.changeApply(b, id, need(v, "dir"));
   if (action === "verify") {
     const { changeVerify } = await import("../lib/browse/verify.js");
