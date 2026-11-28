@@ -1,11 +1,11 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import type { Ctx } from "../context.js";
 import { guidelinesCheck, type CheckResult } from "../guidelines.js";
 import { spawnSync } from "../proc.js";
 import { testChanged } from "../testChanged.js";
-import { TEAM_FILE } from "../team.js";
+import { loadTeam, TEAM_FILE } from "../team.js";
 import { BrowseError, type Browse } from "./core.js";
 import { changeApply, changeDiff, readMeta } from "./change.js";
 import { repoRowOf } from "./read.js";
@@ -28,7 +28,10 @@ export interface VerifyError {
 export interface VerifyCheck {
   name: string;
   kind: "lint" | "test";
-  status: "passed" | "failed" | "skipped";
+  /** couldNotRun: the tests could not even start in the copy (a module or package that is not there): not a failure of the change */
+  status: "passed" | "failed" | "skipped" | "couldNotRun";
+  /** couldNotRun: the modules that were missing */
+  missing?: string[];
   errors: VerifyError[];
   tookMs: number;
   command?: string;
@@ -101,6 +104,30 @@ export function lintChecks(r: CheckResult, tookMs: number, command: string): Ver
   return out;
 }
 
+/**
+ * Tests that could not start: an import that fails while the tests are collected (pytest "error during collection", "No module
+ * named X", exit 4 or 5), a Robot library or resource that cannot be imported, or a missing tool. Returns the missing modules (may
+ * be empty) and the reason, or undefined when the tests did run (a real assertion failure always stays a failure).
+ */
+export function couldNotRun(output: string, exitCode: number, command = ""): { missing: string[]; reason: string } | undefined {
+  if (/^FAILED |AssertionError|\b\d+ failed\b/m.test(output)) return undefined;
+  const missing = [
+    ...new Set(
+      [
+        ...output.matchAll(/(?:No module named|Cannot find module) ['"]?([\w.@/-]+)['"]?/g),
+        ...output.matchAll(/Importing (?:test )?library '([^']+)' failed/g),
+        ...output.matchAll(/Resource file '([^']+)' does not exist/g),
+      ].map((m) => m[1]),
+    ),
+  ];
+  const pytest = /pytest/.test(command) || /test session starts/.test(output);
+  if (missing.length) return { missing, reason: `missing dependency ${missing.join(", ")}` };
+  if (/errors? during collection|ImportError while importing test module|Error in file .* Importing/i.test(output) || (pytest && exitCode === 4)) return { missing, reason: "the tests could not be collected (see the first lines)" };
+  if (pytest && exitCode === 5) return { missing, reason: "no tests were collected" };
+  if (/is not recognized as an internal or external command|command not found/i.test(output)) return { missing, reason: "the test tool is not installed" };
+  return undefined;
+}
+
 /** The first failure lines of a test run: `path:line: message` where there is one, else the last lines. */
 export function testErrors(output: string): VerifyError[] {
   const lines = output.replace(/\r\n/g, "\n").split("\n").map((l) => l.trimEnd()).filter(Boolean);
@@ -152,7 +179,8 @@ export async function changeVerify(b: Browse, id: string, o: { lint?: boolean; t
     git(copy, ["-c", "advice.detachedHead=false", "checkout", "-q", "--detach", at], env);
     // guidelines check and test changed compare with origin/<base branch>: it points at the commit the change starts from
     git(copy, ["update-ref", `refs/remotes/origin/${meta.base.branch}`, git(copy, ["rev-parse", "HEAD"], env).trim()], env);
-    if (baseNote) notes.push(baseNote);    say("apply", `applying ${files.length} changed file(s)`);
+    if (baseNote) notes.push(baseNote);
+    say("apply", `applying ${files.length} changed file(s)`);
     const applied = await changeApply(b, id, copy);
     if (applied.skipped.length) throw new BrowseError("failed", `the change could not be applied to the copy: ${applied.skipped.map((s) => s.path).join(", ")}`);
     const ctx: Ctx = { ...b.ctx, cwd: copy, out: () => undefined, err: () => undefined };
@@ -167,18 +195,35 @@ export async function changeVerify(b: Browse, id: string, o: { lint?: boolean; t
       const t = Date.now();
       const outputs: string[] = [];
       const commands: string[] = [];
+      // modules of the repository itself are found from the root (and src/) of the copy; nothing is installed for the user
+      const pyPath = [copy, ...(existsSync(join(copy, "src")) ? [join(copy, "src")] : []), ...(b.env.PYTHONPATH ? [b.env.PYTHONPATH] : [])].join(delimiter);
+      const testEnv = { ...b.env, PYTHONPATH: pyPath, PYTHONDONTWRITEBYTECODE: "1" };
+      const codes: number[] = [];
       const runner = (cmd: string, cwd: string) => {
         commands.push(cmd);
-        const r = spawnSync(cmd, { cwd, shell: true, encoding: "utf8", timeout: 15 * 60_000, maxBuffer: 64 * 1024 * 1024 });
+        const r = spawnSync(cmd, { cwd, shell: true, encoding: "utf8", timeout: 15 * 60_000, maxBuffer: 64 * 1024 * 1024, env: testEnv });
         outputs.push(`${r.stdout ?? ""}\n${r.stderr ?? ""}`);
+        codes.push(r.status ?? 1);
         return r.status ?? 1;
       };
+      // team.yaml tests.setup: what the team says the tests need, run in the copy first (a venv, pip install -r requirements.txt)
+      const setup = String((loadTeam(copy).tests ?? {}).setup ?? "").trim();
+      if (setup) {
+        const s = spawnSync(setup, { cwd: copy, shell: true, encoding: "utf8", timeout: 15 * 60_000, maxBuffer: 64 * 1024 * 1024, env: testEnv });
+        if (s.status !== 0) notes.push(`tests.setup failed (exit ${s.status ?? "?"}): ${`${s.stderr ?? ""}${s.stdout ?? ""}`.trim().split(/\r?\n/).pop() ?? ""}`);
+      }
       try {
         const plan = JSON.parse(testChanged(ctx, { base: meta.base.branch, run: true, json: true }, runner)) as { ran?: boolean; tests?: unknown[] };
         checks.push(plan.ran ? { name: "tests", kind: "test", status: "passed", errors: [], tookMs: Date.now() - t, command: commands.join(" && ") } : { name: "tests", kind: "test", status: "skipped", errors: [], tookMs: Date.now() - t, reason: "no tests belong to the changed files (tests.map / tests.command in team.yaml)" });
       } catch (e) {
         const failedRun = /tests failed/.test((e as Error).message);
-        checks.push(failedRun ? { name: "tests", kind: "test", status: "failed", errors: testErrors(outputs.join("\n")), tookMs: Date.now() - t, command: commands.join(" && ") } : { name: "tests", kind: "test", status: "skipped", errors: [], tookMs: Date.now() - t, reason: (e as Error).message });
+        const out = outputs.join("\n");
+        const cnr = failedRun ? couldNotRun(out, codes[codes.length - 1] ?? 1, commands.join(" && ")) : undefined;
+        if (cnr) {
+          // no setup and a requirements file: say how the team makes the copy ready
+          const hint = !setup && ["requirements.txt", "pyproject.toml"].some((f) => existsSync(join(copy, f))) ? " (tests.setup in team.yaml can install it, e.g. pip install -r requirements.txt)" : "";
+          checks.push({ name: "tests", kind: "test", status: "couldNotRun", errors: testErrors(out).slice(0, 5), tookMs: Date.now() - t, command: commands.join(" && "), reason: cnr.reason + hint, ...(cnr.missing.length ? { missing: cnr.missing } : {}) });
+        } else checks.push(failedRun ? { name: "tests", kind: "test", status: "failed", errors: testErrors(out), tookMs: Date.now() - t, command: commands.join(" && ") } : { name: "tests", kind: "test", status: "skipped", errors: [], tookMs: Date.now() - t, reason: (e as Error).message });
       }
     }
   } finally {

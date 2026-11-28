@@ -72,6 +72,19 @@ export function world() {
     103: { rev: 1, fields: { "System.WorkItemType": "Bug", "System.Title": "bench-a1b2c3 Header is missing", "System.State": "New" } },
     201: { rev: 2, fields: { "System.WorkItemType": "Task", "System.Title": "Write the export", "System.State": "Closed", "System.AssignedTo": meIdentity } },
     202: { rev: 3, fields: { "System.WorkItemType": "Task", "System.Title": "Test the export", "System.State": "New" } },
+    401: {
+      rev: 3,
+      fields: {
+        "System.TeamProject": "test-project-agile",
+        "System.WorkItemType": "User Story",
+        "System.Title": "bench-a1b2c3 Story in the other project",
+        "System.State": "New",
+        "System.AreaPath": "test-project-agile",
+        "System.IterationPath": "test-project-agile\\Iteration 1",
+        "System.ChangedDate": "2026-11-28T10:00:00Z",
+        "System.Description": "<p>As a planner, I want a second project.</p>",
+      },
+    },
     301: {
       rev: 2,
       fields: {
@@ -94,6 +107,14 @@ export function world() {
   const written: Call[] = [];
   const routes: Route[] = [
     { match: /\/_apis\/connectionData/, respond: () => ({ body: { authenticatedUser: ME } }) },
+    // the organisation-level read of an item's own project (ids are unique in the organisation)
+    {
+      match: /^https:\/\/dev\.azure\.com\/ferron-test\/_apis\/wit\/workitems\/(\d+)\?/,
+      respond: (c) => {
+        const id = Number(/workitems\/(\d+)\?/.exec(c.url)![1]);
+        return items[id] ? { body: { id, fields: { "System.TeamProject": items[id].fields["System.TeamProject"] ?? "test-project" } } } : { status: 404, body: { message: "not found" } };
+      },
+    },
     { match: /\/_apis\/wit\/workitemtypes\/([^/]+)\/states/, respond: (c) => ({ body: { value: STATES[decodeURIComponent(/workitemtypes\/([^/]+)\/states/.exec(c.url)![1]).toLowerCase()] ?? [] } }) },
     {
       match: /\/_apis\/wit\/workitemtypes\/([^/]+)\/fields/,

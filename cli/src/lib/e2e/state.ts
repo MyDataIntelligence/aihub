@@ -99,4 +99,10 @@ export interface RunState {
   options?: Record<string, boolean>;
   /** the user pressed Stop */
   stopped?: boolean;
+  /** the agent waits for the user (set by the agent at a plan stop or before a question; cleared when the run goes on) */
+  waiting?: boolean;
+  /** what it waits for: the plan to approve, an answer, or an approval of an action */
+  waitingFor?: "plan" | "input" | "approval";
+  /** the plan file the agent wrote, when it waits for the plan */
+  planFile?: string;
 }

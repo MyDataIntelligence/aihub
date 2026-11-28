@@ -11,7 +11,7 @@ The work is in an Azure DevOps repository not on this PC, or spans several repos
 1. Where is it? `aihub search all "<text>"`: repositories, files, text, branches, stories, PRs, wiki, pipelines at once (`--kinds prs --top 20`: one kind).
 2. Narrow down: `aihub browse search --text "<text>" --scope P,P/R`, `aihub browse items|file --project P --repo R --path /p`.
 3. A question over several repositories (read only): `aihub browse ask start --scope P/R1,P/R2 --prompt-file q.txt`, then follow its TASK.md: `ask read` (counted; past 200 files ask the user, they run `aihub browse ask allow`), `ask propose` for a fix, `ask report`. Per repository the user can then `aihub browse ask apply`.
-4. A change in one repository: `aihub browse change start --project P --repo R --paths /file --prompt-file task.txt`, then follow its TASK.md: edit under `files/`, `change read` for more files, `aihub browse change verify --id ID [--tests]` (lint and tests in a temporary copy), `change summary`. Show `change diff --id ID`.
+4. A change in one repository: `aihub browse change start --project P --repo R --paths /file --prompt-file task.txt`, then follow its TASK.md: edit under `files/`, `change read` for more files, `aihub browse change verify --id ID [--tests]` (`couldNotRun`: not run, no failure), `change summary`. Show `change diff --id ID`.
 5. Push only after the user says so:
 
 ```sh

@@ -73,6 +73,10 @@ committed), laid out like an Azure Pipelines multi-checkout:
 Steps may write there freely; each run resets both checkouts (ignored files such as a virtual environment stay).
 `git worktree list` shows the two detached worktrees. `--verbose` prints the scratch path and every output line.
 
+On Windows, bash is Git for Windows' bash, also when only `git.exe` is on PATH (a PowerShell or VS Code terminal); WSL's
+bash never counts. A bash script gets the preflight folders (`$(Build.SourcesDirectory)` and the others) with forward
+slashes, as on a Linux agent. Without bash, `script:` steps run with cmd.exe and the output says so.
+
 ## Variables
 
 `$(Name)`, `${{ parameters.x }}` and `${{ variables.x }}` are expanded in arguments, env values, inline scripts and
@@ -87,6 +91,16 @@ evaluate". In an inline script an all-lowercase `$(name)` nobody defines is left
 
 Steps hand values on with `##vso[task.setvariable variable=NAME;isOutput=true;issecret=true]VALUE`, as on the agent
 (also as `<stepName>.NAME`). Secret values and all tokens are masked in everything preflight prints or returns.
+
+Inline scripts hold their variables expanded, secrets and tokens included. `Agent.TempDirectory` is therefore a new folder
+per run under the user's temp folder (`aihub-preflight-<run>`), never in the repository, whose `.git` may sit in a synced
+OneDrive or network folder. It is private: mode 700 on Unix; on Windows no inherited entries and only the current user.
+A script is written just before its step and deleted right after it, so at most one exists at a time, and the folder is
+removed after the run, also after a failure, Ctrl+C or SIGTERM.
+
+Why expanded and not passed through the environment: the agent expands `$(NAME)` into the script text too. A reference
+to an environment variable instead would change what a script does. For example, bash leaves `'Bearer ${TOKEN}'` in single
+quotes alone, and an inline Python string cannot read one. preflight must pass and fail where the CD does.
 `##vso[task.logissue]` lines become the step's issues; `##vso[task.complete result=Failed]` or a non-zero exit fails it.
 
 Conditions: `succeeded()`, `always()`, `failed()`, `and`, `or`, `not`, `eq`, `ne`, `startsWith`, `endsWith`,
