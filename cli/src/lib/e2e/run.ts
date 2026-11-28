@@ -5,13 +5,27 @@ import type { Ctx } from "../context.js";
 import { readState, setFolderOf, stateFile, writeState, type RunState } from "./state.js";
 
 /** The progress of a run, written by the agent (`aihub story progress`) and read by the bar for its badge. */
-export function progress(ctx: Ctx, o: { id: number; step?: number; total?: number; label?: string; steps?: string[]; done?: boolean; action?: string; options?: Record<string, boolean>; stop?: boolean }): RunState & { stateFile: string } {
+export const WAITING_FOR = ["plan", "input", "approval"] as const;
+
+export function progress(ctx: Ctx, o: { id: number; step?: number; total?: number; label?: string; steps?: string[]; done?: boolean; action?: string; options?: Record<string, boolean>; stop?: boolean; waiting?: string; planFile?: string; resume?: boolean }): RunState & { stateFile: string } {
   const file = stateFile(ctx, o.id, "run");
   const now = new Date((ctx.now ?? Date.now)()).toISOString();
   const cur = readState<RunState>(file, { schema: 1, id: o.id, running: false, step: 0, total: 0, label: "", steps: [], updatedAt: "" });
-  const writing = o.step !== undefined || o.total !== undefined || o.label !== undefined || o.steps !== undefined || o.done || o.action !== undefined || o.options !== undefined || o.stop;
+  const writing = o.step !== undefined || o.total !== undefined || o.label !== undefined || o.steps !== undefined || o.done || o.action !== undefined || o.options !== undefined || o.stop || o.waiting !== undefined || o.resume;
   if (!writing) return { ...cur, stateFile: file };
   const next: RunState = { ...cur, id: o.id, updatedAt: now };
+  // the run goes on (a step, done, stop, resume, a new action): the agent no longer waits for the user
+  delete next.waiting;
+  delete next.waitingFor;
+  delete next.planFile;
+  if (o.waiting !== undefined) {
+    if (!(WAITING_FOR as readonly string[]).includes(o.waiting)) throw new BrowseError("badInput", `--waiting is ${WAITING_FOR.join(", ")}`);
+    if (o.waiting === "plan" && !o.planFile) throw new BrowseError("badInput", "--waiting plan needs --plan-file (aihub story plan-file --id N names it)");
+    next.waiting = true;
+    next.waitingFor = o.waiting as RunState["waitingFor"];
+    if (o.planFile) next.planFile = o.planFile;
+    next.running = true;
+  }
   if (o.action !== undefined) {
     // a new action starts a new run: old steps and a Stop are forgotten
     if (o.action !== cur.action || cur.stopped || !cur.running) Object.assign(next, { step: 0, total: 0, label: "", steps: [], running: false, stopped: false, options: undefined });

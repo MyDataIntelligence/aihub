@@ -231,7 +231,7 @@ fabric:                                  # optional: every workspace you can acc
     ci:                                  # object form: the same group with a service principal
       workspaces: [DEV-test-project]     # the workspace names in the group
       servicePrincipal: ci-runner        # name of a service principal registered on the user machine (secret never here)
-  branchWorkspacePrefixes: [team data]   # prefixes of per-branch workspaces "<prefix> <branch label>" for `aihub fabric failures`
+  branchWorkspacePrefixes: [team data]   # prefixes of per-branch workspaces "<prefix> <branch label>" (`aihub fabric branch-workspace`, `failures`, Fabric Workbench)
 
 robot:                                   # Robot integration tests for `aihub robot`
   pipeline: test-project-robot           # Azure DevOps pipeline that runs the Robot suites
@@ -254,7 +254,7 @@ robot:                                   # Robot integration tests for `aihub ro
 |---|---|
 | `fabric.workspaces[]` | Optional. Name, optional id, `environment` and optional `branches` patterns (the default workspace of a branch). Without an entry, any workspace the signed-in user can access is used by name or id, and its environment is read from the name (`acc`, `acceptance`, `prd`, `prod`, `production` mark ACC and PRD). Writes and runs are refused in `acc` and `prd` (and `test` when listed) unless `--allow-env` names that environment. |
 | `fabric.workspaces[].servicePrincipal` | Optional name of a service principal registered on the user's machine (`aihub fabric auth sp add`). Only the name lives here; tenant, client id and secret are in the user config and credential store. `--sp` and the environment variables still win. |
-| `fabric.branchWorkspacePrefixes` | Prefixes of the per-branch workspaces `aihub fabric failures --branch B` looks for ("<prefix> <branch label>", compared without case and punctuation; repository names count as prefixes too). Two workspaces with the same normalised name are ambiguous and give no match. |
+| `fabric.branchWorkspacePrefixes` | Prefixes of the per-branch workspaces of feature branches: `aihub fabric branch-workspace` (the one rule Fabric Workbench and PyCharm Git ask for "Open Fabric Workspace") and `aihub fabric failures --branch B` look for them ("<prefix> <branch label>", compared without case and punctuation; repository names count as prefixes too). Two workspaces with the same normalised name are ambiguous and give no match. |
 | `fabric.workspaceGroups` | Named lists of workspace names. `aihub fabric run --item X --workspaces devs` runs X in every workspace of the group; `--workspace a --workspace b` does the same ad hoc. The result is one table per workspace and a failure in one does not stop the others. `aihub fabric plan` lists every workspace the branch rules match. |
 | `robot.pipeline` | Azure DevOps pipeline that `aihub robot run` queues (override with `--pipeline`). |
 | `robot.targets` | Named branches to run Robot on. `mergeMyBranchFirst: true` merges the current branch into the target branch (in a temporary worktree, never your checkout) and pushes it before the run; a merge conflict stops the run and pushes nothing. `mustAlreadyContain` lists branches that must be in the target branch first. |

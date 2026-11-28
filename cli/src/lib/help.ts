@@ -164,7 +164,8 @@ export const USAGES: Record<string, Load> = {
     join(
       "aihub story show --id <n> [--json] | create --title \"<title>\" --body-file story.md [--type T] [--parent N] | refine --id <n> --body-file story.md | template",
       "aihub story start|link|finish --id <story> [--repos a,b] [--base <branch>] [--branch b] [--no-checkout] [--no-state] [--dry-run] [--json]",
-      "aihub story progress --id <story> [--step k --total n --label t] [--steps a|b|c] [--done] [--json]   (the run's progress for the bar)",
+      "aihub story progress --id <story> [--step k --total n --label t] [--steps a|b|c] [--done] [--waiting plan|input|approval [--plan-file f]] [--resume] [--json]",
+      "aihub story plan-file --id <story>   (where the plan of a run goes)",
       "aihub story yolo --on|--off [--folder <set>]   (opencode may do everything in the set folder except crossing the limits)",
       "aihub story context --id <n> [--repos a,b] [--top 15] [--json]",
       'aihub story recall --id <n> [--json] | search "<words>" [--json]',

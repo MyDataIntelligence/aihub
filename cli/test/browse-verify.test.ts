@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { browseOf } from "../src/lib/browse/core.js";
 import { changeDiff, changeStart, changeWrite } from "../src/lib/browse/change.js";
-import { changeVerify, lintChecks, sparseFolders, testErrors } from "../src/lib/browse/verify.js";
+import { changeVerify, couldNotRun, lintChecks, sparseFolders, testErrors } from "../src/lib/browse/verify.js";
 import { ctxFor, fakeFetch, sh, tmp, write, type Route } from "./helpers.js";
 
 const TEAM = `version: 1
@@ -27,7 +27,7 @@ const LINT = `const fs=require("fs");for(const f of process.argv.slice(2)){fs.re
 const CHECK = `const s=require("fs").readFileSync("src/calc.py","utf8");if(s.includes("return 3")){console.log("tests/check.cjs:1: AssertionError: expected 2");process.exit(1)}console.log("ok")`;
 
 /** A bare origin (served over file://, with partial clone allowed) and its main branch. */
-function origin() {
+function origin(o: { team?: string; files?: Record<string, string> } = {}) {
   const root = tmp("aihub-verify-world-");
   const bare = join(root, "repo-a.git");
   const work = join(root, "work");
@@ -37,9 +37,10 @@ function origin() {
   sh(bare, ["config", "uploadpack.allowFilter", "true"]);
   sh(bare, ["config", "uploadpack.allowAnySHA1InWant", "true"]);
   sh(work, ["init", "-b", "main"]);
-  write(work, ".agents/skills/_shared/references/team.yaml", TEAM);
+  write(work, ".agents/skills/_shared/references/team.yaml", o.team ?? TEAM);
   write(work, "tools/lint.cjs", LINT);
   write(work, "tests/check.cjs", CHECK);
+  for (const [p, text] of Object.entries(o.files ?? {})) write(work, p, text);
   write(work, "src/calc.py", "def two():\n    return 2\n");
   write(work, "docs/big/other.md", "not needed for lint\n");
   sh(work, ["add", "-A"]);
@@ -117,7 +118,36 @@ describe("change verify: lint and tests in a temporary copy", () => {
     expect(existsSync(s.dir)).toBe(true);
   }, 120_000);
 
+  it("tests that cannot start (a missing module) are couldNotRun with the module, not a failure", async () => {
+    const o = origin({ files: { "tests/check.cjs": 'require("leftpad-not-there");console.log("ok")' } });
+    const w = world(o.url, o.head);
+    const s = await changeStart(w.b(), { project: "test-project", repo: "repo-a", paths: ["/src/calc.py"], prompt: "x" });
+    await changeWrite(w.b(), s.id, "/src/calc.py", { content: "def two():\n    return 1 + 1\n" });
+    const r = await changeVerify(w.b(), s.id, { tests: true });
+    expect(r.checks.find((c) => c.kind === "test")).toMatchObject({ status: "couldNotRun", missing: ["leftpad-not-there"], reason: "missing dependency leftpad-not-there" });
+    expect(r.ok).toBe(true);
+    expect(r.copyRemoved).toBe(true);
+  }, 120_000);
+
+  it("runs tests.setup of team.yaml in the copy before the tests", async () => {
+    const team = TEAM.replace("  command: node {tests}", "  command: node {tests}\n  setup: node tools/setup.cjs");
+    const o = origin({ team, files: { "tools/setup.cjs": 'require("fs").writeFileSync("tests/ready.txt","x")', "tests/check.cjs": 'if(!require("fs").existsSync("tests/ready.txt")){console.log("tests/check.cjs:1: AssertionError: no setup");process.exit(1)}console.log("ok")' } });
+    const w = world(o.url, o.head);
+    const s = await changeStart(w.b(), { project: "test-project", repo: "repo-a", paths: ["/src/calc.py"], prompt: "x" });
+    await changeWrite(w.b(), s.id, "/src/calc.py", { content: "def two():\n    return 1 + 1\n" });
+    const r = await changeVerify(w.b(), s.id, { tests: true });
+    expect(r.checks.find((c) => c.kind === "test")).toMatchObject({ status: "passed" });
+    expect(r.notes).toEqual([]);
+  }, 120_000);
+
   it("knows which folders the lint copy needs and reads test failures", () => {
+    expect(couldNotRun("ERROR tests/test_report.py\nE   ModuleNotFoundError: No module named 'context_fixture_a'\n!!! Interrupted: 1 error during collection !!!", 2, "python -m pytest tests/test_report.py")).toEqual({ missing: ["context_fixture_a"], reason: "missing dependency context_fixture_a" });
+    expect(couldNotRun("FAILED tests/test_a.py::test_x - assert 3 == 2", 1, "python -m pytest")).toBeUndefined();
+    expect(couldNotRun("tests/test_a.py F\nE   ModuleNotFoundError: No module named 'x'\n==== 1 failed in 0.1s ====", 1, "python -m pytest")).toBeUndefined();
+    expect(couldNotRun("ERROR: usage: pytest [options]", 4, "python -m pytest")).toMatchObject({ missing: [] });
+    expect(couldNotRun("collected 0 items", 5, "python -m pytest")).toEqual({ missing: [], reason: "no tests were collected" });
+    expect(couldNotRun("some tool output", 4, "node tests/check.cjs")).toBeUndefined();
+    expect(couldNotRun("[ ERROR ] Error in file 'tests/a.robot' on line 3: Importing library 'context_fixture_a' failed: ModuleNotFoundError", 252, "robot tests")).toMatchObject({ missing: ["context_fixture_a"] });
     expect(sparseFolders(["/src/a.py", "/src/sub/b.py", "/README.md"])).toEqual([".agents/skills/_shared/references", ".github/instructions", "src", "src/sub"]);
     expect(testErrors("collected 3 items\nFAILED tests/test_calc.py::test_two - AssertionError: assert 3 == 2\n1 failed")).toEqual([{ path: "/tests/test_calc.py", message: "AssertionError: assert 3 == 2" }]);
     expect(lintChecks({ base: "main", baseReason: "", files: ["a.py"], findings: [], skipped: [{ name: "ruff", why: "not installed" }], rules: [] }, 5, "aihub guidelines check")).toEqual([

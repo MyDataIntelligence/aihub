@@ -40,7 +40,9 @@ Done is done only when everything below is true. If something is not true, say s
 
 {{#if planFirst}}
 ## Plan first
-Show a plan first: steps per repo, the criteria per step and the tests. Wait for my OK.
+Show a plan first: steps per repo, the criteria per step and the tests. Also write it to the file
+`aihub story plan-file --id {{story.id}}` names, run `aihub story progress --id {{story.id}} --waiting plan --plan-file <that file>`
+and wait for my OK.
 If the work later differs from the plan, say so before you go on.
 {{/if}}
 {{#if setActive}}
@@ -52,6 +54,11 @@ Resolved: `aihub workitem state --id {{story.id}} --to Resolved`. Otherwise leav
 ## Progress
 Report every step with `aihub story progress --id {{story.id}} --step <k> --total <n> --label "<step>"` (steps: plan, build,
 targeted tests, Fabric test per criterion, pull request, pipeline, review threads, report). At the end: `--done`.
+
+## Waiting for me
+Before you ask me something or wait for my approval, run
+`aihub story progress --id {{story.id}} --waiting input` (or `--waiting approval`). When you go on, your next
+`aihub story progress` call clears it.
 
 ## Stop rules
 - The same error three rounds in a row: stop, show the error and the state, ask how to go on.

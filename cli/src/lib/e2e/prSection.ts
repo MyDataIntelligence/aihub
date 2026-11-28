@@ -1,13 +1,10 @@
 import type { AdoClient } from "../ado.js";
 import type { Ctx } from "../context.js";
 import { AihubError } from "../errors.js";
-import { ACCEPTANCE_FIELD as ACCEPTANCE, DESCRIPTION } from "../fieldLayout.js";
-import { htmlToMd } from "../story.js";
-import { partOf } from "../stories/template.js";
 import { headingsMatch, parseSections } from "../templates.js";
 import { howKind, parseCriteria, type Lang } from "./criteria.js";
 import { stateFile } from "./state.js";
-import { statusOf, type CriteriaStatus } from "./workitem.js";
+import { plainCriteria, statusOf, type CriteriaStatus } from "./workitem.js";
 
 /**
  * The required section of a pull request: the acceptance criteria of its story with how each was tested, the outcome
@@ -84,9 +81,7 @@ export function withCriteria(description: string, st: CriteriaStatus, lang: Lang
 export async function prCriteria(ctx: Ctx, client: AdoClient, story: number, language?: string): Promise<{ status: CriteriaStatus; lang: Lang } | undefined> {
   const w = await client.get<{ fields?: Record<string, unknown> }>(`wit/workitems/${story}`); // all fields: a type without the criteria field would refuse a named list
   if (/^bug$/i.test(String(w.fields?.["System.WorkItemType"] ?? "").trim())) return undefined; // bugs have no acceptance criteria
-  const ac = htmlToMd(String(w.fields?.[ACCEPTANCE] ?? ""));
-  const fromDesc = parseSections(htmlToMd(String(w.fields?.[DESCRIPTION] ?? ""))).sections.find((x) => partOf(x.heading) === "criteria")?.body ?? "";
-  const criteria = parseCriteria(ac.trim() ? ac : fromDesc);
+  const criteria = parseCriteria(plainCriteria(w.fields)); // the same rule as the fallback of `criteria status`
   if (!criteria.length) return undefined;
   const lang: Lang = String(language ?? "en").toLowerCase().startsWith("nl") ? "nl" : "en";
   return { status: statusOf(stateFile(ctx, story, "criteria"), story, criteria), lang };

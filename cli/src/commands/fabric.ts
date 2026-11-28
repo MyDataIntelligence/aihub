@@ -28,7 +28,7 @@ import {
 import { collectJobLogs, collectRefreshLogs, workspaceRuns } from "../lib/fabric-logs.js";
 import { classifyError } from "../lib/fabric-diag.js";
 import { clampLines, digestJob, formatDigest, WINDOW_BYTES, writeFullLog } from "../lib/fabric-digest.js";
-import { CAPACITY_HINT, connectionWriteCmd, dbtCmd, failuresCmd, formatChain, resolveBranchWorkspace, livyCmd, notebookTestCmd, rootCause, sparkCmd, sqlCmd, udfCmd, type Link } from "./fabric-deep.js";
+import { branchWorkspaceCmd, CAPACITY_HINT, connectionWriteCmd, dbtCmd, failuresCmd, formatChain, resolveBranchWorkspace, livyCmd, notebookTestCmd, rootCause, sparkCmd, sqlCmd, udfCmd, type Link } from "./fabric-deep.js";
 import { apiCmd, onelakeCmd, queryCmd } from "./fabric-api.js";
 import { authCmd, capacitiesCmd, connectionsCmd, deploymentCmd, environmentCmd, lakehouseLoad, lakehouseMaintenance, schedulesCmd, shortcutsCmd, workspaceCmd } from "./fabric-extra.js";
 import { fabricHelp, unknownCommand, usageOf } from "./fabric-help.js";
@@ -146,6 +146,7 @@ const OPTIONS = {
   run: { type: "boolean" },
   env: { type: "string" },
   "since-green": { type: "boolean" },
+  "names-only": { type: "boolean" },
 } as const;
 
 export type V = Record<string, string | boolean | string[] | undefined>;
@@ -280,6 +281,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
       return livyCmd(s, pos[0]);
     case "failures":
       return failuresCmd(s);
+    case "branch-workspace":
+      return branchWorkspaceCmd(s);
     case "deployed":
       return (await import("./fabric-since-green.js")).deployedCmd(s);
     case "sql":

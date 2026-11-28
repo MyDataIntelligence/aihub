@@ -33,7 +33,7 @@ export interface TeamConfig {
   };
   branches?: { feature?: string; protected?: string[] };
   commits?: { format?: string; types?: string[]; scope?: string };
-  tests?: { command?: string; map?: { source: string | string[]; tests: string | string[] }[] };
+  tests?: { command?: string; /** run once in the temporary copy of `browse change verify` before the tests (a venv, pip install -r requirements.txt) */ setup?: string; map?: { source: string | string[]; tests: string | string[] }[] };
   cherryPick?: { groups?: Record<string, string[]> };
   /** wiki updates (aihub wiki update): `pageTemplate` is the path of the markdown template a NEW wiki page follows */
   wiki?: { pageTemplate?: string };

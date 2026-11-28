@@ -1,6 +1,8 @@
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
-import { delimiter, isAbsolute, join, resolve } from "node:path";
-import { spawn } from "../proc.js";
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
+import { randomBytes } from "node:crypto";
+import { tmpdir } from "node:os";
+import { spawn, spawnSync } from "../proc.js";
 import type { PipelineStep } from "./pipelineYaml.js";
 
 /**
@@ -28,35 +30,61 @@ export interface Command {
   missing?: string;
 }
 
-/** Programs on PATH, read from the folders (no process); on Windows with PATHEXT. WSL's bash in System32 does not count as bash. */
+const WSL = /[\\/]windows[\\/]system32[\\/]/i;
+const isFile = (p: string) => {
+  try {
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Programs on PATH, read from the folders (no process); on Windows with PATHEXT. WSL's bash in System32 does not count as
+ * bash; Git for Windows' bash counts also when only its `cmd` folder (git.exe) is on PATH, as in a PowerShell or VS Code
+ * terminal, so `script:` steps get the same shell whichever terminal started preflight.
+ */
 export function pathShells(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): Shells {
   const memo = new Map<string, string | undefined>();
   const dirs = (env.PATH ?? env.Path ?? "").split(platform === "win32" ? ";" : delimiter).filter(Boolean);
   const exts = platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean) : [""];
+  const bashLike = (program: string) => platform === "win32" && /^bash(\.exe)?$/i.test(program);
+  const onPath = (program: string): string | undefined => {
+    if (isAbsolute(program)) return existsSync(program) ? program : undefined;
+    for (const d of dirs)
+      for (const e of [...(platform === "win32" && /\.[a-z]+$/i.test(program) ? [""] : []), ...exts]) {
+        const p = join(d, program + e);
+        if (isFile(p) && !(bashLike(program) && WSL.test(p))) return p; // WSL's bash is not a Windows bash: look further
+      }
+    return undefined;
+  };
+  // <Git>\cmd\git.exe, <Git>\bin\git.exe or <Git>\mingw64\bin\git.exe -> <Git>\bin\bash.exe or <Git>\usr\bin\bash.exe
+  const gitBash = (): string | undefined => {
+    const git = onPath("git");
+    if (!git) return undefined;
+    for (const root of [dirname(dirname(git)), dirname(dirname(dirname(git)))])
+      for (const p of [join(root, "bin", "bash.exe"), join(root, "usr", "bin", "bash.exe")]) if (isFile(p)) return p;
+    return undefined;
+  };
   return {
     platform,
     which: (program) => {
       if (memo.has(program)) return memo.get(program);
-      let hit: string | undefined;
-      if (isAbsolute(program)) hit = existsSync(program) ? program : undefined;
-      else
-        outer: for (const d of dirs)
-          for (const e of [...(platform === "win32" && /\.[a-z]+$/i.test(program) ? [""] : []), ...exts]) {
-            const p = join(d, program + e);
-            try {
-              if (statSync(p).isFile()) {
-                hit = p;
-                break outer;
-              }
-            } catch {
-              /* not here */
-            }
-          }
-      if (hit && platform === "win32" && /^bash/i.test(program) && /\\windows\\system32\\/i.test(hit)) hit = undefined; // WSL, not a Windows bash
+      const hit = onPath(program) ?? (bashLike(program) ? gitBash() : undefined);
       memo.set(program, hit);
       return hit;
     },
   };
+}
+
+/**
+ * A bash script on Windows gets the preflight folders with forward slashes: bash removes a backslash outside quotes, so
+ * `ls $(Build.SourcesDirectory)/jobs` would lose every separator. `dirs` are the native paths preflight itself expanded.
+ */
+export function posixPaths(text: string, dirs: string[]): string {
+  let out = text;
+  for (const d of [...new Set(dirs)].filter((x) => x.includes("\\")).sort((a, b) => b.length - a.length)) out = out.split(d).join(d.replace(/\\/g, "/"));
+  return out;
 }
 
 /** Splits an argument string like the agent does: spaces separate, double or single quotes group, quotes are removed. */
@@ -113,8 +141,10 @@ export function commandFor(step: PipelineStep, input: CommandInput, o: { sh: She
   const tmp = (ext: string) => join(o.tempDir, `${o.id}${ext}`);
   const args = splitArgs(input.arguments);
   const need = (program: string, cmd: Command): Command => (o.sh.which(program) || isAbsolute(program) ? cmd : { ...cmd, missing: program });
+  // on Windows the full path: by name, the first bash.exe on PATH may be WSL's
+  const bashFile = o.sh.platform === "win32" ? (o.sh.which("bash") ?? "bash") : "bash";
   const bash = (file: string, content?: string): Command =>
-    need("bash", { file: "bash", args: ["--noprofile", "--norc", file, ...(content === undefined ? args : [])], display: show("bash", [file, ...(content === undefined ? args : [])]), ...(content !== undefined ? { script: { path: file, content } } : {}) });
+    need("bash", { file: bashFile, args: ["--noprofile", "--norc", file, ...(content === undefined ? args : [])], display: show("bash", [file, ...(content === undefined ? args : [])]), ...(content !== undefined ? { script: { path: file, content } } : {}) });
   const ps = (program: string, file: string, content?: string): Command => {
     const call = `. '${file.replace(/'/g, "''")}'${content === undefined && args.length ? ` ${args.map(quote).join(" ")}` : ""}`;
     return need(program, {
@@ -156,6 +186,53 @@ export function commandFor(step: PipelineStep, input: CommandInput, o: { sh: She
   }
 }
 
+/** A new folder name for one run's scripts under the user's temp folder (outside the repository, which may be synced). */
+export const runTempDir = (): string => join(tmpdir(), `aihub-preflight-${process.pid}-${randomBytes(4).toString("hex")}`);
+
+/**
+ * Creates `dir` for the current user only: mode 700 on Unix; on Windows without inherited entries and with full control
+ * for the current user alone (one icacls call per run). Returns a note when Windows refused the ACL; the folder is then
+ * as private as the user's temp folder.
+ */
+export function privateDir(dir: string, platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (platform !== "win32") return undefined;
+  const user = env.USERDOMAIN && env.USERNAME ? `${env.USERDOMAIN}\\${env.USERNAME}` : env.USERNAME;
+  if (!user) return "the script folder keeps the ACL of the temp folder (no USERNAME to restrict it to)";
+  const r = spawnSync("icacls", [dir, "/inheritance:r", "/grant:r", `${user}:(OI)(CI)F`], { encoding: "utf8", windowsHide: true });
+  return r.status === 0 ? undefined : `the script folder keeps the ACL of the temp folder (icacls: ${String(r.stderr || r.stdout || r.error?.message || "").trim().split("\n")[0]})`;
+}
+
+/** The part of `process` that `withTempDir` listens to. */
+export interface SignalSource {
+  on(event: "exit" | "SIGINT" | "SIGTERM", listener: (...args: any[]) => void): unknown;
+  off(event: "exit" | "SIGINT" | "SIGTERM", listener: (...args: any[]) => void): unknown;
+  exit(code?: number): never | void;
+}
+
+/**
+ * Runs `fn` and removes `dir` afterwards, also when `fn` throws, on Ctrl+C or SIGTERM (then the process ends with
+ * 130 or 143, as the default would) and when the process exits meanwhile: the scripts there hold expanded secrets.
+ */
+export async function withTempDir<T>(dir: string, proc: SignalSource, fn: () => Promise<T>): Promise<T> {
+  const clean = () => rmSync(dir, { recursive: true, force: true });
+  const onSignal = (signal: string) => {
+    clean();
+    proc.exit(signal === "SIGTERM" ? 143 : 130);
+  };
+  proc.on("exit", clean);
+  proc.on("SIGINT", onSignal);
+  proc.on("SIGTERM", onSignal);
+  try {
+    return await fn();
+  } finally {
+    proc.off("exit", clean);
+    proc.off("SIGINT", onSignal);
+    proc.off("SIGTERM", onSignal);
+    clean();
+  }
+}
+
 export interface RunResult {
   code: number;
   output: string;
@@ -171,7 +248,13 @@ export function runCommand(cmd: Command, o: { cwd: string; env: NodeJS.ProcessEn
     mkdirSync(resolve(cmd.script.path, ".."), { recursive: true });
     writeFileSync(cmd.script.path, cmd.script.content, "utf8");
   }
-  return new Promise((done) => {
+  // the script holds expanded secrets and tokens: gone when the step ends (the agent cleans its temp folder after a job)
+  const finish = (done: (r: RunResult) => void) => (r: RunResult) => {
+    if (cmd.script) rmSync(cmd.script.path, { force: true });
+    done(r);
+  };
+  return new Promise((resolveRun) => {
+    const done = finish(resolveRun);
     let out = "";
     const keep = (s: string) => {
       out += s;
