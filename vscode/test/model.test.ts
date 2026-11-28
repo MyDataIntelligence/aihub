@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildModel, countVotes, statusItems, toFabric, unwrap, votesFromPolicies } from "../src/model";
+import { buildModel, countVotes, itemsForHead, statusItems, toFabric, unwrap, votesFromPolicies } from "../src/model";
 import { fx } from "./helpers";
 
 describe("model", () => {
@@ -65,5 +65,24 @@ describe("not signed in", () => {
     const items = statusItems(buildModel({ status: { branch: "feature/7-x", signedIn: false, story: { id: 7, title: "(unknown)", state: "?" } } }));
     expect(items.find((i) => i.id === "signin")).toMatchObject({ text: "$(account) not signed in", tone: "warn" });
     expect(statusItems(buildModel({ status: { branch: "x" } })).some((i) => i.id === "signin")).toBe(false);
+  });
+});
+
+describe("itemsForHead: the items of the last read while another branch is checked out", () => {
+  const items = [
+    { id: "story", text: "$(git-branch) feature/bench-1", tooltip: "t", tone: "muted", command: "aihub.showBar" },
+    { id: "pr", text: "PR 12", tooltip: "t", tone: "ok", command: "c" },
+    { id: "fabric", text: "$(database) no failures", tooltip: "Fabric workspace team dev bench-1", tone: "ok", command: "c" },
+    { id: "events", text: "1 event", tooltip: "t", tone: "muted", command: "c" },
+  ] as const;
+  it("drops the pull request and the Fabric workspace of the old branch after a checkout (live 28-11: bench-1 on bench-1-nows)", () => {
+    const shown = itemsForHead([...items], "feature/bench-1", "feature/bench-1-nows");
+    expect(shown.map((i) => i.id)).toEqual(["story", "events"]);
+    expect(shown[0].text).toBe("$(git-branch) feature/bench-1-nows");
+    expect(shown.some((i) => /bench-1"|team dev bench-1$/.test(i.tooltip))).toBe(false);
+  });
+  it("changes nothing while the branch is the one that was read, or HEAD is not known", () => {
+    expect(itemsForHead([...items], "feature/bench-1", "feature/bench-1")).toEqual(items);
+    expect(itemsForHead([...items], "feature/bench-1", undefined)).toEqual(items);
   });
 });

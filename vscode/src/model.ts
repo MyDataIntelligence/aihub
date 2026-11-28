@@ -252,6 +252,22 @@ export interface StatusItem {
   command: string;
 }
 
+/** Items that belong to the branch the last read was made on: its pull request, pipeline, review threads and Fabric workspace. */
+const BRANCH_ITEMS: ReadonlySet<StatusItem["id"]> = new Set(["pr", "pipeline", "threads", "fabric"]);
+
+/**
+ * The items to show while the checked-out branch (`head`, from .git/HEAD: a file, no process) is not the branch of the last read.
+ * After `git checkout` in a window without focus the new read waits for the focus (refresher.ts): until then the items of the old
+ * branch would tell about the wrong branch (live 28-11: "Fabric workspace aihub-test-dev bench-407ba1" on feature/bench-407ba1-nows).
+ * They are left out until the read of the new branch arrives; the story item says the new branch.
+ */
+export function itemsForHead(items: StatusItem[], readBranch: string | undefined, head: string | undefined): StatusItem[] {
+  if (!head || !readBranch || head === readBranch) return items;
+  return items
+    .filter((i) => !BRANCH_ITEMS.has(i.id))
+    .map((i) => (i.id === "story" ? { ...i, text: `$(git-branch) ${head.length > 36 ? `${head.slice(0, 35)}…` : head}`, tooltip: `${head}: reading the story, pull request and Fabric workspace of this branch...`, tone: "muted" as Tone } : i));
+}
+
 /** A story title that says something: not empty and not the CLI's "(unknown)" for a work item it could not read. */
 export const knownTitle = (t: string | undefined): boolean => !!t && t.trim() !== "" && t.trim() !== "(unknown)";
 
