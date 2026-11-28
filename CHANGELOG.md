@@ -2,9 +2,11 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
-## Unreleased
+## 1.11.0
 
 - `aihub guidelines show --paths <files>`: the rules for the files about to change (AGENTS.md nearest first, CLAUDE.md, copilot instructions, .instructions.md by applyTo, team.yaml guidelines), short and de-duplicated with the source. `aihub guidelines check`: the changed lines of the branch, the team's linters on them (`guidelines.linters`), exit 1 on a violation. New skill code-guidelines, used by implement, story-run, pr-create and the team prompts.
+- `aihub pr create` titles a new pull request with `pullRequest.title` from team.yaml ({storyId}, {storyTitle}, {branch}); `--title` still wins, and a pattern that names the story is only used when the story is known. `aihub team preview --template pr` shows that same title.
+- Colleague-ready: `aihub skills install` also writes the GitHub Copilot prompt files into the VS Code user profile; the language comes from team.yaml only (English without `language`, also for criteria and empty sections); new skill remote-repos; `learn` no longer points to the extension; a five-step onboarding.
 
 ## 1.10.0
 
