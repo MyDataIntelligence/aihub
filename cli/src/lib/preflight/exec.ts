@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "../proc.js";
 import type { PipelineStep } from "./pipelineYaml.js";
@@ -184,6 +184,36 @@ export function commandFor(step: PipelineStep, input: CommandInput, o: { sh: She
   }
 }
 
+/** The part of `process` that `withTempDir` listens to. */
+export interface SignalSource {
+  on(event: "exit" | "SIGINT" | "SIGTERM", listener: (...args: any[]) => void): unknown;
+  off(event: "exit" | "SIGINT" | "SIGTERM", listener: (...args: any[]) => void): unknown;
+  exit(code?: number): never | void;
+}
+
+/**
+ * Runs `fn` and removes `dir` afterwards, also when `fn` throws, on Ctrl+C or SIGTERM (then the process ends with
+ * 130 or 143, as the default would) and when the process exits meanwhile: the scripts there hold expanded secrets.
+ */
+export async function withTempDir<T>(dir: string, proc: SignalSource, fn: () => Promise<T>): Promise<T> {
+  const clean = () => rmSync(dir, { recursive: true, force: true });
+  const onSignal = (signal: string) => {
+    clean();
+    proc.exit(signal === "SIGTERM" ? 143 : 130);
+  };
+  proc.on("exit", clean);
+  proc.on("SIGINT", onSignal);
+  proc.on("SIGTERM", onSignal);
+  try {
+    return await fn();
+  } finally {
+    proc.off("exit", clean);
+    proc.off("SIGINT", onSignal);
+    proc.off("SIGTERM", onSignal);
+    clean();
+  }
+}
+
 export interface RunResult {
   code: number;
   output: string;
@@ -199,7 +229,13 @@ export function runCommand(cmd: Command, o: { cwd: string; env: NodeJS.ProcessEn
     mkdirSync(resolve(cmd.script.path, ".."), { recursive: true });
     writeFileSync(cmd.script.path, cmd.script.content, "utf8");
   }
-  return new Promise((done) => {
+  // the script holds expanded secrets and tokens: gone when the step ends (the agent cleans its temp folder after a job)
+  const finish = (done: (r: RunResult) => void) => (r: RunResult) => {
+    if (cmd.script) rmSync(cmd.script.path, { force: true });
+    done(r);
+  };
+  return new Promise((resolveRun) => {
+    const done = finish(resolveRun);
     let out = "";
     const keep = (s: string) => {
       out += s;

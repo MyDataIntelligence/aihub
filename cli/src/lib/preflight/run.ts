@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type { Ctx } from "../context.js";
 import { AihubError } from "../errors.js";
@@ -13,7 +13,7 @@ import { defaultTargetFor, loadTeam, type TeamConfig } from "../team.js";
 import { trace } from "../trace.js";
 import { hasPreflight, LEVELS, levelOf, norm, preflightConfig, TOKEN_AUDIENCES, type Level, type PreflightConfig } from "./config.js";
 import { driftOf, fingerprint, isRunnable, readState, rememberSteps, writeCalls, writeState, type Drift, type Fingerprint, type State } from "./drift.js";
-import { commandFor, pathShells, posixPaths, runCommand, scriptShell, type Shells } from "./exec.js";
+import { commandFor, pathShells, posixPaths, runCommand, scriptShell, withTempDir, type Shells, type SignalSource } from "./exec.js";
 import { evalCondition, expand, macroNames, type Lookup } from "./expr.js";
 import { loadJob, paramIn, type JobDoc, type ParamScope, type PipelineStep } from "./pipelineYaml.js";
 import { prepareSources, setupFingerprint, type Sources } from "./sources.js";
@@ -100,6 +100,8 @@ export interface PreflightDeps {
   /** runs of the CD pipeline on the branch that are queued or in progress */
   cdRuns?: (pipeline: string, branch: string) => Promise<{ id: number; status: string }[]>;
   now?: () => number;
+  /** the process whose Ctrl+C, SIGTERM and exit clean up _temp (a test passes a stand-in) */
+  process?: SignalSource;
 }
 
 const LEVEL_OF_FLAG: Record<PreflightOpts["level"], Level[]> = { local: ["local"], plan: ["local", "read"], apply: ["local", "read", "apply"] };
@@ -383,10 +385,14 @@ export async function runPreflight(ctx: Ctx, o: PreflightOpts, deps: PreflightDe
   let unknownBefore: string | undefined;
   let destructive: { step: string; line: string } | undefined;
   const tempDir = join(sources.base, "_temp");
+  // empty per run, as on the agent: also removes scripts an older aihub left behind with secrets in them
+  if (!o.dryRun) rmSync(tempDir, { recursive: true, force: true });
   mkdirSync(tempDir, { recursive: true });
   const baseEnv: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries({ ...process.env, ...ctx.env })) if (!CREDENTIAL_ENV.test(k)) baseEnv[k] = v;
 
+  // _temp is removed after the run, also on a failure, Ctrl+C or SIGTERM: no expanded secret or token stays on disk
+  await withTempDir(tempDir, deps.process ?? process, async () => {
   for (const step of doc.steps) {
     const lvl = levelOf(cfg, step.name);
     const r: StepResult = { index: step.index, name: step.name, level: lvl ?? "unknown", kind: step.task ?? step.kind, status: "skipped", seconds: 0, issues: [], afterFailure: false, uncertain: !!unknownBefore };
@@ -612,6 +618,7 @@ export async function runPreflight(ctx: Ctx, o: PreflightOpts, deps: PreflightDe
       if (line) destructive = { step: step.name, line: mask(line.trim().slice(0, 200)) };
     }
   }
+  });
 
   if (destructive && o.level === "plan") notes.push(`"${destructive.step}" plans to remove something (${destructive.line}): --apply will ask for --yes`);
   if (!o.dryRun) {
