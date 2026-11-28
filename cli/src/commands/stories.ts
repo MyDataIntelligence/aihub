@@ -130,7 +130,10 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
     return { org, ...saved, ...(team ? { team } : {}), types };
   }
   if (sub === "projects") return (await import("../lib/stories/read.js")).storyProjects({ b: (await import("../lib/browse/core.js")).browseOf(ctx, o) });
-  const s = core.storiesOf(ctx, o);
+  const base = core.storiesOf(ctx, o);
+  const itemId = str(v, "id") ?? str(v, "parent");
+  // an item's own project wins over the saved one (several projects in one browser)
+  const s = itemId && /^(AB#)?\d+$/i.test(itemId) ? await core.storiesForItem(ctx, base, Number(itemId.replace(/^AB#/i, ""))) : base;
   const r = await import("../lib/stories/read.js");
   switch (sub) {
     case "teams":
