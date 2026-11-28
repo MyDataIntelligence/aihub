@@ -14,7 +14,7 @@ import { remoteOf } from "../pipelineView.js";
  * id for good, and the failures that stay true for a while (not signed in, no access) for 5 minutes.
  */
 
-export type BrowseErrorKind = "signedOut" | "noAccess" | "notFound" | "searchUnavailable" | "protectedBranch" | "branchExists" | "offline" | "badInput" | "needsSetting" | "secret" | "forbiddenFile" | "tooManyFiles" | "failed";
+export type BrowseErrorKind = "signedOut" | "noAccess" | "notFound" | "searchUnavailable" | "protectedBranch" | "branchExists" | "offline" | "badInput" | "needsSetting" | "secret" | "forbiddenFile" | "tooManyFiles" | "readLimit" | "failed";
 
 export class BrowseError extends AihubError {
   constructor(

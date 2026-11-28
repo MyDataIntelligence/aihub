@@ -270,6 +270,21 @@ and nothing is pushed; `--rebase` re-applies changes that do not overlap on the 
 
 `change apply --id ID --dir D` (Open as Working Copy): the changed files written into a working copy; a file with its own change there is
 skipped: `{id,target,branch,applied:[paths],skipped:[{path,why}]}`. `change discard --id ID` removes the workspace; `change list` lists them.
+### Ask Agent about Selected: `aihub browse ask ...`
+
+A read-only question over several repositories and projects. `<config>/aihub/asks/<id>/` holds `TASK.md`, the files read (counted),
+the proposals (`proposals/<project>/<repo>/<path>`, the whole new file) and `report.json`. Nothing is changed, committed or pushed by the
+question; "Apply in Feature Branch" makes an `aihub browse change` per repository.
+
+- `ask start --scope P,P/R,... --prompt-file F [--story N] [--limit 200]` -> `{id,dir,scope,limit,taskFile,agentPrompt}`.
+- `ask read --id ID --project P --repo R --path /f`: the file at the repository's base (its default branch's head the first time it is used),
+  counted once per file; past `limit` (200) the error kind `readLimit` until `ask allow --id ID [--more 200]` -> `{id,read,limit}`.
+- `ask propose --id ID --project P --repo R --path /f --content-file F`: a proposed fix (refused: secrets, pipeline/variable-group/.env files).
+- `ask report --id ID --file report.json`: `{"summary":"…","repos":[{"project","repo","finding","refs":[{"path","line"?,"note"?}]}]}`, only repositories of the scope.
+- `ask state --id ID`: `{id,prompt,scope,status:"open"|"answered",reads:{count,limit},needsApproval,summary,branch,repos:[{project,repo,base,finding,refs,proposals:[{path,status,additions,deletions,hunks}],change}]}`.
+- `ask apply --id ID --project P --repo R [--branch B] [--story N]`: a change with that repository's proposals, on the question's branch (the
+  first apply names it; every repository gets the same) -> the `change start` answer plus `applied`. Push it with `change push`.
+- `ask list`, `ask discard --id ID`.
 `aihub browse suggest-branch [--story N] --path /file [--title t]`: `{"branch":"feature/4711-orders-export"}` (no network).
 
 ## Pipeline browser: `aihub browse pipelines|pipeline|run-plan|run|artifacts|artifact-files|artifact-open|draft-create|drafts|draft-delete`

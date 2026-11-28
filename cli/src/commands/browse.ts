@@ -32,13 +32,13 @@ export const BROWSE_USAGE = `usage: aihub browse <sub> [--org O] [--refresh]   (
   draft-delete --project P --pipeline ID [--keep-branch]      only your own draft-* in \Drafts: the pipeline and its branch
   (push takes --pipeline ID too: the answer says whether that pipeline can run on the new branch)`;
 
-const SUBS = ["change", "projects", "project", "repo", "items", "file", "branches", "history", "diff", "blame", "find", "search", "push", "pr", "suggest-branch", "pipelines", "pipeline", "run-plan", "run", "artifacts", "artifact-files", "artifact-open", "draft-create", "drafts", "draft-delete"];
+const SUBS = ["change", "ask", "projects", "project", "repo", "items", "file", "branches", "history", "diff", "blame", "find", "search", "push", "pr", "suggest-branch", "pipelines", "pipeline", "run-plan", "run", "artifacts", "artifact-files", "artifact-open", "draft-create", "drafts", "draft-delete"];
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub0, ...rest0] = argv;
   // `browse change <action>`: the action is the sub command
-  const sub = sub0 === "change" ? `change-${rest0[0] ?? ""}` : sub0;
-  const rest = sub0 === "change" ? rest0.slice(1) : rest0;
+  const sub = sub0 === "change" || sub0 === "ask" ? `${sub0}-${rest0[0] ?? ""}` : sub0;
+  const rest = sub0 === "change" || sub0 === "ask" ? rest0.slice(1) : rest0;
   if (!sub0 || !SUBS.includes(sub0)) throw new AihubError(BROWSE_USAGE);
   const v = parse(rest, {
     org: { type: "string" },
@@ -77,8 +77,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     dir: { type: "string" },
     delete: { type: "boolean" },
     selection: { type: "string" },
-    local: { type: "boolean" },
+    limit: { type: "string" },
     scope: { type: "string" },
+    more: { type: "string" },
+    local: { type: "boolean" },
     json: { type: "boolean" },
     pipeline: { type: "string" },
     run: { type: "string" },
@@ -111,6 +113,7 @@ const list = (s: string | undefined) => (s ? s.split(",").map((x) => x.trim()).f
 
 async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
   if (sub.startsWith("change-")) return changeAnswer(sub.slice(7), v, ctx);
+  if (sub.startsWith("ask-")) return askAnswer(sub.slice(4), v, ctx);
   if (sub === "suggest-branch") {
     const { suggestBranch } = await import("../lib/browse/push.js");
     return { branch: suggestBranch(num(str(v, "story"), "--story"), str(v, "path") ?? "", str(v, "title")) };
@@ -238,5 +241,30 @@ async function changeAnswer(action: string, v: V, ctx: Ctx): Promise<unknown> {
   if (action === "push")
     return c.changePush(b, id, { message: str(v, "message-file") ? readText(str(v, "message-file")!) : undefined, branch: str(v, "branch"), pr: !!v.pr, target: str(v, "target"), story: num(str(v, "story"), "--story"), prTitle: str(v, "pr-title"), draft: !!v.draft, rebase: !!v.rebase });
   if (action === "apply") return c.changeApply(b, id, need(v, "dir"));
+  throw new AihubError(BROWSE_USAGE);
+}
+
+async function askAnswer(action: string, v: V, ctx: Ctx): Promise<unknown> {
+  const a = await import("../lib/browse/ask.js");
+  const { readText } = await import("../lib/browse/push.js");
+  if (action === "list") return a.askList(ctx.env);
+  if (action === "discard") return a.askDiscard(ctx.env, need(v, "id"));
+  if (action === "allow") return a.askAllow(ctx.env, need(v, "id"), num(str(v, "more"), "--more"));
+  if (action === "report") return a.askReport(ctx.env, need(v, "id"), readText(need(v, "file")));
+  if (action === "start") {
+    const scope = (str(v, "scope") ?? "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .map((x) => (x.includes("/") ? { project: x.slice(0, x.indexOf("/")), repo: x.slice(x.indexOf("/") + 1) } : { project: x }));
+    const b = browseOf(ctx, { org: str(v, "org"), refresh: !!v.refresh });
+    return a.askStart(b, { scope, prompt: readText(need(v, "prompt-file")), story: num(str(v, "story"), "--story"), limit: num(str(v, "limit"), "--limit") });
+  }
+  const id = need(v, "id");
+  const b = browseOf(ctx, { org: a.readAsk(ctx.env, id).meta.org, refresh: !!v.refresh });
+  if (action === "read") return a.askRead(b, id, { project: need(v, "project"), repo: need(v, "repo"), path: need(v, "path") });
+  if (action === "propose") return a.askPropose(b, id, { project: need(v, "project"), repo: need(v, "repo"), path: need(v, "path"), content: readText(need(v, "content-file")) });
+  if (action === "state") return a.askState(b, id);
+  if (action === "apply") return a.askApply(b, id, { project: need(v, "project"), repo: need(v, "repo"), branch: str(v, "branch"), story: num(str(v, "story"), "--story") });
   throw new AihubError(BROWSE_USAGE);
 }

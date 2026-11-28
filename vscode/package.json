@@ -652,6 +652,36 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.askStart",
+        "title": "Ask Agent about Selected...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.askState",
+        "title": "Ask Agent: State",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.askAllow",
+        "title": "Ask Agent: Allow More Files",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.askApply",
+        "title": "Ask Agent: Apply in Feature Branch",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.askOpenAsSet",
+        "title": "Ask Agent: Open These Repos as Set",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.askDiscard",
+        "title": "Ask Agent: Discard",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.browseProjects",
         "title": "Repositories: Projects",
         "category": "AI Context Hub"
@@ -2058,6 +2088,30 @@
         },
         {
           "command": "aihub.bar.changeToWorkingCopy",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askStart",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askState",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askAllow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askApply",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askOpenAsSet",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askDiscard",
           "when": "false"
         },
         {
