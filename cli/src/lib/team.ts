@@ -35,6 +35,8 @@ export interface TeamConfig {
   commits?: { format?: string; types?: string[]; scope?: string };
   tests?: { command?: string; map?: { source: string | string[]; tests: string | string[] }[] };
   cherryPick?: { groups?: Record<string, string[]> };
+  /** wiki updates (aihub wiki update): `pageTemplate` is the path of the markdown template a NEW wiki page follows */
+  wiki?: { pageTemplate?: string };
   pipelines?: { repository?: string; name?: string; required?: boolean; purpose?: string; yaml?: string; validates?: string[]; requiredTemplates?: string[] }[];
   [k: string]: unknown;
 }

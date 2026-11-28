@@ -2,6 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Common } from "./browse";
+import type { ChangeWhere } from "./change";
 
 /**
  * The wiki browser: the aihub.bar.wiki* commands. Each one is one `aihub wiki browse ...` process and answers with the
@@ -189,4 +190,53 @@ export function updateFromBranchText(a: UpdateFromBranchArg): string {
     `For each page that should change, write the full new markdown as a draft file .aihub/wiki-drafts/${a.wiki}/<page path>.md and list the pages with one line on why. ` +
     `Only drafts: do not run aihub wiki browse publish, create or move; I review and publish each page myself.`
   );
+}
+
+// ---- Update Wiki with Context from… (aihub wiki update; the agent window is chosen like Change with Agent) ----------------
+
+export interface WikiUpdateSource {
+  project: string;
+  repo: string;
+  /** a folder or file of the repository; empty: the whole repository */
+  path?: string;
+  ref?: string;
+  /** a clone on this PC (read only) */
+  local?: string;
+}
+export interface WikiUpdateStartArg {
+  project: string;
+  wiki: string;
+  /** the chosen pages; none: the whole wiki (the agent may propose new pages) */
+  pages?: string[];
+  /** from the repository selector: repositories, folders, files, with a clone or remote */
+  sources: WikiUpdateSource[];
+  prompt?: string;
+  /** This window | New VS Code window | Terminal only */
+  where?: ChangeWhere;
+  org?: string;
+}
+export interface WikiUpdateStartJson {
+  id: string;
+  dir: string;
+  pagesDir: string;
+  project: string;
+  wiki: string;
+  chosen: string[];
+  allowNew: boolean;
+  pages: { path: string; file: string; exists: boolean }[];
+  language: string | null;
+  taskFile: string;
+  agentPrompt: string;
+}
+
+/** Checks the start of a wiki update and builds `aihub wiki update start` (the sources and the prompt go in files). */
+export function wikiUpdateStartArgs(a: WikiUpdateStartArg | undefined): { args: string[]; sources: WikiUpdateSource[]; prompt?: string; where: ChangeWhere; wiki: string } {
+  if (!s(a?.project) || !s(a?.wiki)) throw new Error("a project and a wiki are needed ({ project, wiki })");
+  const sources = (a!.sources ?? []).filter((x) => s(x?.project) && s(x?.repo));
+  if (!sources.length) throw new Error("which repositories, folders or files hold the context? ({ sources: [{ project, repo, path? }] })");
+  const pages = (a!.pages ?? []).filter(s);
+  const args = ["wiki", "update", "start", "--project", a!.project, "--wiki", a!.wiki, ...pages.flatMap((p) => ["--path", p])];
+  if (s(a!.org)) args.push("--org", a!.org!);
+  const where: ChangeWhere = a!.where === "newWindow" || a!.where === "terminal" ? a!.where : "panel";
+  return { args, sources, prompt: s(a!.prompt) ? a!.prompt : undefined, where, wiki: a!.wiki };
 }
