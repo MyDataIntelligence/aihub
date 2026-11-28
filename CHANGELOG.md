@@ -2,6 +2,10 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## Unreleased
+
+- `aihub fabric branch-workspace [--branch B] [--names-only] [--json]`: the workspace of a feature branch by the team's exact names from team.yaml (`found`, `none`, `ambiguous`, `skip` for main and staging, `unconfigured`); `--names-only` makes no Fabric call. Fabric Workbench and PyCharm Git ask it, so "Open Fabric Workspace" follows team.yaml. A test pins the prefix pitfall: `feature/x-nows` never gets the workspace of `feature/x`.
+
 ## 1.11.0
 
 - `aihub fabric deployed --workspace W` says which commit runs in a CD-filled workspace (the newest CD run on the environment's branch whose deploy stage succeeded, its PRs, stories and other repository versions); `aihub fabric failures --since-green` adds what was deployed between the last green and the red run, with the commits, the touched Fabric items and a list of suspects. team.yaml: `fabric.environments.<ENV>.workspace` and `deployedBy {pipeline, stage}`. See docs/since-green.md.

@@ -95,13 +95,25 @@ export function rangeCommits(root: string, toRef: string, fromRef: string): Comm
 
 const MSG = /(?:Merged PR |Merge pull request !?|Merged pull request )(\d+)/i;
 
-/** Pull request ids per commit: the Azure DevOps query by merge commit, then the "Merged PR 12" message as the fallback. */
+/**
+ * Pull request ids per commit: the Azure DevOps query by merge commit, then (same call) by contained commit for the
+ * branch commits of a merge without fast-forward, then the "Merged PR 12" message as the fallback. Of the pull requests
+ * that contain a branch commit, the completed ones count (an abandoned one may hold the same commit).
+ */
 export async function prsOf(client: AdoClient, commits: Commit[]): Promise<Map<string, number[]>> {
   const out = new Map<string, number[]>();
   if (!commits.length) return out;
   try {
-    const r = await client.post<{ results?: Record<string, { pullRequestId: number }[]>[] }>(`${client.repoPath()}/pullrequestquery`, { queries: [{ items: commits.map((c) => c.sha), type: "lastMergeCommit" }] });
-    for (const res of r.results ?? []) for (const [sha, prs] of Object.entries(res)) if (prs?.length) out.set(sha, prs.map((p) => p.pullRequestId));
+    const items = commits.map((c) => c.sha);
+    type Hit = { pullRequestId: number; status?: string };
+    const r = await client.post<{ results?: Record<string, Hit[]>[] }>(`${client.repoPath()}/pullrequestquery`, { queries: [{ items, type: "lastMergeCommit" }, { items, type: "commit" }] });
+    const [byMerge, byContained] = r.results ?? [];
+    for (const [sha, prs] of Object.entries(byMerge ?? {})) if (prs?.length) out.set(sha, prs.map((p) => p.pullRequestId));
+    for (const [sha, prs] of Object.entries(byContained ?? {})) {
+      if (out.has(sha) || !prs?.length) continue;
+      const done = prs.filter((p) => p.status === "completed");
+      out.set(sha, (done.length ? done : prs).map((p) => p.pullRequestId));
+    }
   } catch {
     /* the message is the fallback */
   }

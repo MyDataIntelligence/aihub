@@ -269,7 +269,7 @@ and nothing is pushed; `--rebase` re-applies changes that do not overlap on the 
 `{"status":"pushed",branch,commit:{id,short,webUrl},startedFrom,rebased,files,pr|null,prError,webUrl}`; the change is then `pushed`.
 
 `change verify --id ID [--tests | --tests-only] [--progress]` (Run Checks, temporary copy): a shallow, blob-less copy of the base commit in the temp folder (outside every repository; for lint only the folders of the changed files, sparse; for tests the whole tree), the change applied, `aihub guidelines check` (the team's linters, changed lines only) and with `--tests` the tests of the changed files (`aihub test changed --run`). The copy is always removed, also on a failure; nothing is pushed; git signs in as usual. `--progress` writes one line per step on stderr: `{"progress":{"id","step":"clone"|"checkout"|"apply"|"lint"|"test"|"cleanup","n","total","message"}}`. Answer (also kept as `verify` in `change diff`):
-`{"id","ok":false,"base":{"branch","commit"},"files":["/src/a.py"],"checks":[{"name":"ruff","kind":"lint","status":"passed"|"failed"|"skipped","errors":[{"path","line"?,"message"}],"tookMs","command"?,"reason"?}],"tookMs","copyRemoved":true,"at","notes":[]}` (at most 20 errors per check; `skipped` with a `reason`: not installed, no tests for these files).
+`{"id","ok":false,"base":{"branch","commit"},"files":["/src/a.py"],"checks":[{"name":"ruff","kind":"lint","status":"passed"|"failed"|"skipped"|"couldNotRun","errors":[{"path","line"?,"message"}],"tookMs","command"?,"reason"?,"missing"?:["module"]}],"tookMs","copyRemoved":true,"at","notes":[]}` (at most 20 errors per check; `skipped` with a `reason`: not installed, no tests for these files; `couldNotRun` with a `reason` when the tests could not even start in the copy: an import that fails while collecting (pytest exit 4 or 5, `No module named X`, a Robot library that cannot be imported) or a missing test tool, with `missing` naming the modules. `couldNotRun` is not a failure: `ok` stays true, and the pull request's Tests section says "not run" with the reason). Before the tests the copy gets `PYTHONPATH` = its root (and `src/`), and `tests.setup` of team.yaml runs once in the copy (a failing setup is a note).
 
 `change apply --id ID --dir D` (Open as Working Copy): the changed files written into a working copy; a file with its own change there is
 skipped: `{id,target,branch,applied:[paths],skipped:[{path,why}]}`. `change discard --id ID` removes the workspace; `change list` lists them.
@@ -321,6 +321,20 @@ remembered 5 minutes, nothing polls. Commands: `aihub.bar.browsePipelines` and t
 - `draft-delete --project P --pipeline ID [--keep-branch]`: only a `draft-*` pipeline in `\Drafts` that you made (else `badInput` / `noAccess`, nothing
   changes). The runs go first with their own retention lease (a run another lease keeps stays: `runsKept`), then the pipeline; its branch goes when its name holds `draft-` and it is not protected or the default branch
   (else, or with `--keep-branch`, `branchKept` says why). `{deleted{pipeline{id,name},runs,branch,repo},runsKept,branchKept}`.
+
+## Search Everywhere: `aihub search all <text> [--kinds ...] [--top 5] [--project P] [--stream] --json`
+
+One text over everything the user can open in the organisation, every kind at the same time: `repos` (projects and repositories by name),
+`files` (file names: Code Search, else the trees of recently opened repositories), `text` (Code Search, else ripgrep in the clones on this
+PC), `branches` (refs that contain the text, in the cloned, recently opened and name-matching repositories, at most 12), `workitems` (`#n`
+exact, else WIQL `Title CONTAINS`, newest changed first), `prs` (`!n`/`#n` exact, else title or source branch, active first, at most 25
+projects), `wiki` (Wiki Search, else page titles) and `pipelines` (name or folder). A kind that fails or takes longer than 30 s is a part with
+`status:"failed"` and `error:{kind,message}` (`kind` `timeout`, `searchUnavailable`, `signedOut`, ...); the others still come. Reads go through
+the browse cache (lists 4 hours, searches 2 minutes).
+
+`{org, text, kinds:[{kind, status:"ok"|"failed", route, count, more, results:[{kind,title,detail,project?,repo?,path?,branch?,id?,type?,state?,wiki?,line?,url?}], note?, error?, tookMs}]}`
+in the asked order. `--stream`: each part as soon as it is ready as one line `{"part":{...}}` on stderr (stdout keeps the one answer).
+Without `--json` it prints one group per kind for a chat. The extension's `aihub.bar.searchAll` runs it.
 
 ## Wiki browser: `aihub wiki browse ...`
 

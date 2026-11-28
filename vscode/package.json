@@ -747,6 +747,16 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.searchAll",
+        "title": "Search Everywhere in Azure DevOps",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.searchAllStop",
+        "title": "Search Everywhere: Stop",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.browseSuggestBranch",
         "title": "Repositories: Suggest Branch Name",
         "category": "AI Context Hub"
@@ -2194,6 +2204,14 @@
         },
         {
           "command": "aihub.bar.browseSearch",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.searchAll",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.searchAllStop",
           "when": "false"
         },
         {

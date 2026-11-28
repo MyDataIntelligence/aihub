@@ -243,12 +243,20 @@ export interface RemotePr {
 export function verifyTests(v: { checks: { name: string; kind: string; status: string; command?: string; reason?: string; errors: { path: string; line?: number; message: string }[] }[] } | null | undefined, language: unknown): string | undefined {
   if (!v?.checks?.length) return undefined;
   const nl = String(language ?? "").toLowerCase() === "nl";
-  const word = (s: string) => (nl ? ({ passed: "geslaagd", failed: "gefaald", skipped: "niet uitgevoerd" } as Record<string, string>)[s] ?? s : s === "skipped" ? "not run" : s);
+  const word = (s: string) => (nl ? ({ passed: "geslaagd", failed: "gefaald", skipped: "niet uitgevoerd", couldNotRun: "niet uitgevoerd" } as Record<string, string>)[s] ?? s : s === "skipped" || s === "couldNotRun" ? "not run" : s);
   const kind = (k: string) => (k === "lint" ? (nl ? "Lint" : "Lint") : nl ? "Tests" : "Tests");
   return v.checks
     .map((c) => {
       const first = c.errors[0];
-      const why = c.status === "failed" && first ? `: ${first.path ? `${first.path}${first.line ? `:${first.line}` : ""} ` : ""}${first.message}` : c.status === "skipped" && c.reason ? ` (${c.reason})` : "";
+      const missing = (c as { missing?: string[] }).missing;
+      const why =
+        c.status === "failed" && first
+          ? `: ${first.path ? `${first.path}${first.line ? `:${first.line}` : ""} ` : ""}${first.message}`
+          : c.status === "couldNotRun"
+            ? ` (${missing?.length ? (nl ? `ontbrekende afhankelijkheid ${missing.join(", ")}` : `missing dependency ${missing.join(", ")}`) : nl ? "kon niet starten" : "could not start"})`
+            : c.status === "skipped" && c.reason
+              ? ` (${c.reason})`
+              : "";
       return `- ${kind(c.kind)} (${c.name}${c.command && c.command !== "aihub guidelines check" ? `, ${c.command}` : ""}): ${word(c.status)}${why}`;
     })
     .join("\n");
