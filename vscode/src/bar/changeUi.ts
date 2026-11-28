@@ -9,6 +9,7 @@ import { addPending, externalTerminal, opencodeLine, parseChangeStart, progressL
 import { cli, jsonOf } from "./runner";
 import { BAR_COMMANDS } from "./types";
 import { openPath } from "./window";
+import { wikiUpdateStartArgs, type WikiUpdateStartArg, type WikiUpdateStartJson } from "./wiki";
 
 /**
  * Change with Agent: the aihub.bar.change* commands. A remote change is an `aihub browse change` workspace (no clone); a
@@ -268,6 +269,55 @@ export function registerChangeCommands(h: { reg: (id: string, f: (...a: any[]) =
     if (!a?.id) return fail("badInput", "which question? ({ id })");
     try {
       return await json<unknown>(["browse", "ask", "discard", "--id", a.id], cwdOf());
+    } catch (e) {
+      return browseErrorOf(e);
+    }
+  });
+
+  // ---- Update Wiki with Context from…: an `aihub wiki update` workspace; nothing reaches the wiki until wikiUpdateApply ----
+  h.reg(BAR_COMMANDS.wikiUpdateStart, async (raw?: WikiUpdateStartArg) => {
+    let a: ReturnType<typeof wikiUpdateStartArgs>;
+    try {
+      a = wikiUpdateStartArgs(raw);
+    } catch (e) {
+      return fail("badInput", (e as Error).message);
+    }
+    try {
+      const s = await withFile("sources.json", JSON.stringify(a.sources), (sf) =>
+        withFile("prompt.txt", a.prompt ?? "", (pf) =>
+          vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Preparing the wiki update in ${a.wiki}...` }, () => json<WikiUpdateStartJson>([...a.args, "--sources-file", sf, ...(a.prompt ? ["--prompt-file", pf] : [])], cwdOf())) as Promise<WikiUpdateStartJson>,
+        ),
+      );
+      const agent = await startAgent(a.where, s.dir, s.agentPrompt, a.wiki, h.log);
+      track(s.id, agent.terminal);
+      return { ...s, where: a.where, agent: agent.how, ...(agent.terminal ? { terminal: { name: agent.terminal.name } } : {}) };
+    } catch (e) {
+      return browseErrorOf(e);
+    }
+  });
+  h.reg(BAR_COMMANDS.wikiUpdateState, async (a?: { id?: string }) => {
+    if (!a?.id) return fail("badInput", "which wiki update? ({ id })");
+    try {
+      return { ...(await json<Record<string, unknown>>(["wiki", "update", "diff", "--id", a.id], cwdOf())), agent: agentOf(a.id) };
+    } catch (e) {
+      return browseErrorOf(e);
+    }
+  });
+  h.reg(BAR_COMMANDS.wikiUpdateApply, async (a?: { id?: string; paths?: string[]; comment?: string }) => {
+    if (!a?.id) return fail("badInput", "which wiki update? ({ id })");
+    const args = ["wiki", "update", "apply", "--id", a.id, ...(a.paths ?? []).flatMap((p) => ["--path", p])];
+    try {
+      const out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Publishing to the wiki..." }, () => (a.comment?.trim() ? withFile("comment.txt", a.comment, (f) => json<unknown>([...args, "--comment-file", f], cwdOf())) : json<unknown>(args, cwdOf())) as Promise<unknown>);
+      h.changed();
+      return out;
+    } catch (e) {
+      return browseErrorOf(e);
+    }
+  });
+  h.reg(BAR_COMMANDS.wikiUpdateDiscard, async (a?: { id?: string; path?: string }) => {
+    if (!a?.id) return fail("badInput", "which wiki update? ({ id })");
+    try {
+      return await json<unknown>(["wiki", "update", "discard", "--id", a.id, ...(a.path ? ["--path", a.path] : [])], cwdOf());
     } catch (e) {
       return browseErrorOf(e);
     }

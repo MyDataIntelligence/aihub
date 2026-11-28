@@ -73,6 +73,10 @@ committed), laid out like an Azure Pipelines multi-checkout:
 Steps may write there freely; each run resets both checkouts (ignored files such as a virtual environment stay).
 `git worktree list` shows the two detached worktrees. `--verbose` prints the scratch path and every output line.
 
+On Windows, bash is Git for Windows' bash, also when only `git.exe` is on PATH (a PowerShell or VS Code terminal); WSL's
+bash never counts. A bash script gets the preflight folders (`$(Build.SourcesDirectory)` and the others) with forward
+slashes, as on a Linux agent. Without bash, `script:` steps run with cmd.exe and the output says so.
+
 ## Variables
 
 `$(Name)`, `${{ parameters.x }}` and `${{ variables.x }}` are expanded in arguments, env values, inline scripts and
@@ -86,7 +90,10 @@ runs after that step with `--plan`. A more complex template expression makes the
 evaluate". In an inline script an all-lowercase `$(name)` nobody defines is left alone (shell command substitution).
 
 Steps hand values on with `##vso[task.setvariable variable=NAME;isOutput=true;issecret=true]VALUE`, as on the agent
-(also as `<stepName>.NAME`). Secret values and all tokens are masked in everything preflight prints or returns.
+(also as `<stepName>.NAME`). Secret values and all tokens are masked in everything preflight prints or returns, and an
+inline script (written to `Agent.TempDirectory` with its variables expanded) is deleted when its step ends; the folder
+itself is removed after the run, also after a failure, Ctrl+C or SIGTERM. Values are expanded into the script as on the
+agent (not passed through the environment), so a script behaves as in the CD.
 `##vso[task.logissue]` lines become the step's issues; `##vso[task.complete result=Failed]` or a non-zero exit fails it.
 
 Conditions: `succeeded()`, `always()`, `failed()`, `and`, `or`, `not`, `eq`, `ne`, `startsWith`, `endsWith`,

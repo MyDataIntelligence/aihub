@@ -1,12 +1,13 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/router.js";
 import { setPreflightDeps } from "../src/commands/preflight.js";
 import { loadJob } from "../src/lib/preflight/pipelineYaml.js";
 import { evalCondition, expand } from "../src/lib/preflight/expr.js";
 import { masker, readLog } from "../src/lib/preflight/vso.js";
-import { commandFor, pythonFor, scriptShell, splitArgs, type Shells } from "../src/lib/preflight/exec.js";
+import { commandFor, pathShells, posixPaths, pythonFor, scriptShell, splitArgs, type Shells } from "../src/lib/preflight/exec.js";
 import { localImports, writeCalls } from "../src/lib/preflight/drift.js";
 import { validateTeamText } from "../src/lib/teamValidate.js";
 import { ctxFor, fakeFetch, makeRepo, sh, tmp, write } from "./helpers.js";
@@ -297,6 +298,28 @@ describe("preflight: how a step becomes a process", () => {
     expect(p.script?.content).toContain("$ErrorActionPreference = 'Stop'");
   });
 
+  it("Windows: bash is Git for Windows' bash, also when only git is on PATH; WSL's bash never counts; the full path is spawned", () => {
+    const root = tmp();
+    write(root, "Windows/System32/bash.exe", "wsl");
+    write(root, "Git/cmd/git.exe", "git");
+    write(root, "Git/bin/bash.exe", "bash");
+    const env = { PATH: [join(root, "Windows", "System32"), join(root, "Git", "cmd")].join(";"), PATHEXT: ".exe" };
+    const win = pathShells(env, "win32");
+    expect(win.which("bash")).toBe(join(root, "Git", "bin", "bash.exe"));
+    expect(scriptShell(win)).toBe("bash");
+    const b = commandFor(step("script"), { inline: "echo 1" }, o(win));
+    expect(b.file).toBe(join(root, "Git", "bin", "bash.exe")); // by name, Windows would start the first bash.exe on PATH: WSL's
+    // no Git at all: WSL's bash alone is not bash, script steps fall back to cmd
+    expect(pathShells({ PATH: join(root, "Windows", "System32"), PATHEXT: ".exe" }, "win32").which("bash")).toBeUndefined();
+  });
+
+  it("Windows paths in a bash script get forward slashes, so an unquoted $(Build.SourcesDirectory) keeps its separators", () => {
+    const base = "C:\\Users\\dev\\my repos\\test-repo\\.git\\aihub\\preflight";
+    const s = `${base}\\s`;
+    expect(posixPaths(`ls ${s}/jobs && cd "${s}" && echo ${base}`, [base, s])).toBe('ls C:/Users/dev/my repos/test-repo/.git/aihub/preflight/s/jobs && cd "C:/Users/dev/my repos/test-repo/.git/aihub/preflight/s" && echo C:/Users/dev/my repos/test-repo/.git/aihub/preflight');
+    expect(posixPaths("echo C:\\other", [base, s])).toBe("echo C:\\other");
+  });
+
   it("PythonScript@0: preflight.python, else python3 or python; a missing program is reported, not guessed", () => {
     expect(pythonFor(fakeShells(["python3"]))).toBe("python3");
     expect(pythonFor(fakeShells([]))).toBe("python");
@@ -446,6 +469,52 @@ process.exit(1);`;
     expect(step(r.json, "Validate configs").reason).toMatch(/listed as local but asks for token ACCESS_TOKEN/);
   });
 
+  it("an inline script with an expanded secret or token is not left on disk after its step", async () => {
+    const job = [
+      "steps:",
+      `  - script: node -e "console.log('##vso[task.setvariable variable=S1;issecret=true]hush-inline-42')"`,
+      "    displayName: Set secret",
+      `  - script: node -e "console.log('len=' + process.argv[1].length)" $(S1)`,
+      "    displayName: Use secret",
+      `  - script: node -e "console.log('tok=' + process.argv[1].length)" $(ACCESS_TOKEN)`,
+      "    displayName: Read with token",
+      "",
+    ].join("\n");
+    const w = world({ job, team: preflightYaml("", "local: [Set secret, Use secret]\n    read: [Read with token]") });
+    write(w.consumer, ".git/aihub/preflight/_temp/step-9.sh", "echo hush-inline-42"); // left behind by an older version
+    const r = await pf(w.consumer, ["--plan", "--verbose"]);
+    expect(r.code).toBe(0);
+    expect(r.errs.join("\n")).toContain("len=14");
+    expect(r.errs.join("\n")).toContain("tok=21");
+    const temp = join(w.consumer, ".git", "aihub", "preflight", "_temp");
+    const left = existsSync(temp) ? readdirSync(temp).map((f) => readFileSync(join(temp, f), "utf8")).join("\n") : "";
+    expect(left).not.toContain("hush-inline-42");
+    expect(left).not.toContain("fake-fabric-token-abc");
+    expect(existsSync(temp)).toBe(false); // the folder itself is gone after the run
+  });
+
+  it("a failed step and an interrupted run (Ctrl+C) leave no script with a secret either", async () => {
+    const setSecret = `  - script: node -e "console.log('##vso[task.setvariable variable=S1;issecret=true]hush-inline-42')"\n    displayName: Set secret\n`;
+    const failing = world({ job: `steps:\n${setSecret}  - script: node -e "process.exit(3)" $(S1)\n    displayName: Use secret\n`, team: preflightYaml("", "local: [Set secret, Use secret]") });
+    const f = await pf(failing.consumer, []);
+    expect(f.code).toBe(1);
+    expect(existsSync(join(failing.consumer, ".git", "aihub", "preflight", "_temp"))).toBe(false);
+
+    // Ctrl+C while a step that holds the secret runs: _temp goes at once and the process ends with 130
+    const slow = world({ job: `steps:\n${setSecret}  - script: node -e "setTimeout(() => {}, 2500)" $(S1)\n    displayName: Use secret\n`, team: preflightYaml("", "local: [Set secret, Use secret]") });
+    const temp = join(slow.consumer, ".git", "aihub", "preflight", "_temp");
+    const proc = Object.assign(new EventEmitter(), { exit: vi.fn() });
+    const running = pf(slow.consumer, [], { process: proc as never });
+    const holds = () => existsSync(temp) && readdirSync(temp).some((n) => readFileSync(join(temp, n), "utf8").includes("hush-inline-42"));
+    for (let i = 0; i < 200 && !holds(); i++) await new Promise((r) => setTimeout(r, 50));
+    expect(holds()).toBe(true); // the step's script is there while it runs
+    proc.emit("SIGINT", "SIGINT");
+    expect(proc.exit).toHaveBeenCalledWith(130);
+    expect(existsSync(temp)).toBe(false);
+    await running;
+    expect(proc.listenerCount("SIGINT")).toBe(0);
+  });
+
   it("--plan: resolves the branch's workspace, hands tokens only to read steps, masks them; apply steps wait for --apply", async () => {
     const w = world();
     const asked: string[] = [];
@@ -560,7 +629,8 @@ process.exit(1);`;
     const r = await pf(w.consumer, ["--apply", "--dry-run"]);
     expect(r.code).toBe(0);
     expect(r.out).toMatch(/not run\s+Deploy items\s+dry run; needs \$\(WORKSPACE_ID\) at run time/);
-    expect(r.out).toMatch(/not run\s+Get workspace ids\s+dry run\n.*token\.js from-template\n\s+env: ACCESS_TOKEN=\*\*\* WS_ID=11111111-1111-1111-1111-111111111111/);
+    // a Windows path holds backslashes, so the display quotes it: token.js" from-template
+    expect(r.out).toMatch(/not run\s+Get workspace ids\s+dry run\n.*token\.js"? from-template\n\s+env: ACCESS_TOKEN=\*\*\* WS_ID=11111111-1111-1111-1111-111111111111/);
     expect(r.out).toContain("shared-templates/scripts/check.js ws-12-export");
     expect(r.out).toContain("dry run: nothing was run");
     expect(r.out).not.toContain("fake-fabric-token-abc");
