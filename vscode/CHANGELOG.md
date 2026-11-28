@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.10.0
+
+- No change in the extension itself; it ships with aihub 1.11.0 (code guidelines, the team title pattern in pr create, colleague-ready skills and prompts).
+
 ## 3.9.0
 
 - aihub.bar.team* commands for the Team Settings pages (one process per call, only when a page asks).
