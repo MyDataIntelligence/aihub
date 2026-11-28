@@ -88,7 +88,7 @@ export function findPrompt(s: Stories, action: Action, o: { id?: number; set?: s
     const f = join(r, TEAM_PROMPT_DIR, `${action}.md`);
     if (existsSync(f)) return { source: "team", file: f, text: readFileSync(f, "utf8") };
   }
-  // the default in the team's language: prompts/en/ for an English team, prompts/ (Dutch) otherwise
+  // the default in the team's language (team.yaml `language`; English when it says nothing): prompts/en/, or prompts/ (Dutch) for a Dutch team
   const en = join(packRoot(), "prompts", "en", `${action}.md`);
   const f = langOf(s) === "en" && existsSync(en) ? en : join(packRoot(), "prompts", `${action}.md`);
   return { source: "default", file: f, text: readFileSync(f, "utf8") };

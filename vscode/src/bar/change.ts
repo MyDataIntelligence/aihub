@@ -152,3 +152,35 @@ export function takePending(env: NodeJS.ProcessEnv, folder: string | undefined, 
   if (mine || rest.length !== list.length) writeFileSync(pendingFile(env), JSON.stringify(rest), "utf8");
   return mine;
 }
+
+// ---- Run Checks (temporary copy): aihub browse change verify --------------------------------------------------------
+
+export interface VerifyProgress {
+  id: string;
+  step: "clone" | "checkout" | "apply" | "lint" | "test" | "cleanup";
+  n: number;
+  total: number;
+  message: string;
+}
+
+/** `aihub browse change verify` for `{ id, lint? (default true), tests? (default false) }`, with progress lines on stderr. */
+export function verifyArgs(a: { id?: string; lint?: boolean; tests?: boolean }): string[] {
+  if (!a?.id) throw new Error("which change? ({ id })");
+  const lint = a.lint !== false;
+  if (!lint && !a.tests) throw new Error("nothing to check: lint and/or tests");
+  return ["browse", "change", "verify", "--id", a.id, ...(lint ? (a.tests ? ["--tests"] : []) : ["--tests-only"]), "--progress"];
+}
+
+/** The progress events in a piece of stderr (one JSON line each: {"progress":{...}}); other lines are skipped. */
+export function progressLines(text: string): VerifyProgress[] {
+  const out: VerifyProgress[] = [];
+  for (const l of text.split(/\r?\n/)) {
+    if (!l.startsWith('{"progress"')) continue;
+    try {
+      out.push((JSON.parse(l) as { progress: VerifyProgress }).progress);
+    } catch {
+      /* a line cut in two by the pipe: the next chunk has the rest */
+    }
+  }
+  return out;
+}

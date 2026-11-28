@@ -8,7 +8,7 @@ import { createPr } from "./pr.js";
 import { findSet } from "./setInfo.js";
 import { storyShow, findStoryTemplate } from "./story.js";
 import { loadTeam, readUtf8 } from "./team.js";
-import { codeKindOf, compose, DEFAULT_EMPTY, fallbackKindOf, parseSections, renderSections } from "./templates.js";
+import { codeKindOf, compose, DEFAULT_EMPTY, emptyFor, fallbackKindOf, parseSections, renderSections } from "./templates.js";
 import { COMMIT_TEMPLATE } from "./teamSettings.js";
 import { findTypeTemplate } from "./workItemType.js";
 import { AihubError } from "./errors.js";
@@ -63,13 +63,8 @@ function repoDir(ctx: Ctx, repo?: string): { dir: string; name: string } {
   return { dir, name: dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? dir };
 }
 
-export const fillTitle = (pattern: string, v: { storyId?: number; storyTitle?: string; branch: string }): string =>
-  pattern
-    .replace(/\{storyId\}/g, v.storyId ? String(v.storyId) : "")
-    .replace(/\{storyTitle\}/g, v.storyTitle ?? "")
-    .replace(/\{branch\}/g, v.branch)
-    .replace(/^[\s:\-–]+/, "")
-    .trim();
+export { fillTitle } from "./prTitle.js";
+import { fillTitle } from "./prTitle.js";
 
 export async function teamPreview(ctx: Ctx, o: { kind: PreviewKind; repo?: string }): Promise<TeamPreview> {
   const { dir, name } = repoDir(ctx, o.repo);
@@ -77,7 +72,7 @@ export async function teamPreview(ctx: Ctx, o: { kind: PreviewKind; repo?: strin
   const team = loadTeam(dir);
   const branch = currentBranch(dir);
   const story = workItemFromBranch(branch);
-  const emptyText = team.pullRequest?.emptySection || DEFAULT_EMPTY;
+  const emptyText = emptyFor(team);
 
   if (o.kind === "pr") {
     const j = JSON.parse(await createPr(rctx, { dryRun: true, json: true })) as {
@@ -96,7 +91,8 @@ export async function teamPreview(ctx: Ctx, o: { kind: PreviewKind; repo?: strin
     const nl = team.language === "nl";
     j.files = /(\d+) files? changed/.exec(j.description)?.[0]?.replace(" changed", "");
     const pattern = team.pullRequest?.title || undefined;
-    const title = pattern ? fillTitle(pattern, { storyId: j.workItem, storyTitle: j.workItemTitle, branch }) : j.title;
+    // aihub pr create applies pullRequest.title itself (prTitle), so the dry run gives the real title
+    const title = j.title;
     const empty = j.emptyText || emptyText;
     const sources: ValueSource[] = [];
     if (j.workItem) sources.push({ what: "{storyId} {storyTitle}", value: `${j.workItem} ${j.workItemTitle ?? ""}`.trim(), from: "work item in Azure DevOps", how: "filled" });
@@ -125,11 +121,10 @@ export async function teamPreview(ctx: Ctx, o: { kind: PreviewKind; repo?: strin
       branch,
       story: j.workItem,
       template: { path: j.template, source: j.template ? `${name}: ${j.template}` : "no pull request template: aihub writes a plain description" },
-      title: { pattern, text: title, target: j.target, source: branch, ...(title !== j.title ? { createTitle: j.title } : {}) },
+      title: { pattern, text: title, target: j.target, source: branch },
       markdown: j.description,
       emptyText: empty,
       sources,
-      ...(title !== j.title ? { note: `aihub pr create titles this pull request "${j.title}"; pullRequest.title is shown here` } : {}),
     };
   }
 

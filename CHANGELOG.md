@@ -2,6 +2,19 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.11.0
+
+- `aihub fabric deployed --workspace W` says which commit runs in a CD-filled workspace (the newest CD run on the environment's branch whose deploy stage succeeded, its PRs, stories and other repository versions); `aihub fabric failures --since-green` adds what was deployed between the last green and the red run, with the commits, the touched Fabric items and a list of suspects. team.yaml: `fabric.environments.<ENV>.workspace` and `deployedBy {pipeline, stage}`. See docs/since-green.md.
+- `aihub preflight`: runs a chosen subset of the team's CD deploy-job steps on this PC, from the pipeline YAML itself (`script`, `bash`, `pwsh`, `PythonScript@0`, `PowerShell@2`, `Bash@3`, `- template:` includes), in a snapshot of the working tree with uncommitted files, next to the source repository at `origin/<ref>`. Three levels: local (default, no token), `--plan` (+ steps that read the branch's feature workspace) and `--apply` (+ steps that write there; never test, ACC or PRD, `refuseWorkspaces`, `--yes` for a destructive plan, waits while the CD runs). `$(Var)` and `${{ parameters.x }}` expansion, `##vso[task.setvariable]` between steps with secrets masked, conditions, `blocked` for a variable nobody can fill, drift (unknown, missing, renamed, changed steps), a write-call check of read steps, `--step`, `--dry-run`, `--json`. `aihub preflight steps` lists the steps of a job to fill the new `preflight:` block of team.yaml; skill `preflight` and `/preflight`. See docs/preflight.md.
+- `aihub guidelines show --paths <files>`: the rules for the files about to change (AGENTS.md nearest first, CLAUDE.md, copilot instructions, .instructions.md by applyTo, team.yaml guidelines), short and de-duplicated with the source. `aihub guidelines check`: the changed lines of the branch, the team's linters on them (`guidelines.linters`), exit 1 on a violation. New skill code-guidelines, used by implement, story-run, pr-create and the team prompts.
+- `aihub pr create` uses `pullRequest.title` from team.yaml (`{storyId}`, `{storyTitle}`, `{branch}`); `--title` still wins.
+- Ready for colleagues without the extension: `aihub skills install` also writes the Copilot slash commands into VS Code's user profile; new skill `remote-repos` (search, Change and Ask with Agent without a clone); a five-step start in docs/onboarding.md.
+- The language is never assumed: without `language` in team.yaml the defaults are English (prompts, PR criteria section, empty sections); `aihub doctor` warns, `team setup` leaves it open and `init` asks for it first. A Dutch team adds `language: nl`.
+- Skill code-guidelines: do what a finding asks, never reword code only to silence a linter; a rule that overrides the task is reported.
+- `aihub browse change verify`: lint and the tests of a change in a temporary shallow copy, removed afterwards; nothing is pushed.
+- Create Pull Request from a change writes the description by the rule of `aihub pr create` (title, summary, changes, the last verify, criteria). Unproven criteria ask before the push: `--draft`, `--anyway` or test first (exit 5); the team file comes from the branch the change starts from.
+- Release notes: docs/releases/1.11.0.md.
+
 ## 1.10.0
 
 - Team settings: `aihub team show --json` gives the whole Team settings page in one read (which team.yaml applies, every key per repository with its explanation, overrides, templates); `team validate` (errors with line and fix), `team preview --template pr|story|bug|commit`, `team edit` (a new branch and a pull request in the team repository, never main) and `team init --from-pack | --team-repo`. Repositories without their own team.yaml use the team repository once one is set. The schema documents `teamName`, `worktrees`, more `workItems` keys and two Fabric keys.

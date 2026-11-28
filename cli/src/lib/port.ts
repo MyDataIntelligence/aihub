@@ -9,7 +9,7 @@ import { crossRepoConfig, mapPaths, parsePathMap, resolveRepo, slug, storyPrs, t
 import { AihubError } from "./errors.js";
 import { fetchBranch, git, gitRaw, originDefaultBranch, showFile, withTempWorktree } from "./git.js";
 import { commitList } from "./pr.js";
-import { compose, DEFAULT_EMPTY, resolveTemplate } from "./templates.js";
+import { compose, DEFAULT_EMPTY, emptyFor, resolveTemplate } from "./templates.js";
 import { defaultTargetFor, loadTeam, readUtf8, type TeamConfig } from "./team.js";
 
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
@@ -226,7 +226,7 @@ async function createPortPr(
   const code = { story: i.story ? `AB#${i.story}${wiTitle ? ` ${wiTitle}` : ""}` : undefined, commits: commitList(commits), linked };
   const unmappedNote = i.unmapped.length ? `Not ported (outside the path mapping): ${i.unmapped.join(", ")}` : "";
   let description: string;
-  if (tpl) description = compose({ template: tpl.content, body: [body.trim(), unmappedNote].filter(Boolean).join("\n\n"), code, emptyText: team.pullRequest?.emptySection || DEFAULT_EMPTY }).text;
+  if (tpl) description = compose({ template: tpl.content, body: [body.trim(), unmappedNote].filter(Boolean).join("\n\n"), code, emptyText: emptyFor(team) }).text;
   else description = [body.trim(), `## Commits\n\n${code.commits}`, linked ? `## Related PRs\n\n${linked}` : "", unmappedNote].filter(Boolean).join("\n\n") + "\n";
   const created = await b.client.post<PullRequest>(`${b.client.repoPath()}/pullrequests`, {
     sourceRefName: branchRef(i.branch),

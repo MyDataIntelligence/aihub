@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { main } from "../src/router.js";
@@ -34,6 +34,22 @@ describe("aihub skills install --global", () => {
     expect(skill).toMatch(/\n---\n<!-- aihub \S+ -->\n/);
   });
 
+  it("puts the Copilot slash commands in VS Code's user prompts when VS Code is there, and nowhere when it is not", async () => {
+    const { h, env } = fakeHome();
+    const user = join(tmp(), "Code", "User");
+    mkdirSync(user, { recursive: true });
+    const r = await run(["skills", "install", "--global", "--client", "github-copilot"], { ...env, AIHUB_VSCODE_USER_DIR: user });
+    expect(r.code).toBe(0);
+    expect(existsSync(join(user, "prompts", "story-run.prompt.md"))).toBe(true);
+    expect(existsSync(join(user, "prompts", "pr.prompt.md"))).toBe(true);
+    const u = await run(["skills", "uninstall", "--global", "--client", "github-copilot"], { ...env, AIHUB_VSCODE_USER_DIR: user });
+    expect(u.code).toBe(0);
+    expect(existsSync(join(user, "prompts", "story-run.prompt.md"))).toBe(false);
+    // no VS Code user folder: skills only, no prompt files anywhere
+    const none = await run(["skills", "install", "--global", "--client", "github-copilot"], { ...env, AIHUB_VSCODE_USER_DIR: join(h, "no-vscode") });
+    expect(none.code).toBe(0);
+    expect(existsSync(join(h, "no-vscode"))).toBe(false);
+  });
   it("respects OPENCODE_CONFIG_DIR, XDG_CONFIG_HOME and CODEX_HOME", async () => {
     const { h, env } = fakeHome();
     const oc = join(tmp(), "oc");

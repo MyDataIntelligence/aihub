@@ -160,6 +160,9 @@ export async function runInit(ctx: Ctx, o: InitOpts): Promise<InitResult> {
   // an untracked proposal of `aihub team setup` goes into the pack as it is; any other existing team.yaml is never touched
   const proposal = text.startsWith(PROPOSAL_MARK) && !git(root, ["ls-files", "--", TEAM_FILE], { allowFail: true }).trim() ? text : "";
   const teamLang = (parse(text || "{}") as { language?: string } | null)?.language;
+  // the templates are written in the team language: it is asked, never assumed
+  if (!o.language && teamLang !== "nl" && teamLang !== "en")
+    return { created: [], updated: [], skipped: [], questions: ["1. Language of stories, PR text and comments? nl | en -> aihub team set language nl", "then: aihub init"] };
   const language = parseLanguage(o.language ?? (teamLang === "nl" ? "nl" : undefined));
   return writeOrPr(ctx, root, o, { target, language, teamYaml: proposal });
 }

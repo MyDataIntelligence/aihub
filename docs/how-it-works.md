@@ -23,6 +23,7 @@ in one call. There is no daemon and no MCP server.
 | Generic skills and slash commands | bundled in the package under `pack/`; `aihub skills install` copies them to `~/.config/opencode/{skills,command}`, `~/.codex/{skills,prompts}`, `~/.copilot/skills` |
 | Which files are ours | `.aihub-manifest.json` in each skills folder (checksum per file) and an `aihub <version>` marker in each file |
 | Team knowledge | in the team repository: `.agents/skills/_shared/references/team.yaml`, `.agents/skills/_shared/assets/*`, `.azuredevops/pull_request_template.md` |
+| Preflight scratch area | `<git common dir>/aihub/preflight/`: the snapshot and source checkouts `aihub preflight` runs in, and its `state.json` (never committed; see [preflight.md](preflight.md)) |
 | Team-specific skills and guidelines | in the team repository (`.agents/skills/`, files listed under `guidelines:`) |
 
 ## How update works

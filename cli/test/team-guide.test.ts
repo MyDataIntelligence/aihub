@@ -81,7 +81,7 @@ describe("aihub team setup", () => {
     const a = cx(dir, f.fn);
     a.ctx.env = ctx.env;
     expect(await main(["team", "set", "language", "nl"], a.ctx)).toBe(0);
-    expect(a.lines[0]).toBe("language: en -> nl (" + TEAM + "; propose it with 'aihub init' or a pull request)");
+    expect(a.lines[0]).toBe("language: (not set) -> nl (" + TEAM + "; propose it with 'aihub init' or a pull request)");
     expect(readFileSync(join(dir, TEAM), "utf8")).toMatch(/language: nl\s+# language of stories/);
     const calls = f.calls.length;
     const again = cx(dir, f.fn);
