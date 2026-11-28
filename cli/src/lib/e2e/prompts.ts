@@ -5,7 +5,7 @@ import { configHome } from "../configHome.js";
 import type { Ctx } from "../context.js";
 import { chooseWorkspace, fabricWorkspaces } from "../fabric.js";
 import { originDefaultBranch } from "../git.js";
-import { packRoot } from "../pack.js";
+import { promptsRoot } from "../pack.js";
 import { readSetFile, repoBranch } from "../setFile.js";
 import { me, type Stories } from "../stories/core.js";
 import { readItem } from "../stories/read.js";
@@ -79,19 +79,32 @@ function teamRoots(s: Stories, set?: string): string[] {
   return roots;
 }
 
+/** A prompt file with its text; a missing or empty one is a clear error, never an empty prompt. */
+export function promptText(file: string): string {
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    throw new BrowseError("notFound", `prompt file not found: ${file}`);
+  }
+  if (!splitFront(text).body.trim()) throw new BrowseError("failed", `prompt file is empty: ${file}; fix it or remove it to use the default`);
+  return text;
+}
+
 export function findPrompt(s: Stories, action: Action, o: { id?: number; set?: string } = {}): { source: Source; file: string; text: string } {
   if (o.id) {
     const f = storyPromptFile(s, o.id, action);
-    if (existsSync(f)) return { source: "story", file: f, text: readFileSync(f, "utf8") };
+    if (existsSync(f)) return { source: "story", file: f, text: promptText(f) };
   }
   for (const r of teamRoots(s, o.set)) {
     const f = join(r, TEAM_PROMPT_DIR, `${action}.md`);
-    if (existsSync(f)) return { source: "team", file: f, text: readFileSync(f, "utf8") };
+    if (existsSync(f)) return { source: "team", file: f, text: promptText(f) };
   }
   // the default in the team's language (team.yaml `language`; English when it says nothing): prompts/en/, or prompts/ (Dutch) for a Dutch team
-  const en = join(packRoot(), "prompts", "en", `${action}.md`);
-  const f = langOf(s) === "en" && existsSync(en) ? en : join(packRoot(), "prompts", `${action}.md`);
-  return { source: "default", file: f, text: readFileSync(f, "utf8") };
+  const root = promptsRoot();
+  const en = join(root, "en", `${action}.md`);
+  const f = langOf(s) === "en" && existsSync(en) ? en : join(root, `${action}.md`);
+  return { source: "default", file: f, text: promptText(f) };
 }
 
 export function limitsText(lang: "nl" | "en", workspace: string): string {
@@ -228,13 +241,19 @@ export async function renderPrompt(ctx: Ctx, s: Stories, action: Action, id: num
 }
 
 /** Every action with its title, slash command, summary and where its prompt comes from (no story needed). */
-export function listPrompts(ctx: Ctx, s: Stories): { prompts: { action: Action; title: string; slash: string; goal: string; reads: string; produces: string; source: Source; file: string }[] } {
+export function listPrompts(ctx: Ctx, s: Stories): { prompts: { action: Action; title: string; slash: string; goal: string; reads: string; produces: string; source: Source; file: string; text: string }[] } {
   const set = setFolderOf(ctx.cwd);
+  const repo = s.root?.split(/[\\/]/).pop() ?? "";
+  // team.yaml's target branch, else the default branch of the repository this runs in, else a plain word
+  const listTarget = defaultTargetFor(s.teamCfg, repo) || (s.root ? originDefaultBranch(s.root) : "") || (langOf(s) === "en" ? "the target branch" : "de doelbranch");
   return {
     prompts: ACTIONS.map((a) => {
       const p = findPrompt(s, a, { set });
-      const { meta } = splitFront(p.text);
-      return { action: a, title: meta.title ?? a, slash: meta.slash ?? `/${a}`, goal: meta.goal ?? "", reads: meta.reads ?? "", produces: meta.produces ?? "", source: p.source, file: p.file };
+      const { meta, body } = splitFront(p.text);
+      // the full prompt with its placeholders, for the Prompts page (no story is needed)
+      // the summary has no story: {{target}} becomes the team's target branch (or a plain word), never a raw placeholder
+      const goal = fill(meta.goal ?? "", { target: listTarget }).text;
+      return { action: a, title: meta.title ?? a, slash: meta.slash ?? `/${a}`, goal, reads: meta.reads ?? "", produces: meta.produces ?? "", source: p.source, file: p.file, text: body.trim() + "\n" };
     }),
   };
 }

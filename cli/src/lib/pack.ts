@@ -14,6 +14,17 @@ export function packRoot(): string {
   throw new AihubError("the bundled skills are missing from this installation; reinstall with 'npm i -g @ferronhooi/aihub'");
 }
 
+/**
+ * Directory of the default team prompts: the installed package's `pack/prompts` first (what `npm i -g` ships), else the
+ * `prompts/` of a source checkout (a development build). A folder only counts when it holds the prompt files.
+ */
+export function promptsRoot(dirOfThisFile = here): string {
+  for (const c of [join(dirOfThisFile, "..", "..", "pack", "prompts"), join(dirOfThisFile, "..", "..", "..", "prompts")]) {
+    if (existsSync(join(c, "story-run.md"))) return c;
+  }
+  throw new AihubError("the default prompts are missing from this installation (no prompts/story-run.md); reinstall with 'npm i -g @ferronhooi/aihub'");
+}
+
 export function cliVersion(): string {
   try {
     return (JSON.parse(readFileSync(join(here, "..", "..", "package.json"), "utf8")) as { version: string }).version;
