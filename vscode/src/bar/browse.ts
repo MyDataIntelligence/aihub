@@ -140,6 +140,11 @@ export interface SearchArg extends Common {
   text: string;
   project?: string;
   repo?: string;
+  /** Search in Selected: repositories and whole projects (no repo) */
+  scope?: { project: string; repo?: string }[];
+  branch?: string;
+  /** only the clones on this PC */
+  local?: boolean;
   path?: string;
   ext?: string[];
   top?: number;
@@ -244,6 +249,10 @@ export const browseArgs = {
     if (!s(a?.text)) throw new Error("a search text is needed ({ text })");
     const out = opt(opt(opt(opt(["browse", "search", "--text", a.text], "--project", a.project), "--repo", a.repo), "--path", a.path), "--top", a.top);
     if (a.ext?.length) out.push("--ext", a.ext.join(","));
+    const scope = (a.scope ?? []).filter((x) => s(x?.project)).map((x) => (s(x.repo) ? `${x.project}/${x.repo}` : x.project));
+    if (scope.length) out.push("--scope", scope.join(","));
+    opt(out, "--branch", a.branch);
+    if (a.local) out.push("--local");
     return common(a, out);
   },
   createPr: (a: PrArg) => {

@@ -174,6 +174,8 @@ export interface SearchResult extends ReadMeta {
   searchUnavailable?: { message: string };
   /** local only: ripgrep or git grep */
   tool?: string;
+  /** Search in Selected: the scope that was searched */
+  scope?: ScopeItem[];
   count: number;
   results: { project: string; repo: string; path: string; branch: string; commit: string | null; clone: Clone | null; matches: SearchMatch[] }[];
   notSearched: { what: string; reason: string }[];
@@ -208,11 +210,68 @@ export function linesOf(content: string, hits: { charOffset: number; length: num
   });
 }
 
-export async function browseSearch(b: Browse, o: { text: string; project?: string; repo?: string; path?: string; ext?: string[]; branch?: string; top?: number; local?: boolean }): Promise<SearchResult> {
+export interface ScopeItem {
+  project: string;
+  /** absent: the whole project */
+  repo?: string;
+}
+
+/** `project` or `project/repo`, comma separated. */
+export function parseScope(s: string | undefined): ScopeItem[] | undefined {
+  const items = (s ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (!items.length) return undefined;
+  return items.map((x) => {
+    const i = x.indexOf("/");
+    return i < 0 ? { project: x } : { project: x.slice(0, i), repo: x.slice(i + 1) };
+  });
+}
+
+/**
+ * Code Search filters a repository within its project: a scope of whole projects and single repositories becomes one query for
+ * the whole projects and one per project with chosen repositories (a repository of a project that is in whole is left out).
+ */
+export function scopeQueries(scope: ScopeItem[]): Record<string, string[]>[] {
+  const whole = [...new Set(scope.filter((x) => !x.repo).map((x) => x.project))];
+  const wholeKey = new Set(whole.map((p) => p.toLowerCase()));
+  const byProject = new Map<string, string[]>();
+  for (const x of scope) {
+    if (!x.repo || wholeKey.has(x.project.toLowerCase())) continue;
+    const list = byProject.get(x.project) ?? [];
+    if (!list.some((r) => r.toLowerCase() === x.repo!.toLowerCase())) list.push(x.repo);
+    byProject.set(x.project, list);
+  }
+  return [...(whole.length ? [{ Project: whole }] : []), ...[...byProject].map(([p, repos]) => ({ Project: [p], Repository: repos }))];
+}
+
+export async function browseSearch(b: Browse, o: { text: string; project?: string; repo?: string; scope?: ScopeItem[]; path?: string; ext?: string[]; branch?: string; top?: number; local?: boolean }): Promise<SearchResult> {
+  if (o.scope?.length) return searchScope(b, { ...o, scope: o.scope });
+  return searchOne(b, o);
+}
+
+/** Search in Selected: one query per group of the scope, the results merged (newest groups cannot crowd out the others: each gets its share of --top). */
+async function searchScope(b: Browse, o: { text: string; scope: ScopeItem[]; path?: string; ext?: string[]; branch?: string; top?: number; local?: boolean }): Promise<SearchResult> {
+  const top = Math.min(Math.max(o.top ?? 50, 1), 200);
+  const groups = scopeQueries(o.scope);
+  if (o.local) return searchLocal(b, { ...o, scope: o.scope }, top, "local search was asked for (--local)");
+  const answers = await pool(groups, 3, (filters) => searchOne(b, { ...o, filters, top: Math.max(Math.ceil(top / groups.length), 10) }));
+  const local = answers.find((a) => a.route === "local");
+  if (local) return searchLocal(b, { ...o, scope: o.scope }, top, local.searchUnavailable?.message ?? "Code Search is not available");
+  return {
+    readAt: answers.map((a) => a.readAt).sort()[0] ?? new Date(b.now()).toISOString(),
+    cached: answers.every((a) => a.cached),
+    route: "codeSearch",
+    count: answers.reduce((n, a) => n + a.count, 0),
+    results: answers.flatMap((a) => a.results),
+    notSearched: answers.flatMap((a) => a.notSearched),
+    scope: o.scope,
+  };
+}
+
+async function searchOne(b: Browse, o: { text: string; project?: string; repo?: string; path?: string; ext?: string[]; branch?: string; top?: number; local?: boolean; filters?: Record<string, string[]> }): Promise<SearchResult> {
   const text = o.text.trim();
   if (!text) throw new BrowseError("badInput", "aihub browse search needs --text <text>");
   const top = Math.min(Math.max(o.top ?? 25, 1), 100);
-  const filters: Record<string, string[]> = {};
+  const filters: Record<string, string[]> = { ...(o.filters ?? {}) };
   if (o.project) filters.Project = [o.project];
   if (o.repo) {
     if (!o.project) throw new BrowseError("badInput", "--repo needs --project too (Code Search filters a repository within a project)");
@@ -258,7 +317,8 @@ export async function browseSearch(b: Browse, o: { text: string; project?: strin
 }
 
 /** Code Search is off: the clones on this PC only (ripgrep, else git grep); nothing goes to Azure DevOps. */
-async function searchLocal(b: Browse, o: { text: string; project?: string; repo?: string; path?: string; ext?: string[]; branch?: string }, top: number, why: string): Promise<SearchResult> {
+async function searchLocal(b: Browse, o: { text: string; project?: string; repo?: string; scope?: ScopeItem[]; path?: string; ext?: string[]; branch?: string }, top: number, why: string): Promise<SearchResult> {
+  const inScope = (project: string, repo: string) => !o.scope?.length || o.scope.some((x) => x.project.toLowerCase() === project.toLowerCase() && (!x.repo || x.repo.toLowerCase() === repo.toLowerCase()));
   const clones = clonesOf(b);
   const org = b.org.toLowerCase();
   const targets: LocalTarget[] = [];
@@ -267,12 +327,13 @@ async function searchLocal(b: Browse, o: { text: string; project?: string; repo?
     if (kOrg !== org) continue;
     if (o.project && project !== o.project.toLowerCase()) continue;
     if (o.repo && repo !== o.repo.toLowerCase()) continue;
+    if (!inScope(project, repo)) continue;
     targets.push({ project, repo, clone });
   }
   // the real names, and how many repositories were not searched (the list is cached; offline it is left out)
   let remote = 0;
   try {
-    const all = (await browseProjects(b)).projects.flatMap((p) => p.repos).filter((r) => (!o.project || r.project.toLowerCase() === o.project.toLowerCase()) && (!o.repo || r.repo.toLowerCase() === o.repo.toLowerCase()));
+    const all = (await browseProjects(b)).projects.flatMap((p) => p.repos).filter((r) => (!o.project || r.project.toLowerCase() === o.project.toLowerCase()) && (!o.repo || r.repo.toLowerCase() === o.repo.toLowerCase()) && inScope(r.project, r.repo));
     for (const t of targets) {
       const r = all.find((x) => x.project.toLowerCase() === t.project && x.repo.toLowerCase() === t.repo);
       if (r) (t.project = r.project), (t.repo = r.repo);
@@ -292,5 +353,6 @@ async function searchLocal(b: Browse, o: { text: string; project?: string; repo?
     count: r.files.length,
     results: r.files.map((f) => ({ project: f.project, repo: f.repo, path: f.path, branch: f.branch, commit: null, clone: f.clone, matches: f.matches })),
     notSearched,
+    ...(o.scope?.length ? { scope: o.scope } : {}),
   };
 }
