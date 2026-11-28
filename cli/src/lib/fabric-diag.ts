@@ -166,7 +166,25 @@ export function branchLabel(branch: string): string {
   return b.includes("feature/") ? b.slice(b.indexOf("feature/") + 8) : b.slice(b.lastIndexOf("/") + 1);
 }
 
-/** The one workspace of a branch: per accepted prefix exactly one normalised match; two equal names are ambiguous (undefined). */
+/** A feature branch: "feature/" is in its name. Only feature branches have a workspace of their own; main, staging and the rest have none. */
+export const isFeatureBranch = (branch: string | undefined): boolean => !!branch && /(^|\/)feature\//i.test(branch.replace(/^refs\/heads\//, "")) && !!branchLabel(branch);
+
+/** The names the workspace of a branch may have, one per prefix in order ("<prefix> <branch label>"), without duplicates. */
+export function branchWorkspaceNames(branch: string, prefixes: string[]): string[] {
+  const label = branchLabel(branch);
+  const seen = new Set<string>();
+  return prefixes.map((p) => `${p.trim()} ${label}`).filter((n) => {
+    const k = normalizedName(n);
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/**
+ * The one workspace of a branch: per accepted prefix exactly one normalised match; two equal names are ambiguous (undefined).
+ * Exact only: "feature/x-nows" never gets the workspace of "feature/x", nor the other way round (a prefix match was a live bug).
+ */
 export function branchWorkspace<T>(workspaces: T[], branch: string, prefixes: string[], name: (w: T) => string): T | undefined {
   const named = workspaces.map((w) => [w, normalizedName(name(w))] as const);
   for (const p of prefixes) {
