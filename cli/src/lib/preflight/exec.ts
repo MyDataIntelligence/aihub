@@ -184,6 +184,36 @@ export function commandFor(step: PipelineStep, input: CommandInput, o: { sh: She
   }
 }
 
+/** The part of `process` that `withTempDir` listens to. */
+export interface SignalSource {
+  on(event: "exit" | "SIGINT" | "SIGTERM", listener: (...args: any[]) => void): unknown;
+  off(event: "exit" | "SIGINT" | "SIGTERM", listener: (...args: any[]) => void): unknown;
+  exit(code?: number): never | void;
+}
+
+/**
+ * Runs `fn` and removes `dir` afterwards, also when `fn` throws, on Ctrl+C or SIGTERM (then the process ends with
+ * 130 or 143, as the default would) and when the process exits meanwhile: the scripts there hold expanded secrets.
+ */
+export async function withTempDir<T>(dir: string, proc: SignalSource, fn: () => Promise<T>): Promise<T> {
+  const clean = () => rmSync(dir, { recursive: true, force: true });
+  const onSignal = (signal: string) => {
+    clean();
+    proc.exit(signal === "SIGTERM" ? 143 : 130);
+  };
+  proc.on("exit", clean);
+  proc.on("SIGINT", onSignal);
+  proc.on("SIGTERM", onSignal);
+  try {
+    return await fn();
+  } finally {
+    proc.off("exit", clean);
+    proc.off("SIGINT", onSignal);
+    proc.off("SIGTERM", onSignal);
+    clean();
+  }
+}
+
 export interface RunResult {
   code: number;
   output: string;

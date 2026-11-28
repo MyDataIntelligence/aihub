@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/router.js";
 import { setPreflightDeps } from "../src/commands/preflight.js";
 import { loadJob } from "../src/lib/preflight/pipelineYaml.js";
@@ -489,6 +490,29 @@ process.exit(1);`;
     const left = existsSync(temp) ? readdirSync(temp).map((f) => readFileSync(join(temp, f), "utf8")).join("\n") : "";
     expect(left).not.toContain("hush-inline-42");
     expect(left).not.toContain("fake-fabric-token-abc");
+    expect(existsSync(temp)).toBe(false); // the folder itself is gone after the run
+  });
+
+  it("a failed step and an interrupted run (Ctrl+C) leave no script with a secret either", async () => {
+    const setSecret = `  - script: node -e "console.log('##vso[task.setvariable variable=S1;issecret=true]hush-inline-42')"\n    displayName: Set secret\n`;
+    const failing = world({ job: `steps:\n${setSecret}  - script: node -e "process.exit(3)" $(S1)\n    displayName: Use secret\n`, team: preflightYaml("", "local: [Set secret, Use secret]") });
+    const f = await pf(failing.consumer, []);
+    expect(f.code).toBe(1);
+    expect(existsSync(join(failing.consumer, ".git", "aihub", "preflight", "_temp"))).toBe(false);
+
+    // Ctrl+C while a step that holds the secret runs: _temp goes at once and the process ends with 130
+    const slow = world({ job: `steps:\n${setSecret}  - script: node -e "setTimeout(() => {}, 2500)" $(S1)\n    displayName: Use secret\n`, team: preflightYaml("", "local: [Set secret, Use secret]") });
+    const temp = join(slow.consumer, ".git", "aihub", "preflight", "_temp");
+    const proc = Object.assign(new EventEmitter(), { exit: vi.fn() });
+    const running = pf(slow.consumer, [], { process: proc as never });
+    const holds = () => existsSync(temp) && readdirSync(temp).some((n) => readFileSync(join(temp, n), "utf8").includes("hush-inline-42"));
+    for (let i = 0; i < 200 && !holds(); i++) await new Promise((r) => setTimeout(r, 50));
+    expect(holds()).toBe(true); // the step's script is there while it runs
+    proc.emit("SIGINT", "SIGINT");
+    expect(proc.exit).toHaveBeenCalledWith(130);
+    expect(existsSync(temp)).toBe(false);
+    await running;
+    expect(proc.listenerCount("SIGINT")).toBe(0);
   });
 
   it("--plan: resolves the branch's workspace, hands tokens only to read steps, masks them; apply steps wait for --apply", async () => {
@@ -605,7 +629,8 @@ process.exit(1);`;
     const r = await pf(w.consumer, ["--apply", "--dry-run"]);
     expect(r.code).toBe(0);
     expect(r.out).toMatch(/not run\s+Deploy items\s+dry run; needs \$\(WORKSPACE_ID\) at run time/);
-    expect(r.out).toMatch(/not run\s+Get workspace ids\s+dry run\n.*token\.js from-template\n\s+env: ACCESS_TOKEN=\*\*\* WS_ID=11111111-1111-1111-1111-111111111111/);
+    // a Windows path holds backslashes, so the display quotes it: token.js" from-template
+    expect(r.out).toMatch(/not run\s+Get workspace ids\s+dry run\n.*token\.js"? from-template\n\s+env: ACCESS_TOKEN=\*\*\* WS_ID=11111111-1111-1111-1111-111111111111/);
     expect(r.out).toContain("shared-templates/scripts/check.js ws-12-export");
     expect(r.out).toContain("dry run: nothing was run");
     expect(r.out).not.toContain("fake-fabric-token-abc");

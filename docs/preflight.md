@@ -91,7 +91,9 @@ evaluate". In an inline script an all-lowercase `$(name)` nobody defines is left
 
 Steps hand values on with `##vso[task.setvariable variable=NAME;isOutput=true;issecret=true]VALUE`, as on the agent
 (also as `<stepName>.NAME`). Secret values and all tokens are masked in everything preflight prints or returns, and an
-inline script (written to `Agent.TempDirectory` with its variables expanded) is deleted when its step ends.
+inline script (written to `Agent.TempDirectory` with its variables expanded) is deleted when its step ends; the folder
+itself is removed after the run, also after a failure, Ctrl+C or SIGTERM. Values are expanded into the script as on the
+agent (not passed through the environment), so a script behaves as in the CD.
 `##vso[task.logissue]` lines become the step's issues; `##vso[task.complete result=Failed]` or a non-zero exit fails it.
 
 Conditions: `succeeded()`, `always()`, `failed()`, `and`, `or`, `not`, `eq`, `ne`, `startsWith`, `endsWith`,
