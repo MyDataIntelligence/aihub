@@ -84,6 +84,26 @@ describe("story browser lists", () => {
     expect((await storyList(t.s(), { view: "sprint" })).cached).toBe(false);
   });
 
+  it("rows carry their board column of the team (columns share a state) and the list says how many match", async () => {
+    const t = setup();
+    const r = await storyList(t.s(), { view: "sprint", top: 1 });
+    expect(r.total).toBe(2);
+    expect(r.items.map((x) => x.id)).toEqual([101]);
+    expect([r.items[0].boardColumn, r.items[0].boardColumnDone]).toEqual(["Review", false]);
+    const all = await storyList(t.s(), { view: "backlog" });
+    expect(all.items.find((x) => x.id === 301)).toMatchObject({ state: "New", boardColumn: "New", boardColumnDone: true });
+    const show = await storyShow(t.s(), 101);
+    expect(show.boardColumn).toBe("Review");
+  });
+
+  it("a saved area that is the project root counts as no choice: the team's areas are used", async () => {
+    const t = setup();
+    saveSettings(t.ctx.env, "ferron-test", { project: "test-project", team: "Team A", areaPath: "test-project" });
+    expect(await listWiql(t.s(), { view: "backlog" }, ["User Story"])).toContain("([System.AreaPath] UNDER 'test-project\\Team A')");
+    saveSettings(t.ctx.env, "ferron-test", { project: "test-project", team: "Team A", areaPath: "test-project\\Team A\\Orders" });
+    expect(await listWiql(t.s(), { view: "backlog" }, ["User Story"])).toContain("[System.AreaPath] UNDER 'test-project\\Team A\\Orders'");
+  });
+
   it("a wrong view is badInput", async () => {
     const t = setup();
     t.lines.length = 0;
@@ -104,6 +124,9 @@ describe("story browser board", () => {
       ["Closed", ["Closed"], true, []],
     ]);
     expect(r.columnField).toBe("WEF_X_Kanban.Column");
+    expect(r.columns.map((c) => c.count)).toEqual([1, 0, 1, 0]);
+    expect(r.columns[2].items[0]).toMatchObject({ id: 101, boardColumn: "Review", boardColumnDone: false });
+    expect(r.columns[0].items[0]).toMatchObject({ id: 301, boardColumn: "New", boardColumnDone: true });
     expect(r.columns[1].wipLimit).toBe(5);
     const wiql = t.calls.find((c) => c.method === "POST" && /wiql/.test(c.url))!.body.query as string;
     expect(wiql).toContain("@Today - 14");

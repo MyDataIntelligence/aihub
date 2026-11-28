@@ -83,7 +83,7 @@ export const readText = (file: string): string => {
   return b.toString("utf8").replace(/^\uFEFF/, "");
 };
 
-async function teamOf(b: Browse, project: string, repo: string, branch: string): Promise<TeamConfig> {
+export async function teamOf(b: Browse, project: string, repo: string, branch: string): Promise<TeamConfig> {
   try {
     const f = await readFileAt(b, project, repo, `/${TEAM_FILE}`, { name: branch, kind: "branch" });
     return (f.content ? (parse(f.content) as TeamConfig) : {}) ?? {};
@@ -92,14 +92,14 @@ async function teamOf(b: Browse, project: string, repo: string, branch: string):
   }
 }
 
-async function headOf(b: Browse, project: string, repo: string, branch: string): Promise<string | undefined> {
+export async function headOf(b: Browse, project: string, repo: string, branch: string): Promise<string | undefined> {
   const rc = repoClientOf(b, project, repo);
   const r = await rc.get<{ value?: { name: string; objectId: string }[] }>(`${rc.repoPath()}/refs`, { filter: `heads/${branch}` });
   return r.value?.find((x) => x.name === `refs/heads/${branch}`)?.objectId;
 }
 
 /** The file at a version, or null when it is not there. */
-async function contentAt(b: Browse, project: string, repo: string, path: string, commit: string): Promise<{ content: string | null; objectId: string } | null> {
+export async function contentAt(b: Browse, project: string, repo: string, path: string, commit: string): Promise<{ content: string | null; objectId: string } | null> {
   try {
     const f = await readFileAt(b, project, repo, path, { name: commit, kind: "commit" }, 4 * 1024 * 1024);
     return { content: f.content, objectId: f.objectId };
