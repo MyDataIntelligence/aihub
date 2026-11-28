@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.9.1
+
+- No change in the extension itself; it ships with aihub 1.10.1, whose `pr create` uses the team title pattern (the Team Settings preview shows it).
+
 ## 3.9.0
 
 - aihub.bar.team* commands for the Team Settings pages (one process per call, only when a page asks).

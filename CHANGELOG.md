@@ -2,6 +2,10 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## 1.10.1
+
+- `aihub pr create` titles a new pull request with `pullRequest.title` from team.yaml ({storyId}, {storyTitle}, {branch}); `--title` still wins, and a pattern that names the story is only used when the story is known. `aihub team preview --template pr` shows that same title.
+
 ## 1.10.0
 
 - Team settings: `aihub team show --json` gives the whole Team settings page in one read (which team.yaml applies, every key per repository with its explanation, overrides, templates); `team validate` (errors with line and fix), `team preview --template pr|story|bug|commit`, `team edit` (a new branch and a pull request in the team repository, never main) and `team init --from-pack | --team-repo`. Repositories without their own team.yaml use the team repository once one is set. The schema documents `teamName`, `worktrees`, more `workItems` keys and two Fabric keys.
