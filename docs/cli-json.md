@@ -171,12 +171,12 @@ Cache (`<config>/aihub/cache/browse/`): projects and repositories 4 hours, proje
 ```
 
 `aihub browse items --project P --repo R [--path /dir] [--ref ...] [--last-commit]`: one folder level, folders first, then by name.
-`kind`: `folder`, `file` or `submodule`; `sizeBytes` is `null` (Azure DevOps does not list sizes); `lastCommit` only with `--last-commit`.
+`kind`: `folder`, `file` or `submodule`; `sizeBytes` of each file from the tree of the folder (one more call; `null` for folders); `lastCommit` only with `--last-commit`.
 `{"ref":{…},"path":"/dbt","readAt":"…","cached":false,"items":[{"name":"models","path":"/dbt/models","kind":"folder","sizeBytes":null,"objectId":"<sha>","lastCommit":null}]}`
 
-`aihub browse file --project P --repo R --path /file [--ref ...] [--max-bytes 1048576]`: `{"ref":{…},"path":"/notebooks/export_orders.py",
+`aihub browse file --project P --repo R --path /file [--ref ...] [--max-bytes 5242880]`: `{"ref":{…},"path":"/notebooks/export_orders.py",
 "objectId":"<blob sha>","sizeBytes":2310,"lastCommit":{…},"binary":false,"tooLarge":false,"content":"…","webUrl":"…"}`. A binary file or one
-larger than `--max-bytes` has `content: null` (the UI offers Open in Browser).
+larger than `--max-bytes` has `content: null` (the UI offers Open in Browser). The file is read in up to three calls: metadata (Azure DevOps' binary flag), the blob size, and only then the content: a binary file (the flag, a data/archive/image/office extension, or a NUL in the first 8000 characters) or one over `--max-bytes` (5 MB) is never downloaded; `sizeBytes` is filled for them too.
 
 `aihub browse branches --project P --repo R [--filter t] [--top 50]`: default first, then the branches I created, then by name; tags
 newest first; `at` is the date of the newest commit, `ahead`/`behind` count against the default branch (one call to the branch statistics,
@@ -208,10 +208,10 @@ repository (`route: "codeSearch"`); without it the trees of the repositories ope
 prefix, word start, anywhere, fuzzy.
 `{"route":"codeSearch","results":[{"name":"orders_export.py","path":"/src/export/orders_export.py","project":"test-project","repo":"repo-a","clone":null}],"searched":{"repos":null,"notSearched":[]}}`
 
-`aihub browse search --text T [--project P] [--repo R (needs --project)] [--path /p] [--ext py,sql] [--top 25]` (Code Search): the lines
+`aihub browse search --text T [--project P] [--repo R (needs --project)] [--branch B] [--path /p] [--ext py,sql] [--top 25] [--local]` (Code Search): the lines
 come from each file at the indexed commit (Code Search gives only offsets), `ranges` are `[start, end)` columns.
 `{"count":23,"results":[{"project","repo","path","branch":"main","commit":"<sha>","clone":null,"matches":[{"line":14,"text":"MAX_RETRIES = 3","ranges":[[0,11]]}]}],"notSearched":[{"what":"20 more file(s)","reason":"only the first 3 are shown (--top)"}]}`.
-Without Code Search: `{"error":{"kind":"searchUnavailable",…}}`.
+`--scope P,P/R,...` (Search in Selected): whole projects and chosen repositories; Code Search filters a repository within its project, so the whole projects are one query and each project with chosen repositories another, merged (`scope` in the answer); the local fallback keeps to the same scope. Every answer has `route`: `codeSearch`, or `local` when the organisation has no Code Search (or `--local`): then only the clones on this PC are searched (ripgrep from `AIHUB_RG` or PATH in one process, else `git grep` per clone; a clone on another branch than `--branch` is searched at `origin/<branch>`), nothing is sent to Azure DevOps, `searchUnavailable: {message}` says why, `tool` names ripgrep or git grep, and `notSearched` names the remote repositories that were not searched (`{"what":"5 remote repositories","reason":"not cloned on this PC; ..."}`).
 
 `aihub browse push --project P --repo R --path /file --base-commit <ref.commit when read> --base-branch B --content-file F --branch
 feature/x --message-file M [--pr [--target T] [--story N] [--pr-title t] [--draft]] [--rebase]`: one commit on a NEW branch through the
@@ -234,6 +234,58 @@ linked (`AB#N`, title `<N> <story title>`) and the commit; a failed PR leaves th
 a pull request from the head of `B` to `--target` (default: the default branch), with the template of the target on the remote; the story
 is `--story` or the number in the branch name (`feature/4711-...`). An active pull request of the branch is returned as it is:
 `{"pr":{"id":77,"title":"4711 Orderexport","webUrl":"…"},"existing":false}`.
+
+### Change with Agent: `aihub browse change ...`
+
+An agent changes files of a repository that is not cloned. Each change is a workspace in `<config>/aihub/changes/<id>/`
+(never in a repository): `files/` holds the files the agent read or changed at their repository paths, `.base/` their version at
+the base commit, `TASK.md` the task, `summary.md` the agent's summary. A file is changed when `files/` differs from `.base/`.
+Nothing is pushed before `push`. Fixed limits: never main/master/staging/develop/the default branch, only this repository, at most
+20 files, no secrets (keys, passwords, tokens), no pipeline definitions, variable groups or `.env` files (kinds `protectedBranch`,
+`tooManyFiles`, `secret`, `forbiddenFile`).
+
+`change start --project P --repo R [--ref B] [--branch feature/x] [--story N] [--paths /a,/b] [--selection /a:16-23] [--prompt-file F]`:
+the base is the head of `--ref` (default: the default branch); the branch name comes from team.yaml `branches.feature`
+(`feature/<story>-<slug>`, the slug from the prompt) unless `--branch`. The named files and the file of the selection are put in `files/`.
+
+```json
+{"id":"test-consumer-20261127-221709-ebdb","dir":"…/changes/<id>","filesDir":"…/changes/<id>/files","project":"test-project","repo":"test-consumer",
+ "base":{"branch":"main","commit":"<sha>"},"branch":"feature/4711-filter-actieve-klanten","story":4711,"materialized":["/consumer/report.py"],
+ "limits":{"maxFiles":20,"never":["main","master","staging","develop"]},"taskFile":"…/TASK.md","agentPrompt":"Read TASK.md and make the change it describes in the files under ./files. Do not push or commit."}
+```
+
+`change read --id ID --path /p` puts the base version in `files/` (once) and answers `{id,path,file,modified,binary,content}`.
+`change write --id ID --path /p --content-file F` and `change rm --id ID --path /p` check the limits at once and answer
+`{id,path,deleted,changedFiles,problems}`; the agent may also edit under `files/` with its own tools (the limits are then checked by
+`diff` and `push`). `change summary --id ID --file F` keeps the agent's summary.
+
+`change diff --id ID`: `{id,status,project,repo,branch,base,dir,filesDir,files:[{path,status:"modified"|"added"|"deleted",additions,deletions,hunks}],
+totals:{files,additions,deletions},summary,problems:[{path?,kind,message}],pushed?}` (`hunks` as in `browse diff`).
+
+`change push --id ID [--message-file M] [--branch B] [--pr [--target T] [--story N] [--pr-title t] [--draft]] [--rebase]`: ONE commit on a
+NEW branch from the base commit (edit, add, delete) through the Pushes API; the message defaults to `#<story> <first line of the summary or
+prompt>`. A file that changed on the base branch since the base commit gives `{"status":"conflict","files":[{path,latest:{id,short,message,at,by},overlap}]}`
+and nothing is pushed; `--rebase` re-applies changes that do not overlap on the newest version. Pushed:
+`{"status":"pushed",branch,commit:{id,short,webUrl},startedFrom,rebased,files,pr|null,prError,webUrl}`; the change is then `pushed`.
+
+`change apply --id ID --dir D` (Open as Working Copy): the changed files written into a working copy; a file with its own change there is
+skipped: `{id,target,branch,applied:[paths],skipped:[{path,why}]}`. `change discard --id ID` removes the workspace; `change list` lists them.
+### Ask Agent about Selected: `aihub browse ask ...`
+
+A read-only question over several repositories and projects. `<config>/aihub/asks/<id>/` holds `TASK.md`, the files read (counted),
+the proposals (`proposals/<project>/<repo>/<path>`, the whole new file) and `report.json`. Nothing is changed, committed or pushed by the
+question; "Apply in Feature Branch" makes an `aihub browse change` per repository.
+
+- `ask start --scope P,P/R,... --prompt-file F [--story N] [--limit 200]` -> `{id,dir,scope,limit,taskFile,agentPrompt}`.
+- `ask read --id ID --project P --repo R --path /f`: the file at the repository's base (its default branch's head the first time it is used),
+  counted once per file; past `limit` (200) the error kind `readLimit` until `ask allow --id ID [--more 200]` -> `{id,read,limit}`.
+- `ask propose --id ID --project P --repo R --path /f --content-file F`: a proposed fix (refused: secrets, pipeline/variable-group/.env files).
+- `ask report --id ID --file report.json`: `{"summary":"…","repos":[{"project","repo","finding","refs":[{"path","line"?,"note"?}]}]}`, only repositories of the scope.
+- `ask state --id ID`: `{id,prompt,scope,status:"open"|"answered",reads:{count,limit},needsApproval,summary,branch,repos:[{project,repo,base,finding,refs,proposals:[{path,status,additions,deletions,hunks}],change}]}`.
+- `ask apply --id ID --project P --repo R [--branch B] [--story N]`: a change with that repository's proposals, on the question's branch (the
+  first apply names it; every repository gets the same) -> the `change start` answer plus `applied`. Push it with `change push`.
+- `ask list`, `ask discard --id ID`.
+`aihub browse related --project P --repo R --path /file [--top 10]` ("+ related files" of Change with Agent): `{"route":"codeSearch"|"tree","files":[{"path":"/tests/test_report.py","why":"a test of it"},{"path":"/jobs/run.py","why":"uses report"}]}`: tests and files with the same name from the tree of the default branch, then the files of the same repository that use the module name (Code Search; without it only the tree). One search and one tree read.
 
 `aihub browse suggest-branch [--story N] --path /file [--title t]`: `{"branch":"feature/4711-orders-export"}` (no network).
 
@@ -303,9 +355,9 @@ Always JSON. A failure is `{"error":{"kind","message"}}` with exit 1; kinds as i
 
 - `settings [--save --project P --team T [--area A] [--iteration I]]` -> `{ org, project?, team?, areaPath?, iterationPath?, types:[] }` (kept per organisation in `story-browser.json`)
 - `projects` -> `{ org, projects:[{id,name}] }`; `teams` -> `{ teams:[{id,name,isDefault}] }`; `areas` -> `{ defaultArea, areas:[{path,includeChildren}], all:[path] }`; `iterations` -> `{ iterations:[{id,name,path,start,finish,timeFrame}], current? }`
-- `list --view mine|sprint|backlog [--types a,b] [--search 123|text] [--top 200]` -> `{ view, project, team, types, iterationPath?, items:[ItemRow], readAt, cached }`
-- ItemRow: `{ id, rev, type, title, state, stateCategory, assignedTo:{name,email,isMe}|null, areaPath, iterationPath, priority?, severity?, storyPoints?, tags:[], parent?, changedDate, url, local:{ set?:{folder,name}, branches:[{repo,branch,worktree?}] } }`
-- `board [--board B] [--types a,b]` -> `{ board, columnField?, columns:[{ name, states, category, isDone, wipLimit?, items:[ItemRow] }] }` (an item sits in its own board column; the done column shows two weeks)
+- `list --view mine|sprint|backlog [--types a,b] [--search 123|text] [--top 200]` -> `{ view, project, team, types, iterationPath?, items:[ItemRow], total, readAt, cached }` (`total`: every match, `items`: the first `top`). Without a saved area narrower than the project the team's own areas (team field values) count.
+- ItemRow: `{ id, rev, type, title, state, stateCategory, assignedTo:{name,email,isMe}|null, areaPath, iterationPath, priority?, severity?, storyPoints?, tags:[], parent?, boardColumn?, boardColumnDone?, changedDate, url, local:{ set?:{folder,name}, branches:[{repo,branch,worktree?}] } }`
+- `board [--board B] [--types a,b]` -> `{ board, columnField?, columns:[{ name, states, category, isDone, wipLimit?, count, items:[ItemRow] }] }` (an item sits in its own board column, also in rows of the lists and in show: `boardColumn`; the done column shows two weeks)
 - `show --id N` -> ItemRow plus `allowedStates:[{name,category}]`, `severityValues?`, `priorityValues?`, `sections:[{heading,field,markdown,html}]` (the team template; a Bug keeps its text in ReproSteps), `systemInfo?:{markdown,html}`, `tasks:[{id,rev,title,state,done,assignedTo}]`, `parentItem`, `related`, `children`, `development:{branches,prs,builds}`, `comments:[{id,author,date,markdown,html}]`, `template`
 - `move --id N (--to <state> | --column C [--board B]) --rev R`; `edit --id N --rev R [--title] [--state] [--assign me|<email>|none] [--priority] [--severity] [--points] [--tags a;b] [--iteration] [--area] [--sections-file f] [--system-info-file f]` (only the sections in the file change); `task --id <task> --done|--undone [--rev R]`; `add-task --parent N --title t`; `comment --id N --text-file f`
 - `refine-ask --id N` -> `{ prompt, proposalFile, gaps }`; `refine --id N` -> `{ rev, parts:[{part,heading,current,proposed,changed}], tasks:{current,proposed,new} }` (reads only); `refine-apply --id N --rev R --parts description,criteria,tasks` writes only those parts
@@ -313,3 +365,30 @@ Always JSON. A failure is `{"error":{"kind","message"}}` with exit 1; kinds as i
 - `form --type T`; `new --type T --title t [--sections-file f] [--system-info-file f] [--severity] [--priority] [--parent N] [--iteration current|path] [--area] [--assign me]` -> `{ id, rev, type, title, url, template }`
 - `draft-ask --type T --title t [--notes-file f]` -> `{ prompt, draftFile }`; `draft --draft-file f` -> `{ sections:[{heading,markdown}] }`
 - `link --id N (--set <folder> | --repo R --branch B)` -> `{ linked:[{repo,branch,added}], prs:[{repo,id,added}] }`; `fix-branch --id N [--repo R] [--base B]` -> `bugfix/<id>-<slug>` (team.yaml `branches.bugfix` wins), pushed and linked
+  (else `branchKept` says why). `{deleted{pipeline{id,name},runs,branch,repo},runsKept,branchKept}`.
+
+## Team settings: `aihub team show|validate|preview|edit|init --json`
+
+The extension's `aihub.bar.team*` commands run these and pass the JSON on; a failure is `{ "error": { kind, message } }` like the repository browser.
+
+- `team show --json --no-detect`: `{ scope: { kind: set|repo, folder, story?, title?, current }, source: { kind: teamRepo|repo|none, team, label, project?, repo?, branch?, path, commit?, short?, date?, schema?, readAt, readError? }, repos: [{ name, path, branch, uses: own|teamRepo|none, teamFile: { exists, path, commit?, date?, sameAsSource? } }], groups: [{ id, title, collapsed? }], views: { "*": KeyRow[], "<repo>": KeyRow[] }, overrides: [{ key, values: [{ repo, display }] }], templates: [{ kind: pr|story|bug|commit, title, key, path, exists? }], looked: [{ what, found, note }] }`; `KeyRow = { key, group, value, display, explain, repo? }` (`repo`: the value holds for that repository only). Without `--no-detect` also `values` and `questions` of the detection.
+- `team validate --json [--file f]`: `{ file, ok, errors, warnings, problems: [{ severity, code: yaml|unknownKey|type|missingFile|missingKey, line, col, key?, message, fix?: { label, replace?: { line, from, to }, createFromPack? }, known?, closest? }] }`. `--schema`: `{ keys: [{ key, explain, required, kind }], examples: { <top-level key>: yaml } }`.
+- `team preview --json --template k`: `{ kind, repo, branch, story?, template: { path?, source }, title?: { pattern?, text, target?, source?, createTitle? }, markdown, emptyText, sources: [{ what, value, from, how: filled|empty|agent }], note? }`.
+- `team edit --json`: `{ what, kind: teamRepo|repo, org?, project?, repo?, localPath?, branch?, path, suggestedBranch, prTitle }`; with `--content-file`: `{ validation?, target, push }` where `push` is the `browse push` answer.
+- `team init --json`: `--team-repo`: `{ teamRepo, scope, commit, branch }`; `--from-pack`: the `aihub init` result (`created`, `pr`, `questions`).
+
+
+## Run End to End: `aihub prompt`, `aihub criteria`, `aihub story progress|yolo`
+
+Text for the agent by default; `--json` for the bar (a failure then is `{"error":{"kind","message"}}`, exit 1).
+
+- Actions (one team prompt and one slash command each): story-start, story-run, story-criteria, story-refine, story-test-fabric, story-tests, story-pr, story-pr-review, story-fix-pipeline, story-explain, bug-reproduce, bug-run. The default prompts ship in `prompts/<action>.md`; the team's version in `.agents/skills/_shared/prompts/<action>.md` of its repository wins; a prompt edited for one story (`prompt save`) wins until `prompt reset`. Placeholders: `{{story.id}}`, `{{story.title}}`, `{{story.type}}`, `{{story.state}}`, `{{story.iteration}}`, `{{story.assignedTo}}`, `{{story.url}}`, `{{story.project}}`, `{{criteria}}`, `{{criteria.count}}`, `{{criteria.kinds}}`, `{{tasks}}`, `{{branch}}`, `{{target}}`, `{{repos}}`, `{{set}}`, `{{workspace}}`, `{{language}}`, `{{limits}}`.
+- `prompt render <action> --id N --json` -> `{ action, slash, title, source: story|team|default, file, summary:{goal,reads,produces,limits}, filled:[{name,value}], unknown:[], text }`; `prompt list --json` -> `{ prompts:[{action,title,slash,goal,reads,produces,source,file}] }`
+- Criteria live in the criteria field of the work item (or the template's criteria section), one numbered criterion with `Hoe getest:` and `Bewijs:` (`How tested:` / `Proof:`) under it.
+- `criteria show --id N --json` -> `{ id, rev, type, title, heading, field, markdown, criteria:[{n,text,how?,proof?}] }`; `criteria proposal-file --id N` -> the file /story-criteria writes; `criteria proposal --id N --json` -> `{ id, rev, proposalFile, rows:[{n,current?,proposed,how?,proof?,vague?,isNew,changed}] }`; `criteria apply --id N --rev R --take 1,3` -> saved | conflict (as `stories edit`)
+- `criteria status --id N --json` -> `{ id, total, proven, criteria:[{n,text,how,proof,result:pass|fail|notrun,evidence?,reason?,at?}], stateFile }`; `criteria record --id N --criterion K --result pass|fail|notrun [--evidence link] [--reason text]` (pass needs evidence, fail a reason). The status belongs to the criterion's text and is kept in the story's set folder (`.aihub-criteria-<id>.json`), else the repository's `.git/aihub/`.
+- Bugs have no acceptance criteria: `criteria` refuses a Bug, its PR gets no criteria section; Bugs use bug-reproduce, Create fix branch (`stories fix-branch`) and bug-run.
+- The options of Run End to End (`planFirst`, `fabric`, `setActive`) and the choice of Create Pull Request (`draft`, `anyway`) are kept in the run state (`story progress --action A --options planFirst=true,fabric=false`) and fill the prompt's `{{#if name}}...{{/if}}` blocks (also `noFabric`, `askChoice`); `prompt render --option draft=true` overrides one. `render --json` also answers `workspace` and `options`. `stories activate --id N`: Active when still new, assigned to me.
+- `story progress --id N [--step k --total n --label t] [--steps a|b|c] [--done] [--stop] --json` -> `{ id, running, step, total, label, steps, stepsView:[{label,state:done|running|queued}], updatedAt, stateFile }`
+- `story yolo --on|--off [--folder <set>]`: `opencode.json` in the set folder allows edits and commands except the limits (push or merge to main/staging, force push, completing a PR, ACC/PRD and deployments).
+- `pr create`: with a story that has criteria, the section Acceptatiecriteria (criterion, how tested, outcome, link or "Nog niet uitgevoerd") and "N/M bewezen" on top; not all proven: exit 5, nothing written, unless `--draft` or `--anyway`.

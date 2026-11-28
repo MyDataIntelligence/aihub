@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -140,6 +140,11 @@ export interface SearchArg extends Common {
   text: string;
   project?: string;
   repo?: string;
+  /** Search in Selected: repositories and whole projects (no repo) */
+  scope?: { project: string; repo?: string }[];
+  branch?: string;
+  /** only the clones on this PC */
+  local?: boolean;
   path?: string;
   ext?: string[];
   top?: number;
@@ -244,6 +249,10 @@ export const browseArgs = {
     if (!s(a?.text)) throw new Error("a search text is needed ({ text })");
     const out = opt(opt(opt(opt(["browse", "search", "--text", a.text], "--project", a.project), "--repo", a.repo), "--path", a.path), "--top", a.top);
     if (a.ext?.length) out.push("--ext", a.ext.join(","));
+    const scope = (a.scope ?? []).filter((x) => s(x?.project)).map((x) => (s(x.repo) ? `${x.project}/${x.repo}` : x.project));
+    if (scope.length) out.push("--scope", scope.join(","));
+    opt(out, "--branch", a.branch);
+    if (a.local) out.push("--local");
     return common(a, out);
   },
   createPr: (a: PrArg) => {
@@ -251,6 +260,11 @@ export const browseArgs = {
     const out = opt(opt(opt(repoFlags(a as never, ["browse", "pr", "--branch", a.branch]), "--target", a.target), "--story", a.story), "--pr-title", a.prTitle);
     if (a.draft) out.push("--draft");
     return common({ org: a.org }, out);
+  },
+  /** "+ related files" (changeSuggestFiles) */
+  related: (a: { org?: string; project: string; repo: string; path: string; top?: number }) => {
+    if (!s(a?.project) || !s(a?.repo) || !s(a?.path)) throw new Error("a repository and a file are needed ({ project, repo, path })");
+    return common({ org: a.org }, opt(["browse", "related", "--project", a.project, "--repo", a.repo, "--path", a.path], "--top", a.top));
   },
   suggestBranch: (a: SuggestArg) => opt(opt(opt(["browse", "suggest-branch"], "--story", a?.story), "--path", a?.path), "--title", a?.title),
 };
@@ -414,4 +428,14 @@ export function runFiles(a: BrowseRunArg): { args: string[]; dir?: string } {
   writeFileSync(file, JSON.stringify(changes), { encoding: "utf8", mode: 0o600 });
   args.push("--changes-file", file);
   return { args: common({ org: a.org }, args), dir };
+}
+
+/** The rg that ships with VS Code (in node_modules, or node_modules.asar.unpacked in older builds). */
+export function vscodeRipgrep(appRoot: string, exists: (p: string) => boolean = existsSync, platform = process.platform): string | undefined {
+  const exe = platform === "win32" ? "rg.exe" : "rg";
+  for (const nm of ["node_modules", "node_modules.asar.unpacked"]) {
+    const p = join(appRoot, nm, "@vscode", "ripgrep", "bin", exe);
+    if (exists(p)) return p;
+  }
+  return undefined;
 }

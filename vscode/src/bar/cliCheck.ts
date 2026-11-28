@@ -1,7 +1,7 @@
 import { CliError, INSTALL_COMMAND, versionAtLeast, type Runner } from "../cli";
 
-/** The first aihub CLI that has every command the buttons call (`branch switch`, `worktree add|drop|repair|remove --folder`, `worktree list --all`, `recent`, `comments threads`, `pipeline list|show|log|poll|run-again`, `browse pipelines|run|artifacts|draft-*`, `pr create` that sets the upstream of a pushed branch). */
-export const MIN_BAR_CLI = "1.9.0";
+/** The first aihub CLI that has every command the buttons call (`branch switch`, `worktree add|drop|repair|remove --folder`, `worktree list --all`, `recent`, `comments threads`, `pipeline list|show|log|poll|run-again`, `browse pipelines|run|artifacts|draft-*`, `pr create` that sets the upstream of a pushed branch, `team show|validate|preview|edit|init`, `prompt render`, `criteria`, `stories activate`, `browse change|ask|related`, `browse search --scope`). */
+export const MIN_BAR_CLI = "1.10.0";
 
 /** The CLI is missing or too old for the buttons: a plain sentence for the user, never the CLI's own usage text. */
 export class CliProblem extends Error {

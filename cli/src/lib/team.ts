@@ -1,10 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
+import { findSet } from "./setInfo.js";
+import { hasTeamSources, readCopy, teamRepoFor } from "./teamSource.js";
 
 export interface TeamConfig {
   repositories?: { name?: string; defaultTarget?: string }[];
   pullRequest?: {
+    template?: string;
+    /** title pattern: {storyId} {storyTitle} {branch} (shown by aihub team preview) */
+    title?: string;
     emptySection?: string;
     optionalSections?: string[];
     /** headings of template sections that list what readers must do themselves after the merge; the CLI refuses vague text there (--as-is overrides) */
@@ -46,9 +51,24 @@ export function readUtf8(path: string): string {
 
 export function loadTeam(repoRoot: string): TeamConfig {
   const p = join(repoRoot, TEAM_FILE);
-  if (!existsSync(p)) return {};
+  if (!existsSync(p)) return teamRepoTeam(repoRoot);
   try {
     return (parse(readUtf8(p)) as TeamConfig) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * A repository without its own team.yaml uses the team repository set with `aihub team init --team-repo` (for its set,
+ * else for every repository): the copy kept in the config folder, read without a call. Nothing set: {} (the defaults).
+ */
+function teamRepoTeam(repoRoot: string, env: NodeJS.ProcessEnv = process.env): TeamConfig {
+  if (!hasTeamSources(env)) return {}; // the usual case: one file check, no folder walk
+  try {
+    const r = teamRepoFor(env, findSet(repoRoot)?.folder);
+    const copy = r ? readCopy(env, r) : undefined;
+    return copy ? ((parse(copy.content) as TeamConfig) ?? {}) : {};
   } catch {
     return {};
   }

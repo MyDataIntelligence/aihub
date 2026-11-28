@@ -2,13 +2,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeLookIn } from "../src/lib/machineScan.js";
+import { parseGitGrep, parseRgJson, rangesIn } from "../src/lib/browse/localSearch.js";
 import { main } from "../src/router.js";
 import { browseOf, errorJson, kindOf, normPath, parseRef, BrowseError } from "../src/lib/browse/core.js";
 import { hunks, merge3, edits, splitLines } from "../src/lib/browse/lineDiff.js";
 import { browseBranches, browseDiff, browseFile, browseHistory, browseItems, browseProject, browseProjects, browseRepo, mapBranches, parsePorcelain, readmeSummary } from "../src/lib/browse/read.js";
-import { browseFind, browseSearch, linesOf, nameScore, rankFind, rememberRepo } from "../src/lib/browse/search.js";
+import { browseFind, browseSearch, linesOf, nameScore, parseScope, rankFind, relatedByName, relatedFiles, rememberRepo, scopeQueries, stemOf } from "../src/lib/browse/search.js";
 import { browsePr, browsePush, isProtected, suggestBranch } from "../src/lib/browse/push.js";
-import { ctxFor, fakeFetch, tmp, type Route } from "./helpers.js";
+import { ctxFor, fakeFetch, sh, tmp, write, type Route } from "./helpers.js";
 
 const ORG = "https://dev.azure.com/ferron-test";
 const NOW = Date.parse("2026-11-26T14:21:00Z");
@@ -174,6 +175,28 @@ describe("browse items and file", () => {
     expect(big).toMatchObject({ tooLarge: true, content: null });
     const png = await browseFile(s.b(), { project: "test-project", repo: "repo-a", path: "/logo.png" });
     expect(png).toMatchObject({ binary: true, content: null, sizeBytes: null });
+  });
+
+  it("reads the size first: a binary or a file over 5 MB is never downloaded; a folder lists its sizes", async () => {
+    const s = setup([
+      { match: /items\?path=%2Fdata%2Forders\.parquet/, respond: () => ({ body: item("/data/orders.parquet", "blob", C1, { objectId: "pq" }) }) },
+      { match: /items\?path=%2Fdata%2Fhuge\.csv/, respond: () => ({ body: item("/data/huge.csv", "blob", C1, { objectId: "huge" }) }) },
+      { match: /items\?path=%2Fdata%2Fsmall\.dat2/, respond: (c) => ({ body: { ...item("/data/small.dat2", "blob", C1, { objectId: "nul" }), ...(c.url.includes("includeContent=true") ? { content: "ab\u0000cd" } : {}) } }) },
+      { match: /blobs\/pq\?/, respond: () => ({ body: { size: 12_288 } }) },
+      { match: /blobs\/huge\?/, respond: () => ({ body: { size: 6 * 1024 * 1024 } }) },
+      { match: /blobs\/nul\?/, respond: () => ({ body: { size: 5 } }) },
+      { match: /repo-a\/items\?scopePath=%2Fdata&recursionLevel=OneLevel/, respond: () => ({ body: { value: [item("/data", "tree", C1, { objectId: "datatree" }), item("/data/orders.parquet", "blob")] } }) },
+      { match: /trees\/datatree/, respond: () => ({ body: { treeEntries: [{ relativePath: "orders.parquet", size: 12_288, gitObjectType: "blob" }] } }) },
+    ]);
+    const pq = await browseFile(s.b(), { project: "test-project", repo: "repo-a", path: "/data/orders.parquet" });
+    expect(pq).toMatchObject({ binary: true, tooLarge: false, sizeBytes: 12_288, content: null });
+    const huge = await browseFile(s.b(), { project: "test-project", repo: "repo-a", path: "/data/huge.csv" });
+    expect(huge).toMatchObject({ binary: false, tooLarge: true, sizeBytes: 6 * 1024 * 1024, content: null });
+    expect(s.calls.filter((c) => c.url.includes("includeContent=true") && /orders\.parquet|huge\.csv/.test(c.url))).toEqual([]);
+    const nul = await browseFile(s.b(), { project: "test-project", repo: "repo-a", path: "/data/small.dat2" });
+    expect(nul).toMatchObject({ binary: true, sizeBytes: 5, content: null });
+    const items = await browseItems(s.b(), { project: "test-project", repo: "repo-a", path: "/data" });
+    expect(items.items[0]).toMatchObject({ name: "orders.parquet", sizeBytes: 12_288 });
   });
 
   it("refuses a disabled repository and an unknown one", async () => {
@@ -414,9 +437,90 @@ describe("Ctrl+P and code search", () => {
     expect(r.notSearched[0].what).toBe("2 more file(s)");
   });
 
-  it("names a missing Code Search searchUnavailable", async () => {
+  it("without Code Search searches the clones on this PC and says what was not searched; nothing goes to Azure DevOps search", async () => {
     const s = setup([{ method: "POST", match: /codesearchresults/, respond: () => ({ status: 404, body: { message: "not found" } }) }]);
-    await expect(browseSearch(s.b(), { text: "x" })).rejects.toMatchObject({ kind: "searchUnavailable" });
+    const base = tmp();
+    const clone = join(base, "clones", "repo-a");
+    mkdirSync(clone, { recursive: true });
+    sh(clone, ["init", "-b", "main"]);
+    sh(clone, ["config", "remote.origin.url", "https://dev.azure.com/ferron-test/test-project/_git/repo-a"]);
+    write(clone, "src/retry.py", "MAX_RETRIES = 3\nretry(max_retries)\n");
+    write(clone, "README.md", "no hit\n");
+    sh(clone, ["add", "-A"]);
+    sh(clone, ["commit", "-m", "init"]);
+    writeLookIn(s.ctx.env, [join(base, "clones")]);
+    s.ctx.env.PATH = ""; // no ripgrep: git grep per clone
+    const r = await browseSearch(s.b(true), { text: "max_retries", ext: ["py"] });
+    expect(r.route).toBe("local");
+    expect(r.searchUnavailable?.message).toMatch(/Code Search is not available/);
+    expect(r.tool).toBe("git grep");
+    expect(r.results).toHaveLength(1);
+    expect(r.results[0]).toMatchObject({ project: "test-project", repo: "repo-a", path: "/src/retry.py", branch: "main" });
+    expect(r.results[0].matches).toEqual([
+      { line: 1, text: "MAX_RETRIES = 3", ranges: [[0, 11]] },
+      { line: 2, text: "retry(max_retries)", ranges: [[6, 17]] },
+    ]);
+    expect(r.notSearched.at(-1)).toEqual({ what: "2 remote repositories", reason: "not cloned on this PC; without Code Search only clones are searched" });
+    expect(s.calls.filter((c) => /codesearchresults/.test(c.url))).toHaveLength(1);
+    // --local: Code Search is not asked at all
+    const l = await browseSearch(s.b(true), { text: "max_retries", local: true });
+    expect(l.route).toBe("local");
+    expect(s.calls.filter((c) => /codesearchresults/.test(c.url))).toHaveLength(1);
+  });
+
+  it("Search in Selected: whole projects in one query, chosen repositories per project, the results merged", async () => {
+    expect(parseScope("test-project, test-project-agile/agile-repo,test-project/repo-a")).toEqual([{ project: "test-project" }, { project: "test-project-agile", repo: "agile-repo" }, { project: "test-project", repo: "repo-a" }]);
+    expect(scopeQueries(parseScope("p1,p2/a,p2/b,p1/x,p3/c")!)).toEqual([{ Project: ["p1"] }, { Project: ["p2"], Repository: ["a", "b"] }, { Project: ["p3"], Repository: ["c"] }]);
+    const bodies: any[] = [];
+    const s = setup([
+      {
+        method: "POST",
+        match: /codesearchresults/,
+        respond: (c) => {
+          bodies.push(c.body);
+          const agile = c.body.filters.Project[0] === "test-project-agile";
+          return { body: { count: 1, results: [{ fileName: "x.py", path: "/x.py", project: { name: agile ? "test-project-agile" : "test-project" }, repository: { name: agile ? "agile-repo" : "repo-a" }, versions: [{ branchName: "main", changeId: C1 }], matches: { content: [] } }] } };
+        },
+      },
+    ]);
+    const r = await browseSearch(s.b(), { text: "orders", scope: parseScope("test-project,test-project-agile/agile-repo") });
+    expect(bodies.map((x) => x.filters)).toEqual([{ Project: ["test-project"] }, { Project: ["test-project-agile"], Repository: ["agile-repo"] }]);
+    expect(r).toMatchObject({ route: "codeSearch", count: 2, scope: [{ project: "test-project" }, { project: "test-project-agile", repo: "agile-repo" }] });
+    expect(r.results.map((x) => `${x.project}/${x.repo}`)).toEqual(["test-project/repo-a", "test-project-agile/agile-repo"]);
+  });
+
+  it("+ related files: tests and same-name files from the tree, users from Code Search", async () => {
+    expect(stemOf("/notebooks/load_orders.py")).toBe("load_orders");
+    expect(relatedByName("/notebooks/load_orders.py", ["/notebooks/load_orders.py", "/tests/test_load_orders.py", "/tests/robot/load_orders.robot", "/dbt/load_orders.sql", "/x/other.py"])).toEqual([
+      { path: "/tests/test_load_orders.py", why: "a test of it" },
+      { path: "/tests/robot/load_orders.robot", why: "a test of it" },
+      { path: "/dbt/load_orders.sql", why: "the same name (load_orders.sql)" },
+    ]);
+    const s = setup([
+      { method: "POST", match: /codesearchresults/, respond: (c) => (expect(c.body.filters).toEqual({ Project: ["test-project"], Repository: ["repo-a"] }), { body: { results: [{ path: "/jobs/run.py" }, { path: "/notebooks/load_orders.py" }] } }) },
+      { match: /repo-a\/refs\?filter=heads%2Fmain/, respond: () => ({ body: { value: [{ name: "refs/heads/main", objectId: C1 }] } }) },
+      { match: /repo-a\/items\?scopePath=%2F&recursionLevel=Full/, respond: () => ({ body: { value: [item("/notebooks/load_orders.py", "blob"), item("/tests/test_load_orders.py", "blob")] } }) },
+    ]);
+    expect(await relatedFiles(s.b(), { project: "test-project", repo: "repo-a", path: "/notebooks/load_orders.py" })).toEqual({
+      route: "codeSearch",
+      files: [
+        { path: "/tests/test_load_orders.py", why: "a test of it" },
+        { path: "/jobs/run.py", why: "uses load_orders" },
+      ],
+    });
+  });
+
+  it("parses ripgrep and git grep output into lines with ranges", () => {
+    expect(rangesIn("Retry retry", "retry")).toEqual([
+      [0, 5],
+      [6, 11],
+    ]);
+    const rg = [
+      JSON.stringify({ type: "begin", data: { path: { text: "C:/c/repo-a/x.py" } } }),
+      JSON.stringify({ type: "match", data: { path: { text: "C:/c/repo-a/x.py" }, line_number: 4, lines: { text: "a = MAX_RETRIES\n" } } }),
+    ].join("\n");
+    expect(parseRgJson(rg, "max_retries")).toEqual([{ file: "C:/c/repo-a/x.py", line: 4, text: "a = MAX_RETRIES", ranges: [[4, 15]] }]);
+    expect(parseGitGrep("origin/develop:src/a.py:7:3:x MAX_RETRIES\n", "max_retries", "origin/develop")).toEqual([{ file: "src/a.py", line: 7, text: "x MAX_RETRIES", ranges: [[2, 13]] }]);
   });
 });
 

@@ -13,6 +13,7 @@ import {
   type ReadMeta,
 } from "./core.js";
 import { browseProjects, clonesOf, readFileAt, type Clone } from "./read.js";
+import { searchClones, type LocalTarget } from "./localSearch.js";
 
 /**
  * Ctrl+P and code search over every repository. Both use Azure DevOps Code Search (almsearch) when the organisation has
@@ -167,6 +168,14 @@ export interface SearchMatch {
 }
 
 export interface SearchResult extends ReadMeta {
+  /** codeSearch: Azure DevOps Code Search; local: Code Search is off, only the clones on this PC were searched */
+  route: "codeSearch" | "local";
+  /** local only: why, for the notice ("Code Search is not available ...") */
+  searchUnavailable?: { message: string };
+  /** local only: ripgrep or git grep */
+  tool?: string;
+  /** Search in Selected: the scope that was searched */
+  scope?: ScopeItem[];
   count: number;
   results: { project: string; repo: string; path: string; branch: string; commit: string | null; clone: Clone | null; matches: SearchMatch[] }[];
   notSearched: { what: string; reason: string }[];
@@ -201,23 +210,89 @@ export function linesOf(content: string, hits: { charOffset: number; length: num
   });
 }
 
-export async function browseSearch(b: Browse, o: { text: string; project?: string; repo?: string; path?: string; ext?: string[]; top?: number }): Promise<SearchResult> {
+export interface ScopeItem {
+  project: string;
+  /** absent: the whole project */
+  repo?: string;
+}
+
+/** `project` or `project/repo`, comma separated. */
+export function parseScope(s: string | undefined): ScopeItem[] | undefined {
+  const items = (s ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (!items.length) return undefined;
+  return items.map((x) => {
+    const i = x.indexOf("/");
+    return i < 0 ? { project: x } : { project: x.slice(0, i), repo: x.slice(i + 1) };
+  });
+}
+
+/**
+ * Code Search filters a repository within its project: a scope of whole projects and single repositories becomes one query for
+ * the whole projects and one per project with chosen repositories (a repository of a project that is in whole is left out).
+ */
+export function scopeQueries(scope: ScopeItem[]): Record<string, string[]>[] {
+  const whole = [...new Set(scope.filter((x) => !x.repo).map((x) => x.project))];
+  const wholeKey = new Set(whole.map((p) => p.toLowerCase()));
+  const byProject = new Map<string, string[]>();
+  for (const x of scope) {
+    if (!x.repo || wholeKey.has(x.project.toLowerCase())) continue;
+    const list = byProject.get(x.project) ?? [];
+    if (!list.some((r) => r.toLowerCase() === x.repo!.toLowerCase())) list.push(x.repo);
+    byProject.set(x.project, list);
+  }
+  return [...(whole.length ? [{ Project: whole }] : []), ...[...byProject].map(([p, repos]) => ({ Project: [p], Repository: repos }))];
+}
+
+export async function browseSearch(b: Browse, o: { text: string; project?: string; repo?: string; scope?: ScopeItem[]; path?: string; ext?: string[]; branch?: string; top?: number; local?: boolean }): Promise<SearchResult> {
+  if (o.scope?.length) return searchScope(b, { ...o, scope: o.scope });
+  return searchOne(b, o);
+}
+
+/** Search in Selected: one query per group of the scope, the results merged (newest groups cannot crowd out the others: each gets its share of --top). */
+async function searchScope(b: Browse, o: { text: string; scope: ScopeItem[]; path?: string; ext?: string[]; branch?: string; top?: number; local?: boolean }): Promise<SearchResult> {
+  const top = Math.min(Math.max(o.top ?? 50, 1), 200);
+  const groups = scopeQueries(o.scope);
+  if (o.local) return searchLocal(b, { ...o, scope: o.scope }, top, "local search was asked for (--local)");
+  const answers = await pool(groups, 3, (filters) => searchOne(b, { ...o, filters, top: Math.max(Math.ceil(top / groups.length), 10) }));
+  const local = answers.find((a) => a.route === "local");
+  if (local) return searchLocal(b, { ...o, scope: o.scope }, top, local.searchUnavailable?.message ?? "Code Search is not available");
+  return {
+    readAt: answers.map((a) => a.readAt).sort()[0] ?? new Date(b.now()).toISOString(),
+    cached: answers.every((a) => a.cached),
+    route: "codeSearch",
+    count: answers.reduce((n, a) => n + a.count, 0),
+    results: answers.flatMap((a) => a.results),
+    notSearched: answers.flatMap((a) => a.notSearched),
+    scope: o.scope,
+  };
+}
+
+async function searchOne(b: Browse, o: { text: string; project?: string; repo?: string; path?: string; ext?: string[]; branch?: string; top?: number; local?: boolean; filters?: Record<string, string[]> }): Promise<SearchResult> {
   const text = o.text.trim();
   if (!text) throw new BrowseError("badInput", "aihub browse search needs --text <text>");
   const top = Math.min(Math.max(o.top ?? 25, 1), 100);
-  const filters: Record<string, string[]> = {};
+  const filters: Record<string, string[]> = { ...(o.filters ?? {}) };
   if (o.project) filters.Project = [o.project];
   if (o.repo) {
     if (!o.project) throw new BrowseError("badInput", "--repo needs --project too (Code Search filters a repository within a project)");
     filters.Repository = [o.repo];
   }
   if (o.path) filters.Path = [normPath(o.path)];
+  if (o.branch) filters.Branch = [o.branch];
+  if (o.local) return searchLocal(b, o, top, "local search was asked for (--local)");
   const ext = (o.ext ?? []).map((e) => e.replace(/^\*?\./, "").trim()).filter(Boolean);
   const searchText = ext.length ? `${text} ${ext.length === 1 ? `ext:${ext[0]}` : `(${ext.map((e) => `ext:${e}`).join(" OR ")})`}` : text;
   const clones = clonesOf(b);
-  const { data, meta } = await guarded(b, "search", () =>
-    cached(b, `search|${b.org}|${searchText}|${JSON.stringify(filters)}|${top}`, TTL.short, () => codeSearch(b, { searchText, $skip: 0, $top: top, filters, includeFacets: false })),
-  );
+  let found: Awaited<ReturnType<typeof cached<{ count?: number; results?: RawHit[] }>>>;
+  try {
+    found = await guarded(b, "search", () =>
+      cached(b, `search|${b.org}|${searchText}|${JSON.stringify(filters)}|${top}`, TTL.short, () => codeSearch(b, { searchText, $skip: 0, $top: top, filters, includeFacets: false })),
+    );
+  } catch (e) {
+    if (kindOf(e) !== "searchUnavailable") throw e;
+    return searchLocal(b, o, top, (e as Error).message);
+  }
+  const { data, meta } = found;
   const notSearched: SearchResult["notSearched"] = [];
   const results = await pool(data.results ?? [], 6, async (x) => {
     const project = x.project?.name ?? "";
@@ -238,5 +313,103 @@ export async function browseSearch(b: Browse, o: { text: string; project?: strin
     return { project, repo, path, branch: x.versions?.[0]?.branchName ?? "", commit, clone: cloneOf(clones, b.org, project, repo), matches };
   });
   if ((data.count ?? 0) > results.length) notSearched.push({ what: `${(data.count ?? 0) - results.length} more file(s)`, reason: `only the first ${top} are shown (--top)` });
-  return { ...meta, count: data.count ?? results.length, results, notSearched };
+  return { ...meta, route: "codeSearch", count: data.count ?? results.length, results, notSearched };
+}
+
+/** Code Search is off: the clones on this PC only (ripgrep, else git grep); nothing goes to Azure DevOps. */
+async function searchLocal(b: Browse, o: { text: string; project?: string; repo?: string; scope?: ScopeItem[]; path?: string; ext?: string[]; branch?: string }, top: number, why: string): Promise<SearchResult> {
+  const inScope = (project: string, repo: string) => !o.scope?.length || o.scope.some((x) => x.project.toLowerCase() === project.toLowerCase() && (!x.repo || x.repo.toLowerCase() === repo.toLowerCase()));
+  const clones = clonesOf(b);
+  const org = b.org.toLowerCase();
+  const targets: LocalTarget[] = [];
+  for (const [key, clone] of clones) {
+    const [kOrg, project, repo] = key.split("/");
+    if (kOrg !== org) continue;
+    if (o.project && project !== o.project.toLowerCase()) continue;
+    if (o.repo && repo !== o.repo.toLowerCase()) continue;
+    if (!inScope(project, repo)) continue;
+    targets.push({ project, repo, clone });
+  }
+  // the real names, and how many repositories were not searched (the list is cached; offline it is left out)
+  let remote = 0;
+  try {
+    const all = (await browseProjects(b)).projects.flatMap((p) => p.repos).filter((r) => (!o.project || r.project.toLowerCase() === o.project.toLowerCase()) && (!o.repo || r.repo.toLowerCase() === o.repo.toLowerCase()) && inScope(r.project, r.repo));
+    for (const t of targets) {
+      const r = all.find((x) => x.project.toLowerCase() === t.project && x.repo.toLowerCase() === t.repo);
+      if (r) (t.project = r.project), (t.repo = r.repo);
+    }
+    remote = all.filter((r) => r.canOpen && !targets.some((t) => t.project === r.project && t.repo === r.repo)).length;
+  } catch {
+    remote = 0;
+  }
+  const r = searchClones(b, targets, { text: o.text.trim(), path: o.path, ext: o.ext, branch: o.branch, top });
+  const notSearched = [...r.skipped, ...(remote ? [{ what: `${remote} remote repositor${remote === 1 ? "y" : "ies"}`, reason: "not cloned on this PC; without Code Search only clones are searched" }] : [])];
+  return {
+    readAt: new Date(b.now()).toISOString(),
+    cached: false,
+    route: "local",
+    searchUnavailable: { message: why },
+    tool: r.tool,
+    count: r.files.length,
+    results: r.files.map((f) => ({ project: f.project, repo: f.repo, path: f.path, branch: f.branch, commit: null, clone: f.clone, matches: f.matches })),
+    notSearched,
+    ...(o.scope?.length ? { scope: o.scope } : {}),
+  };
+}
+
+// ---- "+ related files" ----------------------------------------------------------------------------------------------
+
+export interface RelatedFile {
+  path: string;
+  why: string;
+}
+
+/** The module name of a file: its name without the extension (`load_orders` for /notebooks/load_orders.py). */
+export const stemOf = (path: string) => (path.split("/").pop() ?? "").replace(/\.[^.]+$/, "");
+
+/** Tests and siblings by name: test_<stem>, <stem>_test, <stem>.robot, the same stem with another extension. */
+export function relatedByName(path: string, all: string[]): RelatedFile[] {
+  const stem = stemOf(path).toLowerCase();
+  if (!stem) return [];
+  const out: RelatedFile[] = [];
+  for (const p of all) {
+    if (p === path) continue;
+    const s = stemOf(p).toLowerCase();
+    const name = (p.split("/").pop() ?? "").toLowerCase();
+    if (s === `test_${stem}` || s === `${stem}_test` || s === `${stem}.test` || s === `${stem}.spec` || (/test/i.test(p) && s.includes(stem))) out.push({ path: p, why: "a test of it" });
+    else if (s === stem) out.push({ path: p, why: `the same name (${name})` });
+  }
+  return out;
+}
+
+/**
+ * "+ related files" for Change with Agent: the files of the same repository that use the file (Code Search for its module name),
+ * its tests and siblings by name (the tree of the default branch). At most `top`; nothing is read beyond one search and one tree.
+ */
+export async function relatedFiles(b: Browse, o: { project: string; repo: string; path: string; top?: number }): Promise<{ route: "codeSearch" | "tree"; files: RelatedFile[] }> {
+  const path = normPath(o.path);
+  const top = Math.min(Math.max(o.top ?? 10, 1), 30);
+  const stem = stemOf(path);
+  const out = new Map<string, RelatedFile>();
+  let route: "codeSearch" | "tree" = "codeSearch";
+  try {
+    const r = await codeSearch(b, { searchText: stem, $skip: 0, $top: 50, filters: { Project: [o.project], Repository: [o.repo] }, includeFacets: false });
+    for (const x of r.results ?? []) {
+      const p = normPath(x.path);
+      if (p !== path && !out.has(p)) out.set(p, { path: p, why: `uses ${stem}` });
+    }
+  } catch (e) {
+    if (kindOf(e) !== "searchUnavailable") throw e;
+    route = "tree";
+  }
+  try {
+    const { projects } = await browseProjects(b);
+    const row = projects.flatMap((p) => p.repos).find((r) => r.project.toLowerCase() === o.project.toLowerCase() && r.repo.toLowerCase() === o.repo.toLowerCase());
+    if (row?.defaultBranch) for (const f of relatedByName(path, await treeOf(b, row.project, row.repo, row.defaultBranch))) out.set(f.path, f);
+  } catch {
+    /* the tree is a help, not a must */
+  }
+  // tests first, then the same name, then the users
+  const rank = (f: RelatedFile) => (f.why === "a test of it" ? 0 : f.why.startsWith("the same name") ? 1 : 2);
+  return { route, files: [...out.values()].sort((x, y) => rank(x) - rank(y) || x.path.localeCompare(y.path)).slice(0, top) };
 }

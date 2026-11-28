@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import * as vscode from "vscode";
 import { cli, jsonOf } from "./runner";
-import { BrowseMemo, browseArgs, browseErrorOf, pipeBrowseArgs, pushFiles, removePushFiles, runFiles, scopeOf, type BrowseError, type BrowseRunArg, type PrArg, type PushArg } from "./browse";
+import { BrowseMemo, vscodeRipgrep, browseArgs, browseErrorOf, pipeBrowseArgs, pushFiles, removePushFiles, runFiles, scopeOf, type BrowseError, type BrowseRunArg, type PrArg, type PushArg } from "./browse";
 import { BAR_COMMANDS } from "./types";
 
 /** The CLI runs in this window's first folder (its clone tells the organisation and the repos root), else in the home folder. */
@@ -35,8 +35,17 @@ export function registerBrowseCommands(reg: (id: string, f: (...a: any[]) => unk
   reg(BAR_COMMANDS.browseDiff, read("diff", browseArgs.diff));
   reg(BAR_COMMANDS.browseBlame, read("blame", browseArgs.blame));
   reg(BAR_COMMANDS.browseFind, read("find", browseArgs.find));
-  reg(BAR_COMMANDS.browseSearch, read("search", browseArgs.search));
+  // Text in files without Code Search: VS Code's own ripgrep for the local fallback (else git grep per clone)
+  const withRg = <A>(f: (a: A) => unknown) => (a: A) => {
+    if (!process.env.AIHUB_RG) {
+      const rg = vscodeRipgrep(vscode.env.appRoot);
+      if (rg) process.env.AIHUB_RG = rg;
+    }
+    return f(a);
+  };
+  reg(BAR_COMMANDS.browseSearch, withRg(read("search", browseArgs.search)));
   reg(BAR_COMMANDS.browseSuggestBranch, read("suggest", browseArgs.suggestBranch));
+  reg(BAR_COMMANDS.changeSuggestFiles, read("related", browseArgs.related));
   // a write: never shared, never remembered; the content and message go in private files that are removed right after
   reg(BAR_COMMANDS.browsePush, async (a: PushArg) => {
     let files: ReturnType<typeof pushFiles>;

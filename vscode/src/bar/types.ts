@@ -300,6 +300,41 @@ export const BAR_COMMANDS = {
    * `newBranch` makes a worktree from origin/`from` (else origin's default branch). Answer `{ opened, repos: [one row] }`. Failure of the whole call: `{ error: { kind: badInput|cancelled|failed|cliMissing|cliTooOld, message } }`.
    */
   openReposAsSet: "aihub.bar.openReposAsSet",
+  // ---- Change with Agent (aihub browse change; docs/cli-json.md "Change with Agent"; a failure is { error: { kind, message } }) ----
+  /**
+   * `{ project, repo, branch?, paths?, selection?: { path, startLine, endLine }, prompt, mode: "remote"|"workingCopy",
+   * where: "panel"|"newWindow"|"terminal", newBranch?, story?, remoteUrl?, org? }`. remote: an `aihub browse change` workspace (no
+   * clone) -> `{ id, mode, where, dir, filesDir, branch, base, agent }`; watch `filesDir` (a FileSystemWatcher on that folder) and call
+   * changeState after a debounce. workingCopy: a worktree on the new branch (cloned when needed) -> `{ mode, where, path, branch, cloned,
+   * taskFile, agent }`. The agent is opencode: a terminal in this window (panel), a new window that starts it (newWindow) or Windows
+   * Terminal (terminal). Nothing is pushed.
+   */
+  changeStart: "aihub.bar.changeStart",
+  /** `{ id }` -> `aihub browse change diff`: files with status, additions, deletions and hunks; totals; summary; problems; plus `agent`: "working" (its terminal in this window is open) | "stopped" | "closed" | "unknown" (Windows Terminal or another window) */
+  changeState: "aihub.bar.changeState",
+  /** `{ id, message?, pr?, target?, story?, prTitle?, draft?, rebase?, branch? }` -> `{ status: "pushed", ... }` or `{ status: "conflict", files }` */
+  changePush: "aihub.bar.changePush",
+  /** `{ id }` -> `{ id, discarded: true }` */
+  changeDiscard: "aihub.bar.changeDiscard",
+  /** `{ id }` (or `{ path }` of a working-copy change): ends the agent's terminal in this window; the files stay -> `{ id, stopped, agent, reason? }` */
+  changeStop: "aihub.bar.changeStop",
+  /** `{ id, where?: "newWindow"|"terminal"|"panel"|"here", remoteUrl? }`: a worktree on the change's branch with the change in it -> `{ id, path, branch, cloned, applied, skipped }` */
+  changeToWorkingCopy: "aihub.bar.changeToWorkingCopy",
+  /** `{ project, repo, path, top? }` ("+ related files") -> `aihub browse related`: `{ route: "codeSearch"|"tree", files: [{ path, why }] }`: tests and same-name files first, then the files that use it */
+  changeSuggestFiles: "aihub.bar.changeSuggestFiles",
+  // ---- Ask Agent about Selected (aihub browse ask; read only; docs/cli-json.md "Ask Agent about Selected") ----
+  /** `{ scope: [{ project, repo? }], prompt, where?: "panel"|"newWindow"|"terminal", story?, limit? }` -> `{ id, where, dir, limit, agent, terminal? }`; changeStop `{ id }` stops it too */
+  askStart: "aihub.bar.askStart",
+  /** `{ id }` -> `{ id, prompt, scope, status: "open"|"answered", reads: { count, limit }, needsApproval, summary, branch, repos: [{ project, repo, base, finding, refs, proposals: [{ path, status, additions, deletions, hunks }], change }], agent }` */
+  askState: "aihub.bar.askState",
+  /** `{ id, more? }` (the user allows more than the limit of 200 files read) -> `{ id, read, limit }` */
+  askAllow: "aihub.bar.askAllow",
+  /** `{ id, project, repo, branch?, story? }` (Apply in Feature Branch): a change with the proposals of that repository, the same branch for every repository -> the changeStart answer + `applied` */
+  askApply: "aihub.bar.askApply",
+  /** `{ id, branch?, story?, window? }` (Open These Repos as Set): the repositories of the report through openReposAsSet on the question's branch */
+  askOpenAsSet: "aihub.bar.askOpenAsSet",
+  /** `{ id }` -> `{ id, discarded: true }` */
+  askDiscard: "aihub.bar.askDiscard",
   browseProjects: "aihub.bar.browseProjects",
   /** `{ project, days?, org?, refresh? }` -> `aihub browse project`: repositories with language and last activity, recent files, active authors */
   browseProject: "aihub.bar.browseProject",
@@ -437,4 +472,36 @@ export const BAR_COMMANDS = {
   storyFixBranch: "aihub.bar.storyFixBranch",
   /** forget the remembered failures (after az login or a CLI update) */
   storyRetryNow: "aihub.bar.storyRetryNow",
+  // ---- team settings (docs/cli-json.md "Team settings"; the same error shape as the repository browser; nothing polls) ----
+  /** `{ cwd?, repo?, refresh? }` -> `aihub team show --json --no-detect`: which team.yaml applies, keys per repository (`views`), overrides, templates, where aihub looked */
+  teamShow: "aihub.bar.teamShow",
+  /** `{}` -> `aihub team validate --schema`: every key with its explanation and an example block per top-level key (the editor's key help) */
+  teamSchema: "aihub.bar.teamSchema",
+  /** `{ cwd?, content? }` -> `aihub team validate --json`: `{ ok, errors, warnings, problems[] }` with line, message and fix */
+  teamValidate: "aihub.bar.teamValidate",
+  /** `{ cwd?, template: pr|story|bug|commit, repo? }` -> `aihub team preview --json`: the template filled with this branch's data, and where each value came from */
+  teamPreview: "aihub.bar.teamPreview",
+  /** `{ cwd?, template?, repo? }` -> where the file lives; with `{ content, branch, title?, baseCommit?, story? }`: a new branch and a pull request in the team repository (never main) */
+  teamEdit: "aihub.bar.teamEdit",
+  /** `{ cwd?, mode: "pack", repo? }` -> team.yaml from the team pack as a pull request; `{ mode: "teamRepo", teamRepo, everywhere? }` -> use that team repository */
+  teamInit: "aihub.bar.teamInit",
+  // ---- Run End to End and the agent actions per story (docs/cli-json.md "Run End to End"; failures as the story browser) ----
+  /** `{ id, action, repos?, yolo?, planFirst?, fabric?, setActive?, draft?, anyway?, window?: new|this, project? }` (action story-stop: marks the run stopped and sends Escape to opencode) -> opens or reuses the story's set (starts the story when it has no branches) and starts the opencode tab there with `/<action> <id>`; another window gets a one-shot pending action: `{ id, action, command, folder, window, started }` */
+  storyAction: "aihub.bar.storyAction",
+  /** `{ id, action, project? }` -> `aihub prompt render <action> --id N --json`: `{ action, slash, title, source: story|team|default, file, summary, filled, unknown, text }` */
+  storyPrompt: "aihub.bar.storyPrompt",
+  /** `{ id, action, text }` -> Edit Prompt: kept for this story and action until reset */
+  storyPromptSave: "aihub.bar.storyPromptSave",
+  /** `{ id, action }` -> Reset to Generated: `{ reset }` */
+  storyPromptReset: "aihub.bar.storyPromptReset",
+  /** `{ project? }` -> `{ prompts:[{ action, title, slash, goal, reads, produces, source, file }] }` */
+  storyPrompts: "aihub.bar.storyPrompts",
+  /** `{ id }` -> `{ id, running, step, total, label, steps:[{label, state: done|running|queued}], updatedAt, stateFile }` (the badge; watch `stateFile` instead of asking again) */
+  storyRunState: "aihub.bar.storyRunState",
+  /** `{ id }` -> `{ id, total, proven, criteria:[{ n, text, how, proof, result: pass|fail|notrun, evidence?, reason?, at? }], stateFile }` */
+  criteriaStatus: "aihub.bar.criteriaStatus",
+  /** `{ id }` -> `{ id, rev, proposalFile, rows:[{ n, current?, proposed, how?, proof?, vague?, isNew, changed }] }` (written by /story-criteria) */
+  criteriaProposal: "aihub.bar.criteriaProposal",
+  /** `{ id, rev, take:[n] }` -> writes only the ticked criteria with their how-tested and proof lines: saved | conflict */
+  criteriaApply: "aihub.bar.criteriaApply",
 } as const;

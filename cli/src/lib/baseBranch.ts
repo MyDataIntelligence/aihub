@@ -9,7 +9,10 @@ import { missingSetting } from "./team-guide.js";
  * The branch a feature branch was cut from, when team.yaml does not name the target: local git only (no fetch).
  * Candidates: origin/HEAD, the protected branches of team.yaml, the upstream (branch.<b>.merge) and what the reflogs
  * say ("branch: Created from X", "checkout: moving from X to <b>"). The winner is the candidate whose merge-base with
- * HEAD is closest to HEAD (fewest commits of HEAD after it), then whose tip is least ahead of that merge-base.
+ * HEAD is closest to HEAD (fewest commits of HEAD after it). Among those that are equally close: what the branch itself says
+ * (its upstream or reflog) wins, then staging (the integration branch), and only then the tip that moved on least. Without
+ * that order a branch cut from staging while staging and main were on the same commit came out as main: main moves on
+ * less, so it looked "closer".
  * A tie, or no merge-base at all, is not guessed: MissingTeamSetting (exit 3) before anything is created.
  */
 export interface DerivedTarget {
@@ -50,15 +53,20 @@ function localOrigins(root: string, branch: string): string[] {
   // the HEAD reflog when the branch was first checked out: "checkout: moving from develop to feature/1-x"
   const esc = branch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const moved = lastMatch(git(root, ["log", "-g", "--format=%gs", "-n", "500", "HEAD"], { allowFail: true }), new RegExp(`^checkout: moving from (\\S+) to ${esc}$`));
-  if (moved) out.push(moved);
+  // only when the branch's own reflog does not name its start: "moving from main" just says where HEAD was when a branch was
+  // created from origin/staging, and would make main a second, equally close candidate
+  if (moved && (!created || created === "HEAD")) out.push(moved);
   return [...new Set(out)].filter((b) => b !== branch && !/^[0-9a-f]{7,40}$/.test(b));
 }
 
-/** [commits of the candidate after the merge-base, commits of HEAD after it]; undefined without a merge-base. */
+/** [commits of the candidate after the merge-base, commits of HEAD after it along its own first-parent line]; undefined without a merge-base. */
 function distance(root: string, ref: string): [number, number] | undefined {
   const out = git(root, ["rev-list", "--left-right", "--count", `${ref}...HEAD`], { allowFail: true }).trim();
   const m = /^(\d+)\s+(\d+)$/.exec(out);
-  return m ? [Number(m[1]), Number(m[2])] : undefined;
+  if (!m) return undefined;
+  // the branch's own line of work: a merge of another branch into it (main merged into a feature cut from staging) is not work after that branch
+  const own = git(root, ["rev-list", "--first-parent", "--count", `${ref}..HEAD`], { allowFail: true }).trim();
+  return [Number(m[1]), /^\d+$/.test(own) ? Number(own) : Number(m[2])];
 }
 
 /**
@@ -91,9 +99,13 @@ export function deriveTarget(ctx: { env: NodeJS.ProcessEnv }, root: string, bran
     return undefined;
   }
   scored.sort((a, b) => a.ahead - b.ahead || a.behind - b.behind);
-  const best = scored.filter((s) => s.ahead === scored[0].ahead && s.behind === scored[0].behind);
-  let win = best.length === 1 ? best[0] : best.filter((s) => s.local).length === 1 ? best.find((s) => s.local) : undefined;
-  if (!win) throw missingSetting(KEY, best.map((s) => s.name), HINT);
+  const closest = scored.filter((s) => s.ahead === scored[0].ahead);
+  const said = closest.filter((s) => s.local);
+  const pool = said.length ? said : closest;
+  const staging = said.length ? undefined : closest.find((s) => s.name === "staging");
+  const leastMoved = pool.filter((s) => s.behind === Math.min(...pool.map((p) => p.behind)));
+  const win = said.length === 1 ? said[0] : staging ?? (leastMoved.length === 1 ? leastMoved[0] : undefined);
+  if (!win) throw missingSetting(KEY, leastMoved.map((s) => s.name), HINT);
   // the closest candidate shares no history with HEAD: then none does (rev-list counts work without a merge-base)
   if (!git(root, ["merge-base", win.ref, "HEAD"], { allowFail: true }).trim()) throw missingSetting(KEY, scored.map((s) => s.name), HINT);
   const result: DerivedTarget = { target: win.name, how: scored.length === 1 && win.name === def ? "default branch" : "branch point" };

@@ -42,6 +42,8 @@ export interface CreateOpts {
   noNotes?: boolean;
   /** skip the check of the sections that list actions for the reader */
   asIs?: boolean;
+  /** create it although not every acceptance criterion of the story is proven */
+  anyway?: boolean;
   json?: boolean;
 }
 
@@ -100,6 +102,7 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
   const emptyText = team.pullRequest?.emptySection || DEFAULT_EMPTY;
   let description: string;
   let summary: string;
+  let filled: { heading: string; by: string }[] = [];
   if (tpl) {
     const fallback = {
       changes: changesText(commits, diffSummary(root, mergeBase(root, target))),
@@ -108,6 +111,7 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
     const c = compose({ template: tpl.content, body, code, emptyText, fallback, dropExtra: !o.asIs });
     for (const h of c.dropped) ctx.err(`warning: section "${h}" is not in the team template; left out`);
     description = c.text;
+    filled = c.filled;
     const by = (k: string) => c.filled.filter((f) => f.by === k).map((f) => f.heading);
     summary = [
       by("body").length ? `body: ${by("body").join(", ")}` : "",
@@ -126,6 +130,15 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
   }
   if (!o.asIs) checkNoise(given, "created");
   if (!o.asIs) checkActionSections({ description, configured: team.pullRequest?.actionSections, emptyText, template: tpl?.content, verb: "created" });
+  // the story's acceptance criteria with their test status: the required section, "N/M proven" on top; not all proven
+  // stops here (nothing written) unless the user chose --draft or --anyway
+  const crit = wi ? await (await import("./e2e/prSection.js")).prCriteria(ctx, client, wi, team.language as string | undefined).catch(() => undefined) : undefined;
+  if (crit) {
+    const ps = await import("./e2e/prSection.js");
+    description = ps.withCriteria(description, crit.status, crit.lang);
+    summary = [summary, `criteria ${crit.status.proven}/${crit.status.total} proven`].filter(Boolean).join("; ");
+    if (crit.status.proven < crit.status.total && !o.dryRun && !o.draft && !o.anyway) throw ps.notProvenError(crit.status, wi!, crit.lang);
+  }
   const note = derivedNote(derived);
   if (note) summary = [summary, note].filter(Boolean).join("; ");
   const warn = impactWarning(root, mergeBase(root, target), team, description);
@@ -133,7 +146,7 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
 
   if (o.dryRun) {
     return o.json
-      ? JSON.stringify({ dryRun: true, title, target, source: branch, workItem: wi, template: tpl?.path, description })
+      ? JSON.stringify({ dryRun: true, title, target, source: branch, workItem: wi, workItemTitle: wiTitle, template: tpl?.path, description, filled, emptyText, commits: commits.length })
       : `dry-run: '${title}' ${branch} -> ${target} (${summary})\n${description}`;
   }
 

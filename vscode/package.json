@@ -2,7 +2,7 @@
   "name": "ai-context-hub",
   "displayName": "AI Context Hub",
   "description": "A thin status bar and panel over the aihub CLI: story, branch, pull request, pipeline, review threads, Fabric runs and watch events. Actions open in your chat (Copilot Chat or opencode).",
-  "version": "3.8.0",
+  "version": "3.9.0",
   "publisher": "FerronHooi",
   "license": "MIT",
   "private": true,
@@ -622,6 +622,71 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.changeStart",
+        "title": "Change with Agent...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.changeState",
+        "title": "Change with Agent: State",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.changePush",
+        "title": "Change with Agent: Push to Feature Branch",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.changeDiscard",
+        "title": "Change with Agent: Discard",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.changeStop",
+        "title": "Change with Agent: Stop",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.changeToWorkingCopy",
+        "title": "Change with Agent: Open as Working Copy",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.changeSuggestFiles",
+        "title": "Change with Agent: Related Files",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.askStart",
+        "title": "Ask Agent about Selected...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.askState",
+        "title": "Ask Agent: State",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.askAllow",
+        "title": "Ask Agent: Allow More Files",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.askApply",
+        "title": "Ask Agent: Apply in Feature Branch",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.askOpenAsSet",
+        "title": "Ask Agent: Open These Repos as Set",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.askDiscard",
+        "title": "Ask Agent: Discard",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.browseProjects",
         "title": "Repositories: Projects",
         "category": "AI Context Hub"
@@ -819,6 +884,36 @@
       {
         "command": "aihub.bar.browseDrafts",
         "title": "Draft Pipelines",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.teamShow",
+        "title": "Team Settings (read)",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.teamSchema",
+        "title": "Team Settings Schema",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.teamValidate",
+        "title": "Validate team.yaml",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.teamPreview",
+        "title": "Preview Team Template",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.teamEdit",
+        "title": "Edit Team File",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.teamInit",
+        "title": "Set Up Team Settings",
         "category": "AI Context Hub"
       },
       {
@@ -1044,6 +1139,51 @@
       {
         "command": "aihub.bar.storyRetryNow",
         "title": "Work Items: Try Again Now",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyAction",
+        "title": "Work Items: Run Agent Action",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyPrompt",
+        "title": "Work Items: Agent Prompt",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyPromptSave",
+        "title": "Work Items: Save Agent Prompt",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyPromptReset",
+        "title": "Work Items: Reset Agent Prompt",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyPrompts",
+        "title": "Work Items: Agent Prompts",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.storyRunState",
+        "title": "Work Items: Run State",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.criteriaStatus",
+        "title": "Work Items: Criteria Status",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.criteriaProposal",
+        "title": "Work Items: Criteria Proposal",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.criteriaApply",
+        "title": "Work Items: Apply Criteria",
         "category": "AI Context Hub"
       }
     ],
@@ -1932,6 +2072,58 @@
           "when": "false"
         },
         {
+          "command": "aihub.bar.changeStart",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeState",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changePush",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeDiscard",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeStop",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeToWorkingCopy",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeSuggestFiles",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askStart",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askState",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askAllow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askApply",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askOpenAsSet",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.askDiscard",
+          "when": "false"
+        },
+        {
           "command": "aihub.bar.browseProjects",
           "when": "false"
         },
@@ -2092,6 +2284,30 @@
           "when": "false"
         },
         {
+          "command": "aihub.bar.teamShow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.teamSchema",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.teamValidate",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.teamPreview",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.teamEdit",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.teamInit",
+          "when": "false"
+        },
+        {
           "command": "aihub.bar.browseDraftDelete",
           "when": "false"
         },
@@ -2193,6 +2409,42 @@
         },
         {
           "command": "aihub.bar.storyRetryNow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyAction",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyPrompt",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyPromptSave",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyPromptReset",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyPrompts",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.storyRunState",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.criteriaStatus",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.criteriaProposal",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.criteriaApply",
           "when": "false"
         }
       ],

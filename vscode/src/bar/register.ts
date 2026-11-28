@@ -14,8 +14,12 @@ import { registerSearchCommands } from "./searchUi";
 import { registerPipelineCommands } from "./pipelinesUi";
 import { registerBrowseCommands } from "./browseUi";
 import { registerOpenReposAsSet } from "./openReposAsSetUi";
+import { registerChangeCommands, startPendingAgent } from "./changeUi";
+import { trackedTimeout } from "../perf/probe";
 import { registerWikiCommands } from "./wikiUi";
 import { registerStoryBrowserCommands } from "./storiesUi";
+import { registerTeamCommands } from "./teamUi";
+import { registerE2eCommands } from "./e2eUi";
 import { SizeMemo } from "./setSize";
 import { showFailure } from "./failureUi";
 import { withCloneRecovery } from "./missingCloneUi";
@@ -64,6 +68,8 @@ export interface BarDeps {
   extraPlaces?: () => string[];
   /** puts a prompt in the chat ("Fix in chat" on a review thread) */
   toChat?: (text: string) => Promise<void>;
+  /** starts (or finds) the opencode tab of this window and sends a slash command with Enter; false when opencode could not start */
+  toOpencode?: (text: string, submit?: boolean) => Promise<boolean>;
 }
 
 export interface BarHandle {
@@ -456,6 +462,10 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   // the wiki browser: one aihub process per call, only when the wiki view asks; the agent actions put text in the chat
   registerWikiCommands(reg, (t) => deps.toChat?.(t));
   registerStoryBrowserCommands(reg);
+  // team settings: one aihub process per call, only when the page asks
+  registerTeamCommands(reg);
+  // Run End to End: the slash command goes to the opencode tab of this window (or of the set's window when it opens)
+  registerE2eCommands(reg, async (t, submit) => (deps.toOpencode ? deps.toOpencode(t, submit) : false));
 
   // the overview menu opens: read the pull requests again (at most once per call, a failed call is remembered like a good one)
   reg(BAR_COMMANDS.refreshStatus, async () => {
@@ -568,6 +578,10 @@ function registerCommands(ctx: vscode.ExtensionContext, engine: BarEngine, deps:
   registerStoryCommands({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
   // Open as Set… (repository browser) and New Set… (title bar): clones what is missing, one aihub worktree open, the window, Undo
   registerOpenReposAsSet({ engine, log: deps.log, changed, reg, afterGit: () => behind.forget() });
+  // Change with Agent: aihub browse change (remote) or a working copy; opencode in the panel, a new window or a terminal
+  registerChangeCommands({ reg, log: deps.log, changed });
+  // a window opened for a change starts opencode: one look at one small file, once, a moment after the window is up
+  trackedTimeout("change.pendingAgent", () => startPendingAgent(deps.log), 2000);
   // after an own Update or Push the stand against the target is looked at again
   registerBatchCommands({ engine, log: deps.log, changed, reg, afterGit: () => (behind.forget(), void mgr.run("own")) });
   registerPullRequestCommand({ engine, log: deps.log, changed, reg, refreshPrs: () => prs.refresh(true).then(() => undefined) });

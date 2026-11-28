@@ -14,7 +14,7 @@ import { remoteOf } from "../pipelineView.js";
  * id for good, and the failures that stay true for a while (not signed in, no access) for 5 minutes.
  */
 
-export type BrowseErrorKind = "signedOut" | "noAccess" | "notFound" | "searchUnavailable" | "protectedBranch" | "branchExists" | "offline" | "badInput" | "needsSetting" | "failed";
+export type BrowseErrorKind = "signedOut" | "noAccess" | "notFound" | "searchUnavailable" | "protectedBranch" | "branchExists" | "offline" | "badInput" | "needsSetting" | "secret" | "forbiddenFile" | "tooManyFiles" | "readLimit" | "failed";
 
 export class BrowseError extends AihubError {
   constructor(
@@ -28,6 +28,7 @@ export class BrowseError extends AihubError {
 /** The kind of a failure, from its message (the AdoClient words them). */
 export function kindOf(e: unknown): BrowseErrorKind {
   if (e instanceof BrowseError) return e.kind;
+  if ((e as Error)?.name === "MissingTeamSetting") return "needsSetting";
   const m = String((e as Error)?.message ?? e);
   if (/not signed in|az login|AIHUB_ADO_PAT/i.test(m)) return "signedOut";
   if (/\(403\)|denied access/i.test(m)) return "noAccess";
@@ -36,7 +37,12 @@ export function kindOf(e: unknown): BrowseErrorKind {
   return "failed";
 }
 
-export const errorJson = (e: unknown) => ({ error: { kind: kindOf(e), message: String((e as Error)?.message ?? e).replace(/^aihub:\s*/, "") } });
+export const errorJson = (e: unknown) => {
+  const m = e as { key?: string; choices?: string[]; name?: string };
+  // a team setting the user must choose: its key and the values found, so the bar can ask
+  const setting = m?.name === "MissingTeamSetting" ? { key: m.key, choices: m.choices ?? [] } : {};
+  return { error: { kind: kindOf(e), message: String((e as Error)?.message ?? e).replace(/^aihub:\s*/, ""), ...setting } };
+};
 
 // ---- cache -----------------------------------------------------------------------------------------------------------
 

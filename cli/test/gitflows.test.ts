@@ -171,7 +171,7 @@ describe("branch update", () => {
     expect(readFileSync(join(dir, "m.txt"), "utf8").trim()).toBe("m");
     expect(sh(bare, ["log", "--format=%s", "feature/1-x"]).split("\n")[0]).toBe("feat: x");
     expect(await main(["branch", "update", "--rebase"], ctx, commands)).toBe(0);
-    expect(lines.join("\n")).toMatch(/up-to-date/);
+    expect(lines.join("\n")).toMatch(/already up to date with main/);
   });
 
   it("a conflict is reported and nothing changes", async () => {
