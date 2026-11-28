@@ -8,7 +8,7 @@ import { artifactLinks, listWiql, storyBoard, storyList, storyShow } from "../sr
 import { refineApply, refineAsk, refineRead } from "../src/lib/stories/refine.js";
 import { fixBranchName, storyDraft, storyLink } from "../src/lib/stories/start.js";
 import { partOf } from "../src/lib/stories/template.js";
-import { storyComment, storyEdit, storyMove, storyNew, storyTask } from "../src/lib/stories/write.js";
+import { storyComment, storyEdit, storyForm, storyMove, storyNew, storyTask } from "../src/lib/stories/write.js";
 import { ctxFor, fakeFetch, tmp } from "./helpers.js";
 import { P, setup } from "./storiesWorld.js";
 
@@ -383,3 +383,13 @@ describe("an item in another project than the saved one", () => {
   });
 });
 
+
+describe("the form of a type", () => {
+  it("says whether the process of the project has that type (a Basic process has no Bug), so New Bug from This File can hide itself", async () => {
+    const t = setup();
+    expect((await storyForm(t.s(), { type: "Bug" })).typeExists).toBe(true);
+    const basic = setup();
+    basic.routes.unshift({ match: /\/_apis\/wit\/workitemtypes\?/, respond: () => ({ body: { value: [{ name: "Epic" }, { name: "Issue" }, { name: "Task" }] } }) });
+    expect((await storyForm(basic.s(), { type: "Bug" })).typeExists).toBe(false);
+  });
+});

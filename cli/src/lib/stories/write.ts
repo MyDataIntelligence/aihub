@@ -1,7 +1,7 @@
 import { BrowseError } from "../browse/core.js";
 import { mdToHtml, sectionsToFields, fieldsToSections, currentText, fieldFor } from "../story.js";
 import { headingsMatch, parseSections, type Section } from "../templates.js";
-import { bumpGeneration, F, me, pointsField, resolveTypeName, statesOf, typeFieldsOf, type Stories } from "./core.js";
+import { bumpGeneration, F, me, pointsField, projectTypes, resolveTypeName, statesOf, typeFieldsOf, type Stories } from "./core.js";
 import { boardOf, COMMENTS_API, currentIteration, readItem, teamAreas, type Item } from "./read.js";
 import { templateOf } from "./template.js";
 
@@ -241,8 +241,10 @@ export async function storyComment(s: Stories, o: { id: number; markdown: string
 
 // ---- new Story or Bug ------------------------------------------------------------------------------------------------
 
-export async function storyForm(s: Stories, o: { type?: string }): Promise<{ type: string; template: string; sections: { heading: string; field: string; hint: string }[]; systemInfo: boolean; severityValues?: string[]; priorityValues?: string[]; defaults: { areaPath: string; iterationPath?: string } }> {
+export async function storyForm(s: Stories, o: { type?: string }): Promise<{ type: string; typeExists?: boolean; template: string; sections: { heading: string; field: string; hint: string }[]; systemInfo: boolean; severityValues?: string[]; priorityValues?: string[]; defaults: { areaPath: string; iterationPath?: string } }> {
   const type = await resolveTypeName(s, o.type);
+  // does the process of the project have this type (a Bug in a Basic process does not)? Unknown (no answer) leaves it out
+  const typeExists = await projectTypes(s).then((ts) => ts.some((t) => t.toLowerCase() === type.toLowerCase())).catch(() => undefined);
   const tf = await typeFieldsOf(s, type).catch(() => ({ fields: undefined as string[] | undefined, allowed: {} as Record<string, string[]> }));
   const tpl = await templateOf(s, type, tf.fields);
   const sections = parseSections(tpl.text).sections.map((x) => ({ heading: x.heading, field: fieldFor(s.teamCfg, x.heading, tpl.layout), hint: x.body.trim() }));
@@ -250,6 +252,7 @@ export async function storyForm(s: Stories, o: { type?: string }): Promise<{ typ
   const iterationPath = await currentIteration(s);
   return {
     type,
+    ...(typeExists === undefined ? {} : { typeExists }),
     template: tpl.source,
     sections,
     systemInfo: !!tf.fields?.some((f) => f.toLowerCase() === F.systemInfo.toLowerCase()),
