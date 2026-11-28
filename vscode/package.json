@@ -857,6 +857,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.wikiDelete",
+        "title": "Wiki: Delete Page",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.wikiUpdateApply",
         "title": "Wiki: Publish Update",
         "category": "AI Context Hub"
@@ -2292,6 +2297,10 @@
         },
         {
           "command": "aihub.bar.wikiRetryNow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiDelete",
           "when": "false"
         },
         {

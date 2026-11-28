@@ -362,6 +362,7 @@ good, attachments 4 hours (files in `cache/wiki-attachments/`). Every write move
 | `search --text T [--project P] [--wiki W] [--top 50] [--skip 0]` | `{text,count,results:[{project,wiki:{id,name,kind},path,title,hits:[{line:null,text,highlights:[{start,length}]}]}],facets:{projects,wikis},tookMs}`; no search: `searchUnavailable` |
 | `attachment --ref /.attachments/x.png [--page /P]` | `{name,mime,bytes,file,cached}` (a relative ref is read next to the page) |
 | `upload --file F [--name N]` | project wiki: `{name,ref,markdown,bytes}`; a code wiki is `badInput` (add the file in the repository) |
+| `delete --path /P [--comment-file C]` | project wiki: `{status:"deleted",path,subpages}` (the subpages go with it); asks nothing, the caller confirms first; a code wiki is `badInput` |
 
 The extension's `aihub.bar.wiki*` commands (`vscode/src/bar/types.ts`) run one of these each; `aihub.bar.wikiAskAgent` and
 `aihub.bar.wikiUpdateFromBranch` only put a prompt in the chat (drafts go to `.aihub/wiki-drafts/<wiki>/<page>.md`; nothing is published).

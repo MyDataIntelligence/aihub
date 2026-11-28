@@ -423,6 +423,8 @@ export const BAR_COMMANDS = {
   wikiAttachment: "aihub.bar.wikiAttachment",
   /** `{ project, wiki, file, name? }` -> `wiki browse upload`: `{ name, ref, markdown }` (project wiki only) */
   wikiUpload: "aihub.bar.wikiUpload",
+  /** `{ project, wiki, path, org? }` -> `wiki browse delete`: `{ status: "deleted", path, subpages }` (the subpages go with it); asks nothing, the caller confirms first; a code wiki is badInput */
+  wikiDelete: "aihub.bar.wikiDelete",
   /** `{ project, wiki, path, question? }`: puts "ask about this page" in the chat (the user presses Enter) */
   wikiAskAgent: "aihub.bar.wikiAskAgent",
   /** `{ project, wiki, path?, branch?, base? }`: puts "update the wiki from this branch" in the chat; the agent only writes drafts */
