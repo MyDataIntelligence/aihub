@@ -117,7 +117,7 @@ export function runChecks(ctx: Ctx): Check[] {
       const found = remote ? cachedDetections(ctx.env, remote, (ctx.now ?? Date.now)()) : [];
       for (const q of questions(effective(team, found), 99)) checks.push(fix(`team:${q.key}`, `not in team.yaml and not sure (found: ${q.choices.join(", ")})`, `ask the user, then: ${q.command}`));
     }
-    const guidelines = Array.isArray(team.guidelines) ? (team.guidelines as unknown[]).map(String) : [];
+    const guidelines = (Array.isArray(team.guidelines) ? (team.guidelines as unknown[]) : Array.isArray((team.guidelines as { files?: unknown[] } | undefined)?.files) ? (team.guidelines as { files: unknown[] }).files : []).map(String); // a list, or { files, linters }
     if (guidelines.length) {
       const missing = guidelines.filter((g) => !existsSync(join(root, g)));
       checks.push(

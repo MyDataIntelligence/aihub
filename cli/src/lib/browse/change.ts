@@ -160,6 +160,7 @@ export function taskText(meta: ChangeMeta, o: { selection?: Selection; materiali
     `- Another file: \`aihub browse change read --id ${id} --path /path/in/repo\` puts it under ./files.`,
     `- A folder: \`aihub browse items ${repoArgs} --ref commit:${meta.base.commit} --path /folder\`.`,
     `- Search the repository: \`aihub browse search --text "<text>" ${repoArgs}\`.`,
+    `- Before the first edit, read the rules of the repository: \`aihub browse change read --id ${id} --path /AGENTS.md\` (and the AGENTS.md of the folders you change, CLAUDE.md, .github/copilot-instructions.md, .github/instructions/*.instructions.md when they exist); the nearest AGENTS.md wins. After editing, check your diff against them and fix what does not follow them.`,
     "- Change and add files under ./files with your normal edit tools.",
     `- Remove a file: \`aihub browse change rm --id ${id} --path /path/in/repo\`.`,
     `- See your change: \`aihub browse change diff --id ${id}\`.`,

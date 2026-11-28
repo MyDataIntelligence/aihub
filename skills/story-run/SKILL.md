@@ -8,11 +8,11 @@ description: "Use when the user wants a story done end to end without questions:
 The story exists and the user wants a finished, green pull request. Ask nothing except a genuinely ambiguous choice (two plausible repositories, a contradiction in the story).
 
 ## Steps
-Resuming, new chat or compaction? `aihub status` once (it includes the last step on this branch); continue from there. Only the story id: `aihub story recall --id N`.
+Resuming? `aihub status` once (it has the last step on this branch). Only the story id: `aihub story recall --id N`.
 
 First `aihub prompt render story-run --id 123` (the team's goal prompt and limits); follow it, chaining these skills:
 1. story-start: `aihub story start --id 123` (add `--repos` when the story names several repositories).
-2. implement: code and tests for the story; run only the changed tests (`aihub test changed --run`), never the whole suite; commit with `aihub commit --type <type> --subject "<what>" --push`, never plain git.
+2. implement (with code-guidelines: `guidelines show` before, `guidelines check` after): code and tests; run only the changed tests (`aihub test changed --run`), never the whole suite; commit with `aihub commit --type <type> --subject "<what>" --push`, never plain git.
 3. Per criterion a test and its outcome: `aihub criteria record --id 123 --criterion 2 --result pass --evidence <link>`.
 4. pr-create, then pr-watch in the background: `aihub pr create`, `aihub watch --pr <n> --notify`; `pipeline follow` only when asked to wait.
 5. Red pipeline: pipeline-fix, push, watch again. The same error three rounds in a row: say so and ask how to go on.

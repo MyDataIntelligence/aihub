@@ -2,6 +2,10 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## Unreleased
+
+- `aihub guidelines show --paths <files>`: the rules for the files about to change (AGENTS.md nearest first, CLAUDE.md, copilot instructions, .instructions.md by applyTo, team.yaml guidelines), short and de-duplicated with the source. `aihub guidelines check`: the changed lines of the branch, the team's linters on them (`guidelines.linters`), exit 1 on a violation. New skill code-guidelines, used by implement, story-run, pr-create and the team prompts.
+
 ## 1.10.0
 
 - Team settings: `aihub team show --json` gives the whole Team settings page in one read (which team.yaml applies, every key per repository with its explanation, overrides, templates); `team validate` (errors with line and fix), `team preview --template pr|story|bug|commit`, `team edit` (a new branch and a pull request in the team repository, never main) and `team init --from-pack | --team-repo`. Repositories without their own team.yaml use the team repository once one is set. The schema documents `teamName`, `worktrees`, more `workItems` keys and two Fabric keys.

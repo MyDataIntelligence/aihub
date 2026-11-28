@@ -27,7 +27,8 @@ Klaar is pas klaar als alles hieronder waar is. Is iets niet waar, zeg dat; maak
 2. Per criterium een eigen test: een unit- of integratietest{{#if fabric}}, een Fabric-run in {{workspace}}{{/if}}, of een data-check met query
    en verwachte uitkomst. Geen criterium zonder test.{{#if fabric}} Test op Fabric alleen in {{workspace}}.{{/if}}{{#if noFabric}} Draai niets op Fabric.{{/if}}
 3. Draai alleen de gerichte tests (de bestanden en modellen die je raakt), niet de hele suite: `aihub test changed --run`.
-4. Commits maak je met aihub, klein, met het storynummer in het bericht: `aihub commit --type <type> --subject "<wat>" --push`.
+4. Richtlijnen: vóór je eerste wijziging `aihub guidelines show --paths <bestanden die je raakt>`, en vóór elke commit, push of PR `aihub guidelines check`. Los wat het noemt zelf op. Blijft er een overtreding over, noem die in de PR als open punt, in één gewone zin.
+   Commits maak je met aihub, klein, met het storynummer in het bericht: `aihub commit --type <type> --subject "<wat>" --push`.
 5. Leg per criterium de uitkomst vast: `aihub criteria record --id {{story.id}} --criterion <n> --result pass|fail --evidence <link> --reason "<waarom>"`.
    Een criterium dat niet draaide blijft "nog niet uitgevoerd". Verzin nooit een uitkomst.
 6. Een pull request naar {{target}} volgens het teamtemplate, in het {{language}}, zonder technische ruis: `aihub pr create`.

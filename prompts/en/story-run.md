@@ -27,7 +27,8 @@ Done is done only when everything below is true. If something is not true, say s
 2. A test per criterion: a unit or integration test{{#if fabric}}, a Fabric run in {{workspace}}{{/if}}, or a data check with a query and the
    expected outcome. No criterion without a test.{{#if fabric}} Test on Fabric only in {{workspace}}.{{/if}}{{#if noFabric}} Run nothing on Fabric.{{/if}}
 3. Run only the targeted tests (the files and models you touch), never the whole suite: `aihub test changed --run`.
-4. Commit with aihub, small, with the story number in the message: `aihub commit --type <type> --subject "<what>" --push`.
+4. Guidelines: before your first edit `aihub guidelines show --paths <files you change>`, and before every commit, push or PR `aihub guidelines check`. Fix what it lists yourself. A violation that stays goes in the PR as an open point, in one plain sentence.
+   Commit with aihub, small, with the story number in the message: `aihub commit --type <type> --subject "<what>" --push`.
 5. Record the outcome per criterion: `aihub criteria record --id {{story.id}} --criterion <n> --result pass|fail --evidence <link> --reason "<why>"`.
    A criterion that did not run stays "not run yet". Never invent an outcome.
 6. A pull request to {{target}} by the team template, in {{language}}, without technical noise: `aihub pr create`.
