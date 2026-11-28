@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { promptsRoot } from "../src/lib/pack.js";
 import { ACTIONS, findPrompt, listPrompts, promptText, splitFront, TEAM_PROMPT_DIR } from "../src/lib/e2e/prompts.js";
-import { tmp } from "./helpers.js";
+import { makeRepo, tmp } from "./helpers.js";
 import { setup } from "./storiesWorld.js";
 
 const cli = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -80,5 +80,15 @@ describe("a prompt is never empty", () => {
     expect(l.prompts.find((p) => p.action === "story-run")!.goal).toBe("Een groene pull request naar de doelbranch met alle acceptatiecriteria bewezen.");
     s.teamCfg = { language: "nl", repositories: [{ name: "", defaultTarget: "staging" }] } as never;
     expect(listPrompts(t.ctx, s).prompts.find((p) => p.action === "story-run")!.goal).toContain("naar staging");
+  });
+
+  it("without a target in team.yaml the goal names the repository's default branch", () => {
+    const { dir } = makeRepo(); // a synthetic clone whose origin/HEAD is main
+    const t = setup();
+    t.ctx.cwd = dir;
+    const s = t.s();
+    s.teamCfg = { language: "nl" } as never;
+    expect(s.root).toBeTruthy();
+    expect(listPrompts(t.ctx, s).prompts.find((p) => p.action === "story-run")!.goal).toBe("Een groene pull request naar main met alle acceptatiecriteria bewezen.");
   });
 });

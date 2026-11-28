@@ -244,7 +244,8 @@ export async function renderPrompt(ctx: Ctx, s: Stories, action: Action, id: num
 export function listPrompts(ctx: Ctx, s: Stories): { prompts: { action: Action; title: string; slash: string; goal: string; reads: string; produces: string; source: Source; file: string; text: string }[] } {
   const set = setFolderOf(ctx.cwd);
   const repo = s.root?.split(/[\\/]/).pop() ?? "";
-  const listTarget = defaultTargetFor(s.teamCfg, repo) ?? (langOf(s) === "en" ? "the target branch" : "de doelbranch");
+  // team.yaml's target branch, else the default branch of the repository this runs in, else a plain word
+  const listTarget = defaultTargetFor(s.teamCfg, repo) || (s.root ? originDefaultBranch(s.root) : "") || (langOf(s) === "en" ? "the target branch" : "de doelbranch");
   return {
     prompts: ACTIONS.map((a) => {
       const p = findPrompt(s, a, { set });
