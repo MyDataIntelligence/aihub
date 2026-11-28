@@ -268,6 +268,20 @@ describe("aihub fabric failures --since-green", () => {
     expect(none.out).not.toContain("another repository of the run changed");
   });
 
+  it("without --workspace: the environment workspace of team.yaml that holds the item, not the branch's feature workspace", async () => {
+    // "waarom faalt pl_main nu?" on a feature branch: the item runs in the CD-filled test workspace
+    const dir = repo();
+    sh(dir, ["checkout", "-b", "feature/12-export"]);
+    const r = await go(all(), ["failures", "--item", "pl_main", "--since-green"], dir);
+    expect(r.code).toBe(0);
+    expect(r.out.split("\n")[0]).toBe(`workspace: ${WS_NAME} (fabric.environments.TST of team.yaml, holds pl_main; --workspace picks another)`);
+    expect(r.out).toContain("outcome: suspects");
+    expect(r.out.trimEnd().endsWith("next: aihub pr explain --pr 412")).toBe(true);
+    // without the flag nothing changes: the branch workspace rule stays
+    const plain = await go(all(), ["failures", "--item", "pl_main"], dir);
+    expect(plain.code).not.toBe(0);
+  });
+
   it("nothingDeployed: the cause is outside the code", async () => {
     const r = await go(all(undefined, [WINDOW[4]]), [...args, "--since-green", "--json"]);
     const sg = JSON.parse(r.out).result.sinceGreen;

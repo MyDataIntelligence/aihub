@@ -8,10 +8,10 @@ environment's branch whose deploy stage succeeded. Two read-only commands put Fa
 | Question | Command |
 |---|---|
 | Which commit runs in this workspace? | `aihub fabric deployed --workspace "Fabric test-repo test"` (or `--env TST`) |
-| Why did it fail now? | `aihub fabric failures --workspace "Fabric test-repo test" --since-green [--item pl_main]` |
+| Why did it fail now? | `aihub fabric failures --item pl_main --since-green` (or `--workspace "Fabric test-repo test"`) |
 
 Both need `fabric.environments.<ENV>` in team.yaml with `branch`, `workspace` (`{repo}` is the repository name) and
-`deployedBy { pipeline, stage }`; see [team-yaml.md](team-yaml.md). A feature workspace is connected to git: there
+`deployedBy { pipeline, stage }`; see [team-yaml.md](team-yaml.md). Without `--workspace`, `--since-green` takes the environment (with `deployedBy`) whose workspace holds `--item`, or the only one, and says so in its first line; two give an error that names both. A feature workspace is connected to git: there
 `aihub fabric git status --workspace W` gives the commit.
 
 ## How it works

@@ -15,7 +15,7 @@ Run the ONE command for the task (plain text: no `--json`, `--help` or reference
 | What is in a workspace | `aihub fabric items --workspace W` |
 | Run and wait, "is hij gelukt?" | `aihub fabric run --workspace W --item I --wait` |
 | Why did it fail, "is rood" | `aihub fabric failures --workspace W --item I` |
-| Why now, "wat is er veranderd sinds de laatste groene run" | `aihub fabric failures --workspace W --since-green` |
+| Why now, "wat is er veranderd sinds de laatste groene run" | `aihub fabric failures --item I --since-green` (finds the test workspace) |
 | Which commit runs in this workspace | `aihub fabric deployed --workspace W` |
 | Change a notebook and rerun | `aihub fabric item edit --workspace W --item I --set name=value --run --wait` |
 | Commit the workspace to git | `aihub fabric git commit --workspace W --message "<what changed>"` |
