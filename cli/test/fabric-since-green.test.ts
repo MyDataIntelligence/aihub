@@ -183,17 +183,59 @@ describe("aihub fabric failures --since-green", () => {
     expect(sg).toContain('not suspect: PR 409 "PR title 409" touches only governance/');
     expect(sg).toContain("outcome: suspects");
     expect(r.out.trimEnd().endsWith("next: aihub pr explain --pr 412")).toBe(true);
-    // the commit range: compare from the green commit to the red commit
+    // the commit range: as Azure DevOps answers it (measured), itemVersion is the green (older) commit, compareVersion the red one
     const q = r.calls.find((c) => /commits\?/.test(c.url))!.url;
-    expect(q).toContain(`searchCriteria.itemVersion.version=${C3}`);
-    expect(q).toContain(`searchCriteria.compareVersion.version=${C1}`);
+    expect(q).toContain(`searchCriteria.itemVersion.version=${C1}`);
+    expect(q).toContain(`searchCriteria.compareVersion.version=${C3}`);
     // timeline of the run queued after the red run is never read
     expect(r.calls.some((c) => /builds\/105\/timeline/.test(c.url))).toBe(false);
   });
 
+  it("Azure DevOps as measured (itemVersion = older, compareVersion = newer): the range in one call", async () => {
+    const realApi: Route = { match: /_apis\/git\/repositories\/test-repo\/commits\?/, respond: (call) => ({ body: { value: call.url.includes(`searchCriteria.itemVersion.version=${C1}`) ? CHANGES.map((c) => ({ commitId: c.sha, comment: c.title })) : [] } }) };
+    const r = await go([realApi, ...all()], [...args, "--since-green", "--json"]);
+    const sg = JSON.parse(r.out).result.sinceGreen;
+    expect(sg.commits.map((c: { commit: string }) => c.commit)).toEqual([C3, C4, C2]);
+    expect(r.calls.filter((c) => /commits\?/.test(c.url)).length).toBe(1);
+  });
+
+  it("a merge (no fast-forward) pull request is one change: its branch commits belong to it, not listed again on their own", async () => {
+    // Azure DevOps' default merge: the merge commit (lastMergeCommit) and the branch commits (found with the query type "commit")
+    const M412 = sha("a412a41");
+    const B412 = sha("b412b41");
+    const B409 = sha("b409b40");
+    const list = [
+      { sha: C3, title: "Merged PR 409", paths: ["governance/roles.yaml"] },
+      { sha: M412, title: "Merged PR 412", paths: ["fabric/nb_standardize.Notebook/notebook-content.py"] },
+      { sha: B409, title: "Governance roles", paths: ["governance/roles.yaml"] },
+      { sha: B412, title: "Rename subscription_date", paths: ["fabric/nb_standardize.Notebook/notebook-content.py"] },
+    ];
+    const byType: Record<string, Record<string, { pullRequestId: number; status: string }[]>> = {
+      lastMergeCommit: { [C3]: [{ pullRequestId: 409, status: "completed" }], [M412]: [{ pullRequestId: 412, status: "completed" }] },
+      commit: { [B409]: [{ pullRequestId: 409, status: "completed" }], [B412]: [{ pullRequestId: 398, status: "abandoned" }, { pullRequestId: 412, status: "completed" }] },
+    };
+    const routes: Route[] = [
+      ...fabric([RED, GREEN_RUN, OLD_GREEN]),
+      ...cd(WINDOW, { repos: { 101: repos(C1, sha("3f9a1c2")), 104: repos(C3, sha("3f9a1c2")) } }),
+      get(/_apis\/git\/repositories\/test-repo\/commits\?/, { value: list.map((c) => ({ commitId: c.sha, comment: c.title })) }),
+      ...list.map((c) => get(new RegExp(`commits/${c.sha}/changes`), { changes: c.paths.map((p) => ({ item: { path: `/${p}` } })) })),
+      ...list.map((c) => get(new RegExp(`commits/${c.sha}\\?`), { comment: c.title })),
+      { method: "POST", match: /pullrequestquery/, respond: (call) => ({ body: { results: (call.body?.queries ?? []).map((q: { type: string; items: string[] }) => Object.fromEntries(q.items.filter((s) => byType[q.type]?.[s]).map((s) => [s, byType[q.type][s]]))) } }) },
+      ...[409, 412].map((id) => get(new RegExp(`pullrequests/${id}\\?`), { pullRequestId: id, title: `PR title ${id}` })),
+      ...[409, 412].map((id) => get(new RegExp(`pullrequests/${id}/workitems`), { value: [{ id: id * 10 }] })),
+      get(/_apis\/wit\/workitems\/\d+\?/, { fields: { "System.Title": "Rename column" } }),
+    ];
+    const r = await go(routes, [...args, "--since-green", "--json"]);
+    expect(r.code).toBe(0);
+    const sg = JSON.parse(r.out).result.sinceGreen;
+    expect(sg.commits.map((c: { pr?: number }) => c.pr)).toEqual([409, 412, 409, 412]);
+    expect(sg.suspects.map((s: { pr?: number; commit?: string }) => s.pr ?? s.commit)).toEqual([412]);
+    expect(sg.unrelated.map((s: { pr?: number; commit?: string }) => s.pr ?? s.commit)).toEqual([409]);
+  });
+
   it("the commit range is checked: when the first answer does not hold the red commit, the two versions are swapped once", async () => {
-    // an Azure DevOps that reads itemVersion as the older side: the first query answers nothing, the swapped one the range
-    const swappedApi: Route = { match: /_apis\/git\/repositories\/test-repo\/commits\?/, respond: (call) => ({ body: { value: call.url.includes(`searchCriteria.itemVersion.version=${C1}`) ? CHANGES.map((c) => ({ commitId: c.sha, comment: c.title })) : [] } }) };
+    // an Azure DevOps that reads itemVersion as the newer side: the first query answers nothing, the swapped one the range
+    const swappedApi: Route = { match: /_apis\/git\/repositories\/test-repo\/commits\?/, respond: (call) => ({ body: { value: call.url.includes(`searchCriteria.itemVersion.version=${C3}`) ? CHANGES.map((c) => ({ commitId: c.sha, comment: c.title })) : [] } }) };
     const r = await go([swappedApi, ...all()], [...args, "--since-green", "--json"]);
     const sg = JSON.parse(r.out).result.sinceGreen;
     expect(sg.outcome).toBe("suspects");
@@ -232,6 +274,20 @@ describe("aihub fabric failures --since-green", () => {
     expect(changed.out).toContain("other repositories of the run: central 3f9a1c2 -> 5b5b5b5");
     expect(changed.out).toContain("another repository of the run changed (central 3f9a1c2 -> 5b5b5b5): its commits are not read here, so look there too");
     expect(none.out).not.toContain("another repository of the run changed");
+  });
+
+  it("without --workspace: the environment workspace of team.yaml that holds the item, not the branch's feature workspace", async () => {
+    // "waarom faalt pl_main nu?" on a feature branch: the item runs in the CD-filled test workspace
+    const dir = repo();
+    sh(dir, ["checkout", "-b", "feature/12-export"]);
+    const r = await go(all(), ["failures", "--item", "pl_main", "--since-green"], dir);
+    expect(r.code).toBe(0);
+    expect(r.out.split("\n")[0]).toBe(`workspace: ${WS_NAME} (fabric.environments.TST of team.yaml, holds pl_main; --workspace picks another)`);
+    expect(r.out).toContain("outcome: suspects");
+    expect(r.out.trimEnd().endsWith("next: aihub pr explain --pr 412")).toBe(true);
+    // without the flag nothing changes: the branch workspace rule stays
+    const plain = await go(all(), ["failures", "--item", "pl_main"], dir);
+    expect(plain.code).not.toBe(0);
   });
 
   it("nothingDeployed: the cause is outside the code", async () => {

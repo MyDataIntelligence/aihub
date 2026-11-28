@@ -1,12 +1,15 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/router.js";
 import { setPreflightDeps } from "../src/commands/preflight.js";
 import { loadJob } from "../src/lib/preflight/pipelineYaml.js";
 import { evalCondition, expand } from "../src/lib/preflight/expr.js";
 import { masker, readLog } from "../src/lib/preflight/vso.js";
-import { commandFor, pathShells, posixPaths, pythonFor, scriptShell, splitArgs, type Shells } from "../src/lib/preflight/exec.js";
+import { commandFor, pathShells, posixPaths, privateDir, pythonFor, scriptShell, splitArgs, type Shells } from "../src/lib/preflight/exec.js";
 import { localImports, writeCalls } from "../src/lib/preflight/drift.js";
 import { validateTeamText } from "../src/lib/teamValidate.js";
 import { ctxFor, fakeFetch, makeRepo, sh, tmp, write } from "./helpers.js";
@@ -468,6 +471,74 @@ process.exit(1);`;
     expect(step(r.json, "Validate configs").reason).toMatch(/listed as local but asks for token ACCESS_TOKEN/);
   });
 
+  it("scripts with an expanded secret or token live in a private folder outside the repository, one at a time, and are gone after the run", async () => {
+    const where = `node -e "const fs = require('fs'); const d = process.env.AGENT_TEMPDIRECTORY; console.log('dir=' + d); console.log('files=' + fs.readdirSync(d).join(','))"`;
+    const job = [
+      "steps:",
+      `  - script: node -e "console.log('##vso[task.setvariable variable=S1;issecret=true]hush-inline-42')"`,
+      "    displayName: Set secret",
+      `  - script: node -e "console.log('len=' + process.argv[1].length)" $(S1)`,
+      "    displayName: Use secret",
+      `  - script: ${where}`,
+      "    displayName: Where",
+      `  - script: node -e "console.log('tok=' + process.argv[1].length)" $(ACCESS_TOKEN)`,
+      "    displayName: Read with token",
+      "",
+    ].join("\n");
+    const w = world({ job, team: preflightYaml("", "local: [Set secret, Use secret, Where]\n    read: [Read with token]") });
+    write(w.consumer, ".git/aihub/preflight/_temp/step-9.sh", "echo hush-inline-42"); // left behind by aihub 1.11.0
+    const r = await pf(w.consumer, ["--plan", "--verbose"]);
+    expect(r.code).toBe(0);
+    const e = r.errs.join("\n");
+    expect(e).toContain("len=14");
+    expect(e).toContain("tok=21");
+    const dir = /dir=(.+)/.exec(e)![1].trim();
+    expect(dir.startsWith(tmpdir())).toBe(true); // the user's temp folder, not the repository (which may be synced)
+    expect(dir.toLowerCase().startsWith(w.consumer.toLowerCase())).toBe(false);
+    expect(/files=(.*)/.exec(e)![1].trim()).toMatch(/^step-3\.\w+$/); // only the running step's script exists
+    expect(existsSync(dir)).toBe(false); // gone after the run
+    expect(existsSync(join(w.consumer, ".git", "aihub", "preflight", "_temp"))).toBe(false); // the old folder is removed
+    const scratch = join(w.consumer, ".git", "aihub", "preflight");
+    // everything preflight keeps there except the checkouts in s/ (the job YAML itself holds the synthetic secret)
+    const all = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((x) => (x.isDirectory() ? (d === scratch && x.name === "s" ? [] : all(join(d, x.name))) : [join(d, x.name)]));
+    const text = all(scratch).map((f) => readFileSync(f, "latin1")).join("\n");
+    expect(text).not.toContain("hush-inline-42");
+    expect(text).not.toContain("fake-fabric-token-abc");
+  });
+
+  it("a failed step and an interrupted run (Ctrl+C) leave no script with a secret either", async () => {
+    const setSecret = `  - script: node -e "console.log('##vso[task.setvariable variable=S1;issecret=true]hush-inline-42')"\n    displayName: Set secret\n`;
+    const failing = world({ job: `steps:\n${setSecret}  - script: node -e "process.exit(3)" $(S1)\n    displayName: Use secret\n`, team: preflightYaml("", "local: [Set secret, Use secret]") });
+    const failedDir = join(tmp(), "run-failed");
+    const f = await pf(failing.consumer, [], { tempDir: failedDir });
+    expect(f.code).toBe(1);
+    expect(existsSync(failedDir)).toBe(false);
+
+    // Ctrl+C while a step that holds the secret runs: the folder goes at once and the process ends with 130
+    const slow = world({ job: `steps:\n${setSecret}  - script: node -e "setTimeout(() => {}, 2500)" $(S1)\n    displayName: Use secret\n`, team: preflightYaml("", "local: [Set secret, Use secret]") });
+    const temp = join(tmp(), "run-interrupted");
+    const proc = Object.assign(new EventEmitter(), { exit: vi.fn() });
+    const running = pf(slow.consumer, [], { process: proc as never, tempDir: temp });
+    const holds = () => existsSync(temp) && readdirSync(temp).some((n) => readFileSync(join(temp, n), "utf8").includes("hush-inline-42"));
+    for (let i = 0; i < 200 && !holds(); i++) await new Promise((r) => setTimeout(r, 50));
+    expect(holds()).toBe(true); // the step's script is there while it runs
+    proc.emit("SIGINT", "SIGINT");
+    expect(proc.exit).toHaveBeenCalledWith(130);
+    expect(existsSync(temp)).toBe(false);
+    await running;
+    expect(proc.listenerCount("SIGINT")).toBe(0);
+  });
+
+  it("the script folder is private: mode 700 on Unix, only the current user in its ACL on Windows", () => {
+    const dir = join(tmp(), "private");
+    expect(privateDir(dir)).toBeUndefined();
+    if (process.platform === "win32") {
+      const acl = execFileSync("icacls", [dir], { encoding: "utf8" });
+      expect(acl.toLowerCase()).toContain(String(process.env.USERNAME).toLowerCase());
+      expect(acl).not.toMatch(/Everyone|BUILTIN\\Users|Authenticated Users|\(I\)/i);
+    } else expect(statSync(dir).mode & 0o777).toBe(0o700);
+  });
+
   it("--plan: resolves the branch's workspace, hands tokens only to read steps, masks them; apply steps wait for --apply", async () => {
     const w = world();
     const asked: string[] = [];
@@ -582,7 +653,8 @@ process.exit(1);`;
     const r = await pf(w.consumer, ["--apply", "--dry-run"]);
     expect(r.code).toBe(0);
     expect(r.out).toMatch(/not run\s+Deploy items\s+dry run; needs \$\(WORKSPACE_ID\) at run time/);
-    expect(r.out).toMatch(/not run\s+Get workspace ids\s+dry run\n.*token\.js from-template\n\s+env: ACCESS_TOKEN=\*\*\* WS_ID=11111111-1111-1111-1111-111111111111/);
+    // a Windows path holds backslashes, so the display quotes it: token.js" from-template
+    expect(r.out).toMatch(/not run\s+Get workspace ids\s+dry run\n.*token\.js"? from-template\n\s+env: ACCESS_TOKEN=\*\*\* WS_ID=11111111-1111-1111-1111-111111111111/);
     expect(r.out).toContain("shared-templates/scripts/check.js ws-12-export");
     expect(r.out).toContain("dry run: nothing was run");
     expect(r.out).not.toContain("fake-fabric-token-abc");

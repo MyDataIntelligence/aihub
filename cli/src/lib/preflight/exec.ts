@@ -1,6 +1,8 @@
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
-import { spawn } from "../proc.js";
+import { randomBytes } from "node:crypto";
+import { tmpdir } from "node:os";
+import { spawn, spawnSync } from "../proc.js";
 import type { PipelineStep } from "./pipelineYaml.js";
 
 /**
@@ -184,6 +186,53 @@ export function commandFor(step: PipelineStep, input: CommandInput, o: { sh: She
   }
 }
 
+/** A new folder name for one run's scripts under the user's temp folder (outside the repository, which may be synced). */
+export const runTempDir = (): string => join(tmpdir(), `aihub-preflight-${process.pid}-${randomBytes(4).toString("hex")}`);
+
+/**
+ * Creates `dir` for the current user only: mode 700 on Unix; on Windows without inherited entries and with full control
+ * for the current user alone (one icacls call per run). Returns a note when Windows refused the ACL; the folder is then
+ * as private as the user's temp folder.
+ */
+export function privateDir(dir: string, platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (platform !== "win32") return undefined;
+  const user = env.USERDOMAIN && env.USERNAME ? `${env.USERDOMAIN}\\${env.USERNAME}` : env.USERNAME;
+  if (!user) return "the script folder keeps the ACL of the temp folder (no USERNAME to restrict it to)";
+  const r = spawnSync("icacls", [dir, "/inheritance:r", "/grant:r", `${user}:(OI)(CI)F`], { encoding: "utf8", windowsHide: true });
+  return r.status === 0 ? undefined : `the script folder keeps the ACL of the temp folder (icacls: ${String(r.stderr || r.stdout || r.error?.message || "").trim().split("\n")[0]})`;
+}
+
+/** The part of `process` that `withTempDir` listens to. */
+export interface SignalSource {
+  on(event: "exit" | "SIGINT" | "SIGTERM", listener: (...args: any[]) => void): unknown;
+  off(event: "exit" | "SIGINT" | "SIGTERM", listener: (...args: any[]) => void): unknown;
+  exit(code?: number): never | void;
+}
+
+/**
+ * Runs `fn` and removes `dir` afterwards, also when `fn` throws, on Ctrl+C or SIGTERM (then the process ends with
+ * 130 or 143, as the default would) and when the process exits meanwhile: the scripts there hold expanded secrets.
+ */
+export async function withTempDir<T>(dir: string, proc: SignalSource, fn: () => Promise<T>): Promise<T> {
+  const clean = () => rmSync(dir, { recursive: true, force: true });
+  const onSignal = (signal: string) => {
+    clean();
+    proc.exit(signal === "SIGTERM" ? 143 : 130);
+  };
+  proc.on("exit", clean);
+  proc.on("SIGINT", onSignal);
+  proc.on("SIGTERM", onSignal);
+  try {
+    return await fn();
+  } finally {
+    proc.off("exit", clean);
+    proc.off("SIGINT", onSignal);
+    proc.off("SIGTERM", onSignal);
+    clean();
+  }
+}
+
 export interface RunResult {
   code: number;
   output: string;
@@ -199,7 +248,13 @@ export function runCommand(cmd: Command, o: { cwd: string; env: NodeJS.ProcessEn
     mkdirSync(resolve(cmd.script.path, ".."), { recursive: true });
     writeFileSync(cmd.script.path, cmd.script.content, "utf8");
   }
-  return new Promise((done) => {
+  // the script holds expanded secrets and tokens: gone when the step ends (the agent cleans its temp folder after a job)
+  const finish = (done: (r: RunResult) => void) => (r: RunResult) => {
+    if (cmd.script) rmSync(cmd.script.path, { force: true });
+    done(r);
+  };
+  return new Promise((resolveRun) => {
+    const done = finish(resolveRun);
     let out = "";
     const keep = (s: string) => {
       out += s;

@@ -212,10 +212,11 @@ export async function commitsBetween(c: AdoClient, before: string, after: string
     return r.value ?? [];
   };
   const holdsAfter = (rows: Row[]) => rows.some((x) => x.commitId === after);
-  let rows = await range(after, before);
+  // measured in Azure DevOps (2026-11): itemVersion = the older commit, compareVersion = the newer one gives the range
+  let rows = await range(before, after);
   let confirmed = holdsAfter(rows);
   if (!confirmed) {
-    const swapped = await range(before, after).catch(() => [] as Row[]);
+    const swapped = await range(after, before).catch(() => [] as Row[]);
     if (holdsAfter(swapped)) {
       rows = swapped;
       confirmed = true;

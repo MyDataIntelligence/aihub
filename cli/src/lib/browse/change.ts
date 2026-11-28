@@ -164,8 +164,8 @@ export function taskText(meta: ChangeMeta, o: { selection?: Selection; materiali
     "- Change and add files under ./files with your normal edit tools.",
     `- Remove a file: \`aihub browse change rm --id ${id} --path /path/in/repo\`.`,
     `- See your change: \`aihub browse change diff --id ${id}\`.`,
-    `- Check it after your edits, before the summary: \`aihub browse change verify --id ${id}\` lints the changed lines in a temporary copy (add \`--tests\` for the tests of the changed files); fix what it reports and run it again. Without a change there is nothing to check: then skip it and say so in the summary.`,
-    `- When done: write a short summary for the reviewer in a file and run \`aihub browse change summary --id ${id} --file <file>\`; say which checks of \`change verify\` passed, or that they were not run.`,
+    `- Check it after your edits, before the summary: \`aihub browse change verify --id ${id}\` lints the changed lines in a temporary copy (add \`--tests\` for the tests of the changed files); fix what it reports and run it again. Without a change there is nothing to check: then skip it and say so in the summary. A check with status \`couldNotRun\` (for example "missing dependency X") is not a failure of your change: do not change code for it, report it in the summary as not run with its reason.`,
+    `- When done: write a short summary for the reviewer in a file and run \`aihub browse change summary --id ${id} --file <file>\`; say which checks of \`change verify\` passed, failed, or could not run (and why).`,
     "",
     "## Fixed limits",
     "",
@@ -477,9 +477,21 @@ export async function changePush(b: Browse, id: string, o: { message?: string; p
   return out;
 }
 
+/**
+ * One line for a commit message or pull request title: markdown code marks removed (`x` becomes x, a title is plain text) and,
+ * when too long, cut at a word boundary with "...", never in the middle of a word or a code part.
+ */
+export function titleLine(text: string, max = 72): string {
+  const plain = text.replace(/`+([^`]*)`+/g, "$1").replace(/`/g, "").replace(/\s+/g, " ").trim();
+  if (plain.length <= max) return plain;
+  const cut = plain.slice(0, max - 3);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.\-(]+$/, "")}...`;
+}
+
 function defaultMessage(meta: ChangeMeta, summary: string | null): string {
   const first = (summary ?? meta.prompt ?? "").split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "";
-  const line = first.length > 72 ? `${first.slice(0, 69)}...` : first;
+  const line = titleLine(first);
   return `${meta.story ? `#${meta.story} ` : ""}${line || "Change with Agent"}`;
 }
 

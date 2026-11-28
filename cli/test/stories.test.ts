@@ -356,3 +356,30 @@ describe("story browser new and link", () => {
     expect(await main(["stories", "nope"], t.ctx)).toBe(1);
   });
 });
+
+describe("an item in another project than the saved one", () => {
+  it("show, prompt render and criteria use the item's own project for the link, the project and the iteration", async () => {
+    const t = setup(); // saved: test-project
+    t.lines.length = 0;
+    expect(await main(["stories", "show", "--id", "401"], t.ctx)).toBe(0);
+    const show = JSON.parse(t.lines[0]);
+    expect(show.url).toBe("https://dev.azure.com/ferron-test/test-project-agile/_workitems/edit/401");
+    expect(show.iterationPath).toBe("test-project-agile\\Iteration 1");
+    t.lines.length = 0;
+    expect(await main(["prompt", "render", "story-run", "--id", "401", "--json"], t.ctx)).toBe(0);
+    const r = JSON.parse(t.lines[0]);
+    expect(r.text).toContain("in test-project-agile");
+    expect(r.text).toContain("https://dev.azure.com/ferron-test/test-project-agile/_workitems/edit/401");
+    expect(r.text).not.toContain("/test-project/_workitems/edit/401");
+    // and the other way round: the saved project is the agile one, the item lives in test-project
+    saveSettings(t.ctx.env, "ferron-test", { project: "test-project-agile" });
+    t.lines.length = 0;
+    expect(await main(["prompt", "render", "story-run", "--id", "101", "--json"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.lines[0]).text).toContain("https://dev.azure.com/ferron-test/test-project/_workitems/edit/101");
+    // a write goes to the item's project too
+    t.lines.length = 0;
+    expect(await main(["stories", "move", "--id", "401", "--to", "Active", "--rev", "3"], t.ctx)).toBe(0);
+    expect(t.written.at(-1)!.url).toContain("/test-project-agile/_apis/wit/workitems/401?");
+  });
+});
+

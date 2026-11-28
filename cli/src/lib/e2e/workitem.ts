@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { BrowseError } from "../browse/core.js";
 import { configHome } from "../configHome.js";
+import { ACCEPTANCE_FIELD, DESCRIPTION } from "../fieldLayout.js";
+import { parseSections } from "../templates.js";
 import type { Ctx } from "../context.js";
 import { fieldsToSections, htmlToMd } from "../story.js";
 import { F, type Stories } from "../stories/core.js";
@@ -26,6 +28,17 @@ export interface ItemCriteria {
   criteria: Criterion[];
 }
 
+/**
+ * The criteria as the pull request check reads them, without a template: the standard Acceptance Criteria field, else the
+ * criteria section of the description. One rule for `criteria status` (as its fallback) and the gate of `pr create`/`change push --pr`.
+ */
+export function plainCriteria(fields: Record<string, unknown> | undefined): string {
+  const ac = htmlToMd(String(fields?.[ACCEPTANCE_FIELD] ?? ""));
+  if (parseCriteria(ac).length) return ac;
+  const fromDesc = parseSections(htmlToMd(String(fields?.[DESCRIPTION] ?? ""))).sections.find((x) => partOf(x.heading) === "criteria")?.body ?? "";
+  return parseCriteria(fromDesc).length ? fromDesc : ac;
+}
+
 /** The criteria of a work item: the template section whose heading is the criteria, else the type's criteria field. */
 export async function readCriteria(s: Stories, id: number): Promise<ItemCriteria> {
   const w = await s.c.get<{ id: number; rev: number; fields: Record<string, any> }>(`wit/workitems/${id}`);
@@ -35,9 +48,16 @@ export async function readCriteria(s: Stories, id: number): Promise<ItemCriteria
   const tpl = await templateOf(s, type);
   const secs = fieldsToSections(s.teamCfg, w.fields, tpl.headings, tpl.layout);
   const sec = secs.find((x) => partOf(x.heading) === "criteria");
-  const markdown = sec ? sec.body : tpl.layout.acceptance !== tpl.layout.primary ? htmlToMd(String(w.fields[tpl.layout.acceptance] ?? "")) : "";
+  let markdown = sec ? sec.body : tpl.layout.acceptance !== tpl.layout.primary ? htmlToMd(String(w.fields[tpl.layout.acceptance] ?? "")) : "";
+  let field = tpl.layout.acceptance;
+  // without a team template the layout keeps everything in the description; criteria already in the standard criteria field
+  // still count (the same list the pull request check reads), and are written back there
+  // (the same list the pull request check reads: plainCriteria), so `criteria status` never shows none where the gate counts some
+  const standard = htmlToMd(String(w.fields[ACCEPTANCE_FIELD] ?? ""));
+  if (!parseCriteria(markdown).length && parseCriteria(standard).length) [markdown, field] = [standard, ACCEPTANCE_FIELD];
+  else if (!parseCriteria(markdown).length && parseCriteria(plainCriteria(w.fields)).length) markdown = plainCriteria(w.fields);
   return { id, rev: Number(w.rev), type, title: String(w.fields[F.title] ?? ""), // without a section the criteria go to the type's criteria field, which the heading "Acceptance criteria" maps to
-    heading: sec?.heading ?? "Acceptance criteria", field: tpl.layout.acceptance, markdown, criteria: parseCriteria(markdown) };
+    heading: sec?.heading ?? "Acceptance criteria", field, markdown, criteria: parseCriteria(markdown) };
 }
 
 /** Writes the criteria (with their how-tested and proof lines) into the criteria field, with the revision test. */
