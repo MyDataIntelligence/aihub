@@ -1,4 +1,4 @@
-# JSON for tools: pr list, pr show, status, watch events, pipelines, repository browser, wiki browser
+# JSON for tools: pr list, pr show, status, watch events, pipelines, repository browser, wiki browser, preflight
 
 For the VS Code extension and other scripts. Every command prints one JSON document with `--json` and never asks a question.
 
@@ -413,3 +413,23 @@ Read only. Like every `aihub fabric` command the JSON is `{ "identity"?: {...}, 
 ```
 
 `outcome`: `suspects` | `deployedUnrelated` | `nothingDeployed` | `noGreenRun` | `notConfigured` | `unavailable` (a read failed; the reason is in `notes`). Newest first in `deployments`, `commits`, `suspects` (by rank: the failed item or the failing leaf, then an item it calls, then a configuration file named like it) and `unrelated`; a change without a pull request has `commit` instead of `pr`. Fields that could not be determined are `null` or `[]`, with the reason in `notes`.
+
+## Preflight: `aihub preflight [--plan | --apply] --json` and `aihub preflight steps --json`
+
+One object; exit code 1 when a step failed or was blocked, or apply was held back (the object is printed first). Secrets and tokens are `***` everywhere.
+
+```json
+{"source":{"repository":"shared-templates","ref":"main","commit":"<sha>","fetched":"2026-11-28T08:40:00.000Z"},
+ "job":"cicd/deploy.yaml","workspace":{"name":"DEV-test-project 12-export","id":"<guid>","environment":"feature"},
+ "level":"plan","dryRun":false,
+ "steps":[{"name":"Validate configs","level":"local","kind":"script","status":"passed","reason":null,"seconds":0.4,"issues":[],"afterFailure":false,"uncertain":false},
+          {"name":"Get workspace ids","level":"read","kind":"PythonScript@0","status":"failed","reason":"exit code 1","seconds":2.1,"issues":["error: workspace not found"],"afterFailure":false,"uncertain":false}],
+ "drift":{"unknown":[],"missing":[],"renamed":[{"from":"Validate configs","to":"Validate all configs"}],"changed":[]},
+ "ok":false,"notes":[]}
+```
+
+- `workspace` is `null` at the local level. `level`: `local` | `plan` | `apply`. `fetched`: when the source repository was fetched (`null` when unknown).
+- `steps[].level`: `local` | `read` | `apply` | `skip` | `unknown` (in no list). `kind`: the task (`PythonScript@0`) or `script` | `bash` | `pwsh` | `powershell` | `other`.
+- `steps[].status`: `passed` | `failed` | `blocked` (a variable nobody can fill, or a local step that asks for a token) | `notRun` (condition false or not evaluable, held back, dry run) | `unknown` | `skipped` (other level, `skip`, after `--step`, a kind that does not run here) | `cannotRun` (listed, but a kind or program this PC cannot run). `--dry-run` adds `command` (the expanded command).
+- `afterFailure`: ran after an earlier step failed. `uncertain`: comes after an unknown step.
+- `preflight steps --json`: `{ source, job, steps:[{ index, name, kind, level, script, condition, runnable, note }], drift, notes }`.

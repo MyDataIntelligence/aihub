@@ -111,6 +111,30 @@ uncommitted and untracked files) and with `--run` runs only those. Without `test
 files that import the module; for JS/TS `<name>.test.ts`, `<name>.spec.ts` and specs that import the file; a changed test file runs itself. Code without a test is
 listed, docs and config are ignored, and it never falls back to the whole suite: the pipeline runs that.
 
+## Preflight: the deploy job on your PC (optional)
+
+```yaml
+preflight:
+  source: { repository: shared-templates, ref: main }   # holds the pipeline YAML and the scripts; default: this repository
+  job: cicd/deploy.yaml            # the YAML whose steps preflight runs
+  watch: ["jobs/**", "ddl/**"]     # the files this is about
+  parameters: { workspaceName: "DEV-test-project {branchName}" }   # ${{ parameters.x }}; placeholders {repo} {branch} {branchName} {head} {lastPushed} {workspace} {workspaceId} {sources} {work} {source}
+  variables: { ENVIRONMENT: dev }  # $(X) values preflight cannot work out
+  tokens: { ACCESS_TOKEN: fabric, ONELAKE_STORAGE_TOKEN: onelake, SQL_ACCESS_TOKEN: sql }   # only read and apply steps get them
+  steps:
+    local: [Validate configs]      # no network, no token (default level)
+    read: [Get workspace ids]      # with --plan and --apply
+    apply: [Publish items]         # with --apply only
+    skip: []                       # known, never run here
+  apply:
+    refuseWorkspaces: []           # globs --apply refuses
+    destructive: [{ step: Get workspace ids, pattern: "DROP" }]   # that step's output matches: --apply needs --yes
+```
+
+Also `python`, `shell` (bash | cmd | pwsh), `setup` (commands run once in the source checkout when its dependency files change) and `cd.pipeline` (--apply waits while it runs on
+the branch). `aihub preflight [--plan | --apply [--yes]] [--step "<name>"] [--dry-run] [--json]` runs the listed steps of the job in a snapshot of the working tree; a step in no list
+never runs. `aihub preflight steps --job <path> [--source <repo>]` lists every step with its kind and works without the block. Details: [preflight.md](preflight.md).
+
 ## After a pull request is created (optional)
 
 ```yaml

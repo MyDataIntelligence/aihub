@@ -89,6 +89,7 @@ export const commands: Record<string, CommandFn> = {
   policy: lazy(() => import("./commands/policy.js")),
   library: lazy(() => import("./commands/library.js")),
   test: lazy(() => import("./commands/test.js")),
+  preflight: lazy(() => import("./commands/preflight.js")),
   legacy: lazy(() => import("./commands/legacy.js")),
   fix: lazy(() => import("./commands/fix.js")),
   team: lazy(() => import("./commands/team.js")),
@@ -144,7 +145,7 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
     return 2;
   }
   // global flags: --verbose logs the real git/REST calls; --dry-run prints the writes it would do and skips them
-  const ownDryRun = name === "fabric" || name === "dbt" || name === "legacy" || name === "doctor" || (name === "pr" && rest[0] === "create") || (name === "story" && (await import("./commands/story-flow.js")).STORY_FLOW_SUBS.includes(rest[0]));
+  const ownDryRun = name === "fabric" || name === "dbt" || name === "preflight" || name === "legacy" || name === "doctor" || (name === "pr" && rest[0] === "create") || (name === "story" && (await import("./commands/story-flow.js")).STORY_FLOW_SUBS.includes(rest[0]));
   const verbose = rest.includes("--verbose");
   const dryRun = rest.includes("--dry-run");
   const args = mergeDashValues(rest.filter((a) => a !== "--verbose" && (ownDryRun || a !== "--dry-run")));
@@ -169,7 +170,7 @@ export async function main(argv: string[], ctx: Ctx, registry: Record<string, Co
     if (wantsAllRepos(name, args)) await runAllRepos(name, args, run, registry);
     else await fn(args, run);
     keep(true);
-    if (dryRun && name !== "fabric" && name !== "dbt" && name !== "doctor") ctx.out(`dry-run: ${planned} planned write(s), nothing was changed`);
+    if (dryRun && name !== "fabric" && name !== "dbt" && name !== "doctor" && name !== "preflight") ctx.out(`dry-run: ${planned} planned write(s), nothing was changed`);
     return 0;
   } catch (e) {
     if (dryRun && planned > 0) {
