@@ -255,10 +255,17 @@ export interface ItemRow {
   storyPoints?: number;
   tags: string[];
   parent?: number;
+  /** the column of the item on its board of the chosen team (Define, Refine, Ready, ... share a state); absent when it is on no board */
+  boardColumn?: string;
+  /** the item is in the Done part of a split column */
+  boardColumnDone?: boolean;
   changedDate: string;
   url: string;
   local: LocalLinks;
 }
+
+/** Per work item type: the fields of its board of the team that hold its column and its Done half. */
+export type ColumnFields = Record<string, { board: string; column: string; done?: string }>;
 
 export const tagsOf = (t: unknown): string[] =>
   String(t ?? "")
@@ -275,8 +282,10 @@ export function personOrNull(v: unknown, m: MeInfo): Person | null {
   return personOf(v as { displayName?: string; uniqueName?: string; id?: string }, m);
 }
 
-export function rowOf(s: Stories, f: Record<string, any>, m: MeInfo, cat: (type: string, state: string) => StateCategory, local: LocalLinks = { branches: [] }): ItemRow {
+export function rowOf(s: Stories, f: Record<string, any>, m: MeInfo, cat: (type: string, state: string) => StateCategory, local: LocalLinks = { branches: [] }, cols: ColumnFields = {}): ItemRow {
   const id = Number(f[F.id]);
+  const cf = cols[String(f[F.type] ?? "").toLowerCase()];
+  const column = cf && f[cf.column] ? String(f[cf.column]) : undefined;
   const pr = f[F.priority];
   return {
     id,
@@ -293,6 +302,7 @@ export function rowOf(s: Stories, f: Record<string, any>, m: MeInfo, cat: (type:
     ...([F.storyPoints, F.effort, F.size].map((k) => f[k]).find((x) => x !== undefined && x !== null && x !== "") !== undefined ? { storyPoints: Number([F.storyPoints, F.effort, F.size].map((k) => f[k]).find((x) => x !== undefined && x !== null && x !== "")) } : {}),
     tags: tagsOf(f[F.tags]),
     ...(f[F.parent] ? { parent: Number(f[F.parent]) } : {}),
+    ...(column ? { boardColumn: column, boardColumnDone: !!(cf?.done && (f[cf.done] === true || f[cf.done] === "True" || f[cf.done] === "true")) } : {}),
     changedDate: String(f[F.changed] ?? ""),
     url: s.c.workItemUrl(id),
     local,
