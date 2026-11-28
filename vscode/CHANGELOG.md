@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.9.0
+
+- aihub.bar.team* commands for the Team Settings pages (one process per call, only when a page asks).
+- Run End to End bridge: aihub.bar.storyAction opens or reuses the story's set and starts the opencode tab with the action; storyPrompt*, storyRunState and criteria* commands; the dialog's options reach the prompt; Stop.
+- aihub.bar.change* (Change with Agent: remote or working copy, agent in a terminal, a new window or Windows Terminal; state, push, discard, stop), browseSearch with a scope, aihub.bar.ask* and aihub.bar.changeSuggestFiles.
+- The buttons need aihub 1.10.0.
+
 ## 3.8.0
 
 - One engine for a set of the repositories the user picks: aihub.bar.openReposAsSet (New Set, Open as Set, noSet for one repository in its own window), cloning when needed, with Undo.

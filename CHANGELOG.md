@@ -2,8 +2,16 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
-## Unreleased
+## 1.10.0
+
 - Team settings: `aihub team show --json` gives the whole Team settings page in one read (which team.yaml applies, every key per repository with its explanation, overrides, templates); `team validate` (errors with line and fix), `team preview --template pr|story|bug|commit`, `team edit` (a new branch and a pull request in the team repository, never main) and `team init --from-pack | --team-repo`. Repositories without their own team.yaml use the team repository once one is set. The schema documents `teamName`, `worktrees`, more `workItems` keys and two Fabric keys.
+- Run End to End: team prompts with `/story-*` and `/bug-*` commands, acceptance criteria with how tested and proof and a status per criterion, the criteria section in the PR, run progress, YOLO with fixed limits, and the bar bridge; a Bug has no acceptance criteria.
+- `browse file` never downloads a binary or a file over 5 MB; folder sizes; text search without Code Search in the clones on this PC.
+- `aihub browse change`: Change with Agent without a clone (a workspace per change, diff, push as one commit on a new branch with a PR, fixed limits).
+- `browse search --scope` over several projects and repositories; `aihub browse ask` (a read-only question over that scope, counted reads, proposals, apply as changes on one branch name); `browse related` (the tests and users of a file).
+- `aihub branch update` works with any git remote, names the target and why, says "already up to date with <target>", and hints `--target staging` when another target was chosen.
+- A feature branch cut from staging keeps staging as its derived target, also when main was on the same commit or was merged into it.
+- Stories: the board column per item, a count per column, the total of a list, and the team's areas when the saved area is the project root.
 
 ## 1.9.0
 
