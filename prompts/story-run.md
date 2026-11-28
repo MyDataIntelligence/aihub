@@ -24,8 +24,8 @@ Klaar is pas klaar als alles hieronder waar is. Is iets niet waar, zeg dat; maak
 1. Acceptatiecriteria: elk criterium is toetsbaar en heeft Hoe getest en Bewijs.
    - Is een criterium vaag ("snel", "goed")? Scherp het eerst aan en leg het mij voor. Bouw niet door.
    - Ontbreekt Hoe getest of Bewijs, of zijn er geen criteria: stel ze voor met /story-criteria {{story.id}} en wacht op mijn OK.
-2. Per criterium een eigen test: een unit- of integratietest, een Fabric-run in {{workspace}}, of een data-check met query
-   en verwachte uitkomst. Geen criterium zonder test.
+2. Per criterium een eigen test: een unit- of integratietest{{#if fabric}}, een Fabric-run in {{workspace}}{{/if}}, of een data-check met query
+   en verwachte uitkomst. Geen criterium zonder test.{{#if fabric}} Test op Fabric alleen in {{workspace}}.{{/if}}{{#if noFabric}} Draai niets op Fabric.{{/if}}
 3. Draai alleen de gerichte tests (de bestanden en modellen die je raakt), niet de hele suite: `aihub test changed --run`.
 4. Commits maak je met aihub, klein, met het storynummer in het bericht: `aihub commit --type <type> --subject "<wat>" --push`.
 5. Leg per criterium de uitkomst vast: `aihub criteria record --id {{story.id}} --criterion <n> --result pass|fail --evidence <link> --reason "<waarom>"`.
@@ -37,9 +37,16 @@ Klaar is pas klaar als alles hieronder waar is. Is iets niet waar, zeg dat; maak
 8. Reviewthreads zijn verwerkt: beantwoord elke thread of pas de code aan, en zet hem op opgelost.
 9. Rapportage: PR-link, pipeline, criteria (x van {{criteria.count}} bewezen), wat niet is uitgevoerd en waarom.
 
+{{#if planFirst}}
 ## Plan first
 Toon eerst een plan: stappen per repo, de criteria per stap en de tests. Wacht op mijn OK.
 Wijkt de uitvoering later af van het plan, meld dat voordat je verdergaat.
+{{/if}}
+{{#if setActive}}
+## Status van de story
+De story staat op Active en is aan mij toegewezen. Zijn alle criteria bewezen en is de pipeline van de PR groen, zet hem
+dan op Resolved: `aihub workitem state --id {{story.id}} --to Resolved`. Anders laat je de status staan.
+{{/if}}
 
 ## Voortgang
 Meld elke stap met `aihub story progress --id {{story.id}} --step <k> --total <n> --label "<stap>"` (stappen: plan, bouwen,

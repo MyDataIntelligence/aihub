@@ -5,13 +5,19 @@ import type { Ctx } from "../context.js";
 import { readState, setFolderOf, stateFile, writeState, type RunState } from "./state.js";
 
 /** The progress of a run, written by the agent (`aihub story progress`) and read by the bar for its badge. */
-export function progress(ctx: Ctx, o: { id: number; step?: number; total?: number; label?: string; steps?: string[]; done?: boolean; action?: string }): RunState & { stateFile: string } {
+export function progress(ctx: Ctx, o: { id: number; step?: number; total?: number; label?: string; steps?: string[]; done?: boolean; action?: string; options?: Record<string, boolean>; stop?: boolean }): RunState & { stateFile: string } {
   const file = stateFile(ctx, o.id, "run");
   const now = new Date((ctx.now ?? Date.now)()).toISOString();
   const cur = readState<RunState>(file, { schema: 1, id: o.id, running: false, step: 0, total: 0, label: "", steps: [], updatedAt: "" });
-  const writing = o.step !== undefined || o.total !== undefined || o.label !== undefined || o.steps !== undefined || o.done || o.action !== undefined;
+  const writing = o.step !== undefined || o.total !== undefined || o.label !== undefined || o.steps !== undefined || o.done || o.action !== undefined || o.options !== undefined || o.stop;
   if (!writing) return { ...cur, stateFile: file };
   const next: RunState = { ...cur, id: o.id, updatedAt: now };
+  if (o.action !== undefined) {
+    // a new action starts a new run: old steps and a Stop are forgotten
+    if (o.action !== cur.action || cur.stopped || !cur.running) Object.assign(next, { step: 0, total: 0, label: "", steps: [], running: false, stopped: false, options: undefined });
+    next.action = o.action;
+  }
+  if (o.options) next.options = o.options;
   if (o.steps?.length) next.steps = o.steps;
   if (o.total !== undefined) next.total = o.total;
   if (o.step !== undefined) {
@@ -20,7 +26,6 @@ export function progress(ctx: Ctx, o: { id: number; step?: number; total?: numbe
     next.running = true;
   }
   if (o.label !== undefined) next.label = o.label;
-  if (o.action !== undefined) next.action = o.action;
   if (!next.total) next.total = Math.max(next.steps.length, next.step);
   if (next.step && next.label && next.steps.length < next.step) {
     // a step that was not announced in --steps joins the list
@@ -29,6 +34,10 @@ export function progress(ctx: Ctx, o: { id: number; step?: number; total?: numbe
   if (o.done) {
     next.running = false;
     next.step = next.total;
+  }
+  if (o.stop) {
+    next.running = false;
+    next.stopped = true;
   }
   writeState(file, next);
   return { ...next, stateFile: file };

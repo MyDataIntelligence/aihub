@@ -469,7 +469,7 @@ export const BAR_COMMANDS = {
   /** `{ cwd?, mode: "pack", repo? }` -> team.yaml from the team pack as a pull request; `{ mode: "teamRepo", teamRepo, everywhere? }` -> use that team repository */
   teamInit: "aihub.bar.teamInit",
   // ---- Run End to End and the agent actions per story (docs/cli-json.md "Run End to End"; failures as the story browser) ----
-  /** `{ id, action, repos?, yolo?, window?: new|this, project? }` -> opens or reuses the story's set (starts the story when it has no branches) and starts the opencode tab there with `/<action> <id>`; another window gets a one-shot pending action: `{ id, action, command, folder, window, started }` */
+  /** `{ id, action, repos?, yolo?, planFirst?, fabric?, setActive?, draft?, anyway?, window?: new|this, project? }` (action story-stop: marks the run stopped and sends Escape to opencode) -> opens or reuses the story's set (starts the story when it has no branches) and starts the opencode tab there with `/<action> <id>`; another window gets a one-shot pending action: `{ id, action, command, folder, window, started }` */
   storyAction: "aihub.bar.storyAction",
   /** `{ id, action, project? }` -> `aihub prompt render <action> --id N --json`: `{ action, slash, title, source: story|team|default, file, summary, filled, unknown, text }` */
   storyPrompt: "aihub.bar.storyPrompt",

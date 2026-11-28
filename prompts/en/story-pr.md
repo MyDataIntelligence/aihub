@@ -14,7 +14,7 @@ Create or update the pull request for story #{{story.id}} {{story.title}} from {
 2. `aihub pr create --body-file <file>` (when the PR exists the same command updates it). aihub writes the section
    Acceptance criteria and "N/M proven" itself.
 3. Not all criteria proven: aihub stops with the choices: test first (/story-test-fabric {{story.id}}), as a draft
-   (`--draft`) or anyway (`--anyway`). Put the choice to me; never pick `--anyway` yourself.
+   (`--draft`) or anyway (`--anyway`).{{#if draft}} I chose: as a draft; use `--draft`.{{/if}}{{#if anyway}} I chose: create anyway; use `--anyway`.{{/if}}{{#if askChoice}} Put the choice to me; never pick `--anyway` yourself.{{/if}}
 4. Report the PR link and how many criteria are proven.
 
 ## Limits

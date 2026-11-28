@@ -16,11 +16,11 @@ export const STORY_ACTIONS = [
   "story-test-fabric",
   "story-tests",
   "story-pr",
-  "story-review",
+  "story-pr-review",
   "story-fix-pipeline",
   "story-explain",
   "bug-reproduce",
-  "bug-fix-e2e",
+  "bug-run",
 ] as const;
 export type StoryAction = (typeof STORY_ACTIONS)[number];
 
@@ -70,7 +70,25 @@ export const e2eArgs = {
     return out;
   },
   yolo: (folder: string, on: boolean) => ["story", "yolo", on ? "--on" : "--off", "--folder", folder, "--json"],
+  /** the options of the dialog for the prompt (`prompt render` reads them from the run state); only what was given */
+  options: (id: number, action: StoryAction, o: RunChoices) => {
+    const given = (["planFirst", "fabric", "setActive", "draft", "anyway"] as const).filter((k) => typeof o[k] === "boolean").map((k) => `${k}=${o[k]}`);
+    return ["story", "progress", "--id", String(id), "--action", action, ...(given.length ? ["--options", given.join(",")] : []), "--json"];
+  },
+  activate: (id: number, a: { org?: string; project?: string } = {}) => scope(a, ["stories", "activate", "--id", String(id)]),
+  stop: (id: number) => ["story", "progress", "--id", String(id), "--stop", "--json"],
 };
+
+/** The choices of the Run End to End dialog and of Create Pull Request. */
+export interface RunChoices {
+  planFirst?: boolean;
+  fabric?: boolean;
+  setActive?: boolean;
+  draft?: boolean;
+  anyway?: boolean;
+}
+
+export const STOP_ACTION = "story-stop";
 
 /** Edit Prompt: the text goes to the CLI in a private file, removed right after. */
 export function promptSaveCall(a: { id?: unknown; action?: unknown; text?: unknown; org?: string; project?: string }): { args: string[]; dir: string } {

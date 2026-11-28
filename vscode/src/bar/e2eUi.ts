@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import { cli, jsonOf } from "./runner";
 import { BrowseMemo, type BrowseError } from "./browse";
 import { storyErrorOf } from "./storiesUi";
-import { checkStoryAction, e2eArgs, idOf, needsStart, promptSaveCall, removeDir, runStateOf, setOf, slashCommand, takePending, writePending } from "./e2e";
+import { checkStoryAction, e2eArgs, idOf, needsStart, promptSaveCall, removeDir, runStateOf, setOf, slashCommand, STOP_ACTION, takePending, writePending, type RunChoices } from "./e2e";
 import { BAR_COMMANDS } from "./types";
 
 /** The CLI runs in this window's first folder, else in the home folder. */
@@ -23,7 +23,7 @@ export function windowIsSet(set: { folder: string; workspace?: string }): boolea
  * Registers the Run End to End commands. `toOpencode` starts (or finds) the opencode tab of this window and sends the
  * slash command with Enter. Nothing runs at activation except one read of the pending-action file (see runPending).
  */
-export function registerE2eCommands(reg: (id: string, f: (...a: any[]) => unknown) => void, toOpencode: (text: string) => Promise<boolean>): void {
+export function registerE2eCommands(reg: (id: string, f: (...a: any[]) => unknown) => void, toOpencode: (text: string, submit?: boolean) => Promise<boolean>): void {
   const memo = new BrowseMemo();
   const json = async (args: string[]) => jsonOf<unknown>(await cli(args, cwdOf()));
   const read = <A>(build: (a: A) => string[]) => async (a: A) => {
@@ -86,9 +86,20 @@ export function registerE2eCommands(reg: (id: string, f: (...a: any[]) => unknow
   reg(BAR_COMMANDS.criteriaProposal, write(e2eArgs.criteriaProposal));
   reg(BAR_COMMANDS.criteriaApply, write(e2eArgs.criteriaApply));
 
-  reg(BAR_COMMANDS.storyAction, async (a: { id?: unknown; action?: unknown; repos?: unknown; yolo?: unknown; window?: unknown; org?: string; project?: string }) => {
+  reg(BAR_COMMANDS.storyAction, async (a: RunChoices & { id?: unknown; action?: unknown; repos?: unknown; yolo?: unknown; window?: unknown; org?: string; project?: string }) => {
     let id: number;
     let action: ReturnType<typeof checkStoryAction>;
+    // Stop: the run is marked stopped and opencode gets Escape (it interrupts the agent); nothing else happens
+    if (a?.action === STOP_ACTION) {
+      try {
+        id = idOf(a);
+        const state = runStateOf(await json(e2eArgs.stop(id)));
+        const interrupted = await toOpencode("\u001b", false);
+        return { id, action: STOP_ACTION, stopped: true, interrupted, state };
+      } catch (e) {
+        return e instanceof Error && /id is needed/.test(e.message) ? bad(e) : storyErrorOf(e);
+      }
+    }
     try {
       id = idOf(a);
       action = checkStoryAction(a?.action);
@@ -107,6 +118,9 @@ export function registerE2eCommands(reg: (id: string, f: (...a: any[]) => unknow
       }
       if (!set) return { error: { kind: "failed", message: `no set was made for ${id}` } };
       if (a?.yolo !== undefined) await json(e2eArgs.yolo(set.folder, a.yolo === true));
+      // the dialog's options go into the run state; the prompt is filled with them (plan first, Fabric, Active, draft/anyway)
+      await json(e2eArgs.options(id, action, a ?? {}));
+      if (a?.setActive === true) await json(e2eArgs.activate(id, { org: a.org, project: a.project }));
       if (windowIsSet(set)) {
         const started = await toOpencode(command);
         return { id, action, command, folder: set.folder, window: "this", started };
