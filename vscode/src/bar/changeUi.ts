@@ -5,7 +5,7 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 import { configHome } from "../../../cli/src/lib/configHome";
 import { browseErrorOf, type BrowseError } from "./browse";
-import { addPending, externalTerminal, opencodeLine, parseChangeStart, startArgs, takePending, workingCopyTask, type ChangeStartArg, type ChangeWhere } from "./change";
+import { addPending, externalTerminal, opencodeLine, parseChangeStart, progressLines, startArgs, takePending, verifyArgs, workingCopyTask, type ChangeStartArg, type ChangeWhere } from "./change";
 import { cli, jsonOf } from "./runner";
 import { BAR_COMMANDS } from "./types";
 import { openPath } from "./window";
@@ -140,6 +140,27 @@ export function registerChangeCommands(h: { reg: (id: string, f: (...a: any[]) =
     }
   });
 
+  // Run Checks (temporary copy): lint and tests of a remote change; progress to the hub's notification and to the caller's command
+  h.reg(BAR_COMMANDS.changeVerify, async (a?: { id?: string; lint?: boolean; tests?: boolean; onProgress?: string }) => {
+    let args: string[];
+    try {
+      args = verifyArgs(a ?? {});
+    } catch (e) {
+      return fail("badInput", (e as Error).message);
+    }
+    return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Checking the change in a temporary copy" }, (progress) =>
+      streamCli(args, cwdOf(), (line) => {
+        for (const e of progressLines(line)) {
+          progress.report({ message: `${e.n}/${e.total} ${e.message}` });
+          if (a?.onProgress) void vscode.commands.executeCommand(a.onProgress, e).then(undefined, () => undefined);
+        }
+      }).then((r) => {
+        h.changed();
+        if (r.code === 0) return jsonOf<unknown>(r.stdout);
+        return browseErrorOf(new Error(`${r.stderr}\n${r.stdout}`));
+      }),
+    );
+  });
   // Stop: the agent's terminal in this window goes (opencode ends with it); the workspace and its files stay for the review
   h.reg(BAR_COMMANDS.changeStop, (a?: { id?: string; path?: string }) => {
     const key = a?.id ?? a?.path;
@@ -152,7 +173,7 @@ export function registerChangeCommands(h: { reg: (id: string, f: (...a: any[]) =
     return { id: key, stopped: true, agent: "stopped" as AgentState };
   });
 
-  h.reg(BAR_COMMANDS.changePush, async (a?: { id?: string; message?: string; pr?: boolean; target?: string; story?: number; prTitle?: string; draft?: boolean; rebase?: boolean; branch?: string }) => {
+  h.reg(BAR_COMMANDS.changePush, async (a?: { id?: string; message?: string; pr?: boolean; anyway?: boolean; target?: string; story?: number; prTitle?: string; draft?: boolean; rebase?: boolean; branch?: string }) => {
     if (!a?.id) return fail("badInput", "which change? ({ id })");
     const run = (messageFile?: string) =>
       json<unknown>(
@@ -164,7 +185,7 @@ export function registerChangeCommands(h: { reg: (id: string, f: (...a: any[]) =
           a.id!,
           ...(messageFile ? ["--message-file", messageFile] : []),
           ...(a.branch ? ["--branch", a.branch] : []),
-          ...(a.pr ? ["--pr", ...(a.target ? ["--target", a.target] : []), ...(a.story ? ["--story", String(a.story)] : []), ...(a.prTitle ? ["--pr-title", a.prTitle] : []), ...(a.draft ? ["--draft"] : [])] : []),
+          ...(a.pr ? ["--pr", ...(a.target ? ["--target", a.target] : []), ...(a.story ? ["--story", String(a.story)] : []), ...(a.prTitle ? ["--pr-title", a.prTitle] : []), ...(a.draft ? ["--draft"] : []), ...(a.anyway ? ["--anyway"] : [])] : []),
           ...(a.rebase ? ["--rebase"] : []),
         ],
         cwdOf(),
@@ -301,4 +322,33 @@ async function startWorkingCopy(a: ChangeStartArg, log: (l: string) => void) {
   const agent = await startAgent(a.where, wc.path, `Read the task in ${task.replace(/\\/g, "/")} and make the change in this working copy. Do not push.`, a.repo, log);
   track(wc.path, agent.terminal);
   return { mode: a.mode, where: a.where, path: wc.path, branch, cloned: wc.cloned, taskFile: task, agent: agent.how, ...(agent.terminal ? { terminal: { name: agent.terminal.name } } : {}) };
+}
+
+/**
+ * One aihub process whose stderr is read while it runs (the progress of change verify): the same command as the other calls
+ * (aihub.cliPath; through a shell on Windows for the npm .cmd shim), never a sign-in window.
+ */
+function streamCli(args: string[], cwd: string, onErr: (chunk: string) => void): Promise<{ code: number; stdout: string; stderr: string }> {
+  const command = String(vscode.workspace.getConfiguration("aihub").get("cliPath", "aihub")) || "aihub";
+  const shell = process.platform === "win32" && !/\.(exe|com)$/i.test(command);
+  const q = (x: string) => (/^[A-Za-z0-9_@%+=:,./\\-]+$/.test(x) ? x : `"${x.replace(/"/g, '\\"')}"`);
+  return new Promise((resolve) => {
+    const p = spawn(shell ? q(command) : command, shell ? args.map(q) : args, { cwd, shell, windowsHide: true, env: { ...process.env, GCM_INTERACTIVE: "never", GIT_TERMINAL_PROMPT: "0", NO_COLOR: "1" } });
+    let stdout = "";
+    let stderr = "";
+    let pending = "";
+    p.stdout.on("data", (b: Buffer) => (stdout += b.toString()));
+    p.stderr.on("data", (b: Buffer) => {
+      const text = pending + b.toString();
+      const cut = text.lastIndexOf("\n");
+      pending = cut >= 0 ? text.slice(cut + 1) : text;
+      if (cut >= 0) onErr(text.slice(0, cut));
+      stderr += b.toString();
+    });
+    p.on("error", (e) => resolve({ code: 1, stdout, stderr: `${stderr}\n${e.message}` }));
+    p.on("close", (code) => {
+      if (pending) onErr(pending);
+      resolve({ code: code ?? 1, stdout, stderr });
+    });
+  });
 }

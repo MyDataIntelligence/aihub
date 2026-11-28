@@ -33,7 +33,13 @@ function world() {
   mkdirSync(set, { recursive: true });
   writeFileSync(join(set, ".aihub-set.json"), JSON.stringify({ story: 101, branch: "feature/101-orderexport", repos: [{ name: "repo-a", source: "x", path: join(set, "repo-a") }] }));
   t.ctx.cwd = set;
-  return { ...t, set };
+  // this world is a Dutch team (its criteria and prompts are Dutch): team.yaml says so, aihub assumes no language
+  const s = (refresh = false) => {
+    const x = t.s(refresh);
+    x.teamCfg = { language: "nl", ...x.teamCfg };
+    return x;
+  };
+  return { ...t, set, s };
 }
 
 describe("acceptance criteria text", () => {

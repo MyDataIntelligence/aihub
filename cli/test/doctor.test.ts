@@ -53,6 +53,16 @@ describe("aihub doctor", () => {
     expect(by(ok, "pr-template").detail).toContain(".azuredevops/pull_request_template.md");
     expect(by(ok, "skills:opencode").status).toBe("OK");
     expect(by(ok, "skills:codex").status).toBe("FIX");
+    expect(ok.checks.find((c) => c.name === "team:language")).toBeUndefined(); // init wrote language: en
+
+    // a team.yaml without a language: English is used, and doctor says so with the fix
+    const teamFile = join(dir, ".agents/skills/_shared/references/team.yaml");
+    const { readFileSync: rf, writeFileSync: wf } = await import("node:fs");
+    const withLang = rf(teamFile, "utf8");
+    wf(teamFile, withLang.replace(/^language:.*$/m, ""), "utf8");
+    const noLang = (await doctor(dir, env)).report;
+    expect(by(noLang, "team:language")).toMatchObject({ status: "FIX", detail: "no language in team.yaml: English is used for stories, PR text, prompts and empty sections", fix: "add language: nl for Dutch (or en): aihub team set language nl" });
+    wf(teamFile, withLang, "utf8");
 
     write(dir, ".agents/skills/_shared/references/team.yaml", "version: 1\nlanguage: nl\n");
     const bad = (await doctor(dir, env)).report;

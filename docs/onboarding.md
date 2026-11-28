@@ -1,5 +1,22 @@
 # Onboarding
 
+## For a colleague: five steps
+
+No VS Code extension is needed: aihub is a CLI plus skills for opencode, GitHub Copilot (VS Code chat) and Codex. The AI Context Hub
+extension is an optional view on top of the same CLI.
+
+1. **Have Node 18+ and git**, and preferably the Azure CLI (`node -v`, `git --version`, `az version`).
+2. **Install the CLI:** `npm i -g @ferronhooi/aihub` (your team may use its own feed: `AIHUB_PACKAGE`, see [self-hosting](self-hosting.md)).
+3. **Install the skills:** `aihub skills install`. It writes the skills and slash commands for opencode (`~/.config/opencode`), Codex
+   (`~/.codex`) and GitHub Copilot (skills in `~/.copilot/skills`; the slash commands such as `/story-run` as prompt files in VS Code's
+   user profile, when VS Code is installed). It prints one note per client about asking before terminal commands.
+4. **Sign in to Azure DevOps:** `az login` (or set `AIHUB_ADO_PAT`, or sign in once with git's credential manager).
+5. **In your team's repository:** `aihub doctor`. Every line `OK` means you are ready. The team settings (`team.yaml`, templates, the
+   language of stories and PRs: `language: nl` or `en`; without it aihub writes English and `aihub doctor` says so) come from the repository; when it has none yet, one person runs `aihub team setup` and `aihub init` once
+   (below) and the team merges that pull request.
+
+Then work from the chat: say what you want ("maak een PR", "run story 4711") or use a slash command (`/story-run 4711`, `/pr`, `/review`).
+`aihub update` keeps the CLI and the skills current.
 ## Install (once per computer)
 
 The easy way (checks Node 18+, installs the CLI and the skills, runs `aihub doctor`, prints the next steps; running it again updates):
@@ -72,8 +89,8 @@ method, `team.yaml` against the schema, keys it could only guess as `aihub team 
 ## Daily use
 
 Say what you want ("maak een PR", "verwerk de comments") or use a slash command: `/pr`, `/pr-update`, `/cherry-pick`,
-`/story`, `/refine`, `/story-run`, `/review`, `/watch`. Slash command files are in `commands/opencode/` (opencode) and
-`commands/copilot/` (GitHub Copilot prompt files); copy them into the tool's command folder.
+`/story`, `/refine`, `/story-run`, `/review`, `/watch`. `aihub skills install` puts them in place (opencode `command/`, Codex `prompts/`,
+GitHub Copilot as prompt files in VS Code's user profile); `aihub skills install --into-repo` puts them in the repository instead.
 
 ## Get a notification when something needs you
 

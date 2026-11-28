@@ -115,9 +115,14 @@ export function runChecks(ctx: Ctx): Check[] {
     if (existsSync(teamPath)) {
       // keys team.yaml leaves open that aihub could only guess: from the detection cache, no network
       const found = remote ? cachedDetections(ctx.env, remote, (ctx.now ?? Date.now)()) : [];
-      for (const q of questions(effective(team, found), 99)) checks.push(fix(`team:${q.key}`, `not in team.yaml and not sure (found: ${q.choices.join(", ")})`, `ask the user, then: ${q.command}`));
+      const open = questions(effective(team, found), 99).filter((q) => q.key !== "language");
+      for (const q of open) checks.push(fix(`team:${q.key}`, `not in team.yaml and not sure (found: ${q.choices.join(", ")})`, `ask the user, then: ${q.command}`));
+      // the language is never assumed: without it stories, PR sections and prompts are English, also for a Dutch team
+      const lang = String(team.language ?? "").toLowerCase();
+      if (lang !== "nl" && lang !== "en")
+        checks.push(fix("team:language", "no language in team.yaml: English is used for stories, PR text, prompts and empty sections", "add language: nl for Dutch (or en): aihub team set language nl"));
     }
-    const guidelines = Array.isArray(team.guidelines) ? (team.guidelines as unknown[]).map(String) : [];
+    const guidelines = (Array.isArray(team.guidelines) ? (team.guidelines as unknown[]) : Array.isArray((team.guidelines as { files?: unknown[] } | undefined)?.files) ? (team.guidelines as { files: unknown[] }).files : []).map(String); // a list, or { files, linters }
     if (guidelines.length) {
       const missing = guidelines.filter((g) => !existsSync(join(root, g)));
       checks.push(

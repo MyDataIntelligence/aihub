@@ -30,8 +30,9 @@ A direct command needs no routing: "maak een PR" -> run `aihub pr create --summa
 | review someone else's PR | pr-review |
 | "leg de PR uit" | pr-explain, learn |
 | "kan dit?" | feasibility |
+| not cloned, several repos | remote-repos |
 | wiki, other repo, Terraform | wiki, devops-repos, terraform |
-| policies, groups, search, PR admin | devops-admin |
+| policies, groups, PR admin | devops-admin |
 | screenshot, voice notes | evidence, voice-notes |
 | team.yaml, a template | team-settings |
 | release, release train | release |
@@ -45,4 +46,4 @@ The CLI applies `team.yaml` (templates, target, links); never read it or ask for
 ## If it fails
 Show `aihub doctor`. No `team.yaml`: `aihub team setup`.
 
-Rules: a direct command runs at once, 0 questions. Unreadable skill: `aihub <command> --help`. Done is done: no closing question. Local git uses your own tools. Content follows the team template language. Never invent ids.
+Rules: a direct command runs at once, 0 questions. Unreadable skill: `aihub <command> --help`. No closing question. Local git: your own tools. Content in the team language. Never invent ids.

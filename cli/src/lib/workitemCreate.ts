@@ -1,7 +1,7 @@
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { sectionsToFields } from "./story.js";
-import { compose, DEFAULT_EMPTY, parseSections } from "./templates.js";
+import { compose, DEFAULT_EMPTY, emptyFor, parseSections } from "./templates.js";
 import { loadTeam, readUtf8 } from "./team.js";
 import { typeLayout } from "./fieldLayout.js";
 import { findTypeTemplate, resolveType } from "./workItemType.js";
@@ -22,7 +22,7 @@ export async function createWorkItem(ctx: Ctx, o: CreateWorkItemOpts): Promise<s
   const team = loadTeam(root);
   const type = resolveType(team, o.type);
   const wi = team.workItems ?? {};
-  const empty = wi.emptySection || team.pullRequest?.emptySection || DEFAULT_EMPTY;
+  const empty = emptyFor(team, wi.emptySection);
   const found = await findTypeTemplate(root, client, team, type, o.refreshTemplate);
   const composed = compose({ template: found.text, body: readUtf8(o.bodyFile), code: {}, emptyText: empty });
   // the text goes in the main field of the type: ReproSteps for a Bug that has no Description

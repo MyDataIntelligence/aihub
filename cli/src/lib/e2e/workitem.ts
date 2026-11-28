@@ -12,7 +12,7 @@ import { readState, stateFile, writeState, type CriteriaState, type Result } fro
 
 export const isBug = (type: string) => /^bug$/i.test(type.trim());
 
-export const langOf = (s: Pick<Stories, "teamCfg">): Lang => (String((s.teamCfg as { language?: string }).language ?? "nl").toLowerCase().startsWith("en") ? "en" : "nl");
+export const langOf = (s: Pick<Stories, "teamCfg">): Lang => (String((s.teamCfg as { language?: string }).language ?? "en").toLowerCase().startsWith("nl") ? "nl" : "en");
 
 export interface ItemCriteria {
   id: number;

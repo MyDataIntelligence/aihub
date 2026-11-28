@@ -1,7 +1,7 @@
 import type { AdoClient } from "./ado.js";
 import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
-import { compose, DEFAULT_EMPTY, headingsMatch, normHeading, parseSections, renderSections, type Section } from "./templates.js";
+import { compose, DEFAULT_EMPTY, emptyFor, headingsMatch, normHeading, parseSections, renderSections, type Section } from "./templates.js";
 import { DEFAULT_LAYOUT, typeLayout, type FieldLayout } from "./fieldLayout.js";
 import { loadTeam, readUtf8, type TeamConfig } from "./team.js";
 import { findTypeTemplate, knownType } from "./workItemType.js";
@@ -143,7 +143,7 @@ export function findStoryTemplate(root: string, client: AdoClient | undefined, t
   return findWorkItemTemplate({ root, client, team, refresh, type: storyTypeOf(team), configured: team.workItems?.storyTemplate, fileName: STORY_TEMPLATE_FILE, builtIn: DEFAULT_STORY_TEMPLATE });
 }
 
-const emptyOf = (team: TeamConfig) => team.workItems?.emptySection || team.pullRequest?.emptySection || DEFAULT_EMPTY;
+const emptyOf = (team: TeamConfig) => emptyFor(team, team.workItems?.emptySection);
 
 export function isGap(body: string, empty: string): boolean {
   const t = body.replace(/<!--[\s\S]*?-->/g, "").trim();

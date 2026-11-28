@@ -81,6 +81,17 @@ describe("aihub init --no-pr", () => {
     expect(parse(readFileSync(join(dir, TEAM), "utf8")).language).toBe("nl");
   });
 
+  it("asks the language before it writes anything when nobody chose it", async () => {
+    const { dir } = repo();
+    write(dir, TEAM, "version: 1\nazureDevOps:\n  organization: ferron-org\n  project: test-project\nrepositories:\n  - name: test-repo\n");
+    sh(dir, ["add", "."]);
+    sh(dir, ["commit", "-m", "team"]);
+    const { ctx, lines } = ctxFor(dir, fakeFetch([]).fn);
+    expect(await main(["init", "--no-pr"], ctx)).toBe(0);
+    expect(lines.join("\n")).toContain("Language of stories, PR text and comments? nl | en -> aihub team set language nl");
+    expect(existsSync(join(dir, ".azuredevops/pull_request_template.md"))).toBe(false);
+  });
+
   it("rejects an unknown language", async () => {
     const { dir } = repo();
     const { ctx, errs } = ctxFor(dir, fakeFetch([]).fn);

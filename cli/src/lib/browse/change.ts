@@ -3,7 +3,7 @@ import { dirname, join, relative, sep } from "node:path";
 import { configHome } from "../configHome.js";
 import { BrowseError, normPath, repoClientOf, shortSha, webCommitUrl, webRepoUrl, type Browse } from "./core.js";
 import { hunks, merge3, splitLines, type Hunk } from "./lineDiff.js";
-import { contentAt, createRemotePr, headOf, isProtected, teamOf } from "./push.js";
+import { contentAt, createRemotePr, criteriaGate, headOf, isProtected, teamOf, verifyTests } from "./push.js";
 import { browseHistory, readFileAt, repoRowOf } from "./read.js";
 
 /**
@@ -160,17 +160,20 @@ export function taskText(meta: ChangeMeta, o: { selection?: Selection; materiali
     `- Another file: \`aihub browse change read --id ${id} --path /path/in/repo\` puts it under ./files.`,
     `- A folder: \`aihub browse items ${repoArgs} --ref commit:${meta.base.commit} --path /folder\`.`,
     `- Search the repository: \`aihub browse search --text "<text>" ${repoArgs}\`.`,
+    `- Before the first edit, read the rules of the repository: \`aihub browse change read --id ${id} --path /AGENTS.md\` (and the AGENTS.md of the folders you change, CLAUDE.md, .github/copilot-instructions.md, .github/instructions/*.instructions.md when they exist); the nearest AGENTS.md wins. After editing, check your diff against them and fix what does not follow them.`,
     "- Change and add files under ./files with your normal edit tools.",
     `- Remove a file: \`aihub browse change rm --id ${id} --path /path/in/repo\`.`,
     `- See your change: \`aihub browse change diff --id ${id}\`.`,
-    `- When done: write a short summary for the reviewer in a file and run \`aihub browse change summary --id ${id} --file <file>\`. Say that tests were not run.`,
+    `- Check it before the summary: \`aihub browse change verify --id ${id}\` lints the changed lines in a temporary copy (add \`--tests\` for the tests of the changed files); fix what it reports and run it again.`,
+    `- When done: write a short summary for the reviewer in a file and run \`aihub browse change summary --id ${id} --file <file>\`; say which checks of \`change verify\` passed, or that they were not run.`,
     "",
     "## Fixed limits",
     "",
     "- Do not push, commit, merge or run git: the user pushes from the review.",
+    `- Only when the user asks you to push it with a pull request: \`aihub browse change push --id ${id} --pr --draft\` (a draft unless the user says otherwise; with --anyway only on the user's word).`,
     `- Never ${["main", "master", "staging", "develop"].join(", ")}; only this repository; at most ${MAX_CHANGED_FILES} files.`,
     "- No secrets (keys, passwords, tokens), no pipeline definitions, variable groups or .env files.",
-    "- Tests cannot run here (no clone).",
+    "- There is no clone: tests and linters run only through `change verify` (a temporary copy that is removed after).",
     "",
   ].join("\n");
 }
@@ -372,6 +375,14 @@ export async function changeDiff(b: Browse, id: string) {
     summary,
     problems,
     ...(meta.pushed ? { pushed: meta.pushed } : {}),
+    // the last `change verify` (lint and tests in a temporary copy), or null
+    verify: (() => {
+      try {
+        return JSON.parse(readFileSync(join(dir, "verify.json"), "utf8")) as unknown;
+      } catch {
+        return null;
+      }
+    })(),
     contents: Object.fromEntries(files.map((f) => [f.path, f.content])),
   };
 }
@@ -382,7 +393,7 @@ export type ChangePushResult =
   | { status: "pushed"; branch: string; commit: { id: string; short: string; webUrl: string }; startedFrom: string; rebased: boolean; files: string[]; pr: { id: number; title: string; webUrl: string } | null; prError: string | null; webUrl: string }
   | { status: "conflict"; files: { path: string; latest: { id: string; short: string; message: string; at: string | null; by: { name: string; email: string; isMe: boolean } } | null; overlap: boolean }[] };
 
-export async function changePush(b: Browse, id: string, o: { message?: string; pr?: boolean; target?: string; story?: number; prTitle?: string; draft?: boolean; rebase?: boolean; branch?: string }): Promise<ChangePushResult> {
+export async function changePush(b: Browse, id: string, o: { message?: string; pr?: boolean; anyway?: boolean; target?: string; story?: number; prTitle?: string; draft?: boolean; rebase?: boolean; branch?: string }): Promise<ChangePushResult> {
   const { dir, meta } = readMeta(b.env, id);
   openOnly(meta);
   const d = await changeDiff(b, id);
@@ -393,7 +404,8 @@ export async function changePush(b: Browse, id: string, o: { message?: string; p
   const rc = repoClientOf(b, meta.project, meta.repo);
   const repoInfo = await rc.get<{ defaultBranch?: string }>(rc.repoPath());
   const def = (repoInfo.defaultBranch ?? "").replace(/^refs\/heads\//, "");
-  const team = await teamOf(b, meta.project, meta.repo, def || meta.base.branch);
+  // the team file of the branch the change started from (where the team's settings were read), else of the default branch
+  const team = await teamOf(b, meta.project, meta.repo, meta.base.branch || def);
   if (isProtected(branch, team, [def, meta.base.branch])) throw new BrowseError("protectedBranch", `pushing to '${branch}' is refused: a change goes to a new feature branch`);
   if (await headOf(b, meta.project, meta.repo, branch)) throw new BrowseError("branchExists", `branch '${branch}' already exists in ${meta.repo}: choose another name`);
   const head = await headOf(b, meta.project, meta.repo, meta.base.branch);
@@ -431,6 +443,8 @@ export async function changePush(b: Browse, id: string, o: { message?: string; p
     else changes.push({ changeType: (await exists(f.path)) ? "edit" : "add", item: { path: f.path }, newContent: { content: contents.get(f.path) ?? "", contentType: "rawtext" } });
   }
   const message = (o.message?.trim() || defaultMessage(meta, d.summary)).trim();
+  // a story whose criteria are not all proven: the user chooses first (test, --draft or --anyway); nothing is pushed until then
+  if (o.pr) await criteriaGate(b, { project: meta.project, story: o.story ?? meta.story, draft: o.draft, anyway: o.anyway, team });
   const pushed = await rc.post<{ commits?: { commitId: string }[]; refUpdates?: { newObjectId: string }[] }>(`${rc.repoPath()}/pushes`, {
     refUpdates: [{ name: `refs/heads/${branch}`, oldObjectId: ZERO }],
     commits: [{ comment: message, parents: [startFrom], changes }],
@@ -449,7 +463,9 @@ export async function changePush(b: Browse, id: string, o: { message?: string; p
   };
   if (o.pr) {
     try {
-      out.pr = await createRemotePr(b, { project: meta.project, repo: meta.repo, branch, target: o.target || def || meta.base.branch, path: d.files[0].path, message, story: o.story ?? meta.story, prTitle: o.prTitle, draft: o.draft, commitId, team });
+      // the description by the one rule of pr create: the agent's summary, the changed files, the checks that really ran
+      const changes = d.files.map((f) => `- ${f.path.replace(/^\//, "")}${f.status === "added" ? (team.language === "nl" ? " (nieuw)" : " (new)") : f.status === "deleted" ? (team.language === "nl" ? " (verwijderd)" : " (removed)") : ""}`).join("\n");
+      out.pr = await createRemotePr(b, { project: meta.project, repo: meta.repo, branch, target: o.target || def || meta.base.branch, path: d.files[0].path, message, story: o.story ?? meta.story, prTitle: o.prTitle, draft: o.draft, commitId, team, summary: d.summary ?? undefined, changes, tests: verifyTests(d.verify as never, team.language) });
     } catch (e) {
       out.prError = (e as Error).message;
     }

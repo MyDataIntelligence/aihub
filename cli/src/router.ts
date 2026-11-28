@@ -67,6 +67,7 @@ export const commands: Record<string, CommandFn> = {
   port: lazy(() => import("./commands/port.js")),
   crossrepo: lazy(() => import("./commands/crossrepo.js")),
   note: lazy(() => import("./commands/note.js")),
+  guidelines: lazy(() => import("./commands/guidelines.js")),
   status: lazy(() => import("./commands/status.js")),
   bar: lazy(() => import("./commands/bar.js")),
   token: lazy(() => import("./commands/token.js")),

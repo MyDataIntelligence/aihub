@@ -1,4 +1,5 @@
 import { spawnSync } from "./proc.js";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -43,6 +44,24 @@ function opencodeAgents(base: string, env: NodeJS.ProcessEnv): NonNullable<Clien
   return { dir: join(base, v2 ? "agents" : "agent"), source: v2 ? "opencode2" : "opencode", other: join(base, v2 ? "agent" : "agents") };
 }
 
+/**
+ * The user prompt-file folder of VS Code (Copilot Chat reads `*.prompt.md` there as slash commands in every workspace):
+ * AIHUB_VSCODE_USER_DIR, else the `User` folder of VS Code's user data (Windows %APPDATA%\Code\User, macOS ~/Library/Application
+ * Support/Code/User, Linux ~/.config/Code/User). Undefined when that folder does not exist (VS Code not installed for this user).
+ */
+export function vscodeUserPrompts(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): string | undefined {
+  const user =
+    env.AIHUB_VSCODE_USER_DIR ||
+    (platform === "win32"
+      ? env.APPDATA
+        ? join(env.APPDATA, "Code", "User")
+        : undefined
+      : platform === "darwin"
+        ? join(home(env), "Library", "Application Support", "Code", "User")
+        : join(env.XDG_CONFIG_HOME || join(home(env), ".config"), "Code", "User"));
+  return user && existsSync(user) ? join(user, "prompts") : undefined;
+}
+
 /** Global (per user) or project (inside `root`) locations of a client. Environment overrides come from `env`. */
 export function clientDirs(client: Client, env: NodeJS.ProcessEnv, opts: { global: boolean; root?: string }): ClientDirs {
   if (opts.global) {
@@ -59,7 +78,9 @@ export function clientDirs(client: Client, env: NodeJS.ProcessEnv, opts: { globa
       return { skills: join(base, "skills"), commands: { dir: join(base, "commands"), source: "opencode" }, agents: { dir: join(base, "agents"), source: "claude" } };
     }
     const copilot = env.COPILOT_HOME || join(home(env), ".copilot");
-    return { skills: join(copilot, "skills"), agents: { dir: join(copilot, "agents"), source: "copilot" } };
+    // the slash commands (/story-run, /pr, ...) are prompt files in VS Code's user profile; only when VS Code is there
+    const prompts = vscodeUserPrompts(env);
+    return { skills: join(copilot, "skills"), ...(prompts ? { commands: { dir: prompts, source: "copilot" as const } } : {}), agents: { dir: join(copilot, "agents"), source: "copilot" } };
   }
   const root = opts.root ?? ".";
   if (client === "opencode") {

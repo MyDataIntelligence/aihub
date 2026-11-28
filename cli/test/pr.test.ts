@@ -20,7 +20,7 @@ const TEMPLATE = `## Beschrijving
 function setup() {
   const { dir, bare } = makeRepo();
   write(dir, ".azuredevops/pull_request_template.md", TEMPLATE);
-  write(dir, ".agents/skills/_shared/references/team.yaml", "repositories:\n  - name: test-repo\n    defaultTarget: main\n");
+  write(dir, ".agents/skills/_shared/references/team.yaml", "language: nl\nrepositories:\n  - name: test-repo\n    defaultTarget: main\n");
   sh(dir, ["add", "."]);
   sh(dir, ["commit", "-m", "chore: sjablonen"]);
   sh(dir, ["push", "origin", "main"]);

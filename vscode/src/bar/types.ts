@@ -312,12 +312,18 @@ export const BAR_COMMANDS = {
   changeStart: "aihub.bar.changeStart",
   /** `{ id }` -> `aihub browse change diff`: files with status, additions, deletions and hunks; totals; summary; problems; plus `agent`: "working" (its terminal in this window is open) | "stopped" | "closed" | "unknown" (Windows Terminal or another window) */
   changeState: "aihub.bar.changeState",
-  /** `{ id, message?, pr?, target?, story?, prTitle?, draft?, rebase?, branch? }` -> `{ status: "pushed", ... }` or `{ status: "conflict", files }` */
+  /**
+   * `{ id, message?, pr?, target?, story?, prTitle?, draft?, anyway?, rebase?, branch? }` -> `{ status: "pushed", ..., pr: { id, title, webUrl, draft, draftReason?, criteria? } }`
+   * or `{ status: "conflict", files }`. A story whose criteria are not all proven, without draft or anyway: `{ error: { kind: "criteriaNotProven",
+   * proven, total, choices: ["testFirst", "draft", "anyway"] } }` and NOTHING is pushed: ask the user (Test first / Create as Draft / Create anyway) and call again.
+   */
   changePush: "aihub.bar.changePush",
   /** `{ id }` -> `{ id, discarded: true }` */
   changeDiscard: "aihub.bar.changeDiscard",
   /** `{ id }` (or `{ path }` of a working-copy change): ends the agent's terminal in this window; the files stay -> `{ id, stopped, agent, reason? }` */
   changeStop: "aihub.bar.changeStop",
+  /** `{ id, lint? (default true), tests? (default false), onProgress?: <your command id> }` (Run Checks, temporary copy) -> `aihub browse change verify`: `{ id, ok, base, files, checks: [{ name, kind: "lint"|"test", status: "passed"|"failed"|"skipped", errors: [{ path, line?, message }], tookMs, command?, reason? }], tookMs, copyRemoved, at, notes }`; per step `executeCommand(onProgress, { id, step, n, total, message })`; the last run is `verify` in changeState */
+  changeVerify: "aihub.bar.changeVerify",
   /** `{ id, where?: "newWindow"|"terminal"|"panel"|"here", remoteUrl? }`: a worktree on the change's branch with the change in it -> `{ id, path, branch, cloned, applied, skipped }` */
   changeToWorkingCopy: "aihub.bar.changeToWorkingCopy",
   /** `{ project, repo, path, top? }` ("+ related files") -> `aihub browse related`: `{ route: "codeSearch"|"tree", files: [{ path, why }] }`: tests and same-name files first, then the files that use it */

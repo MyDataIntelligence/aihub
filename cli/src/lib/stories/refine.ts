@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { BrowseError } from "../browse/core.js";
 import { configHome } from "../configHome.js";
 import { isGap } from "../story.js";
-import { DEFAULT_EMPTY, headingsMatch, parseSections } from "../templates.js";
+import { DEFAULT_EMPTY, emptyFor, headingsMatch, parseSections } from "../templates.js";
 import { bumpGeneration, F, me, type Stories } from "./core.js";
 import { readItem } from "./read.js";
 import { partOf } from "./template.js";
@@ -19,7 +19,7 @@ const safe = (x: string) => x.replace(/[^A-Za-z0-9._-]+/g, "-");
 
 export const proposalFile = (s: Stories, id: number, kind = "refine") => join(configHome(s.b.env), "stories", "proposals", `${safe(s.b.org)}-${safe(s.project)}-${id}-${kind}.md`);
 
-const emptyOf = (s: Stories) => s.teamCfg.workItems?.emptySection || s.teamCfg.pullRequest?.emptySection || DEFAULT_EMPTY;
+const emptyOf = (s: Stories) => emptyFor(s.teamCfg, s.teamCfg.workItems?.emptySection);
 
 export async function refineAsk(s: Stories, id: number): Promise<{ id: number; title: string; type: string; gaps: string[]; proposalFile: string; prompt: string }> {
   const item = await readItem(s, id, await me(s));

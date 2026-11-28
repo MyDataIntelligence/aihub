@@ -8,7 +8,7 @@ export const TEAM_KNOWLEDGE = ".agents/skills/_shared/references/team-knowledge.
 
 /** The guideline file the rule goes to: the first one team.yaml lists under `guidelines:`, else the team-knowledge file. */
 export function knowledgeFile(team: ReturnType<typeof loadTeam>): string {
-  const g = Array.isArray(team.guidelines) ? (team.guidelines as unknown[]).map(String).filter(Boolean) : [];
+  const g = (Array.isArray(team.guidelines) ? (team.guidelines as unknown[]) : Array.isArray((team.guidelines as { files?: unknown[] } | undefined)?.files) ? (team.guidelines as { files: unknown[] }).files : []).map(String).filter(Boolean); // a list, or { files, linters }
   return g[0] ?? TEAM_KNOWLEDGE;
 }
 

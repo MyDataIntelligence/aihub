@@ -8,7 +8,7 @@ import { createPr } from "./pr.js";
 import { findSet } from "./setInfo.js";
 import { storyShow, findStoryTemplate } from "./story.js";
 import { loadTeam, readUtf8 } from "./team.js";
-import { codeKindOf, compose, DEFAULT_EMPTY, fallbackKindOf, parseSections, renderSections } from "./templates.js";
+import { codeKindOf, compose, DEFAULT_EMPTY, emptyFor, fallbackKindOf, parseSections, renderSections } from "./templates.js";
 import { COMMIT_TEMPLATE } from "./teamSettings.js";
 import { findTypeTemplate } from "./workItemType.js";
 import { AihubError } from "./errors.js";
@@ -72,7 +72,7 @@ export async function teamPreview(ctx: Ctx, o: { kind: PreviewKind; repo?: strin
   const team = loadTeam(dir);
   const branch = currentBranch(dir);
   const story = workItemFromBranch(branch);
-  const emptyText = team.pullRequest?.emptySection || DEFAULT_EMPTY;
+  const emptyText = emptyFor(team);
 
   if (o.kind === "pr") {
     const j = JSON.parse(await createPr(rctx, { dryRun: true, json: true })) as {

@@ -138,8 +138,14 @@ crossRepo:                         # cross-repo settings for `aihub port` and `a
     paths: ["tests/data/**"]       # globs, relative to the source repository root (optional)
     toPath: ""                     # directory prefix in the target repository, default none (optional)
 
-guidelines:                       # list of repo files the agent reads before writing code or text (optional)
-  - docs/guidelines.md
+guidelines:                       # optional. A list of repo files the agent reads before writing code or text, or this map:
+  files:                           #   the same list (aihub guidelines show adds their rules to AGENTS.md, CLAUDE.md, copilot instructions)
+    - docs/guidelines.md
+  linters:                         #   run by `aihub guidelines check` on the changed files only; findings on changed lines fail it
+    - ruff                         #   a known one: ruff (*.py) or sqlfluff (*.sql)
+    - name: yamllint               #   or your own: a name, a command ({files} = the changed files) and the files it lints
+      command: yamllint -f parsable {files}
+      files: ["**/*.yml", "**/*.yaml"]
 
 tests:                             # optional: used by `aihub test changed` (the tests that belong to the changed files)
   command: "pytest {tests}"        # command template; {tests} becomes the test files to run (default: pytest for .py, npx vitest run for JS/TS)
