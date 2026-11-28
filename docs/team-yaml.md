@@ -173,6 +173,22 @@ says which Fabric items changed (git-integration folders `<name>.<Type>/`) and t
 The deployment pipeline stage items say which items are new (only in the from stage) or deleted (only in the to stage). The result lists per item the status, PRs and stories, the cherry-pick list in merge order,
 and release notes in the team language; `--out` writes a plan that `aihub release run --plan-file` can execute (default target: the to-environment's branch). Deploying stays the guarded `aihub fabric deployment deploy`.
 
+### Which commit runs in a CD-filled workspace (optional)
+
+```yaml
+fabric:
+  environments:
+    TST:
+      branch: staging                  # the branch the CD pipeline deploys to this environment
+      workspace: "Fabric {repo} test"  # workspace display name; {repo} is the repository name
+      deployedBy:
+        pipeline: cd_pipeline          # the CD pipeline definition in Azure DevOps (name or id)
+        stage: DeployTestEnvironment   # the stage that deploys this environment
+```
+
+`aihub fabric deployed --workspace W` (or `--env TST`) and `aihub fabric failures --workspace W --since-green` read these keys: the deployed
+commit is the newest run of `deployedBy.pipeline` on `refs/heads/<branch>` whose stage `deployedBy.stage` succeeded. See [since-green.md](since-green.md).
+
 ## Fabric and Robot (optional)
 
 ```yaml

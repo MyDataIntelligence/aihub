@@ -392,3 +392,24 @@ Text for the agent by default; `--json` for the bar (a failure then is `{"error"
 - `story progress --id N [--step k --total n --label t] [--steps a|b|c] [--done] [--stop] --json` -> `{ id, running, step, total, label, steps, stepsView:[{label,state:done|running|queued}], updatedAt, stateFile }`
 - `story yolo --on|--off [--folder <set>]`: `opencode.json` in the set folder allows edits and commands except the limits (push or merge to main/staging, force push, completing a PR, ACC/PRD and deployments).
 - `pr create`: with a story that has criteria, the section Acceptatiecriteria (criterion, how tested, outcome, link or "Nog niet uitgevoerd") and "N/M bewezen" on top; not all proven: exit 5, nothing written, unless `--draft` or `--anyway`.
+
+## Fabric since green: `aihub fabric deployed`, `aihub fabric failures --since-green`
+
+Read only. Like every `aihub fabric` command the JSON is `{ "identity"?: {...}, "result": ... }`. See [since-green.md](since-green.md).
+
+- `fabric deployed --workspace W | --env ENV --json` -> `{ environment:{name,branch,workspace,pipeline,stage}, pipeline:{id,name}, looked, run:{id,number,finished,reason,requestedFor}|null, commit:{sha,title}|null, pullRequests:[{pr,title,stories:[{id,title}]}], otherRepositories:[{alias,version}], note? }`. `run: null` with `note` when none of the newest `looked` runs deployed the stage. A workspace without an environment, or an environment without `deployedBy`, is an error (exit 1) that names the team.yaml lines.
+- `fabric failures --since-green --json` -> the usual `{ workspace, failed, active, chain }` plus `sinceGreen` (`null` when there is no failed run):
+
+```json
+{"window":{"failed":{"item":"pl_main","job":"<job id>","start":"2026-03-04T02:00:00Z"},"green":{"job":"<job id>","end":"2026-03-03T02:10:00Z"}},
+ "environment":{"name":"TST","branch":"staging","workspace":"Fabric test-repo test","pipeline":"cd_pipeline","stage":"DeployTestEnvironment"},
+ "deployments":[{"run":104,"number":"2026.104","finished":"2026-03-03T16:45:00Z","commit":"<sha>"}],
+ "before":{"run":101,"finished":"2026-03-02T11:20:00Z","commit":"<sha>"},"after":{"run":104,"finished":"2026-03-03T16:45:00Z","commit":"<sha>"},
+ "commits":[{"commit":"<sha>","title":"...","pr":412,"paths":["fabric/nb_standardize.Notebook/notebook-content.py"]}],
+ "otherRepositoriesAvailable":true,"otherRepositories":[{"alias":"central","before":"<sha>","after":"<sha>","changed":false}],
+ "suspects":[{"pr":412,"title":"...","stories":[{"id":9981,"title":"..."}],"reason":"touches nb_standardize (the failing item in the root-cause chain)","paths":["..."]}],
+ "unrelated":[{"pr":409,"title":"...","stories":[],"paths":["governance/roles.yaml"]}],
+ "outcome":"suspects","notes":[]}
+```
+
+`outcome`: `suspects` | `deployedUnrelated` | `nothingDeployed` | `noGreenRun` | `notConfigured` | `unavailable` (a read failed; the reason is in `notes`). Newest first in `deployments`, `commits`, `suspects` (by rank: the failed item or the failing leaf, then an item it calls, then a configuration file named like it) and `unrelated`; a change without a pull request has `commit` instead of `pr`. Fields that could not be determined are `null` or `[]`, with the reason in `notes`.

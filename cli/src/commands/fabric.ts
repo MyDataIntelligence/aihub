@@ -144,6 +144,8 @@ const OPTIONS = {
   set: { type: "string", multiple: true },
   part: { type: "string" },
   run: { type: "boolean" },
+  env: { type: "string" },
+  "since-green": { type: "boolean" },
 } as const;
 
 export type V = Record<string, string | boolean | string[] | undefined>;
@@ -278,6 +280,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
       return livyCmd(s, pos[0]);
     case "failures":
       return failuresCmd(s);
+    case "deployed":
+      return (await import("./fabric-since-green.js")).deployedCmd(s);
     case "sql":
       return sqlCmd(s);
     case "connection":

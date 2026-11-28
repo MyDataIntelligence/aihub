@@ -2,6 +2,10 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## Unreleased
+
+- `aihub fabric deployed --workspace W` says which commit runs in a CD-filled workspace (the newest CD run on the environment's branch whose deploy stage succeeded, its PRs, stories and other repository versions); `aihub fabric failures --since-green` adds what was deployed between the last green and the red run, with the commits, the touched Fabric items and a list of suspects. team.yaml: `fabric.environments.<ENV>.workspace` and `deployedBy {pipeline, stage}`. See docs/since-green.md.
+
 ## 1.10.0
 
 - Team settings: `aihub team show --json` gives the whole Team settings page in one read (which team.yaml applies, every key per repository with its explanation, overrides, templates); `team validate` (errors with line and fix), `team preview --template pr|story|bug|commit`, `team edit` (a new branch and a pull request in the team repository, never main) and `team init --from-pack | --team-repo`. Repositories without their own team.yaml use the team repository once one is set. The schema documents `teamName`, `worktrees`, more `workItems` keys and two Fabric keys.
