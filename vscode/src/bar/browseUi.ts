@@ -1,8 +1,9 @@
 import { homedir } from "node:os";
 import * as vscode from "vscode";
 import { cli, jsonOf } from "./runner";
-import { BrowseMemo, vscodeRipgrep, browseArgs, browseErrorOf, pipeBrowseArgs, pushFiles, removePushFiles, runFiles, scopeOf, type BrowseError, type BrowseRunArg, type PrArg, type PushArg } from "./browse";
+import { BROWSE_UPDATE_COMMAND, BrowseMemo, vscodeRipgrep, browseArgs, browseErrorOf, pipeBrowseArgs, pushFiles, removePushFiles, runFiles, scopeOf, type BrowseError, type BrowseRunArg, type PrArg, type PushArg } from "./browse";
 import { BAR_COMMANDS } from "./types";
+import { LatestOnly, partLines, searchAllArgs, streamCli, type SearchAllArg } from "./searchAll";
 
 /** The CLI runs in this window's first folder (its clone tells the organisation and the repos root), else in the home folder. */
 const cwdOf = (): string => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? homedir();
@@ -44,6 +45,36 @@ export function registerBrowseCommands(reg: (id: string, f: (...a: any[]) => unk
     return f(a);
   };
   reg(BAR_COMMANDS.browseSearch, withRg(read("search", browseArgs.search)));
+  // Search Everywhere: one process per search, each kind on stderr as it is ready (onPart); a newer search stops the older one
+  const latest = new LatestOnly();
+  reg(
+    BAR_COMMANDS.searchAll,
+    withRg(async (a: SearchAllArg) => {
+      let args: string[];
+      try {
+        args = searchAllArgs(a);
+      } catch (e) {
+        return bad(e);
+      }
+      const command = String(vscode.workspace.getConfiguration("aihub").get("cliPath", "aihub")) || "aihub";
+      const s = latest.start(
+        streamCli(command, args, cwdOf(), (lines) => {
+          if (!a.onPart) return;
+          for (const part of partLines(lines)) void vscode.commands.executeCommand(a.onPart, { text: a.text, part }).then(undefined, () => undefined);
+        }),
+      );
+      const r = await s.done;
+      if (r.stopped) return { stopped: true };
+      if (r.code === 0) return jsonOf<unknown>(r.stdout);
+      // an older CLI without `search all` prints the usage of code|wiki|items
+      if (/usage: aihub search code\|wiki\|items/.test(r.stderr) && !/aihub search all/.test(r.stderr)) return { error: { kind: "cliTooOld", message: `Search Everywhere needs a newer aihub CLI. Update it with: ${BROWSE_UPDATE_COMMAND}` } };
+      return browseErrorOf(new Error(`${r.stderr}\n${r.stdout}`));
+    }),
+  );
+  reg(BAR_COMMANDS.searchAllStop, () => {
+    latest.stop();
+    return { ok: true };
+  });
   reg(BAR_COMMANDS.browseSuggestBranch, read("suggest", browseArgs.suggestBranch));
   reg(BAR_COMMANDS.changeSuggestFiles, read("related", browseArgs.related));
   // a write: never shared, never remembered; the content and message go in private files that are removed right after
