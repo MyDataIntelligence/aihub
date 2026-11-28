@@ -75,5 +75,10 @@ describe("a prompt is never empty", () => {
     expect(fabric.text).toMatch(/^# Test on Fabric/);
     expect(fabric.text).toContain("{{workspace}}");
     for (const p of l.prompts) expect(p.text.length, p.action).toBeGreaterThan(100);
+    // the list has no story: no raw placeholder in a summary
+    for (const p of l.prompts) expect(`${p.goal} ${p.reads} ${p.produces}`, p.action).not.toContain("{{");
+    expect(l.prompts.find((p) => p.action === "story-run")!.goal).toBe("Een groene pull request naar de doelbranch met alle acceptatiecriteria bewezen.");
+    s.teamCfg = { language: "nl", repositories: [{ name: "", defaultTarget: "staging" }] } as never;
+    expect(listPrompts(t.ctx, s).prompts.find((p) => p.action === "story-run")!.goal).toContain("naar staging");
   });
 });
