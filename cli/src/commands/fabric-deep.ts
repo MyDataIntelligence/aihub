@@ -385,6 +385,8 @@ export async function resolveBranchWorkspace(s: Setup, client: FabricClient): Pr
 export async function failuresCmd(s: Setup): Promise<void> {
   const client = makeClient(s.ctx, s.v);
   let t: Target;
+  // --since-green is about a CD-filled workspace: without --workspace the environment's, not the branch's
+  const picked = s.v["since-green"] ? await (await import("./fabric-since-green.js")).environmentWorkspace(s, client) : undefined;
   await resolveBranchWorkspace(s, client);
   t = await target(s, client, false);
   // --item: only that item's runs ("why did the last run of notebook X fail")
@@ -405,7 +407,7 @@ export async function failuresCmd(s: Setup): Promise<void> {
   for (const r of rows) rememberRun(s.ctx.env, r.job.id, { workspaceId: t.id, workspaceName: t.ws.name, itemId: r.item.id, itemName: r.item.displayName, itemType: r.item.type });
   const failed = rows.filter((r) => r.job.status === "Failed");
   const active = rows.filter((r) => r.job.status !== "Failed");
-  const lines = [`${failed.length} failed and ${active.length} active run(s) in ${where(t)}`];
+  const lines = [...(picked ? [picked] : []), `${failed.length} failed and ${active.length} active run(s) in ${where(t)}`];
   if (rows.length) lines.push(toTable([["started", "item", "status", "job", "first error"], ...rows.slice(0, 15).map((r) => [r.job.startTimeUtc ?? "-", r.item.displayName, r.job.status, r.job.id, oneLine(r.job.failureReason?.message, 80) || "-"])]));
   let chain: Link[] = [];
   if (failed[0]) {
