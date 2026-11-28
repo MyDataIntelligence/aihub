@@ -191,6 +191,23 @@ describe("aihub fabric failures --since-green", () => {
     expect(r.calls.some((c) => /builds\/105\/timeline/.test(c.url))).toBe(false);
   });
 
+  it("the commit range is checked: when the first answer does not hold the red commit, the two versions are swapped once", async () => {
+    // an Azure DevOps that reads itemVersion as the older side: the first query answers nothing, the swapped one the range
+    const swappedApi: Route = { match: /_apis\/git\/repositories\/test-repo\/commits\?/, respond: (call) => ({ body: { value: call.url.includes(`searchCriteria.itemVersion.version=${C1}`) ? CHANGES.map((c) => ({ commitId: c.sha, comment: c.title })) : [] } }) };
+    const r = await go([swappedApi, ...all()], [...args, "--since-green", "--json"]);
+    const sg = JSON.parse(r.out).result.sinceGreen;
+    expect(sg.outcome).toBe("suspects");
+    expect(sg.commits.map((c: { commit: string }) => c.commit)).toEqual([C3, C4, C2]);
+    expect(sg.notes.join("\n")).not.toContain("may not be the right range");
+    expect(r.calls.filter((c) => /commits\?/.test(c.url)).length).toBe(2);
+  });
+  it("a commit list that never holds the red commit is used with a note, not trusted silently", async () => {
+    const other: Route = { match: /_apis\/git\/repositories\/test-repo\/commits\?/, respond: () => ({ body: { value: [{ commitId: C2, comment: "Rename subscription_date" }] } }) };
+    const r = await go([other, ...all()], [...args, "--since-green", "--json"]);
+    const sg = JSON.parse(r.out).result.sinceGreen;
+    expect(sg.notes.join("\n")).toContain("does not hold b7d3e05 itself: it may not be the right range");
+  });
+
   it("--json: stable object with window, deployments, suspects and outcome", async () => {
     const r = await go(all(), [...args, "--since-green", "--json"]);
     const j = JSON.parse(r.out).result;

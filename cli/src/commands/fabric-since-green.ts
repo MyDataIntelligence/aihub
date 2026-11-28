@@ -225,6 +225,7 @@ export async function sinceGreen(s: Setup, fabric: FabricClient, t: Target, f: {
       const r = await commitsBetween(ado, base, after.commit, after.repositoryId);
       commits = r.commits;
       if (r.capped) data.notes.push(`only the newest ${commits.length} commits of ${short(base)}..${short(after.commit)} were read`);
+      if (!r.confirmed) data.notes.push(commits.length ? `the commit list of ${short(base)}..${short(after.commit)} does not hold ${short(after.commit)} itself: it may not be the right range` : `Azure DevOps returned no commits for ${short(base)}..${short(after.commit)} although the deployed commit changed`);
     } else data.notes.push("the deployments in the window redeployed the same commit: no code changed in this repository");
     const { byCommit, prs } = commits.length ? await pullRequestsOf(ado, commits, after?.repositoryId) : { byCommit: new Map<string, number[]>(), prs: new Map() };
     data.commits = commits.map((c) => ({ commit: c.commit, title: c.title, ...(byCommit.get(c.commit)?.[0] !== undefined ? { pr: byCommit.get(c.commit)![0] } : {}), paths: c.paths }));

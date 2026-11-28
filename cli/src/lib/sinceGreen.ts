@@ -192,17 +192,36 @@ export async function commitTitle(c: AdoClient, sha: string, repositoryId?: stri
   }
 }
 
-/** Commits in `after` and not in `before` (newest first, at most MAX_COMMITS), with the files each changed. */
-export async function commitsBetween(c: AdoClient, before: string, after: string, repositoryId?: string): Promise<{ commits: CommitInfo[]; capped: boolean }> {
+/**
+ * Commits in `after` and not in `before` (newest first, at most MAX_COMMITS), with the files each changed. Which of
+ * itemVersion and compareVersion is the newer side is not relied on: a right answer holds `after` itself (it is the tip of
+ * the range), so the first answer is checked against that and the two are swapped once when it does not. `confirmed` is
+ * false when neither answer holds `after`.
+ */
+export async function commitsBetween(c: AdoClient, before: string, after: string, repositoryId?: string): Promise<{ commits: CommitInfo[]; capped: boolean; confirmed: boolean }> {
   const rc = repoClientFor(c, repositoryId);
-  const r = await rc.get<{ value?: { commitId: string; comment?: string }[] }>(`${rc.repoPath()}/commits`, {
-    "searchCriteria.itemVersion.version": after,
-    "searchCriteria.itemVersion.versionType": "commit",
-    "searchCriteria.compareVersion.version": before,
-    "searchCriteria.compareVersion.versionType": "commit",
-    "searchCriteria.$top": MAX_COMMITS + 1,
-  });
-  const list = (r.value ?? []).filter((x) => x.commitId !== before);
+  type Row = { commitId: string; comment?: string };
+  const range = async (item: string, compare: string): Promise<Row[]> => {
+    const r = await rc.get<{ value?: Row[] }>(`${rc.repoPath()}/commits`, {
+      "searchCriteria.itemVersion.version": item,
+      "searchCriteria.itemVersion.versionType": "commit",
+      "searchCriteria.compareVersion.version": compare,
+      "searchCriteria.compareVersion.versionType": "commit",
+      "searchCriteria.$top": MAX_COMMITS + 1,
+    });
+    return r.value ?? [];
+  };
+  const holdsAfter = (rows: Row[]) => rows.some((x) => x.commitId === after);
+  let rows = await range(after, before);
+  let confirmed = holdsAfter(rows);
+  if (!confirmed) {
+    const swapped = await range(before, after).catch(() => [] as Row[]);
+    if (holdsAfter(swapped)) {
+      rows = swapped;
+      confirmed = true;
+    } else if (!rows.length) rows = swapped;
+  }
+  const list = rows.filter((x) => x.commitId !== before);
   const capped = list.length > MAX_COMMITS;
   const commits: CommitInfo[] = [];
   for (const x of list.slice(0, MAX_COMMITS)) {
@@ -215,7 +234,7 @@ export async function commitsBetween(c: AdoClient, before: string, after: string
     }
     commits.push({ commit: x.commitId, title: (x.comment ?? "").split(/\r?\n/)[0], paths });
   }
-  return { commits, capped };
+  return { commits, capped, confirmed };
 }
 
 export interface PrInfo {

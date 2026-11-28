@@ -52,4 +52,7 @@ Both need `fabric.environments.<ENV>` in team.yaml with `branch`, `workspace` (`
 - The history is bounded: Fabric keeps a limited job history, and only the newest 30 CD runs are looked at; when they do not
   reach back to the green run the output says so.
 - Other-repository versions (for example a central template repository) are shown only when Azure DevOps returns them per run.
+- The commits between the two deployed commits come from the Azure DevOps commit search. A right answer holds the commit of
+  the red run itself, so the command checks that, swaps the two versions once when it does not, and adds a note when
+  neither answer holds it.
 - Ranking is a match on paths and names. The result is a list of suspects, not proof.
