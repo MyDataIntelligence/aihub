@@ -22,6 +22,7 @@ A direct command needs no routing: "maak een PR" -> run `aihub pr create --summa
 | cherry-pick, "update branch" | branch-sync |
 | failing pipeline, "build is rood" | pipeline-fix |
 | write or check pipeline YAML | pipeline-author |
+| "draai de CD lokaal" | preflight |
 | "start story 123" | story-start |
 | "rond af", clean up, complete the PR | story-finish |
 | worktree set, "repo X on branch Y" | worktrees |

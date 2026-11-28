@@ -32,6 +32,7 @@ export function isJournaled(name: string, args: string[]): boolean {
   if (name === "pipeline") return ["follow", "run", "rerun", "retry"].includes(sub ?? "");
   if (name === "comments") return sub === "reply";
   if (name === "test") return args.includes("--run");
+  if (name === "preflight") return sub !== "steps";
   if (name === "worktree") return sub !== "list";
   return true;
 }

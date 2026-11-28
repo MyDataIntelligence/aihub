@@ -8,14 +8,14 @@ description: "Use when the change must be tested in Fabric or with Robot: 'test 
 The branch changes Fabric items (notebooks, pipelines) or a flow with Robot integration tests, and the PR tests section needs real results.
 
 ## Steps
-1. Fabric (other commands: skill `fabric`): see what to run, then run each item in order; `--wait` prints the result and, on failure, the failed cell and cause:
+1. Fabric (other commands: skill `fabric`). Changed job or DDL YAML: first `aihub preflight --apply` (skill `preflight`), no CD wait. See what to run, then run each item in order; `--wait` prints the result and, on failure, the failed cell and cause:
 
 ```sh
 aihub fabric plan
 aihub fabric run --item nb_load_orders --wait
 ```
 
-Several workspaces ("in beide DEV's"): repeat `--workspace` or use `--workspaces <group>`. Not waiting: leave out `--wait`, follow the printed `aihub watch` line.
+Several workspaces ("in beide DEV's"): repeat `--workspace` or use `--workspaces <group>`. No wait: drop `--wait`, follow the printed `aihub watch` line.
 
 2. Robot: check first, then run only when needed. The target comes from the sentence: "test op staging" is `--on staging`, "draai Robot op feature" is `--on feature`. No target named: use the team default, do not ask. Run merges your branch into a merge target first and stops on a conflict:
 
@@ -27,7 +27,7 @@ aihub watch --robot <build id> --notify
 
 3. dbt: `aihub test changed --run`.
 4. Parameters: `--params-file params.json` (Fabric), `--include <tag>` (Robot).
-5. A failed run: read the failure line, fix the cause, run again. Never weaken a test.
+5. A failed run: fix the cause, run again. Never weaken a test.
 6. Report in the PR tests section only what ran, with the result. Not run: write "nog niet uitgevoerd".
 
 ## What the CLI fills

@@ -39,6 +39,7 @@ export const COMMANDS: CommandSpec[] = [
   { name: "refine", skill: "story-refine", description: "Refine a story", hint: "story id" },
   { name: "review", skill: "review-process", description: "Process review comments", hint: "optional PR id" },
   { name: "watch", skill: "pr-watch", description: "Follow a PR and its pipeline", hint: "optional PR id or link" },
+  { name: "preflight", skill: "preflight", description: "Run the team's deploy job steps on this PC before a push", hint: "optional --plan or --apply, or a step name" },
   { name: "test", skill: "test-run", description: "Run the Fabric or Robot tests for this branch", hint: "fabric or robot, optional item or suite" },
   { name: "start", skill: "story-start", description: "Start a story: branch, link, state", hint: "story id and optional repositories" },
   { name: "finish", skill: "story-finish", description: "Finish a story: clean up and close", hint: "story id" },
