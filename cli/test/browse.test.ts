@@ -7,7 +7,7 @@ import { main } from "../src/router.js";
 import { browseOf, errorJson, kindOf, normPath, parseRef, BrowseError } from "../src/lib/browse/core.js";
 import { hunks, merge3, edits, splitLines } from "../src/lib/browse/lineDiff.js";
 import { browseBranches, browseDiff, browseFile, browseHistory, browseItems, browseProject, browseProjects, browseRepo, mapBranches, parsePorcelain, readmeSummary } from "../src/lib/browse/read.js";
-import { browseFind, browseSearch, linesOf, nameScore, rankFind, rememberRepo } from "../src/lib/browse/search.js";
+import { browseFind, browseSearch, linesOf, nameScore, parseScope, rankFind, rememberRepo, scopeQueries } from "../src/lib/browse/search.js";
 import { browsePr, browsePush, isProtected, suggestBranch } from "../src/lib/browse/push.js";
 import { ctxFor, fakeFetch, sh, tmp, write, type Route } from "./helpers.js";
 
@@ -466,6 +466,27 @@ describe("Ctrl+P and code search", () => {
     const l = await browseSearch(s.b(true), { text: "max_retries", local: true });
     expect(l.route).toBe("local");
     expect(s.calls.filter((c) => /codesearchresults/.test(c.url))).toHaveLength(1);
+  });
+
+  it("Search in Selected: whole projects in one query, chosen repositories per project, the results merged", async () => {
+    expect(parseScope("test-project, test-project-agile/agile-repo,test-project/repo-a")).toEqual([{ project: "test-project" }, { project: "test-project-agile", repo: "agile-repo" }, { project: "test-project", repo: "repo-a" }]);
+    expect(scopeQueries(parseScope("p1,p2/a,p2/b,p1/x,p3/c")!)).toEqual([{ Project: ["p1"] }, { Project: ["p2"], Repository: ["a", "b"] }, { Project: ["p3"], Repository: ["c"] }]);
+    const bodies: any[] = [];
+    const s = setup([
+      {
+        method: "POST",
+        match: /codesearchresults/,
+        respond: (c) => {
+          bodies.push(c.body);
+          const agile = c.body.filters.Project[0] === "test-project-agile";
+          return { body: { count: 1, results: [{ fileName: "x.py", path: "/x.py", project: { name: agile ? "test-project-agile" : "test-project" }, repository: { name: agile ? "agile-repo" : "repo-a" }, versions: [{ branchName: "main", changeId: C1 }], matches: { content: [] } }] } };
+        },
+      },
+    ]);
+    const r = await browseSearch(s.b(), { text: "orders", scope: parseScope("test-project,test-project-agile/agile-repo") });
+    expect(bodies.map((x) => x.filters)).toEqual([{ Project: ["test-project"] }, { Project: ["test-project-agile"], Repository: ["agile-repo"] }]);
+    expect(r).toMatchObject({ route: "codeSearch", count: 2, scope: [{ project: "test-project" }, { project: "test-project-agile", repo: "agile-repo" }] });
+    expect(r.results.map((x) => `${x.project}/${x.repo}`)).toEqual(["test-project/repo-a", "test-project-agile/agile-repo"]);
   });
 
   it("parses ripgrep and git grep output into lines with ranges", () => {

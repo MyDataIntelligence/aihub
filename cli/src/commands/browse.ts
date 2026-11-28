@@ -14,7 +14,7 @@ export const BROWSE_USAGE = `usage: aihub browse <sub> [--org O] [--refresh]   (
   diff     --project P --repo R --commit SHA --path /file     the change of one commit to one file
   blame    --project P --repo R --path /file [--ref ...]      only for a repository cloned on this PC (git blame)
   find     --query <file name> [--top 50] [--repos P/R,...]   Ctrl+P over all repositories (Code Search, else recent trees)
-  search   --text <text> [--project P] [--repo R] [--branch B] [--path /p] [--ext py,sql] [--top 25] [--local]
+  search   --text <text> [--project P] [--repo R] [--scope P,P/R,...] [--branch B] [--path /p] [--ext py,sql] [--top 25] [--local]
            Code Search; without it (or --local) the clones on this PC (ripgrep, else git grep), nothing sent
   push     --project P --repo R --path /file --base-commit SHA --base-branch B --content-file F --branch feature/x --message-file M
            [--pr [--target T] [--story N] [--pr-title t] [--draft]] [--rebase]   one commit on a new branch, no clone
@@ -78,6 +78,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     delete: { type: "boolean" },
     selection: { type: "string" },
     local: { type: "boolean" },
+    scope: { type: "string" },
     json: { type: "boolean" },
     pipeline: { type: "string" },
     run: { type: "string" },
@@ -175,7 +176,10 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
     case "find":
       return (await import("../lib/browse/search.js")).browseFind(b, { query: need(v, "query"), top: num(str(v, "top"), "--top"), repos: list(str(v, "repos")) });
     case "search":
-      return (await import("../lib/browse/search.js")).browseSearch(b, { text: need(v, "text"), project: str(v, "project"), repo: str(v, "repo"), path: str(v, "path"), ext: list(str(v, "ext")), branch: str(v, "branch"), top: num(str(v, "top"), "--top"), local: !!v.local });
+      {
+      const s = await import("../lib/browse/search.js");
+      return s.browseSearch(b, { text: need(v, "text"), scope: s.parseScope(str(v, "scope")), project: str(v, "project"), repo: str(v, "repo"), path: str(v, "path"), ext: list(str(v, "ext")), branch: str(v, "branch"), top: num(str(v, "top"), "--top"), local: !!v.local });
+    }
     case "pr":
       return (await import("../lib/browse/push.js")).browsePr(b, { ...repoArgs(), branch: need(v, "branch"), target: str(v, "target"), story: num(str(v, "story"), "--story"), prTitle: str(v, "pr-title"), draft: !!v.draft });
     case "push": {
