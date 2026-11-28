@@ -198,7 +198,7 @@ export async function computeEnvDiff(
 }
 
 /** Work items of a PR: the dedicated endpoint (a GET of the PR itself does not list them), the PR's own refs as the fallback. */
-async function storiesOf(client: AdoClient, id: number, refs?: { id: string }[]): Promise<number[]> {
+export async function storiesOf(client: AdoClient, id: number, refs?: { id: string }[]): Promise<number[]> {
   try {
     const r = await client.get<{ value?: { id: string | number }[] }>(`${client.repoPath()}/pullrequests/${id}/workitems`);
     const ids = (r.value ?? []).map((w) => Number(w.id)).filter((n) => Number.isInteger(n));

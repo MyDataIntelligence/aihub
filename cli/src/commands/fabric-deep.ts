@@ -390,9 +390,13 @@ export async function failuresCmd(s: Setup): Promise<void> {
   // --item: only that item's runs ("why did the last run of notebook X fail")
   const items = s.v.item ? [await itemArg(s, client, t.id)] : (await client.items(t.id)).filter((i) => ["DataPipeline", "Notebook"].includes(i.type)).slice(0, 50);
   const rows: { item: FabricItem; job: JobInstance }[] = [];
+  // every run per item, kept for --since-green (the last green run comes from the same list)
+  const all = new Map<string, JobInstance[]>();
   for (const it of items) {
     try {
-      for (const j of await client.jobs(t.id, it.id)) if (["Failed", "InProgress", "NotStarted"].includes(j.status)) rows.push({ item: it, job: j });
+      const jobs = await client.jobs(t.id, it.id);
+      all.set(it.id, jobs);
+      for (const j of jobs) if (["Failed", "InProgress", "NotStarted"].includes(j.status)) rows.push({ item: it, job: j });
     } catch (e) {
       if (e instanceof FabricHttpError && e.status === 401) throw e;
     }
@@ -409,7 +413,15 @@ export async function failuresCmd(s: Setup): Promise<void> {
     lines.push(`root cause chain of the newest failure (${failed[0].item.displayName}):`, ...formatChain(chain));
     lines.push(`details: aihub fabric logs --workspace ${t.ws.name} --item ${failed[0].item.displayName} --job ${failed[0].job.id}`);
   }
-  emit(s, { workspace: t.ws.name, failed: failed.map((r) => ({ item: r.item.displayName, job: r.job.id })), active: active.length, chain }, lines.join("\n"));
+  let sinceGreen: unknown;
+  if (s.v["since-green"]) {
+    if (failed[0]) {
+      const sg = await (await import("./fabric-since-green.js")).sinceGreen(s, client, t, failed[0], all.get(failed[0].item.id) ?? [], chain);
+      lines.push("", ...sg.lines);
+      sinceGreen = sg.data;
+    } else lines.push("", "since green: no failed run, nothing to compare");
+  }
+  emit(s, { workspace: t.ws.name, failed: failed.map((r) => ({ item: r.item.displayName, job: r.job.id })), active: active.length, chain, ...(s.v["since-green"] ? { sinceGreen: sinceGreen ?? null } : {}) }, lines.join("\n"));
 }
 
 // ---- SQL (read-only) ----------------------------------------------------------------------------------------------------------

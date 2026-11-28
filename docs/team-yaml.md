@@ -111,6 +111,30 @@ uncommitted and untracked files) and with `--run` runs only those. Without `test
 files that import the module; for JS/TS `<name>.test.ts`, `<name>.spec.ts` and specs that import the file; a changed test file runs itself. Code without a test is
 listed, docs and config are ignored, and it never falls back to the whole suite: the pipeline runs that.
 
+## Preflight: the deploy job on your PC (optional)
+
+```yaml
+preflight:
+  source: { repository: shared-templates, ref: main }   # holds the pipeline YAML and the scripts; default: this repository
+  job: cicd/deploy.yaml            # the YAML whose steps preflight runs
+  watch: ["jobs/**", "ddl/**"]     # the files this is about
+  parameters: { workspaceName: "DEV-test-project {branchName}" }   # ${{ parameters.x }}; placeholders {repo} {branch} {branchName} {head} {lastPushed} {workspace} {workspaceId} {sources} {work} {source}
+  variables: { ENVIRONMENT: dev }  # $(X) values preflight cannot work out
+  tokens: { ACCESS_TOKEN: fabric, ONELAKE_STORAGE_TOKEN: onelake, SQL_ACCESS_TOKEN: sql }   # only read and apply steps get them
+  steps:
+    local: [Validate configs]      # no network, no token (default level)
+    read: [Get workspace ids]      # with --plan and --apply
+    apply: [Publish items]         # with --apply only
+    skip: []                       # known, never run here
+  apply:
+    refuseWorkspaces: []           # globs --apply refuses
+    destructive: [{ step: Get workspace ids, pattern: "DROP" }]   # that step's output matches: --apply needs --yes
+```
+
+Also `python`, `shell` (bash | cmd | pwsh), `setup` (commands run in the source checkout, once per commit of it and of its dependency files) and `cd.pipeline` (--apply waits while it runs on
+the branch). `aihub preflight [--plan | --apply [--yes]] [--step "<name>"] [--dry-run] [--json]` runs the listed steps of the job in a snapshot of the working tree; a step in no list
+never runs. `aihub preflight steps --job <path> [--source <repo>]` lists every step with its kind and works without the block. Details: [preflight.md](preflight.md).
+
 ## After a pull request is created (optional)
 
 ```yaml
@@ -172,6 +196,22 @@ fabric:
 says which Fabric items changed (git-integration folders `<name>.<Type>/`) and through which pull requests and stories (the Azure DevOps merge-commit query, with "Merged PR n" in the message as the fallback).
 The deployment pipeline stage items say which items are new (only in the from stage) or deleted (only in the to stage). The result lists per item the status, PRs and stories, the cherry-pick list in merge order,
 and release notes in the team language; `--out` writes a plan that `aihub release run --plan-file` can execute (default target: the to-environment's branch). Deploying stays the guarded `aihub fabric deployment deploy`.
+
+### Which commit runs in a CD-filled workspace (optional)
+
+```yaml
+fabric:
+  environments:
+    TST:
+      branch: staging                  # the branch the CD pipeline deploys to this environment
+      workspace: "Fabric {repo} test"  # workspace display name; {repo} is the repository name
+      deployedBy:
+        pipeline: cd_pipeline          # the CD pipeline definition in Azure DevOps (name or id)
+        stage: DeployTestEnvironment   # the stage that deploys this environment
+```
+
+`aihub fabric deployed --workspace W` (or `--env TST`) and `aihub fabric failures --workspace W --since-green` read these keys: the deployed
+commit is the newest run of `deployedBy.pipeline` on `refs/heads/<branch>` whose stage `deployedBy.stage` succeeded. See [since-green.md](since-green.md).
 
 ## Fabric and Robot (optional)
 

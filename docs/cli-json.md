@@ -1,4 +1,4 @@
-# JSON for tools: pr list, pr show, status, watch events, pipelines, repository browser, wiki browser
+# JSON for tools: pr list, pr show, status, watch events, pipelines, repository browser, wiki browser, preflight
 
 For the VS Code extension and other scripts. Every command prints one JSON document with `--json` and never asks a question.
 
@@ -395,3 +395,45 @@ Text for the agent by default; `--json` for the bar (a failure then is `{"error"
 - `story progress --id N [--step k --total n --label t] [--steps a|b|c] [--done] [--stop] --json` -> `{ id, running, step, total, label, steps, stepsView:[{label,state:done|running|queued}], updatedAt, stateFile }`
 - `story yolo --on|--off [--folder <set>]`: `opencode.json` in the set folder allows edits and commands except the limits (push or merge to main/staging, force push, completing a PR, ACC/PRD and deployments).
 - `pr create`: with a story that has criteria, the section Acceptatiecriteria (criterion, how tested, outcome, link or "Nog niet uitgevoerd") and "N/M bewezen" on top; not all proven: exit 5, nothing written, unless `--draft` or `--anyway`.
+
+## Fabric since green: `aihub fabric deployed`, `aihub fabric failures --since-green`
+
+Read only. Like every `aihub fabric` command the JSON is `{ "identity"?: {...}, "result": ... }`. See [since-green.md](since-green.md).
+
+- `fabric deployed --workspace W | --env ENV --json` -> `{ environment:{name,branch,workspace,pipeline,stage}, pipeline:{id,name}, looked, run:{id,number,finished,reason,requestedFor}|null, commit:{sha,title}|null, pullRequests:[{pr,title,stories:[{id,title}]}], otherRepositories:[{alias,version}], note? }`. `run: null` with `note` when none of the newest `looked` runs deployed the stage. A workspace without an environment, or an environment without `deployedBy`, is an error (exit 1) that names the team.yaml lines.
+- `fabric failures --since-green --json` -> the usual `{ workspace, failed, active, chain }` plus `sinceGreen` (`null` when there is no failed run):
+
+```json
+{"window":{"failed":{"item":"pl_main","job":"<job id>","start":"2026-03-04T02:00:00Z"},"green":{"job":"<job id>","end":"2026-03-03T02:10:00Z"}},
+ "environment":{"name":"TST","branch":"staging","workspace":"Fabric test-repo test","pipeline":"cd_pipeline","stage":"DeployTestEnvironment"},
+ "deployments":[{"run":104,"number":"2026.104","finished":"2026-03-03T16:45:00Z","commit":"<sha>"}],
+ "before":{"run":101,"finished":"2026-03-02T11:20:00Z","commit":"<sha>"},"after":{"run":104,"finished":"2026-03-03T16:45:00Z","commit":"<sha>"},
+ "commits":[{"commit":"<sha>","title":"...","pr":412,"paths":["fabric/nb_standardize.Notebook/notebook-content.py"]}],
+ "otherRepositoriesAvailable":true,"otherRepositories":[{"alias":"central","before":"<sha>","after":"<sha>","changed":false}],
+ "suspects":[{"pr":412,"title":"...","stories":[{"id":9981,"title":"..."}],"reason":"touches nb_standardize (the failing item in the root-cause chain)","paths":["..."]}],
+ "unrelated":[{"pr":409,"title":"...","stories":[],"paths":["governance/roles.yaml"]}],
+ "outcome":"suspects","notes":[]}
+```
+
+`outcome`: `suspects` | `deployedUnrelated` | `nothingDeployed` | `noGreenRun` | `notConfigured` | `unavailable` (a read failed; the reason is in `notes`). Newest first in `deployments`, `commits`, `suspects` (by rank: the failed item or the failing leaf, then an item it calls, then a configuration file named like it) and `unrelated`; a change without a pull request has `commit` instead of `pr`. Fields that could not be determined are `null` or `[]`, with the reason in `notes`.
+
+## Preflight: `aihub preflight [--plan | --apply] --json` and `aihub preflight steps --json`
+
+One object; exit code 1 when a step failed or was blocked, or apply was held back (the object is printed first). Secrets and tokens are `***` everywhere.
+
+```json
+{"source":{"repository":"shared-templates","ref":"main","commit":"<sha>","fetched":"2026-11-28T08:40:00.000Z"},
+ "job":"cicd/deploy.yaml","workspace":{"name":"DEV-test-project 12-export","id":"<guid>","environment":"feature"},
+ "level":"plan","dryRun":false,
+ "steps":[{"name":"Validate configs","level":"local","kind":"script","status":"passed","reason":null,"seconds":0.4,"issues":[],"afterFailure":false,"uncertain":false},
+          {"name":"Get workspace ids","level":"read","kind":"PythonScript@0","status":"failed","reason":"exit code 1","seconds":2.1,"issues":["error: workspace not found"],"afterFailure":false,"uncertain":false}],
+ "drift":{"unknown":[],"missing":[],"renamed":[{"from":"Validate configs","to":"Validate all configs"}],"changed":[]},
+ "ok":false,"notes":[]}
+```
+
+- `workspace` is `null` at the local level. `level`: `local` | `plan` | `apply`. `fetched`: when the source repository was fetched (`null` when unknown).
+- `steps[].level`: `local` | `read` | `apply` | `skip` | `unknown` (in no list). `kind`: the task (`PythonScript@0`) or `script` | `bash` | `pwsh` | `powershell` | `other`.
+- `steps[].status`: `passed` | `failed` | `blocked` (a variable nobody can fill, or a local step that asks for a token) | `notRun` (condition false or not evaluable, held back, dry run) | `unknown` | `skipped` (other level, `skip`, after `--step`, a kind that does not run here) | `cannotRun` (listed, but a kind or program this PC cannot run). `--dry-run` adds `command` (the expanded command).
+- `afterFailure`: ran after an earlier step failed. `uncertain`: comes after an unknown step.
+- A failed step also has `excerpt` (the lines of its output that say why, at most 10, secrets masked) and `log` (the file with all of its output).
+- `preflight steps --json`: `{ source, job, steps:[{ index, name, kind, level, script, condition, runnable, note }], drift, notes }`.
