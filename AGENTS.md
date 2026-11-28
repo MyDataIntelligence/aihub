@@ -7,6 +7,13 @@
 - Prose for pull requests, stories and comments is passed to the CLI as files (`--body-file`, `--replies-file`), never inline.
 - Keep each rule in one place; update existing files instead of duplicating.
 
+## Who uses aihub
+
+- The CLI and the skills are shared with colleagues of the same team, with the same `team.yaml` and templates. The VS Code extensions (AI Context Hub, PyCharm Git) are optional; colleagues may not have them.
+- Every feature therefore works from the agent alone (opencode, GitHub Copilot, Codex) through the CLI and the skills. A skill or prompt never depends on an `aihub.bar.*` command or anything else from an extension; the extension is only a UI on top of the same CLI commands.
+- Nothing personal: no paths of one machine, no user names, no test organisation or project as a default. Language, templates and defaults come from `team.yaml`.
+- Onboarding must work on a clean PC: `npm i -g @ferronhooi/aihub`, `aihub skills install`, `aihub init`, `aihub doctor` (see `docs/onboarding.md`).
+
 ## Branches and releases
 
 - `staging` is the default branch and the integration branch. Every change goes in through a pull request to `staging`; CI (`test`) must be green; squash-merge.
