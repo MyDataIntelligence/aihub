@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { browseOf, errorJson } from "../src/lib/browse/core.js";
-import { changePush, changeStart, changeSummary, changeWrite } from "../src/lib/browse/change.js";
+import { changePush, changeStart, changeSummary, changeWrite, titleLine } from "../src/lib/browse/change.js";
 import { verifyTests } from "../src/lib/browse/push.js";
 import { mdToHtml } from "../src/lib/story.js";
 import { ctxFor, fakeFetch, tmp, type Route } from "./helpers.js";
@@ -111,5 +111,17 @@ describe("Create Pull Request from a change: the description by the one rule of 
     expect(w.prs[0].title).toBe("Keep only active orders");
     expect(verifyTests({ checks: [{ name: "ruff", kind: "lint", status: "skipped", reason: "not installed", errors: [] }] }, "en")).toBe("- Lint (ruff): not run (not installed)");
     expect(verifyTests({ checks: [{ name: "tests", kind: "test", status: "couldNotRun", command: "python -m pytest tests/test_report.py", missing: ["context_fixture_a"], errors: [] } as never] }, "nl")).toBe("- Tests (tests, python -m pytest tests/test_report.py): niet uitgevoerd (ontbrekende afhankelijkheid context_fixture_a)");
+  });
+  it("the title from the summary is plain text, cut at a word boundary, never inside `code`", async () => {
+    const w = world({ team: "version: 1\nlanguage: en\n" });
+    const s = await changeStart(w.b(), { project: "test-project", repo: "repo-a", paths: ["/src/load.py"], prompt: "x" });
+    await changeWrite(w.b(), s.id, "/src/load.py", { content: "orders = []\n" });
+    changeSummary(w.ctx.env, s.id, "Filter inactive customers in `load_orders_from_the_staging_area()` before the merge\n");
+    await changePush(w.b(), s.id, { pr: true });
+    expect(w.prs[0].title).toBe("Filter inactive customers in load_orders_from_the_staging_area()...");
+    expect(w.prs[0].title).not.toContain("`");
+    expect(titleLine("Use `x` here")).toBe("Use x here");
+    expect(titleLine("a ".repeat(50))).toMatch(/^(a )*a\.\.\.$/);
+    expect(titleLine("`" + "y".repeat(100) + "`")).toBe("y".repeat(69) + "...");
   });
 });

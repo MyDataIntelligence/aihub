@@ -477,9 +477,21 @@ export async function changePush(b: Browse, id: string, o: { message?: string; p
   return out;
 }
 
+/**
+ * One line for a commit message or pull request title: markdown code marks removed (`x` becomes x, a title is plain text) and,
+ * when too long, cut at a word boundary with "...", never in the middle of a word or a code part.
+ */
+export function titleLine(text: string, max = 72): string {
+  const plain = text.replace(/`+([^`]*)`+/g, "$1").replace(/`/g, "").replace(/\s+/g, " ").trim();
+  if (plain.length <= max) return plain;
+  const cut = plain.slice(0, max - 3);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.\-(]+$/, "")}...`;
+}
+
 function defaultMessage(meta: ChangeMeta, summary: string | null): string {
   const first = (summary ?? meta.prompt ?? "").split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "";
-  const line = first.length > 72 ? `${first.slice(0, 69)}...` : first;
+  const line = titleLine(first);
   return `${meta.story ? `#${meta.story} ` : ""}${line || "Change with Agent"}`;
 }
 
