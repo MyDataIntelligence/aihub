@@ -10,7 +10,7 @@ import { isAncestor, mustGit, refSha, tryGit } from "./gitx.js";
 import { fetchOrigin } from "./repos.js";
 import { releaseEnvPlan } from "./releaseEnv.js";
 import { baseFor } from "./story-flow.js";
-import { compose, DEFAULT_EMPTY, resolveTemplate } from "./templates.js";
+import { compose, DEFAULT_EMPTY, emptyFor, resolveTemplate } from "./templates.js";
 import { loadTeam, readUtf8 } from "./team.js";
 import { slugify } from "./workitems.js";
 
@@ -207,7 +207,7 @@ export async function releaseRun(ctx: Ctx, o: { planFile: string; json?: boolean
       const stories = [...new Set(applied.map((a) => a.story).filter((s): s is number => !!s))];
       const commits = applied.map((a) => `- ${a.title} (${lab(a)})`).join("\n");
       const tpl = resolveTemplate(target, { readRef: (b, p) => showFile(root, b, p), localRoot: root });
-      const emptyText = team.pullRequest?.emptySection || DEFAULT_EMPTY;
+      const emptyText = emptyFor(team);
       const code = { story: stories.length ? stories.map((s) => `AB#${s}`).join(", ") : undefined, commits };
       const description = tpl ? compose({ template: tpl.content, body: "", code, emptyText }).text : `Release ${plan.name}\n\n## Commits\n\n${commits}\n`;
       const created = await client.post<PullRequest>(`${client.repoPath()}/pullrequests`, {

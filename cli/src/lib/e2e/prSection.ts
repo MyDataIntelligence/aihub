@@ -88,7 +88,7 @@ export async function prCriteria(ctx: Ctx, client: AdoClient, story: number, lan
   const fromDesc = parseSections(htmlToMd(String(w.fields?.[DESCRIPTION] ?? ""))).sections.find((x) => partOf(x.heading) === "criteria")?.body ?? "";
   const criteria = parseCriteria(ac.trim() ? ac : fromDesc);
   if (!criteria.length) return undefined;
-  const lang: Lang = String(language ?? "nl").toLowerCase().startsWith("en") ? "en" : "nl";
+  const lang: Lang = String(language ?? "en").toLowerCase().startsWith("nl") ? "nl" : "en";
   return { status: statusOf(stateFile(ctx, story, "criteria"), story, criteria), lang };
 }
 
