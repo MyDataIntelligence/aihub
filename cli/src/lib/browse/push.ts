@@ -39,6 +39,8 @@ export interface PushInput {
   prTitle?: string;
   draft?: boolean;
   rebase?: boolean;
+  /** criteria not all proven: create the pull request anyway (without --draft or --anyway it stops before the push) */
+  anyway?: boolean;
 }
 
 export type PushResult =
@@ -121,7 +123,7 @@ export async function browsePush(b: Browse, o: PushInput): Promise<PushResult> {
   const rc = repoClientOf(b, o.project, o.repo);
   const repoInfo = await rc.get<{ id: string; defaultBranch?: string }>(rc.repoPath());
   const def = (repoInfo.defaultBranch ?? "").replace(/^refs\/heads\//, "");
-  const team = await teamOf(b, o.project, o.repo, def || o.baseBranch);
+  const team = await teamOf(b, o.project, o.repo, o.baseBranch || def);
   if (isProtected(branch, team, [def, o.baseBranch])) throw new BrowseError("protectedBranch", `pushing to '${branch}' is refused: a change goes to a new feature branch (for example ${suggestBranch(o.story, path)})`);
   if (await headOf(b, o.project, o.repo, branch)) throw new BrowseError("branchExists", `branch '${branch}' already exists in ${o.repo}: choose another name`);
 
@@ -158,6 +160,7 @@ export async function browsePush(b: Browse, o: PushInput): Promise<PushResult> {
     }
   }
 
+  if (o.pr) await criteriaGate(b, { project: o.project, story: o.story, draft: o.draft, anyway: o.anyway, team });
   const pushed = await rc.post<{ commits?: { commitId: string }[]; refUpdates?: { name: string; newObjectId: string }[] }>(`${rc.repoPath()}/pushes`, {
     refUpdates: [{ name: `refs/heads/${branch}`, oldObjectId: ZERO }],
     commits: [{ comment: o.message.trim(), parents: [startFrom], changes: [{ changeType: base ? "edit" : "add", item: { path }, newContent: { content, contentType: "rawtext" } }] }],
@@ -188,7 +191,7 @@ export async function browsePush(b: Browse, o: PushInput): Promise<PushResult> {
  * (default: the default branch), titled after the story or the newest commit of the branch. An active PR of the branch is
  * returned as it is (`existing: true`), never a second one.
  */
-export async function browsePr(b: Browse, o: { project: string; repo: string; branch: string; target?: string; story?: number; prTitle?: string; draft?: boolean }): Promise<{ pr: { id: number; title: string; webUrl: string }; existing: boolean }> {
+export async function browsePr(b: Browse, o: { project: string; repo: string; branch: string; target?: string; story?: number; prTitle?: string; draft?: boolean; anyway?: boolean }): Promise<{ pr: { id: number; title: string; webUrl: string }; existing: boolean }> {
   const branch = o.branch.trim().replace(/^refs\/heads\//, "");
   const rc = repoClientOf(b, o.project, o.repo);
   const repoInfo = await rc.get<{ defaultBranch?: string }>(rc.repoPath());
@@ -204,8 +207,25 @@ export async function browsePr(b: Browse, o: { project: string; repo: string; br
   const path = (changes.changes ?? []).find((x) => x.item?.path && !x.item.isFolder)?.item?.path ?? "";
   const team = await teamOf(b, o.project, o.repo, target);
   const story = o.story ?? (Number(/(?:^|\/)(\d{2,})(?:-|$)/.exec(branch)?.[1]) || undefined);
+  await criteriaGate(b, { project: o.project, story, draft: o.draft, anyway: o.anyway, team, beforePush: false });
   const pr = await createRemotePr(b, { project: o.project, repo: o.repo, branch, target, path, message: c.comment ?? branch, story, prTitle: o.prTitle, draft: o.draft, commitId: head, team });
   return { pr, existing: false };
+}
+
+/**
+ * Before a pull request for a story is made without a clone: are its acceptance criteria proven? Not all proven and no choice
+ * (`draft` or `anyway`) is the same stop as `aihub pr create` (kind criteriaNotProven, exit 5), BEFORE anything is pushed; the
+ * caller asks the user: test first, create as draft, or create anyway.
+ */
+export async function criteriaGate(b: Browse, o: { project: string; story?: number; draft?: boolean; anyway?: boolean; team: TeamConfig; beforePush?: boolean }): Promise<void> {
+  if (!o.story || o.draft || o.anyway) return;
+  const ps = await import("../e2e/prSection.js");
+  const crit = await ps.prCriteria(b.ctx, b.client.forProject(o.project), o.story, o.team.language as string | undefined).catch(() => undefined);
+  if (crit && crit.status.proven < crit.status.total) {
+    const e = ps.notProvenError(crit.status, o.story, crit.lang);
+    if (o.beforePush !== false) e.message = e.message.replace("Nothing was written.", "Nothing was pushed.");
+    throw e;
+  }
 }
 
 export interface RemotePr {
@@ -238,8 +258,8 @@ export function verifyTests(v: { checks: { name: string; kind: string; status: s
  * A pull request from a pushed branch without a clone, by the one rule of `aihub pr create` (prDescription.ts): the title from
  * team.yaml `pullRequest.title`, the template of the target branch on the remote, the agent's summary in the first section
  * (lines that are process noise are left out), the changed files under Changes, the tests and checks that really ran (else
- * "not run yet"), the story linked with its criteria table. Criteria that are not all proven make it a draft (said in
- * `draftReason`), so the push is never left without its pull request.
+ * "not run yet"), the story linked with its criteria table. Unproven criteria were asked about before the push (criteriaGate):
+ * `draft` makes a draft with `draftReason`, `anyway` a normal pull request.
  */
 export async function createRemotePr(
   b: Browse,
@@ -281,7 +301,8 @@ export async function createRemotePr(
   });
   const crit = d.criteria?.status;
   const unproven = !!crit && crit.proven < crit.total;
-  const draft = !!o.draft || unproven;
+  // the user chose (criteriaGate asked before the push): a draft, or a normal PR with the criteria table that says what is open
+  const draft = !!o.draft;
   const pr = await rc.post<{ pullRequestId: number; title: string }>(`${rc.repoPath()}/pullrequests`, {
     sourceRefName: `refs/heads/${o.branch}`,
     targetRefName: `refs/heads/${o.target}`,
@@ -295,7 +316,7 @@ export async function createRemotePr(
     title: pr.title ?? title,
     webUrl: `${webRepoUrl(b, o.project, o.repo)}/pullrequest/${pr.pullRequestId}`,
     draft,
-    ...(unproven && !o.draft ? { draftReason: `${crit!.proven}/${crit!.total} acceptance criteria proven: a draft until they are` } : {}),
+    ...(unproven && draft ? { draftReason: String(o.team.language ?? "").toLowerCase() === "nl" ? `${crit!.proven}/${crit!.total} acceptatiecriteria bewezen: een concept tot ze bewezen zijn` : `${crit!.proven}/${crit!.total} acceptance criteria proven: a draft until they are` } : {}),
     ...(crit ? { criteria: { proven: crit.proven, total: crit.total } } : {}),
   };
 }

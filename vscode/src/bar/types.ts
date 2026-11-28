@@ -312,7 +312,11 @@ export const BAR_COMMANDS = {
   changeStart: "aihub.bar.changeStart",
   /** `{ id }` -> `aihub browse change diff`: files with status, additions, deletions and hunks; totals; summary; problems; plus `agent`: "working" (its terminal in this window is open) | "stopped" | "closed" | "unknown" (Windows Terminal or another window) */
   changeState: "aihub.bar.changeState",
-  /** `{ id, message?, pr?, target?, story?, prTitle?, draft?, rebase?, branch? }` -> `{ status: "pushed", ... }` or `{ status: "conflict", files }` */
+  /**
+   * `{ id, message?, pr?, target?, story?, prTitle?, draft?, anyway?, rebase?, branch? }` -> `{ status: "pushed", ..., pr: { id, title, webUrl, draft, draftReason?, criteria? } }`
+   * or `{ status: "conflict", files }`. A story whose criteria are not all proven, without draft or anyway: `{ error: { kind: "criteriaNotProven",
+   * proven, total, choices: ["testFirst", "draft", "anyway"] } }` and NOTHING is pushed: ask the user (Test first / Create as Draft / Create anyway) and call again.
+   */
   changePush: "aihub.bar.changePush",
   /** `{ id }` -> `{ id, discarded: true }` */
   changeDiscard: "aihub.bar.changeDiscard",

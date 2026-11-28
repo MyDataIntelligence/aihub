@@ -21,16 +21,22 @@ export type BrowseErrorKind =
   | "offline"
   | "badInput"
   | "needsSetting"
+  | "secret"
+  | "forbiddenFile"
+  | "tooManyFiles"
+  | "readLimit"
+  | "criteriaNotProven"
   | "failed"
   | "cliMissing"
   | "cliTooOld";
 
 export interface BrowseError {
-  error: { kind: BrowseErrorKind; message: string };
+  /** criteriaNotProven also has proven, total and choices ["testFirst", "draft", "anyway"]; needsSetting key and choices */
+  error: { kind: BrowseErrorKind; message: string; proven?: number; total?: number; choices?: string[]; key?: string };
 }
 
 export const BROWSE_UPDATE_COMMAND = "npm i -g @ferronhooi/aihub@next";
-const KINDS: BrowseErrorKind[] = ["signedOut", "noAccess", "notFound", "searchUnavailable", "protectedBranch", "branchExists", "offline", "badInput", "needsSetting", "failed"];
+const KINDS: BrowseErrorKind[] = ["signedOut", "noAccess", "notFound", "searchUnavailable", "protectedBranch", "branchExists", "offline", "badInput", "needsSetting", "secret", "forbiddenFile", "tooManyFiles", "readLimit", "criteriaNotProven", "failed"];
 const LASTING: BrowseErrorKind[] = ["signedOut", "noAccess", "searchUnavailable", "cliMissing", "cliTooOld"];
 
 /** The CLI's own error JSON inside a failure text (stderr and stdout are joined), or a kind from the words. */
@@ -41,7 +47,7 @@ export function browseErrorOf(e: unknown): BrowseError {
   if (at >= 0) {
     try {
       const j = JSON.parse(raw.slice(at)) as BrowseError;
-      if (j?.error && KINDS.includes(j.error.kind)) return { error: { kind: j.error.kind, message: j.error.message } };
+      if (j?.error && KINDS.includes(j.error.kind)) return { error: { ...j.error, kind: j.error.kind, message: j.error.message } };
     } catch {
       /* not the CLI's JSON: classify the words */
     }
@@ -165,6 +171,8 @@ export interface PushArg extends Common {
   story?: number;
   prTitle?: string;
   draft?: boolean;
+  /** criteria not all proven: create the PR anyway (else the answer is criteriaNotProven and nothing is pushed) */
+  anyway?: boolean;
   /** "Rebase my change" after a conflict */
   rebase?: boolean;
   /** the pipeline whose YAML this is: the answer says whether it can run on the new branch */
@@ -259,6 +267,7 @@ export const browseArgs = {
     if (!s(a?.branch)) throw new Error("a branch is needed ({ branch })");
     const out = opt(opt(opt(repoFlags(a as never, ["browse", "pr", "--branch", a.branch]), "--target", a.target), "--story", a.story), "--pr-title", a.prTitle);
     if (a.draft) out.push("--draft");
+    if ((a as { anyway?: boolean }).anyway) out.push("--anyway");
     return common({ org: a.org }, out);
   },
   /** "+ related files" (changeSuggestFiles) */
@@ -285,6 +294,7 @@ export function pushFiles(a: PushArg): { args: string[]; dir: string } {
     opt(args, "--story", a.story);
     opt(args, "--pr-title", a.prTitle);
     if (a.draft) args.push("--draft");
+    if (a.anyway) args.push("--anyway");
   }
   if (a.rebase) args.push("--rebase");
   if (posInt(a.pipeline)) args.push("--pipeline", String(a.pipeline));

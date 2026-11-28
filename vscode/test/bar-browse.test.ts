@@ -64,6 +64,8 @@ describe("repository browser in the bar: failures", () => {
     expect(browseErrorOf({ kind: "missing", message: "aihub was not found" }).error.kind).toBe("cliMissing");
     expect(browseErrorOf(new Error("aihub: not signed in to Azure DevOps: run 'az login'")).error.kind).toBe("signedOut");
     expect(browseErrorOf(new Error("boom")).error).toEqual({ kind: "failed", message: "boom" });
+    // criteria not proven: the counts and the three choices come along for the dialog
+    expect(browseErrorOf(new Error('{"error":{"kind":"criteriaNotProven","message":"2 of 2 ... Nothing was pushed.","proven":0,"total":2,"choices":["testFirst","draft","anyway"]}}')).error).toEqual({ kind: "criteriaNotProven", message: "2 of 2 ... Nothing was pushed.", proven: 0, total: 2, choices: ["testFirst", "draft", "anyway"] });
   });
 
   it("remembers lasting failures 5 minutes per scope and shares a running read", async () => {

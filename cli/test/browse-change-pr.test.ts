@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { browseOf } from "../src/lib/browse/core.js";
+import { browseOf, errorJson } from "../src/lib/browse/core.js";
 import { changePush, changeStart, changeSummary, changeWrite } from "../src/lib/browse/change.js";
 import { verifyTests } from "../src/lib/browse/push.js";
 import { mdToHtml } from "../src/lib/story.js";
@@ -20,6 +20,7 @@ function world(o: { team?: string; criteria?: boolean } = {}) {
     "/.azuredevops/pull_request_template.md": TEMPLATE,
   };
   const prs: any[] = [];
+  const pushes: any[] = [];
   const routes: Route[] = [
     { match: /\/_apis\/connectionData/, respond: () => ({ body: { authenticatedUser: { id: "me" } } }) },
     { match: /^https:\/\/dev\.azure\.com\/ferron-test\/_apis\/projects\?/, respond: () => ({ body: { value: [{ id: "p1", name: "test-project" }] } }) },
@@ -38,14 +39,14 @@ function world(o: { team?: string; criteria?: boolean } = {}) {
       },
     },
     { match: /wit\/workitems\/4711/, respond: () => ({ body: { id: 4711, fields: { "System.Title": "Orderexport", "System.WorkItemType": "User Story", ...(o.criteria ? { "Microsoft.VSTS.Common.AcceptanceCriteria": mdToHtml(CRIT) } : {}) } } }) },
-    { method: "POST", match: /repo-a\/pushes/, respond: () => ({ status: 201, body: { commits: [{ commitId: C3 }] } }) },
+    { method: "POST", match: /repo-a\/pushes/, respond: (c) => (pushes.push(c.body), { status: 201, body: { commits: [{ commitId: C3 }] } }) },
     { method: "POST", match: /repo-a\/pullrequests/, respond: (c) => (prs.push(c.body), { status: 201, body: { pullRequestId: 77, title: c.body.title } }) },
   ];
   const f = fakeFetch(routes);
   const { ctx } = ctxFor(tmp(), f.fn);
   ctx.env.AIHUB_ADO_ORG = "ferron-test";
   ctx.env.AIHUB_COMMON_ROOTS = "none";
-  return { ctx, prs, b: () => browseOf(ctx, {}) };
+  return { ctx, prs, pushes, b: () => browseOf(ctx, {}) };
 }
 
 describe("Create Pull Request from a change: the description by the one rule of pr create", () => {
@@ -73,20 +74,34 @@ describe("Create Pull Request from a change: the description by the one rule of 
     expect(d).not.toMatch(/Not run yet|<wat en waarom>/);
   });
 
-  it("without verify the Tests section says honestly that nothing ran; a story with unproven criteria gets its table and a draft", async () => {
+  it("a story with unproven criteria: without a choice nothing is pushed (exit 5, the three choices); --draft makes a draft, --anyway a normal PR", async () => {
     const w = world({ criteria: true });
     const s = await changeStart(w.b(), { project: "test-project", repo: "repo-a", story: 4711, paths: ["/src/load.py"], prompt: "x" });
     await changeWrite(w.b(), s.id, "/src/load.py", { content: "orders = []\n" });
-    const r = await changePush(w.b(), s.id, { pr: true });
+    const refused = await changePush(w.b(), s.id, { pr: true }).catch((e) => e);
+    expect(refused).toMatchObject({ kind: "criteriaNotProven", exitCode: 5, proven: 0, total: 1 });
+    expect(refused.message).toMatch(/Nothing was pushed\. Choose: test first .*--draft .*--anyway/);
+    expect(errorJson(refused).error).toMatchObject({ kind: "criteriaNotProven", proven: 0, total: 1, choices: ["testFirst", "draft", "anyway"] });
+    expect(w.pushes).toEqual([]);
+    expect(w.prs).toEqual([]);
+    const r = await changePush(w.b(), s.id, { pr: true, draft: true });
     expect(r).toMatchObject({ status: "pushed", pr: { draft: true, criteria: { proven: 0, total: 1 } } });
-    expect((r as { pr: { draftReason?: string } }).pr.draftReason).toMatch(/0\/1 acceptance criteria proven/);
-    const d: string = w.prs[0].description;
+    expect((r as { pr: { draftReason?: string } }).pr.draftReason).toBe("0/1 acceptatiecriteria bewezen: een concept tot ze bewezen zijn");
     expect(w.prs[0].isDraft).toBe(true);
+    const d: string = w.prs[0].description;
     expect(d).toContain("## Tests\n\nNog niet uitgevoerd.");
     expect(d).toContain("Acceptatiecriteria");
     expect(d).toContain("Een lege export heeft alleen de kopregel.");
-  });
 
+    const w2 = world({ criteria: true });
+    const s2 = await changeStart(w2.b(), { project: "test-project", repo: "repo-a", story: 4711, paths: ["/src/load.py"], prompt: "x" });
+    await changeWrite(w2.b(), s2.id, "/src/load.py", { content: "orders = []\n" });
+    const r2 = await changePush(w2.b(), s2.id, { pr: true, anyway: true });
+    expect(r2).toMatchObject({ status: "pushed", pr: { draft: false } });
+    expect((r2 as { pr: { draftReason?: string } }).pr.draftReason).toBeUndefined();
+    expect(w2.prs[0].isDraft).toBe(false);
+    expect(w2.prs[0].description).toContain("Acceptatiecriteria");
+  });
   it("an English team: English words, the title pattern's default when team.yaml has none", async () => {
     const w = world({ team: "version: 1\nlanguage: en\n" });
     const s = await changeStart(w.b(), { project: "test-project", repo: "repo-a", paths: ["/src/load.py"], prompt: "x" });
