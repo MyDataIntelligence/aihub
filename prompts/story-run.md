@@ -40,7 +40,9 @@ Klaar is pas klaar als alles hieronder waar is. Is iets niet waar, zeg dat; maak
 
 {{#if planFirst}}
 ## Plan first
-Toon eerst een plan: stappen per repo, de criteria per stap en de tests. Wacht op mijn OK.
+Toon eerst een plan: stappen per repo, de criteria per stap en de tests. Schrijf het ook naar het bestand dat
+`aihub story plan-file --id {{story.id}}` noemt, zet `aihub story progress --id {{story.id}} --waiting plan --plan-file <dat bestand>`
+en wacht op mijn OK.
 Wijkt de uitvoering later af van het plan, meld dat voordat je verdergaat.
 {{/if}}
 {{#if setActive}}
@@ -52,6 +54,11 @@ dan op Resolved: `aihub workitem state --id {{story.id}} --to Resolved`. Anders 
 ## Voortgang
 Meld elke stap met `aihub story progress --id {{story.id}} --step <k> --total <n> --label "<stap>"` (stappen: plan, bouwen,
 gerichte tests, Fabric-test per criterium, pull request, pipeline, reviewthreads, rapport). Aan het eind: `--done`.
+
+## Wachten op mij
+Stel je mij een vraag of wacht je op mijn goedkeuring, zet dan eerst
+`aihub story progress --id {{story.id}} --waiting input` (of `--waiting approval`). Ga je daarna verder, dan wist je volgende
+`aihub story progress`-aanroep dat vanzelf.
 
 ## Stopregels
 - Dezelfde fout drie rondes achter elkaar: stop, toon de fout en de stand, vraag hoe verder.

@@ -47,8 +47,15 @@ describe("Run End to End in the bar: arguments", () => {
     expect(needsStart("aihub: story 4711 has no branches yet; link one with: ...")).toBe(true);
   });
 
+  it("the run state says when the agent waits for the user, never guessed", () => {
+    expect(runStateOf({ id: 1, running: true, waiting: true, waitingFor: "plan", planFile: "C:/p/plan.md" })).toMatchObject({ waiting: true, waitingFor: "plan", planFile: "C:/p/plan.md" });
+    const st = runStateOf({ id: 1, running: true, waitingFor: "input" });
+    expect(st.waiting).toBe(false);
+    expect("waitingFor" in st).toBe(false);
+  });
+
   it("the run state for the badge", () => {
-    expect(runStateOf({ id: 4711, running: true, step: 2, total: 4, label: "Bouwen", stepsView: [{ label: "Plan", state: "done" }], updatedAt: "t", stateFile: "f" })).toEqual({ id: 4711, running: true, step: 2, total: 4, label: "Bouwen", steps: [{ label: "Plan", state: "done" }], updatedAt: "t", stateFile: "f" });
+    expect(runStateOf({ id: 4711, running: true, step: 2, total: 4, label: "Bouwen", stepsView: [{ label: "Plan", state: "done" }], updatedAt: "t", stateFile: "f" })).toEqual({ id: 4711, running: true, step: 2, total: 4, label: "Bouwen", steps: [{ label: "Plan", state: "done" }], updatedAt: "t", stateFile: "f", waiting: false });
   });
 });
 

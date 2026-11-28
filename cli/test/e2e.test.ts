@@ -389,3 +389,34 @@ describe("no leftovers in a filled prompt", () => {
   });
 });
 
+describe("the agent waits for the user", () => {
+  it("a plan stop and a question are written explicitly; the next step clears them", () => {
+    const t = world();
+    progress(t.ctx, { id: 101, action: "story-run", steps: ["Plan", "Bouwen"], step: 1, label: "Plan" });
+    const plan = progress(t.ctx, { id: 101, waiting: "plan", planFile: "C:/x/plan.md" });
+    expect([plan.waiting, plan.waitingFor, plan.planFile, plan.running]).toEqual([true, "plan", "C:/x/plan.md", true]);
+    const go = progress(t.ctx, { id: 101, step: 2, label: "Bouwen" });
+    expect([go.waiting, go.waitingFor, go.planFile]).toEqual([undefined, undefined, undefined]);
+    const ask = progress(t.ctx, { id: 101, waiting: "input" });
+    expect([ask.waiting, ask.waitingFor, ask.step]).toEqual([true, "input", 2]);
+    expect(progress(t.ctx, { id: 101, resume: true }).waiting).toBeUndefined();
+    expect(() => progress(t.ctx, { id: 101, waiting: "coffee" })).toThrow(/--waiting is plan, input, approval/);
+    expect(() => progress(t.ctx, { id: 101, waiting: "plan" })).toThrow(/needs --plan-file/);
+    progress(t.ctx, { id: 101, waiting: "approval" });
+    expect(progress(t.ctx, { id: 101, stop: true }).waiting).toBeUndefined();
+  });
+
+  it("the story-run prompt tells the agent to write the plan file and the waiting state", async () => {
+    const t = world();
+    const s = t.s();
+    s.teamCfg = { language: "nl" } as never;
+    const r = await renderPrompt(t.ctx, s, "story-run", 101);
+    expect(r.text).toContain("aihub story plan-file --id 101");
+    expect(r.text).toContain("aihub story progress --id 101 --waiting plan --plan-file");
+    expect(r.text).toContain("--waiting input");
+    t.lines.length = 0;
+    expect(await main(["story", "plan-file", "--id", "101", "--json"], t.ctx)).toBe(0);
+    expect(JSON.parse(t.lines[0]).planFile).toMatch(/101-plan\.md$/);
+  });
+});
+

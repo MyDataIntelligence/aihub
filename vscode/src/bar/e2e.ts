@@ -159,7 +159,20 @@ export function takePending(folder: string | undefined, now: number): PendingAct
 }
 
 /** The run state for the badge: the CLI's answer with its steps view under `steps`. */
-export function runStateOf(answer: unknown): { id: number; running: boolean; step: number; total: number; label: string; steps: { label: string; state: string }[]; updatedAt: string; stateFile?: string } {
-  const j = answer as { id: number; running?: boolean; step?: number; total?: number; label?: string; stepsView?: { label: string; state: string }[]; updatedAt?: string; stateFile?: string };
-  return { id: j.id, running: !!j.running, step: j.step ?? 0, total: j.total ?? 0, label: j.label ?? "", steps: j.stepsView ?? [], updatedAt: j.updatedAt ?? "", ...(j.stateFile ? { stateFile: j.stateFile } : {}) };
+export function runStateOf(answer: unknown): { id: number; running: boolean; step: number; total: number; label: string; steps: { label: string; state: string }[]; updatedAt: string; stateFile?: string; waiting: boolean; waitingFor?: string; planFile?: string } {
+  const j = answer as { id: number; running?: boolean; step?: number; total?: number; label?: string; stepsView?: { label: string; state: string }[]; updatedAt?: string; stateFile?: string; waiting?: boolean; waitingFor?: string; planFile?: string };
+  return {
+    id: j.id,
+    running: !!j.running,
+    step: j.step ?? 0,
+    total: j.total ?? 0,
+    label: j.label ?? "",
+    steps: j.stepsView ?? [],
+    updatedAt: j.updatedAt ?? "",
+    ...(j.stateFile ? { stateFile: j.stateFile } : {}),
+    // the agent waits for the user: only when it said so (a plan stop or a question), never guessed
+    waiting: !!j.waiting,
+    ...(j.waiting && j.waitingFor ? { waitingFor: j.waitingFor } : {}),
+    ...(j.waiting && j.planFile ? { planFile: j.planFile } : {}),
+  };
 }
