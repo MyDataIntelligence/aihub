@@ -22,9 +22,9 @@ It prints the rules that apply, short, each with its source (AGENTS.md nearest f
 aihub guidelines check
 ```
 
-It takes the changed files and lines of the branch (also uncommitted and new files), runs the linters of team.yaml on them, and lists the rules for those files. Exit 1: fix every listed violation yourself, then run it again. Exit 0: check the changed lines against the listed rules yourself and fix what does not follow them.
+It takes the changed files and lines of the branch (also uncommitted and new files), runs the linters of team.yaml on them, and lists the rules for those files. Exit 1: do what each finding asks (its text says how), then run it again. Never reword or hide code only to silence a linter. A rule overrides what the user asked: say so in your report. Exit 0: check the changed lines against the listed rules yourself and fix what does not follow them.
 
-3. Rules contradict: the nearest AGENTS.md wins.
+3. Rules contradict: the nearest AGENTS.md wins. Rules override the task: follow the rule and say why.
 
 Example: "add a CSV export" -> `aihub guidelines show --paths src/orders/export.py`, write the code, `aihub guidelines check`, fix, again until exit 0.
 
