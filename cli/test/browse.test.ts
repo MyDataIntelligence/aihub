@@ -7,7 +7,7 @@ import { main } from "../src/router.js";
 import { browseOf, errorJson, kindOf, normPath, parseRef, BrowseError } from "../src/lib/browse/core.js";
 import { hunks, merge3, edits, splitLines } from "../src/lib/browse/lineDiff.js";
 import { browseBranches, browseDiff, browseFile, browseHistory, browseItems, browseProject, browseProjects, browseRepo, mapBranches, parsePorcelain, readmeSummary } from "../src/lib/browse/read.js";
-import { browseFind, browseSearch, linesOf, nameScore, parseScope, rankFind, rememberRepo, scopeQueries } from "../src/lib/browse/search.js";
+import { browseFind, browseSearch, linesOf, nameScore, parseScope, rankFind, relatedByName, relatedFiles, rememberRepo, scopeQueries, stemOf } from "../src/lib/browse/search.js";
 import { browsePr, browsePush, isProtected, suggestBranch } from "../src/lib/browse/push.js";
 import { ctxFor, fakeFetch, sh, tmp, write, type Route } from "./helpers.js";
 
@@ -487,6 +487,27 @@ describe("Ctrl+P and code search", () => {
     expect(bodies.map((x) => x.filters)).toEqual([{ Project: ["test-project"] }, { Project: ["test-project-agile"], Repository: ["agile-repo"] }]);
     expect(r).toMatchObject({ route: "codeSearch", count: 2, scope: [{ project: "test-project" }, { project: "test-project-agile", repo: "agile-repo" }] });
     expect(r.results.map((x) => `${x.project}/${x.repo}`)).toEqual(["test-project/repo-a", "test-project-agile/agile-repo"]);
+  });
+
+  it("+ related files: tests and same-name files from the tree, users from Code Search", async () => {
+    expect(stemOf("/notebooks/load_orders.py")).toBe("load_orders");
+    expect(relatedByName("/notebooks/load_orders.py", ["/notebooks/load_orders.py", "/tests/test_load_orders.py", "/tests/robot/load_orders.robot", "/dbt/load_orders.sql", "/x/other.py"])).toEqual([
+      { path: "/tests/test_load_orders.py", why: "a test of it" },
+      { path: "/tests/robot/load_orders.robot", why: "a test of it" },
+      { path: "/dbt/load_orders.sql", why: "the same name (load_orders.sql)" },
+    ]);
+    const s = setup([
+      { method: "POST", match: /codesearchresults/, respond: (c) => (expect(c.body.filters).toEqual({ Project: ["test-project"], Repository: ["repo-a"] }), { body: { results: [{ path: "/jobs/run.py" }, { path: "/notebooks/load_orders.py" }] } }) },
+      { match: /repo-a\/refs\?filter=heads%2Fmain/, respond: () => ({ body: { value: [{ name: "refs/heads/main", objectId: C1 }] } }) },
+      { match: /repo-a\/items\?scopePath=%2F&recursionLevel=Full/, respond: () => ({ body: { value: [item("/notebooks/load_orders.py", "blob"), item("/tests/test_load_orders.py", "blob")] } }) },
+    ]);
+    expect(await relatedFiles(s.b(), { project: "test-project", repo: "repo-a", path: "/notebooks/load_orders.py" })).toEqual({
+      route: "codeSearch",
+      files: [
+        { path: "/tests/test_load_orders.py", why: "a test of it" },
+        { path: "/jobs/run.py", why: "uses load_orders" },
+      ],
+    });
   });
 
   it("parses ripgrep and git grep output into lines with ranges", () => {

@@ -261,6 +261,11 @@ export const browseArgs = {
     if (a.draft) out.push("--draft");
     return common({ org: a.org }, out);
   },
+  /** "+ related files" (changeSuggestFiles) */
+  related: (a: { org?: string; project: string; repo: string; path: string; top?: number }) => {
+    if (!s(a?.project) || !s(a?.repo) || !s(a?.path)) throw new Error("a repository and a file are needed ({ project, repo, path })");
+    return common({ org: a.org }, opt(["browse", "related", "--project", a.project, "--repo", a.repo, "--path", a.path], "--top", a.top));
+  },
   suggestBranch: (a: SuggestArg) => opt(opt(opt(["browse", "suggest-branch"], "--story", a?.story), "--path", a?.path), "--title", a?.title),
 };
 

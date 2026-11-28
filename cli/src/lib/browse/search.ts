@@ -356,3 +356,60 @@ async function searchLocal(b: Browse, o: { text: string; project?: string; repo?
     ...(o.scope?.length ? { scope: o.scope } : {}),
   };
 }
+
+// ---- "+ related files" ----------------------------------------------------------------------------------------------
+
+export interface RelatedFile {
+  path: string;
+  why: string;
+}
+
+/** The module name of a file: its name without the extension (`load_orders` for /notebooks/load_orders.py). */
+export const stemOf = (path: string) => (path.split("/").pop() ?? "").replace(/\.[^.]+$/, "");
+
+/** Tests and siblings by name: test_<stem>, <stem>_test, <stem>.robot, the same stem with another extension. */
+export function relatedByName(path: string, all: string[]): RelatedFile[] {
+  const stem = stemOf(path).toLowerCase();
+  if (!stem) return [];
+  const out: RelatedFile[] = [];
+  for (const p of all) {
+    if (p === path) continue;
+    const s = stemOf(p).toLowerCase();
+    const name = (p.split("/").pop() ?? "").toLowerCase();
+    if (s === `test_${stem}` || s === `${stem}_test` || s === `${stem}.test` || s === `${stem}.spec` || (/test/i.test(p) && s.includes(stem))) out.push({ path: p, why: "a test of it" });
+    else if (s === stem) out.push({ path: p, why: `the same name (${name})` });
+  }
+  return out;
+}
+
+/**
+ * "+ related files" for Change with Agent: the files of the same repository that use the file (Code Search for its module name),
+ * its tests and siblings by name (the tree of the default branch). At most `top`; nothing is read beyond one search and one tree.
+ */
+export async function relatedFiles(b: Browse, o: { project: string; repo: string; path: string; top?: number }): Promise<{ route: "codeSearch" | "tree"; files: RelatedFile[] }> {
+  const path = normPath(o.path);
+  const top = Math.min(Math.max(o.top ?? 10, 1), 30);
+  const stem = stemOf(path);
+  const out = new Map<string, RelatedFile>();
+  let route: "codeSearch" | "tree" = "codeSearch";
+  try {
+    const r = await codeSearch(b, { searchText: stem, $skip: 0, $top: 50, filters: { Project: [o.project], Repository: [o.repo] }, includeFacets: false });
+    for (const x of r.results ?? []) {
+      const p = normPath(x.path);
+      if (p !== path && !out.has(p)) out.set(p, { path: p, why: `uses ${stem}` });
+    }
+  } catch (e) {
+    if (kindOf(e) !== "searchUnavailable") throw e;
+    route = "tree";
+  }
+  try {
+    const { projects } = await browseProjects(b);
+    const row = projects.flatMap((p) => p.repos).find((r) => r.project.toLowerCase() === o.project.toLowerCase() && r.repo.toLowerCase() === o.repo.toLowerCase());
+    if (row?.defaultBranch) for (const f of relatedByName(path, await treeOf(b, row.project, row.repo, row.defaultBranch))) out.set(f.path, f);
+  } catch {
+    /* the tree is a help, not a must */
+  }
+  // tests first, then the same name, then the users
+  const rank = (f: RelatedFile) => (f.why === "a test of it" ? 0 : f.why.startsWith("the same name") ? 1 : 2);
+  return { route, files: [...out.values()].sort((x, y) => rank(x) - rank(y) || x.path.localeCompare(y.path)).slice(0, top) };
+}

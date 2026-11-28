@@ -652,6 +652,11 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.changeSuggestFiles",
+        "title": "Change with Agent: Related Files",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.askStart",
         "title": "Ask Agent about Selected...",
         "category": "AI Context Hub"
@@ -2088,6 +2093,10 @@
         },
         {
           "command": "aihub.bar.changeToWorkingCopy",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.changeSuggestFiles",
           "when": "false"
         },
         {

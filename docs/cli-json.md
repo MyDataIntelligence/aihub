@@ -285,6 +285,8 @@ question; "Apply in Feature Branch" makes an `aihub browse change` per repositor
 - `ask apply --id ID --project P --repo R [--branch B] [--story N]`: a change with that repository's proposals, on the question's branch (the
   first apply names it; every repository gets the same) -> the `change start` answer plus `applied`. Push it with `change push`.
 - `ask list`, `ask discard --id ID`.
+`aihub browse related --project P --repo R --path /file [--top 10]` ("+ related files" of Change with Agent): `{"route":"codeSearch"|"tree","files":[{"path":"/tests/test_report.py","why":"a test of it"},{"path":"/jobs/run.py","why":"uses report"}]}`: tests and files with the same name from the tree of the default branch, then the files of the same repository that use the module name (Code Search; without it only the tree). One search and one tree read.
+
 `aihub browse suggest-branch [--story N] --path /file [--title t]`: `{"branch":"feature/4711-orders-export"}` (no network).
 
 ## Pipeline browser: `aihub browse pipelines|pipeline|run-plan|run|artifacts|artifact-files|artifact-open|draft-create|drafts|draft-delete`
