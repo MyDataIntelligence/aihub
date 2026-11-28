@@ -86,6 +86,10 @@ describe("change with agent: the workspace", () => {
     expect(task).toContain("Filter actieve klanten");
     expect(task).toContain(`aihub browse change read --id ${s.id}`);
     expect(task).toContain("Do not push, commit, merge or run git");
+    // a real Luna run (2026-11-28) read the rules blind and got notFound errors, and ran verify before any change: TASK.md prevents both
+    expect(task).toContain(`aihub browse items --project "test-project" --repo "repo-a" --ref commit:${C1} --path /`);
+    expect(task).toContain("`notFound` for these files is not a problem, go on");
+    expect(task).toContain("Without a change there is nothing to check: then skip it and say so in the summary.");
     expect(s.agentPrompt).toBe("Read TASK.md and make the change it describes in the files under ./files. Do not push or commit.");
     expect(w.pushes).toEqual([]);
     const sel = await changeStart(w.b(), { project: "test-project", repo: "repo-a", prompt: "x", selection: { path: "/src/a.py", startLine: 2, endLine: 3 } });

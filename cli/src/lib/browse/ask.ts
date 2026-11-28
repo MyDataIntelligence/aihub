@@ -121,7 +121,7 @@ export function askTask(meta: AskMeta): string {
     `- Search: \`aihub browse search --text "<text>" --scope ${s}\` (one call covers the whole scope).`,
     `- A folder: \`aihub browse items --project P --repo R --path /folder\`.`,
     `- A file: \`aihub browse ask read --id ${id} --project P --repo R --path /file\` (counted: after ${meta.limit} files it stops; then ask the user before reading more).`,
-    `- A fix you propose: write the WHOLE new file to a temp file and run \`aihub browse ask propose --id ${id} --project P --repo R --path /file --content-file <file>\`. It changes nothing; the user decides per repository.`,
+    `- A fix you propose: write the WHOLE new file with your normal edit tool under ./drafts/<repo>/<path> in this folder (not with shell here-strings or echo), then run \`aihub browse ask propose --id ${id} --project P --repo R --path /file --content-file ./drafts/<repo>/<path>\`. It changes nothing; the user decides per repository.`,
     `- The report: a JSON file \`{"summary": "...", "repos": [{"project": "P", "repo": "R", "finding": "...", "refs": [{"path": "/file", "line": 12, "note": "..."}]}]}\`, then \`aihub browse ask report --id ${id} --file <file>\`. One entry per repository you looked at, also "nothing found".`,
     "",
     "## Finish (required: the user sees only what these commands store)",

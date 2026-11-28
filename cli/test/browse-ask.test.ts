@@ -54,6 +54,8 @@ describe("ask agent about selected", () => {
     expect(task).toContain("--scope test-project/repo-a,test-project/repo-b");
     expect(task).toContain(`aihub browse ask read --id ${s.id}`);
     expect(task).toContain("Read only: never change, commit, push or clone anything");
+    // a real Luna run (2026-11-28) wrote its proposal with PowerShell here-strings: TASK.md points to the edit tool and ./drafts
+    expect(task).toContain("with your normal edit tool under ./drafts/<repo>/<path> in this folder (not with shell here-strings or echo)");
     expect(s.limit).toBe(200);
     expect(() => askStart(w.b(), { scope: [], prompt: "x" })).toThrow(/which repositories/);
   });
