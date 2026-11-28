@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { browseErrorOf, removePushFiles } from "../src/bar/browse";
-import { askText, updateFromBranchText, wikiArgs, wikiWriteFiles } from "../src/bar/wiki";
+import { askText, updateFromBranchText, wikiArgs, wikiUpdateStartArgs, wikiWriteFiles } from "../src/bar/wiki";
 import { BAR_COMMANDS } from "../src/bar/types";
 
 const C1 = "1".repeat(40);
@@ -68,8 +68,23 @@ describe("wiki browser in the bar: agent texts and failures", () => {
   });
   it("has a command id for every wiki action", () => {
     const ids = Object.entries(BAR_COMMANDS).filter(([k]) => k.startsWith("wiki")).map(([, v]) => v);
-    expect(ids).toHaveLength(16);
+    expect(ids).toHaveLength(20);
     const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf8")) as { contributes: { commands: { command: string }[] } };
     for (const id of ids) expect(pkg.contributes.commands.some((c) => c.command === id)).toBe(true);
+  });
+});
+
+describe("Update Wiki with Context from…: the start", () => {
+  it("builds aihub wiki update start with the chosen pages; sources and prompt go in files; the window as chosen", () => {
+    const r = wikiUpdateStartArgs({ ...W, pages: ["/Runbooks/Order export", "/Architecture/Data flow"], sources: [{ project: "test-project", repo: "orders-ingest", path: "/docs" }, { project: "test-project", repo: "x" }], prompt: "Use the new retry rule", where: "newWindow" });
+    expect(r.args).toEqual(["wiki", "update", "start", "--project", "test-project", "--wiki", "orders.wiki", "--path", "/Runbooks/Order export", "--path", "/Architecture/Data flow"]);
+    expect(r.sources).toHaveLength(2);
+    expect(r.where).toBe("newWindow");
+    expect(r.args.join(" ")).not.toMatch(/retry rule/);
+    expect(wikiUpdateStartArgs({ ...W, sources: [{ project: "p", repo: "r" }] }).where).toBe("panel");
+  });
+  it("needs a wiki and at least one source", () => {
+    expect(() => wikiUpdateStartArgs({ project: "p" } as never)).toThrow(/project and a wiki/);
+    expect(() => wikiUpdateStartArgs({ ...W, sources: [] })).toThrow(/which repositories, folders or files/);
   });
 });

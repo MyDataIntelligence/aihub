@@ -191,6 +191,40 @@ describe("aihub fabric failures --since-green", () => {
     expect(r.calls.some((c) => /builds\/105\/timeline/.test(c.url))).toBe(false);
   });
 
+  it("a merge (no fast-forward) pull request is one change: its branch commits belong to it, not listed again on their own", async () => {
+    // Azure DevOps' default merge: the merge commit (lastMergeCommit) and the branch commits (found with the query type "commit")
+    const M412 = sha("a412a41");
+    const B412 = sha("b412b41");
+    const B409 = sha("b409b40");
+    const list = [
+      { sha: C3, title: "Merged PR 409", paths: ["governance/roles.yaml"] },
+      { sha: M412, title: "Merged PR 412", paths: ["fabric/nb_standardize.Notebook/notebook-content.py"] },
+      { sha: B409, title: "Governance roles", paths: ["governance/roles.yaml"] },
+      { sha: B412, title: "Rename subscription_date", paths: ["fabric/nb_standardize.Notebook/notebook-content.py"] },
+    ];
+    const byType: Record<string, Record<string, { pullRequestId: number; status: string }[]>> = {
+      lastMergeCommit: { [C3]: [{ pullRequestId: 409, status: "completed" }], [M412]: [{ pullRequestId: 412, status: "completed" }] },
+      commit: { [B409]: [{ pullRequestId: 409, status: "completed" }], [B412]: [{ pullRequestId: 398, status: "abandoned" }, { pullRequestId: 412, status: "completed" }] },
+    };
+    const routes: Route[] = [
+      ...fabric([RED, GREEN_RUN, OLD_GREEN]),
+      ...cd(WINDOW, { repos: { 101: repos(C1, sha("3f9a1c2")), 104: repos(C3, sha("3f9a1c2")) } }),
+      get(/_apis\/git\/repositories\/test-repo\/commits\?/, { value: list.map((c) => ({ commitId: c.sha, comment: c.title })) }),
+      ...list.map((c) => get(new RegExp(`commits/${c.sha}/changes`), { changes: c.paths.map((p) => ({ item: { path: `/${p}` } })) })),
+      ...list.map((c) => get(new RegExp(`commits/${c.sha}\\?`), { comment: c.title })),
+      { method: "POST", match: /pullrequestquery/, respond: (call) => ({ body: { results: (call.body?.queries ?? []).map((q: { type: string; items: string[] }) => Object.fromEntries(q.items.filter((s) => byType[q.type]?.[s]).map((s) => [s, byType[q.type][s]]))) } }) },
+      ...[409, 412].map((id) => get(new RegExp(`pullrequests/${id}\\?`), { pullRequestId: id, title: `PR title ${id}` })),
+      ...[409, 412].map((id) => get(new RegExp(`pullrequests/${id}/workitems`), { value: [{ id: id * 10 }] })),
+      get(/_apis\/wit\/workitems\/\d+\?/, { fields: { "System.Title": "Rename column" } }),
+    ];
+    const r = await go(routes, [...args, "--since-green", "--json"]);
+    expect(r.code).toBe(0);
+    const sg = JSON.parse(r.out).result.sinceGreen;
+    expect(sg.commits.map((c: { pr?: number }) => c.pr)).toEqual([409, 412, 409, 412]);
+    expect(sg.suspects.map((s: { pr?: number; commit?: string }) => s.pr ?? s.commit)).toEqual([412]);
+    expect(sg.unrelated.map((s: { pr?: number; commit?: string }) => s.pr ?? s.commit)).toEqual([409]);
+  });
+
   it("the commit range is checked: when the first answer does not hold the red commit, the two versions are swapped once", async () => {
     // an Azure DevOps that reads itemVersion as the older side: the first query answers nothing, the swapped one the range
     const swappedApi: Route = { match: /_apis\/git\/repositories\/test-repo\/commits\?/, respond: (call) => ({ body: { value: call.url.includes(`searchCriteria.itemVersion.version=${C1}`) ? CHANGES.map((c) => ({ commitId: c.sha, comment: c.title })) : [] } }) };

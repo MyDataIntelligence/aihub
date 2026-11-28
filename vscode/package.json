@@ -747,6 +747,16 @@
         "category": "AI Context Hub"
       },
       {
+        "command": "aihub.bar.searchAll",
+        "title": "Search Everywhere in Azure DevOps",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.searchAllStop",
+        "title": "Search Everywhere: Stop",
+        "category": "AI Context Hub"
+      },
+      {
         "command": "aihub.bar.browseSuggestBranch",
         "title": "Repositories: Suggest Branch Name",
         "category": "AI Context Hub"
@@ -844,6 +854,26 @@
       {
         "command": "aihub.bar.wikiRetryNow",
         "title": "Wiki: Try Again Now",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiUpdateApply",
+        "title": "Wiki: Publish Update",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiUpdateDiscard",
+        "title": "Wiki: Discard Update",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiUpdateStart",
+        "title": "Wiki: Update Wiki with Context From...",
+        "category": "AI Context Hub"
+      },
+      {
+        "command": "aihub.bar.wikiUpdateState",
+        "title": "Wiki: Update State",
         "category": "AI Context Hub"
       },
       {
@@ -2177,6 +2207,14 @@
           "when": "false"
         },
         {
+          "command": "aihub.bar.searchAll",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.searchAllStop",
+          "when": "false"
+        },
+        {
           "command": "aihub.bar.browseSuggestBranch",
           "when": "false"
         },
@@ -2254,6 +2292,22 @@
         },
         {
           "command": "aihub.bar.wikiRetryNow",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiUpdateApply",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiUpdateDiscard",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiUpdateStart",
+          "when": "false"
+        },
+        {
+          "command": "aihub.bar.wikiUpdateState",
           "when": "false"
         },
         {

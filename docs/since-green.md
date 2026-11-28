@@ -27,7 +27,9 @@ Both need `fabric.environments.<ENV>` in team.yaml with `branch`, `workspace` (`
    started. The deployment live during the green run gives the commit `before`, the one live at the red run the commit `after`.
    Runs queued after the red run started are not read.
 4. **What changed.** The commits in `after` and not in `before` (at most 50, said when capped) and the files of each commit,
-   mapped to Fabric item folders `<name>.<Type>/`; other paths stay as they are. Commits are grouped by pull request.
+   mapped to Fabric item folders `<name>.<Type>/`; other paths stay as they are. Commits are grouped by pull request: the
+   merge commit and, for a merge without fast-forward, the branch commits it brought in (the completed pull request that
+   contains them).
 5. **Other repositories** of the two runs: per alias `unchanged` or `a -> b`, or "not available" when the API does not return them.
 6. **Rank.** A pull request (or a commit without one) is a suspect when it touches (a) the failed item or the failing item of
    the root-cause chain, (b) an item the failed pipeline calls (the caller knowledge of `aihub fabric plan`, read from the

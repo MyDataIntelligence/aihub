@@ -362,6 +362,10 @@ export const BAR_COMMANDS = {
   browseFind: "aihub.bar.browseFind",
   /** `{ text, project?, repo?, path?, ext?, top? }` -> `aihub browse search`: matching lines per file; `searchUnavailable` without Code Search */
   browseSearch: "aihub.bar.browseSearch",
+  /** `{ text, kinds?, top?, project?, org?, refresh?, onPart? }` -> `aihub search all --stream`: Search Everywhere, `{ org, text, kinds:[part] }`; each part also to the `onPart` command as `{ text, part }`; a newer search answers the older one `{ stopped: true }` */
+  searchAll: "aihub.bar.searchAll",
+  /** stop the running Search Everywhere (the popup closed) */
+  searchAllStop: "aihub.bar.searchAllStop",
   /** `{ story?, path, title? }` -> `aihub browse suggest-branch`: `{ branch }` (no network) */
   browseSuggestBranch: "aihub.bar.browseSuggestBranch",
   /** `{ project, repo, path, baseCommit, baseBranch, content, branch, message, pr?, target?, story?, prTitle?, draft?, rebase? }` -> `aihub browse push`: `status: pushed` or `status: conflict` (rebase: true = Rebase my change); protectedBranch and branchExists are errors */
@@ -425,6 +429,19 @@ export const BAR_COMMANDS = {
   wikiUpdateFromBranch: "aihub.bar.wikiUpdateFromBranch",
   /** forget the remembered failures (after az login or a CLI update) */
   wikiRetryNow: "aihub.bar.wikiRetryNow",
+  // ---- Update Wiki with Context from… (aihub wiki update; docs/cli-json.md "Wiki update"; nothing reaches the wiki until wikiUpdateApply) ----
+  /**
+   * `{ project, wiki, pages?: string[], sources: [{ project, repo, path?, ref?, local? }], prompt?, where?: "panel"|"newWindow"|"terminal", org? }`
+   * -> `{ id, dir, pagesDir, chosen, allowNew, pages: [{ path, file, exists }], language, taskFile, agentPrompt, where, agent }`. No pages: the
+   * whole wiki, the agent may propose new pages. Watch `pagesDir` and call wikiUpdateState after a debounce; stop the agent with changeStop `{ id }`.
+   */
+  wikiUpdateStart: "aihub.bar.wikiUpdateStart",
+  /** `{ id }` -> `aihub wiki update diff`: `pages: [{ path, status: "modified"|"added", additions, deletions, hunks, applied }]`, totals, problems (notChosen, newNotAllowed, secret, empty), applied, agent */
+  wikiUpdateState: "aihub.bar.wikiUpdateState",
+  /** `{ id, paths?, comment? }` (Publish one page, or all without paths) -> `{ id, results: [{ path, status: "published"|"created"|"conflict"|"refused"|"failed", message?, etag?, webUrl?, current? }], left }`; a conflict is never overwritten */
+  wikiUpdateApply: "aihub.bar.wikiUpdateApply",
+  /** `{ id, path? }` -> discard one page's proposal, or (no path) the whole update */
+  wikiUpdateDiscard: "aihub.bar.wikiUpdateDiscard",
   // ---- story browser (one `aihub stories` process each, JSON as in docs/cli-json.md "Story browser"; a failure is
   // `{ error: { kind, message } }` (kinds of the repository browser plus needsSetting), a newer save in between is
   // `{ status: "conflict" }`, never a popup; nothing polls) ----
