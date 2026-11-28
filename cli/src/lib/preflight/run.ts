@@ -11,9 +11,9 @@ import { spawnSync } from "../proc.js";
 import { repoNameOfUrl } from "../repoName.js";
 import { defaultTargetFor, loadTeam, type TeamConfig } from "../team.js";
 import { trace } from "../trace.js";
-import { hasPreflight, levelOf, norm, preflightConfig, TOKEN_AUDIENCES, type Level, type PreflightConfig } from "./config.js";
+import { hasPreflight, LEVELS, levelOf, norm, preflightConfig, TOKEN_AUDIENCES, type Level, type PreflightConfig } from "./config.js";
 import { driftOf, fingerprint, isRunnable, readState, rememberSteps, writeCalls, writeState, type Drift, type Fingerprint, type State } from "./drift.js";
-import { commandFor, pathShells, runCommand, type Shells } from "./exec.js";
+import { commandFor, pathShells, posixPaths, runCommand, scriptShell, type Shells } from "./exec.js";
 import { evalCondition, expand, macroNames, type Lookup } from "./expr.js";
 import { loadJob, paramIn, type JobDoc, type ParamScope, type PipelineStep } from "./pipelineYaml.js";
 import { prepareSources, setupFingerprint, type Sources } from "./sources.js";
@@ -357,6 +357,9 @@ export async function runPreflight(ctx: Ctx, o: PreflightOpts, deps: PreflightDe
     prints.set(s, fingerprint(s, content));
   }
   const drift = driftOf(doc.steps, cfg, p.state, prints);
+  if (sh.platform === "win32" && !cfg.shell && scriptShell(sh) === "cmd" && doc.steps.some((s) => s.kind === "script" && LEVELS.includes(levelOf(cfg, s.name) as Level)))
+    notes.push("script: steps run with cmd.exe: no bash (Git for Windows) was found; install Git for Windows or set preflight.shell in team.yaml");
+  const bashPaths = [sources.base, sources.sourcesDir, join(sources.base, "_temp"), sources.work.dir, sources.source.dir];
 
   // ---- --step ------------------------------------------------------------------------------------------------------
   let last = doc.steps.length;
@@ -496,7 +499,9 @@ export async function runPreflight(ctx: Ctx, o: PreflightOpts, deps: PreflightDe
       cannot.push(...x.cannot);
       return x.text;
     };
-    const inline = ex(step.inline, true);
+    const viaBash = sh.platform === "win32" && (step.kind === "bash" || (step.kind === "script" && scriptShell(sh, cfg.shell) === "bash"));
+    const inlineRaw = ex(step.inline, true);
+    const inline = viaBash && inlineRaw !== undefined ? posixPaths(inlineRaw, bashPaths) : inlineRaw;
     const args = ex(step.arguments);
     const scriptPath = ex(step.scriptPath);
     const wdRaw = ex(step.workingDirectory);

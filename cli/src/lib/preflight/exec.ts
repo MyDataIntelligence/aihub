@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
-import { delimiter, isAbsolute, join, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "../proc.js";
 import type { PipelineStep } from "./pipelineYaml.js";
 
@@ -28,35 +28,61 @@ export interface Command {
   missing?: string;
 }
 
-/** Programs on PATH, read from the folders (no process); on Windows with PATHEXT. WSL's bash in System32 does not count as bash. */
+const WSL = /[\\/]windows[\\/]system32[\\/]/i;
+const isFile = (p: string) => {
+  try {
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Programs on PATH, read from the folders (no process); on Windows with PATHEXT. WSL's bash in System32 does not count as
+ * bash; Git for Windows' bash counts also when only its `cmd` folder (git.exe) is on PATH, as in a PowerShell or VS Code
+ * terminal, so `script:` steps get the same shell whichever terminal started preflight.
+ */
 export function pathShells(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): Shells {
   const memo = new Map<string, string | undefined>();
   const dirs = (env.PATH ?? env.Path ?? "").split(platform === "win32" ? ";" : delimiter).filter(Boolean);
   const exts = platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean) : [""];
+  const bashLike = (program: string) => platform === "win32" && /^bash(\.exe)?$/i.test(program);
+  const onPath = (program: string): string | undefined => {
+    if (isAbsolute(program)) return existsSync(program) ? program : undefined;
+    for (const d of dirs)
+      for (const e of [...(platform === "win32" && /\.[a-z]+$/i.test(program) ? [""] : []), ...exts]) {
+        const p = join(d, program + e);
+        if (isFile(p) && !(bashLike(program) && WSL.test(p))) return p; // WSL's bash is not a Windows bash: look further
+      }
+    return undefined;
+  };
+  // <Git>\cmd\git.exe, <Git>\bin\git.exe or <Git>\mingw64\bin\git.exe -> <Git>\bin\bash.exe or <Git>\usr\bin\bash.exe
+  const gitBash = (): string | undefined => {
+    const git = onPath("git");
+    if (!git) return undefined;
+    for (const root of [dirname(dirname(git)), dirname(dirname(dirname(git)))])
+      for (const p of [join(root, "bin", "bash.exe"), join(root, "usr", "bin", "bash.exe")]) if (isFile(p)) return p;
+    return undefined;
+  };
   return {
     platform,
     which: (program) => {
       if (memo.has(program)) return memo.get(program);
-      let hit: string | undefined;
-      if (isAbsolute(program)) hit = existsSync(program) ? program : undefined;
-      else
-        outer: for (const d of dirs)
-          for (const e of [...(platform === "win32" && /\.[a-z]+$/i.test(program) ? [""] : []), ...exts]) {
-            const p = join(d, program + e);
-            try {
-              if (statSync(p).isFile()) {
-                hit = p;
-                break outer;
-              }
-            } catch {
-              /* not here */
-            }
-          }
-      if (hit && platform === "win32" && /^bash/i.test(program) && /\\windows\\system32\\/i.test(hit)) hit = undefined; // WSL, not a Windows bash
+      const hit = onPath(program) ?? (bashLike(program) ? gitBash() : undefined);
       memo.set(program, hit);
       return hit;
     },
   };
+}
+
+/**
+ * A bash script on Windows gets the preflight folders with forward slashes: bash removes a backslash outside quotes, so
+ * `ls $(Build.SourcesDirectory)/jobs` would lose every separator. `dirs` are the native paths preflight itself expanded.
+ */
+export function posixPaths(text: string, dirs: string[]): string {
+  let out = text;
+  for (const d of [...new Set(dirs)].filter((x) => x.includes("\\")).sort((a, b) => b.length - a.length)) out = out.split(d).join(d.replace(/\\/g, "/"));
+  return out;
 }
 
 /** Splits an argument string like the agent does: spaces separate, double or single quotes group, quotes are removed. */
@@ -113,8 +139,10 @@ export function commandFor(step: PipelineStep, input: CommandInput, o: { sh: She
   const tmp = (ext: string) => join(o.tempDir, `${o.id}${ext}`);
   const args = splitArgs(input.arguments);
   const need = (program: string, cmd: Command): Command => (o.sh.which(program) || isAbsolute(program) ? cmd : { ...cmd, missing: program });
+  // on Windows the full path: by name, the first bash.exe on PATH may be WSL's
+  const bashFile = o.sh.platform === "win32" ? (o.sh.which("bash") ?? "bash") : "bash";
   const bash = (file: string, content?: string): Command =>
-    need("bash", { file: "bash", args: ["--noprofile", "--norc", file, ...(content === undefined ? args : [])], display: show("bash", [file, ...(content === undefined ? args : [])]), ...(content !== undefined ? { script: { path: file, content } } : {}) });
+    need("bash", { file: bashFile, args: ["--noprofile", "--norc", file, ...(content === undefined ? args : [])], display: show("bash", [file, ...(content === undefined ? args : [])]), ...(content !== undefined ? { script: { path: file, content } } : {}) });
   const ps = (program: string, file: string, content?: string): Command => {
     const call = `. '${file.replace(/'/g, "''")}'${content === undefined && args.length ? ` ${args.map(quote).join(" ")}` : ""}`;
     return need(program, {
