@@ -6,7 +6,7 @@ import { htmlToMd, mdToHtml } from "../src/lib/story.js";
 import { criterionKey, howKind, parseCriteria, renderCriteria, vagueness } from "../src/lib/e2e/criteria.js";
 import { ACTIONS, checkAction, conditionals, limitsText, fill, findPrompt, listPrompts, renderPrompt, resetPrompt, runOptions, savePrompt, TEAM_PROMPT_DIR } from "../src/lib/e2e/prompts.js";
 import { storyActivate } from "../src/lib/stories/write.js";
-import { criteriaTable, notProvenError, provenLine, withCriteria } from "../src/lib/e2e/prSection.js";
+import { criteriaTable, notProvenError, prCriteria, provenLine, withCriteria } from "../src/lib/e2e/prSection.js";
 import { LIMIT_DENY, progress, stepsView, yolo } from "../src/lib/e2e/run.js";
 import { setFolderOf, stateFile } from "../src/lib/e2e/state.js";
 import { criteriaApply, criteriaProposal, criteriaRecord, criteriaStatus, proposalFileFor, readCriteria, statusOf } from "../src/lib/e2e/workitem.js";
@@ -79,6 +79,17 @@ describe("criteria on the work item and their test status", () => {
     expect(c.field).toBe("Microsoft.VSTS.Common.AcceptanceCriteria");
     const st = await criteriaStatus(t.ctx, s, 101);
     expect([st.proven, st.total]).toEqual([0, 3]);
+  });
+
+  it("criteria only in the description's criteria section: status shows them with text, the same list the pull request check counts", async () => {
+    const t = world();
+    t.items[101].fields["Microsoft.VSTS.Common.AcceptanceCriteria"] = "";
+    t.items[101].fields["System.Description"] = mdToHtml(`## Doel\n\nDe export.\n\n## Acceptatiecriteria\n\n${CRIT}`);
+    const s = t.s();
+    const st = await criteriaStatus(t.ctx, s, 101);
+    expect(st.criteria.map((c) => c.text)).toEqual(parseCriteria(CRIT).map((c) => c.text));
+    const gate = await prCriteria(t.ctx, s.c, 101, "nl");
+    expect(gate?.status.total).toBe(st.total);
   });
 
   it("reads the criteria field; records per criterion in the set folder; a pass needs evidence", async () => {
