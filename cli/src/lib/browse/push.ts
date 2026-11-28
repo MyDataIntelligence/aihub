@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
 import { getWorkItemTitle } from "../ado.js";
-import { compose, DEFAULT_EMPTY, emptyFor, resolveTemplate, templateCandidates } from "../templates.js";
+import { resolveTemplate, templateCandidates } from "../templates.js";
+import { describePr, notRunYet } from "../prDescription.js";
+import { noisyLines } from "../prNoise.js";
+import { prTitle } from "../prTitle.js";
 import { TEAM_FILE, type TeamConfig } from "../team.js";
 import { BrowseError, kindOf, normPath, repoClientOf, shortSha, webCommitUrl, webRepoUrl, type Browse, type Person } from "./core.js";
 import { browseHistory, readFileAt } from "./read.js";
@@ -205,8 +208,43 @@ export async function browsePr(b: Browse, o: { project: string; repo: string; br
   return { pr, existing: false };
 }
 
-/** A pull request from a pushed branch without a clone: the template of the target branch on the remote, the story linked. */
-export async function createRemotePr(b: Browse, o: { project: string; repo: string; branch: string; target: string; path: string; message: string; story?: number; prTitle?: string; draft?: boolean; commitId: string; team: TeamConfig }): Promise<{ id: number; title: string; webUrl: string }> {
+export interface RemotePr {
+  id: number;
+  title: string;
+  webUrl: string;
+  /** made as a draft: asked, or the story's criteria are not all proven */
+  draft: boolean;
+  draftReason?: string;
+  /** criteria of the story: proven of total */
+  criteria?: { proven: number; total: number };
+}
+
+/** The checks of `change verify` as the Tests section: what ran and its outcome, in the team language (no counts of unit tests). */
+export function verifyTests(v: { checks: { name: string; kind: string; status: string; command?: string; reason?: string; errors: { path: string; line?: number; message: string }[] }[] } | null | undefined, language: unknown): string | undefined {
+  if (!v?.checks?.length) return undefined;
+  const nl = String(language ?? "").toLowerCase() === "nl";
+  const word = (s: string) => (nl ? ({ passed: "geslaagd", failed: "gefaald", skipped: "niet uitgevoerd" } as Record<string, string>)[s] ?? s : s === "skipped" ? "not run" : s);
+  const kind = (k: string) => (k === "lint" ? (nl ? "Lint" : "Lint") : nl ? "Tests" : "Tests");
+  return v.checks
+    .map((c) => {
+      const first = c.errors[0];
+      const why = c.status === "failed" && first ? `: ${first.path ? `${first.path}${first.line ? `:${first.line}` : ""} ` : ""}${first.message}` : c.status === "skipped" && c.reason ? ` (${c.reason})` : "";
+      return `- ${kind(c.kind)} (${c.name}${c.command && c.command !== "aihub guidelines check" ? `, ${c.command}` : ""}): ${word(c.status)}${why}`;
+    })
+    .join("\n");
+}
+
+/**
+ * A pull request from a pushed branch without a clone, by the one rule of `aihub pr create` (prDescription.ts): the title from
+ * team.yaml `pullRequest.title`, the template of the target branch on the remote, the agent's summary in the first section
+ * (lines that are process noise are left out), the changed files under Changes, the tests and checks that really ran (else
+ * "not run yet"), the story linked with its criteria table. Criteria that are not all proven make it a draft (said in
+ * `draftReason`), so the push is never left without its pull request.
+ */
+export async function createRemotePr(
+  b: Browse,
+  o: { project: string; repo: string; branch: string; target: string; path: string; message: string; story?: number; prTitle?: string; draft?: boolean; commitId: string; team: TeamConfig; summary?: string; changes?: string; tests?: string },
+): Promise<RemotePr> {
   const rc = repoClientOf(b, o.project, o.repo);
   const tplFiles = new Map<string, string>();
   for (const p of templateCandidates(o.target)) {
@@ -223,26 +261,41 @@ export async function createRemotePr(b: Browse, o: { project: string; repo: stri
   const tpl = resolveTemplate(o.target, { readRef: (_b, p) => tplFiles.get(p) });
   const storyTitle = o.story ? await getWorkItemTitle(b.client.forProject(o.project), o.story) : undefined;
   const subject = o.message.trim().split(/\r?\n/)[0];
-  const title = o.prTitle?.trim() || (o.story && storyTitle ? `${o.story} ${storyTitle}` : subject);
+  const title = prTitle({ given: o.prTitle?.trim() || undefined, pattern: o.team.pullRequest?.title, storyId: o.story, storyTitle, branch: o.branch, firstCommit: subject });
   const commits = `- ${subject} (${shortSha(o.commitId)})`;
-  const nl = (o.team as { language?: string }).language === "nl";
-  const description = tpl
-    ? compose({
-        template: tpl.content,
-        body: "",
-        code: { story: o.story ? `AB#${o.story}` : undefined, commits },
-        emptyText: emptyFor(o.team),
-        optionalSections: o.team.pullRequest?.optionalSections,
-        fallback: { changes: `- ${o.path}: ${subject}`, tests: nl ? "Nog niet uitgevoerd." : "Not run yet." },
-      }).text
-    : [o.story ? `AB#${o.story}` : "", `## Commits\n\n${commits}`].filter(Boolean).join("\n\n") + "\n";
+  // the agent's summary without the lines a reviewer does not need (test counts, its own environment)
+  const noisy = new Set(o.summary ? noisyLines(o.summary) : []);
+  const summary = (o.summary ?? "")
+    .split(/\r?\n/)
+    .filter((l) => !noisy.has(l.trim()))
+    .join("\n")
+    .trim();
+  const d = await describePr(b.ctx, b.client.forProject(o.project), o.team, {
+    tpl,
+    given: "",
+    summaryText: summary || undefined,
+    code: { story: o.story ? `AB#${o.story}` : undefined, commits },
+    fallback: { changes: o.changes ?? `- ${o.path}: ${subject}`, tests: o.tests ?? notRunYet(o.team) },
+    storyId: o.story,
+    plainExtra: [o.story ? `AB#${o.story}` : "", `## Commits\n\n${commits}`].filter(Boolean).join("\n\n"),
+  });
+  const crit = d.criteria?.status;
+  const unproven = !!crit && crit.proven < crit.total;
+  const draft = !!o.draft || unproven;
   const pr = await rc.post<{ pullRequestId: number; title: string }>(`${rc.repoPath()}/pullrequests`, {
     sourceRefName: `refs/heads/${o.branch}`,
     targetRefName: `refs/heads/${o.target}`,
     title,
-    description,
-    isDraft: !!o.draft,
+    description: d.description,
+    isDraft: draft,
     ...(o.story ? { workItemRefs: [{ id: String(o.story) }] } : {}),
   });
-  return { id: pr.pullRequestId, title: pr.title ?? title, webUrl: `${webRepoUrl(b, o.project, o.repo)}/pullrequest/${pr.pullRequestId}` };
+  return {
+    id: pr.pullRequestId,
+    title: pr.title ?? title,
+    webUrl: `${webRepoUrl(b, o.project, o.repo)}/pullrequest/${pr.pullRequestId}`,
+    draft,
+    ...(unproven && !o.draft ? { draftReason: `${crit!.proven}/${crit!.total} acceptance criteria proven: a draft until they are` } : {}),
+    ...(crit ? { criteria: { proven: crit.proven, total: crit.total } } : {}),
+  };
 }
