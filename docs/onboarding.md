@@ -12,7 +12,7 @@ extension is an optional view on top of the same CLI.
    user profile, when VS Code is installed). It prints one note per client about asking before terminal commands.
 4. **Sign in to Azure DevOps:** `az login` (or set `AIHUB_ADO_PAT`, or sign in once with git's credential manager).
 5. **In your team's repository:** `aihub doctor`. Every line `OK` means you are ready. The team settings (`team.yaml`, templates, the
-   language of stories and PRs) come from the repository; when it has none yet, one person runs `aihub team setup` and `aihub init` once
+   language of stories and PRs: `language: nl` or `en`; without it aihub writes English and `aihub doctor` says so) come from the repository; when it has none yet, one person runs `aihub team setup` and `aihub init` once
    (below) and the team merges that pull request.
 
 Then work from the chat: say what you want ("maak een PR", "run story 4711") or use a slash command (`/story-run 4711`, `/pr`, `/review`).

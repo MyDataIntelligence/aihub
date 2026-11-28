@@ -64,7 +64,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<void> {
     const v = parseValue(key, value);
     if (!existsSync(join(root, TEAM_FILE))) await setup(ctx); // the answer to a "missing team setting" also works before any team.yaml
     const r = setKey(root, key, v);
-    return void ctx.out(`${key}: ${short(r.before)} -> ${short(v)} (${TEAM_FILE}; propose it with 'aihub init' or a pull request)`);
+    return void ctx.out(`${key}: ${r.before === null || r.before === undefined ? "(not set)" : short(r.before)} -> ${short(v)} (${TEAM_FILE}; propose it with 'aihub init' or a pull request)`);
   }
   if (sub === "setup") {
     const p = parse(rest, { refresh: { type: "boolean" }, json: { type: "boolean" } });
