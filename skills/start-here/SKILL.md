@@ -22,6 +22,7 @@ A direct command needs no routing: "maak een PR" -> run `aihub pr create --summa
 | cherry-pick, "update branch" | branch-sync |
 | failing pipeline, "build is rood" | pipeline-fix |
 | write or check pipeline YAML | pipeline-author |
+| "draai de CD lokaal" | preflight |
 | "start story 123" | story-start |
 | "rond af", clean up, complete the PR | story-finish |
 | worktree set, "repo X on branch Y" | worktrees |
@@ -36,7 +37,7 @@ A direct command needs no routing: "maak een PR" -> run `aihub pr create --summa
 | release, release train | release |
 | "ga verder", "waar was ik", new chat | resume |
 
-New chat: `aihub status`. A pullrequest link means pr-watch.
+New chat: `aihub status`.
 
 ## What the CLI fills
 The CLI applies `team.yaml` (templates, target, links); never read it or ask for these. On `missing team setting`: ask that one question, run its `aihub team set`, repeat. Read the `guidelines:` files first.
@@ -44,4 +45,4 @@ The CLI applies `team.yaml` (templates, target, links); never read it or ask for
 ## If it fails
 Show `aihub doctor`. No `team.yaml`: `aihub team setup`.
 
-Rules: a direct command runs at once, 0 questions. Unreadable skill file: `aihub <command> --help`. Done is done: no closing question. Local git uses your own tools. Content follows the team template language. Never invent ids.
+Rules: a direct command runs at once, 0 questions. Unreadable skill: `aihub <command> --help`. Done is done: no closing question. Local git uses your own tools. Content follows the team template language. Never invent ids.

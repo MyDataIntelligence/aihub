@@ -143,6 +143,34 @@ tests:                             # optional: used by `aihub test changed` (the
     - source: "etl/**"             # changed files matching these globs (a string or a list) ...
       tests: "tests/etl/**"        # ... run the repository files matching these globs
 
+preflight:                         # optional: used by `aihub preflight` (runs steps of the team's deploy job on this PC, from the pipeline YAML; see docs/preflight.md)
+  source:                          # the repository that holds the pipeline YAML and its scripts (optional)
+    repository: <repository>       # repository name; default: the current repository (optional)
+    ref: main                      # branch of that repository the pipeline uses; preflight runs origin/<ref> (optional)
+  job: cicd/deploy.yaml            # path in the source repository of the YAML file whose steps preflight runs; needed as soon as preflight is used
+  watch: ["jobs/**", "ddl/**"]     # globs of the files preflight is about, used in messages (optional)
+  python: python                   # interpreter for PythonScript@0 steps; default python on Windows, python3 elsewhere (optional)
+  shell: bash                      # shell for script steps: bash, cmd or pwsh; default bash when found, else the platform shell (optional)
+  setup: []                        # commands run once in the source checkout when its dependency files change, e.g. ["python -m pip install ."] (optional)
+  parameters:                      # values for ${{ parameters.x }} of the job template; placeholders {repo} {branch} {branchName} {head} {lastPushed} {workspace} {workspaceId} {sources} {work} {source} (optional)
+    <name>: <value>                # e.g. workspaceName: "DEV-test-project {branchName}" (optional)
+  variables:                       # values for $(X) and variables['X'] that preflight cannot work out; same placeholders (optional)
+    <NAME>: <value>                # e.g. ENVIRONMENT: dev (optional)
+  tokens:                          # variable name -> identity: fabric, onelake, sql, powerbi or kusto; only read and apply steps get them (optional)
+    <NAME>: fabric                 # e.g. ACCESS_TOKEN: fabric (optional)
+  steps:                           # step displayNames per level; a step in no list never runs
+    local: []                      # steps that need no network and no token (run by default)
+    read: []                       # steps that only read the branch's feature workspace (with --plan and --apply)
+    apply: []                      # steps that write to the branch's feature workspace (with --apply only)
+    skip: []                       # known steps that are never run on a PC, e.g. one-time workspace setup (no drift warning)
+  apply:                           # extra guards of --apply (optional)
+    refuseWorkspaces: []           # globs of workspace names --apply refuses, e.g. ["*-shared"] (optional)
+    destructive:                   # list: when a read step's output matches, --apply needs --yes (optional)
+      - step: <read step>          # displayName of a read step (optional)
+        pattern: "DROP|remove"     # regular expression matched against each output line of that step (optional)
+  cd:                              # optional: --apply waits while the team's CD runs on this branch
+    pipeline: <pipeline>           # CD pipeline name; a queued or running run on the branch refuses --apply (--force overrides) (optional)
+
 commits:                           # optional: used by `aihub commit`
   format: "{type}({scope}): {subject} (AB#{storyId})"   # placeholders {type} {scope} {subject} {storyId}; (scope) and the AB# part vanish when unknown
   types: [feat, fix, docs, test, chore, refactor]       # allowed --type values

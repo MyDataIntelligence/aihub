@@ -2,6 +2,9 @@
 
 One `## <version>` heading per release, one bullet per change. `aihub update` shows the bullets between the old and the new version.
 
+## Unreleased
+- `aihub preflight`: runs a chosen subset of the team's CD deploy-job steps on this PC, from the pipeline YAML itself (`script`, `bash`, `pwsh`, `PythonScript@0`, `PowerShell@2`, `Bash@3`, `- template:` includes), in a snapshot of the working tree with uncommitted files, next to the source repository at `origin/<ref>`. Three levels: local (default, no token), `--plan` (+ steps that read the branch's feature workspace) and `--apply` (+ steps that write there; never test, ACC or PRD, `refuseWorkspaces`, `--yes` for a destructive plan, waits while the CD runs). `$(Var)` and `${{ parameters.x }}` expansion, `##vso[task.setvariable]` between steps with secrets masked, conditions, `blocked` for a variable nobody can fill, drift (unknown, missing, renamed, changed steps), a write-call check of read steps, `--step`, `--dry-run`, `--json`. `aihub preflight steps` lists the steps of a job to fill the new `preflight:` block of team.yaml; skill `preflight` and `/preflight`. See docs/preflight.md.
+
 ## 1.10.0
 
 - Team settings: `aihub team show --json` gives the whole Team settings page in one read (which team.yaml applies, every key per repository with its explanation, overrides, templates); `team validate` (errors with line and fix), `team preview --template pr|story|bug|commit`, `team edit` (a new branch and a pull request in the team repository, never main) and `team init --from-pack | --team-repo`. Repositories without their own team.yaml use the team repository once one is set. The schema documents `teamName`, `worktrees`, more `workItems` keys and two Fabric keys.
