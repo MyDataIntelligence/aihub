@@ -110,5 +110,6 @@ describe("Create Pull Request from a change: the description by the one rule of 
     expect(w.prs[0].description).toContain("## Tests\n\nNot run yet.");
     expect(w.prs[0].title).toBe("Keep only active orders");
     expect(verifyTests({ checks: [{ name: "ruff", kind: "lint", status: "skipped", reason: "not installed", errors: [] }] }, "en")).toBe("- Lint (ruff): not run (not installed)");
+    expect(verifyTests({ checks: [{ name: "tests", kind: "test", status: "couldNotRun", command: "python -m pytest tests/test_report.py", missing: ["context_fixture_a"], errors: [] } as never] }, "nl")).toBe("- Tests (tests, python -m pytest tests/test_report.py): niet uitgevoerd (ontbrekende afhankelijkheid context_fixture_a)");
   });
 });
