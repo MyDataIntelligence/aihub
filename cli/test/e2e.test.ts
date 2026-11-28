@@ -70,6 +70,17 @@ describe("acceptance criteria text", () => {
 });
 
 describe("criteria on the work item and their test status", () => {
+  it("a type whose field list lacks the criteria field (as live in test-project) still reads criteria the item has there: the same list as the pull request check", async () => {
+    const t = world();
+    t.routes.unshift({ match: /\/_apis\/wit\/workitemtypes\/[^/]+\/fields/, respond: () => ({ body: { value: [{ referenceName: "System.Title" }, { referenceName: "System.Description" }] } }) });
+    const s = t.s();
+    const c = await readCriteria(s, 101);
+    expect(c.criteria.length).toBe(3);
+    expect(c.field).toBe("Microsoft.VSTS.Common.AcceptanceCriteria");
+    const st = await criteriaStatus(t.ctx, s, 101);
+    expect([st.proven, st.total]).toEqual([0, 3]);
+  });
+
   it("reads the criteria field; records per criterion in the set folder; a pass needs evidence", async () => {
     const t = world();
     const s = t.s();

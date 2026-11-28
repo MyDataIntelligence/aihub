@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { BrowseError } from "../browse/core.js";
 import { configHome } from "../configHome.js";
+import { ACCEPTANCE_FIELD } from "../fieldLayout.js";
 import type { Ctx } from "../context.js";
 import { fieldsToSections, htmlToMd } from "../story.js";
 import { F, type Stories } from "../stories/core.js";
@@ -35,9 +36,14 @@ export async function readCriteria(s: Stories, id: number): Promise<ItemCriteria
   const tpl = await templateOf(s, type);
   const secs = fieldsToSections(s.teamCfg, w.fields, tpl.headings, tpl.layout);
   const sec = secs.find((x) => partOf(x.heading) === "criteria");
-  const markdown = sec ? sec.body : tpl.layout.acceptance !== tpl.layout.primary ? htmlToMd(String(w.fields[tpl.layout.acceptance] ?? "")) : "";
+  let markdown = sec ? sec.body : tpl.layout.acceptance !== tpl.layout.primary ? htmlToMd(String(w.fields[tpl.layout.acceptance] ?? "")) : "";
+  let field = tpl.layout.acceptance;
+  // without a team template the layout keeps everything in the description; criteria already in the standard criteria field
+  // still count (the same list the pull request check reads), and are written back there
+  const standard = htmlToMd(String(w.fields[ACCEPTANCE_FIELD] ?? ""));
+  if (!parseCriteria(markdown).length && field !== ACCEPTANCE_FIELD && parseCriteria(standard).length) [markdown, field] = [standard, ACCEPTANCE_FIELD];
   return { id, rev: Number(w.rev), type, title: String(w.fields[F.title] ?? ""), // without a section the criteria go to the type's criteria field, which the heading "Acceptance criteria" maps to
-    heading: sec?.heading ?? "Acceptance criteria", field: tpl.layout.acceptance, markdown, criteria: parseCriteria(markdown) };
+    heading: sec?.heading ?? "Acceptance criteria", field, markdown, criteria: parseCriteria(markdown) };
 }
 
 /** Writes the criteria (with their how-tested and proof lines) into the criteria field, with the revision test. */
