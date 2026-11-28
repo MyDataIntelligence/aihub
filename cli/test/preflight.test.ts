@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { main } from "../src/router.js";
@@ -444,6 +444,29 @@ process.exit(1);`;
     const r = await pf(w.consumer, ["--json"]);
     expect(step(r.json, "Validate configs")).toMatchObject({ status: "blocked" });
     expect(step(r.json, "Validate configs").reason).toMatch(/listed as local but asks for token ACCESS_TOKEN/);
+  });
+
+  it("an inline script with an expanded secret or token is not left on disk after its step", async () => {
+    const job = [
+      "steps:",
+      `  - script: node -e "console.log('##vso[task.setvariable variable=S1;issecret=true]hush-inline-42')"`,
+      "    displayName: Set secret",
+      `  - script: node -e "console.log('len=' + process.argv[1].length)" $(S1)`,
+      "    displayName: Use secret",
+      `  - script: node -e "console.log('tok=' + process.argv[1].length)" $(ACCESS_TOKEN)`,
+      "    displayName: Read with token",
+      "",
+    ].join("\n");
+    const w = world({ job, team: preflightYaml("", "local: [Set secret, Use secret]\n    read: [Read with token]") });
+    write(w.consumer, ".git/aihub/preflight/_temp/step-9.sh", "echo hush-inline-42"); // left behind by an older version
+    const r = await pf(w.consumer, ["--plan", "--verbose"]);
+    expect(r.code).toBe(0);
+    expect(r.errs.join("\n")).toContain("len=14");
+    expect(r.errs.join("\n")).toContain("tok=21");
+    const temp = join(w.consumer, ".git", "aihub", "preflight", "_temp");
+    const left = existsSync(temp) ? readdirSync(temp).map((f) => readFileSync(join(temp, f), "utf8")).join("\n") : "";
+    expect(left).not.toContain("hush-inline-42");
+    expect(left).not.toContain("fake-fabric-token-abc");
   });
 
   it("--plan: resolves the branch's workspace, hands tokens only to read steps, masks them; apply steps wait for --apply", async () => {

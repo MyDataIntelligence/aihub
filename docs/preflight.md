@@ -86,7 +86,8 @@ runs after that step with `--plan`. A more complex template expression makes the
 evaluate". In an inline script an all-lowercase `$(name)` nobody defines is left alone (shell command substitution).
 
 Steps hand values on with `##vso[task.setvariable variable=NAME;isOutput=true;issecret=true]VALUE`, as on the agent
-(also as `<stepName>.NAME`). Secret values and all tokens are masked in everything preflight prints or returns.
+(also as `<stepName>.NAME`). Secret values and all tokens are masked in everything preflight prints or returns, and an
+inline script (written to `Agent.TempDirectory` with its variables expanded) is deleted when its step ends.
 `##vso[task.logissue]` lines become the step's issues; `##vso[task.complete result=Failed]` or a non-zero exit fails it.
 
 Conditions: `succeeded()`, `always()`, `failed()`, `and`, `or`, `not`, `eq`, `ne`, `startsWith`, `endsWith`,

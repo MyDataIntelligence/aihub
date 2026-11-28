@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "../proc.js";
 import type { PipelineStep } from "./pipelineYaml.js";
@@ -171,7 +171,13 @@ export function runCommand(cmd: Command, o: { cwd: string; env: NodeJS.ProcessEn
     mkdirSync(resolve(cmd.script.path, ".."), { recursive: true });
     writeFileSync(cmd.script.path, cmd.script.content, "utf8");
   }
-  return new Promise((done) => {
+  // the script holds expanded secrets and tokens: gone when the step ends (the agent cleans its temp folder after a job)
+  const finish = (done: (r: RunResult) => void) => (r: RunResult) => {
+    if (cmd.script) rmSync(cmd.script.path, { force: true });
+    done(r);
+  };
+  return new Promise((resolveRun) => {
+    const done = finish(resolveRun);
     let out = "";
     const keep = (s: string) => {
       out += s;

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type { Ctx } from "../context.js";
 import { AihubError } from "../errors.js";
@@ -380,6 +380,8 @@ export async function runPreflight(ctx: Ctx, o: PreflightOpts, deps: PreflightDe
   let unknownBefore: string | undefined;
   let destructive: { step: string; line: string } | undefined;
   const tempDir = join(sources.base, "_temp");
+  // empty per run, as on the agent: also removes scripts an older aihub left behind with secrets in them
+  if (!o.dryRun) rmSync(tempDir, { recursive: true, force: true });
   mkdirSync(tempDir, { recursive: true });
   const baseEnv: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries({ ...process.env, ...ctx.env })) if (!CREDENTIAL_ENV.test(k)) baseEnv[k] = v;
