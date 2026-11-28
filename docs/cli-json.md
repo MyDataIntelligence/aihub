@@ -322,6 +322,20 @@ remembered 5 minutes, nothing polls. Commands: `aihub.bar.browsePipelines` and t
   changes). The runs go first with their own retention lease (a run another lease keeps stays: `runsKept`), then the pipeline; its branch goes when its name holds `draft-` and it is not protected or the default branch
   (else, or with `--keep-branch`, `branchKept` says why). `{deleted{pipeline{id,name},runs,branch,repo},runsKept,branchKept}`.
 
+## Search Everywhere: `aihub search all <text> [--kinds ...] [--top 5] [--project P] [--stream] --json`
+
+One text over everything the user can open in the organisation, every kind at the same time: `repos` (projects and repositories by name),
+`files` (file names: Code Search, else the trees of recently opened repositories), `text` (Code Search, else ripgrep in the clones on this
+PC), `branches` (refs that contain the text, in the cloned, recently opened and name-matching repositories, at most 12), `workitems` (`#n`
+exact, else WIQL `Title CONTAINS`, newest changed first), `prs` (`!n`/`#n` exact, else title or source branch, active first, at most 25
+projects), `wiki` (Wiki Search, else page titles) and `pipelines` (name or folder). A kind that fails or takes longer than 30 s is a part with
+`status:"failed"` and `error:{kind,message}` (`kind` `timeout`, `searchUnavailable`, `signedOut`, ...); the others still come. Reads go through
+the browse cache (lists 4 hours, searches 2 minutes).
+
+`{org, text, kinds:[{kind, status:"ok"|"failed", route, count, more, results:[{kind,title,detail,project?,repo?,path?,branch?,id?,type?,state?,wiki?,line?,url?}], note?, error?, tookMs}]}`
+in the asked order. `--stream`: each part as soon as it is ready as one line `{"part":{...}}` on stderr (stdout keeps the one answer).
+Without `--json` it prints one group per kind for a chat. The extension's `aihub.bar.searchAll` runs it.
+
 ## Wiki browser: `aihub wiki browse ...`
 
 Every project wiki and code wiki of the organisation, read and edited without a clone. Same rules as the repository browser: always JSON,
@@ -437,3 +451,24 @@ One object; exit code 1 when a step failed or was blocked, or apply was held bac
 - `afterFailure`: ran after an earlier step failed. `uncertain`: comes after an unknown step.
 - A failed step also has `excerpt` (the lines of its output that say why, at most 10, secrets masked) and `log` (the file with all of its output).
 - `preflight steps --json`: `{ source, job, steps:[{ index, name, kind, level, script, condition, runnable, note }], drift, notes }`.
+
+## Wiki update: `aihub wiki update ...` (Update Wiki with Context from…)
+
+An agent updates chosen wiki pages (or a whole project wiki) from chosen source files; nothing reaches the wiki until `apply`. Always
+JSON, failures as the wiki browser. The workspace is `<config>/aihub/wiki-updates/<id>/`: `pages/` (one markdown file per page:
+`pages/Runbooks/Order export.md` is `/Runbooks/Order export`), `.base/` (the text each page was read at), `update.json` (pages with their
+ETag, sources, language) and `TASK.md` for the agent. The team language (`language`) and the template of a new page (`wiki.pageTemplate`)
+come from team.yaml. `aihub wiki update --page P --body-file F` (one page, no agent) is unchanged.
+
+| Sub | Answer |
+|---|---|
+| `start --project P --wiki W [--path /Page]... [--sources-file F] [--prompt-file F]` | `{id,dir,pagesDir,project,wiki,chosen,allowNew,pages:[{path,file,exists}],sources,language,template,taskFile,agentPrompt}`; sources file `[{project,repo,path?,ref?,local?}]`; no `--path`: the whole wiki, new pages allowed; a code wiki is `badInput` (use Change with Agent) |
+| `read --id ID --path /Page` | fetch another page into `pages/` (`{id,path,file,content}`) |
+| `write --id ID --path /Page --content-file F` | set a proposal without file tools (`{id,path,file,pages,problems}`) |
+| `diff --id ID` | `{id,status,project,wiki,chosen,allowNew,dir,pagesDir,pages:[{path,status:"modified"\|"added",additions,deletions,hunks,applied}],totals,problems:[{path,kind:"notChosen"\|"newNotAllowed"\|"secret"\|"empty",message}],applied}` |
+| `apply --id ID [--path /Page]... [--comment-file C]` | `{id,results:[{path,status:"published"\|"created"\|"conflict"\|"refused"\|"failed",message?,etag?,webUrl?,current?}],left}`; If-Match on the ETag each page was read at: a page changed meanwhile is a `conflict` and is never overwritten; a page with a problem is `refused` |
+| `discard --id ID [--path /Page]` | one page back to what was read (a new page goes), or the whole update |
+| `list` | `{updates:[{id,project,wiki,chosen,status,createdAt,dir,updatedAt}]}` |
+
+Extension: `aihub.bar.wikiUpdateStart|State|Apply|Discard` (`vscode/src/bar/types.ts`); the agent window is chosen like Change with Agent
+(`where`: panel = This window, newWindow, terminal = Terminal only) and stopped with `aihub.bar.changeStop {id}`.
