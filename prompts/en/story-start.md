@@ -6,7 +6,7 @@ reads: The story and the set.
 produces: A short summary; nothing is built.
 ---
 # Start in opencode
-You work on {{story.type}} #{{story.id}} {{story.title}} on {{branch}} ({{repos}}).
+You work on {{story.type}} #{{story.id}} {{story.title}} on {{branch}}, in {{repos}}.
 Read the story with `aihub stories show --id {{story.id}}` and sum up in three lines what is asked and which criteria
 there are. Build nothing yet; wait for my question.
 

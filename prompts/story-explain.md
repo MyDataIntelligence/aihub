@@ -12,7 +12,7 @@ Leg in gewone woorden uit wat story #{{story.id}} {{story.title}} vraagt en wat 
 - `aihub stories show --id {{story.id}}`, `aihub criteria status --id {{story.id}}`, `aihub status`.
 
 ## Lever
-Maximaal 10 regels: wat de story vraagt, wat al gedaan is (commits, PR, pipeline), welke criteria bewezen zijn en welke
+In het {{language}}, maximaal 10 regels: wat de story vraagt, wat al gedaan is (commits, PR, pipeline), welke criteria bewezen zijn en welke
 niet, en de eerstvolgende stap.
 
 ## Grenzen
