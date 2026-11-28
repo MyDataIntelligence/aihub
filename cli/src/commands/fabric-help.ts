@@ -9,6 +9,7 @@ import { didYouMean } from "../lib/fabric.js";
 const COMMANDS: [string, string, string][] = [
   ["look", "items", "items --workspace W [--type Notebook]   (what is in a workspace)"],
   ["look", "workspaces", "workspaces [--filter text]"],
+  ["look", "branch-workspace", "branch-workspace [--branch B] [--names-only]   (the workspace of a feature branch: found, none, skip, unconfigured)"],
   ["look", "item show", "item show --workspace W --item I"],
   ["look", "item definition", "item definition --workspace W --item I [--out dir]"],
   ["look", "jobs", "jobs --workspace W --item I [--top N]"],

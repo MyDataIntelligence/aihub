@@ -2,7 +2,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { branchLabel, branchWorkspace, classifyError, codeRefusals, errorsOnly, failedCell, normalizedName, parseSqlHost, searchLines, sparkStage, sqlGuard, stagesSummary, tailLines } from "../src/lib/fabric-diag.js";
+import { branchLabel, branchWorkspace, branchWorkspaceNames, isFeatureBranch, classifyError, codeRefusals, errorsOnly, failedCell, normalizedName, parseSqlHost, searchLines, sparkStage, sqlGuard, stagesSummary, tailLines } from "../src/lib/fabric-diag.js";
 import { isDroppedConnection, parseSqlJson } from "../src/lib/fabric-sql-fallback.js";
 import { makeFabricAuth } from "../src/lib/fabric.js";
 import { buildTestPlan, testStrategy } from "../src/lib/fabric-testplan.js";
@@ -87,6 +87,36 @@ describe("diagnostics helpers", () => {
     const ws = [{ displayName: "Team Data 12 Export" }, { displayName: "Other" }];
     expect(branchWorkspace(ws, "feature/12-export", ["team data"], (w) => w.displayName)?.displayName).toBe("Team Data 12 Export");
     expect(branchWorkspace([...ws, { displayName: "team-data-12-export" }], "feature/12-export", ["team data"], (w) => w.displayName)).toBeUndefined();
+  });
+  it("never gives a branch the workspace of a branch whose name it starts with, or the other way round (prefix pitfall)", () => {
+    const ws = [{ displayName: "aihub-test-dev bench-407ba1" }, { displayName: "aihub-test-dev bench-407ba1-other" }];
+    const name = (w: { displayName: string }) => w.displayName;
+    expect(branchWorkspace(ws, "feature/bench-407ba1", ["aihub-test-dev"], name)?.displayName).toBe("aihub-test-dev bench-407ba1");
+    expect(branchWorkspace(ws, "feature/bench-407ba1-nows", ["aihub-test-dev"], name)).toBeUndefined();
+    expect(branchWorkspace([ws[1]], "feature/bench-407ba1", ["aihub-test-dev"], name)).toBeUndefined();
+    expect(branchWorkspace(ws, "feature/bench", ["aihub-test-dev"], name)).toBeUndefined();
+  });
+  it("fabric branch-workspace: found, none for the longer branch, skip on main, names without a Fabric call", async () => {
+    const list = get(/\/workspaces$/, { value: [{ id: "w-1", displayName: "team data bench-407ba1" }, { id: "w-2", displayName: "Other" }] });
+    const found = await go([list], ["branch-workspace", "--branch", "feature/bench-407ba1", "--json"]);
+    expect(JSON.parse(found.out).result).toMatchObject({ status: "found", id: "w-1", name: "team data bench-407ba1" });
+    const none = await go([list], ["branch-workspace", "--branch", "feature/bench-407ba1-nows", "--json"]);
+    expect(JSON.parse(none.out).result).toMatchObject({ status: "none", names: ["team data bench-407ba1-nows", "test-repo bench-407ba1-nows"] });
+    const main = await go([list], ["branch-workspace", "--branch", "main", "--json"]);
+    expect(JSON.parse(main.out).result.status).toBe("skip");
+    expect(main.calls.length).toBe(0);
+    const names = await go([list], ["branch-workspace", "--branch", "feature/x", "--names-only", "--json"]);
+    expect(JSON.parse(names.out).result).toMatchObject({ status: "names", prefixes: ["team data", "test-repo"], names: ["team data x", "test-repo x"] });
+    expect(names.calls.length).toBe(0);
+  });
+  it("knows feature branches and the names their workspace may have", () => {
+    expect(isFeatureBranch("feature/12-export")).toBe(true);
+    expect(isFeatureBranch("refs/heads/users/a/feature/12-export")).toBe(true);
+    expect(isFeatureBranch("main")).toBe(false);
+    expect(isFeatureBranch("staging")).toBe(false);
+    expect(isFeatureBranch("feature/")).toBe(false);
+    expect(isFeatureBranch("featured/x")).toBe(false);
+    expect(branchWorkspaceNames("feature/12-export", ["team data", "Team_Data", "repo-a"])).toEqual(["team data 12-export", "repo-a 12-export"]);
   });
   it("refuses code that points at ACC/PRD or unseen workspaces", () => {
     const visible = [{ id: WS, displayName: "DEV-test-project" }, { id: ACC, displayName: "ACC-test-project" }];

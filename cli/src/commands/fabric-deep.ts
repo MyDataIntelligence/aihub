@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AihubError } from "../lib/errors.js";
 import { FabricHttpError, guardEnv, inferEnv, type FabricClient, type FabricItem, type JobInstance } from "../lib/fabric.js";
-import { causeOfChain, classifyError, codeRefusals, errorsOnly, failedCell, MAX_TAIL_LINES, parseSqlHost, rememberRun, searchLines, SPARK_VIEWS, sparkExecutor, sparkJob, sparkSql, sparkStage, sparkTask, sqlGuard, stagesSummary, tailLines, branchWorkspace, type SparkView } from "../lib/fabric-diag.js";
+import { causeOfChain, classifyError, codeRefusals, errorsOnly, failedCell, MAX_TAIL_LINES, parseSqlHost, rememberRun, searchLines, SPARK_VIEWS, sparkExecutor, sparkJob, sparkSql, sparkStage, sparkTask, sqlGuard, stagesSummary, tailLines, branchWorkspace, branchWorkspaceNames, isFeatureBranch, type SparkView } from "../lib/fabric-diag.js";
 import { COMMANDS, findProfiles, findProjects, jobDefinition, projectFiles, readRunResults, logTail, safeProjectDir, scaffoldFiles, setHash, writeScaffold, routeOf, MAX_FILES } from "../lib/fabric-dbt.js";
 import { durationText, extractStack, oneLine, parseUtc, toTable } from "../lib/fabric-ops.js";
 import { redact } from "../lib/fabric-redact.js";
@@ -380,6 +380,31 @@ export async function resolveBranchWorkspace(s: Setup, client: FabricClient): Pr
   if (!w) throw new AihubError(`no single workspace named '${prefixes[0] ?? "<prefix>"} ${s.branch.split("/").pop()}' for branch ${s.branch}; pass --workspace, or set fabric.branchWorkspacePrefixes in team.yaml`);
   s.v.workspace = [w.displayName];
 }
+
+/**
+ * `aihub fabric branch-workspace [--branch B] [--names-only] [--json]`: the workspace of a feature branch, the one rule other tools ask
+ * (Fabric Workbench, PyCharm Git). status: found (id, name), none (no workspace has one of the names), ambiguous, skip (not a feature
+ * branch: main, staging), unconfigured (team.yaml has no fabric.branchWorkspacePrefixes and no repositories). `--names-only` makes no
+ * Fabric call: it only says which names the workspace may have. Exact names only, never a prefix match; nothing is cached here.
+ */
+export async function branchWorkspaceCmd(s: Setup): Promise<void> {
+  const branch = s.branch ?? "";
+  const prefixes = [...new Set((s.prefixes ?? []).map((p) => p.trim()).filter(Boolean))];
+  const names = isFeatureBranch(branch) ? branchWorkspaceNames(branch, prefixes) : [];
+  const base = { branch, prefixes, names };
+  if (!isFeatureBranch(branch)) return emit(s, { ...base, status: "skip" }, `${branch || "no branch"}: not a feature branch, no Fabric workspace of its own`);
+  if (!names.length) return emit(s, { ...base, status: "unconfigured" }, "no names for branch workspaces: set fabric.branchWorkspacePrefixes in team.yaml");
+  if (s.v["names-only"]) return emit(s, { ...base, status: "names" }, names.join(String.fromCharCode(10)));
+  const client = makeClient(s.ctx, s.v);
+  const list = await client.workspaces();
+  const named = (n: string) => list.filter((w) => normalized(w.displayName) === normalized(n)).length;
+  const w = branchWorkspace(list, branch, prefixes, (x) => x.displayName);
+  if (w) return emit(s, { ...base, status: "found", id: w.id, name: w.displayName }, `${w.displayName} (${w.id})`);
+  if (names.some((n) => named(n) > 1)) return emit(s, { ...base, status: "ambiguous" }, `several workspaces are named ${names.map((n) => `'${n}'`).join(" or ")}; rename one in Fabric`);
+  emit(s, { ...base, status: "none" }, `no workspace is named ${names.map((n) => `'${n}'`).join(" or ")}`);
+}
+
+const normalized = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /** `aihub fabric failures`: newest failed (and active) runs of a branch's workspace, with the root cause chain. */
 export async function failuresCmd(s: Setup): Promise<void> {
