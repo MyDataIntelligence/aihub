@@ -8,10 +8,12 @@ produces: Een voorstel in het voorstelbestand; de gebruiker vinkt aan wat wordt 
 # Define Acceptance Criteria
 Stel toetsbare acceptatiecriteria voor voor story #{{story.id}} {{story.title}}. Schrijf niets naar Azure DevOps.
 
-## Lees
-- De story: `aihub stories show --id {{story.id}}` (beschrijving, huidige criteria, taken).
+## De story
+- Beschrijving: {{story.description}}
 - Huidige criteria:
 {{criteria}}
+- Taken: {{tasks}}
+Meer is niet nodig; lees de story niet opnieuw.
 
 ## Doe
 1. Maak van elk criterium een waarneembaar resultaat. Vage woorden ("snel", "goed", "netjes") worden een getal of een
@@ -25,7 +27,9 @@ Stel toetsbare acceptatiecriteria voor voor story #{{story.id}} {{story.title}}.
       Hoe getest: <soort>: <hoe>
       Bewijs: <wat>
    ```
-4. Antwoord daarna alleen "Voorstel klaar" en stop. De gebruiker vinkt in de story-browser aan wat wordt opgeslagen.
+4. Toon het voorstel als genummerde lijst (criterium, hoe getest, bewijs), in het {{language}}, en stop. Opslaan doet de
+   gebruiker: in de story-browser, of hier door de nummers te noemen; dan voer je uit
+   `aihub criteria apply --id {{story.id}} --rev {{story.rev}} --take <nummers>`.
 
 ## Grenzen
 {{limits}}

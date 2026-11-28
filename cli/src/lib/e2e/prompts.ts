@@ -177,6 +177,13 @@ export async function valuesFor(ctx: Ctx, s: Stories, id: number): Promise<Recor
       : "  (no acceptance criteria yet)";
   return {
     "story.id": String(id),
+    "story.rev": String(item.rev),
+    // the text of the story without its criteria (they come separately): enough for criteria and refine without a second read
+    "story.description":
+      item.sections
+        .filter((x) => !/acceptatiecriteria|acceptance ?criteria|criteria/i.test(x.heading) && x.markdown.trim())
+        .map((x) => `${x.heading}: ${x.markdown.trim().replace(/\s*\n\s*/g, " ")}`)
+        .join("; ") || (lang === "nl" ? "(leeg)" : "(empty)"),
     "story.title": item.title,
     "story.type": item.type,
     "story.state": item.state,

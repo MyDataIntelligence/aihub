@@ -12,7 +12,7 @@ Explain in plain words what story #{{story.id}} {{story.title}} asks and what is
 - `aihub stories show --id {{story.id}}`, `aihub criteria status --id {{story.id}}`, `aihub status`.
 
 ## Deliver
-At most 10 lines: what the story asks, what is done (commits, PR, pipeline), which criteria are proven and which are not,
+In {{language}}, at most 10 lines: what the story asks, what is done (commits, PR, pipeline), which criteria are proven and which are not,
 and the next step.
 
 ## Limits

@@ -321,3 +321,27 @@ describe("the options of Run End to End and bugs", () => {
     expect(again).toMatchObject({ status: "saved", state: "Active", changed: [] });
   });
 });
+
+describe("a colleague without the extension", () => {
+  it("story-criteria carries the story and says how to save without the story browser", async () => {
+    const t = world();
+    const s = t.s();
+    s.teamCfg = { language: "nl" } as never;
+    const r = await renderPrompt(t.ctx, s, "story-criteria", 101);
+    expect(r.text).toContain("Beschrijving: Description: As a planner, I want an export");
+    expect(r.text).toContain("lees de story niet opnieuw");
+    expect(r.text).toContain("aihub criteria apply --id 101 --rev 4 --take <nummers>");
+    expect(r.unknown).toEqual([]);
+  });
+
+  it("refine-ask answers the current sections and the rev, so the agent reads the story once", async () => {
+    const t = world();
+    const { refineAsk } = await import("../src/lib/stories/refine.js");
+    const a = await refineAsk(t.s(), 101);
+    expect(a.rev).toBe(4);
+    expect(a.sections.map((x) => x.heading)).toContain("Technical notes");
+    expect(a.prompt).not.toContain("aihub story show");
+    expect(a.prompt).toContain("aihub stories refine-apply --id 101 --rev 4");
+  });
+});
+

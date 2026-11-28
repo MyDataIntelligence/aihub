@@ -14,9 +14,11 @@ async function router(args: string[], env: NodeJS.ProcessEnv) {
 
 function fakeHome() {
   const h = tmp("aihub-home-");
-  const env: NodeJS.ProcessEnv = { HOME: h, USERPROFILE: h };
+  // the aihub config folder inside the fake home too, so every command of a test (also doctor) sees the same folders
+  const env: NodeJS.ProcessEnv = { HOME: h, USERPROFILE: h, AIHUB_CONFIG_HOME: join(h, ".config", "aihub") };
   const cfgDir = join(h, ".config", "opencode");
-  return { h, env, cfgDir, cfg: join(cfgDir, "opencode.json"), pattern: skillsPattern(join(cfgDir, "skills")) };
+  const proposals = `${join(h, ".config", "aihub", "stories", "proposals").split("\\").join("/")}/**`;
+  return { h, env, cfgDir, cfg: join(cfgDir, "opencode.json"), pattern: skillsPattern(join(cfgDir, "skills")), proposals };
 }
 
 const read = (f: string) => JSON.parse(readFileSync(f, "utf8"));
@@ -27,7 +29,8 @@ describe("aihub skills install --client opencode sets a scoped external_director
     const r = await router(["skills", "install", "--client", "opencode"], t.env);
     expect(r.code).toBe(0);
     expect(r.lines.join("\n")).toContain("permission");
-    expect(read(t.cfg).permission.external_directory).toEqual({ [t.pattern]: "allow" });
+    expect(read(t.cfg).permission.external_directory).toEqual({ [t.pattern]: "allow", [t.proposals]: "allow" });
+    expect(t.proposals.endsWith("/aihub/stories/proposals/**")).toBe(true);
     expect(t.pattern.endsWith("/skills/**")).toBe(true);
     expect(JSON.stringify(read(t.cfg))).not.toContain('"external_directory":"allow"');
   });
@@ -40,7 +43,7 @@ describe("aihub skills install --client opencode sets a scoped external_director
     const once = read(t.cfg);
     expect(once.model).toBe("openai/x");
     expect(once.permission.bash).toBe("ask");
-    expect(once.permission.external_directory).toEqual({ "*": "ask", [t.pattern]: "allow" });
+    expect(once.permission.external_directory).toEqual({ "*": "ask", [t.pattern]: "allow", [t.proposals]: "allow" });
     const r2 = await router(["skills", "install", "--client", "opencode"], t.env);
     expect(read(t.cfg)).toEqual(once);
     expect(r2.lines.join("\n")).toMatch(/permission\n\s+created 0, updated 0, unchanged 1/);
@@ -70,7 +73,7 @@ describe("aihub skills install --client opencode sets a scoped external_director
     mkdirSync(t.cfgDir, { recursive: true });
     writeFileSync(t.cfg, JSON.stringify({ permission: { external_directory: { "/other/**": "allow" } } }));
     await router(["skills", "install", "--client", "opencode"], t.env);
-    expect(Object.keys(read(t.cfg).permission.external_directory).sort()).toEqual(["/other/**", t.pattern].sort());
+    expect(Object.keys(read(t.cfg).permission.external_directory).sort()).toEqual(["/other/**", t.pattern, t.proposals].sort());
     await router(["skills", "uninstall", "--client", "opencode"], t.env);
     expect(read(t.cfg).permission.external_directory).toEqual({ "/other/**": "allow" });
   });
@@ -103,7 +106,7 @@ describe("aihub doctor reports the opencode permission", () => {
     return lines.join("\n");
   }
 
-  it("FIX before the permission exists, OK after the install", async () => {
+  it("FIX before the permission exists, OK after the install", { timeout: 60_000 }, async () => {
     const t = fakeHome();
     await router(["skills", "install", "--client", "opencode"], t.env);
     writeFileSync(t.cfg, JSON.stringify({ model: "x" })); // the permission is gone

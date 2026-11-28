@@ -21,20 +21,20 @@ export const proposalFile = (s: Stories, id: number, kind = "refine") => join(co
 
 const emptyOf = (s: Stories) => emptyFor(s.teamCfg, s.teamCfg.workItems?.emptySection);
 
-export async function refineAsk(s: Stories, id: number): Promise<{ id: number; title: string; type: string; gaps: string[]; proposalFile: string; prompt: string }> {
+export async function refineAsk(s: Stories, id: number): Promise<{ id: number; rev: number; title: string; type: string; gaps: string[]; sections: { heading: string; markdown: string }[]; proposalFile: string; prompt: string }> {
   const item = await readItem(s, id, await me(s));
   const file = proposalFile(s, id);
   mkdirSync(join(configHome(s.b.env), "stories", "proposals"), { recursive: true });
   const gaps = item.sections.filter((x) => isGap(x.markdown, emptyOf(s))).map((x) => x.heading);
   const heads = item.sections.map((x) => x.heading);
   const prompt = [
-    `Refine ${item.type} ${id} "${item.title}" for the story browser. Read it with: aihub story show --id ${id} --json`,
+    `Refine ${item.type} ${id} "${item.title}". Its current sections are in this answer (sections); no need to read the story again.`,
     gaps.length ? `Its gaps: ${gaps.join(", ")}.` : "It has no empty sections; sharpen what is vague.",
     `Write a proposal, do not change the work item: write the file ${file} as markdown with one "## <heading>" per part you propose (headings: ${heads.join(", ")}), and "## Tasks" with one "- <task title>" line per task to add.`,
     "Keep the facts of the current text; leave out parts you would not change.",
-    'When the file is written, answer "Proposal ready" and stop: the user picks the parts to apply in the story browser.',
+    `When the file is written, show the proposal per part and stop: the user picks the parts to apply, in the story browser or by naming them (then: aihub stories refine-apply --id ${id} --rev ${item.rev} --parts <parts>).`,
   ].join("\n");
-  return { id, title: item.title, type: item.type, gaps, proposalFile: file, prompt };
+  return { id, rev: item.rev, title: item.title, type: item.type, gaps, sections: item.sections.map((x) => ({ heading: x.heading, markdown: x.markdown })), proposalFile: file, prompt };
 }
 
 export interface Part {
