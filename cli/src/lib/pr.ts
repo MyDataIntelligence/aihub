@@ -22,7 +22,7 @@ import {
   workItemFromBranch,
   git,
 } from "./git.js";
-import { compose, DEFAULT_EMPTY, checkDescriptionLength, editSection, headingsMatch, mergeSections, parseSections, renderSections, resolveTemplate, templateSourceText, type CodeValues } from "./templates.js";
+import { compose, DEFAULT_EMPTY, emptyFor, checkDescriptionLength, editSection, headingsMatch, mergeSections, parseSections, renderSections, resolveTemplate, templateSourceText, type CodeValues } from "./templates.js";
 import { CONTEXT_RE, notesText, readNotes, unwovenNotes, weaveNotes } from "./notes.js";
 import { loadTeam, readUtf8 } from "./team.js";
 import { prTitle } from "./prTitle.js";
@@ -100,7 +100,7 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
     given = first ? `## ${first}\n${o.summaryText.trim()}\n\n${given}` : `${o.summaryText.trim()}\n\n${given}`;
   }
   const body = weaveNotes(given, tplHeadings, notes);
-  const emptyText = team.pullRequest?.emptySection || DEFAULT_EMPTY;
+  const emptyText = emptyFor(team);
   let description: string;
   let summary: string;
   let filled: { heading: string; by: string }[] = [];
@@ -288,7 +288,7 @@ export async function updatePr(ctx: Ctx, o: UpdateOpts): Promise<string> {
   if (!o.asIs && changed.length) {
     const team = loadTeam(root);
     const touched = [...(o.section ? [o.section] : []), ...(o.bodyFile ? parseSections(readUtf8(o.bodyFile)).sections.map((s) => s.heading) : [])];
-    checkActionSections({ description, only: touched, configured: team.pullRequest?.actionSections, emptyText: team.pullRequest?.emptySection || DEFAULT_EMPTY, verb: "updated" });
+    checkActionSections({ description, only: touched, configured: team.pullRequest?.actionSections, emptyText: emptyFor(team), verb: "updated" });
   }
   const patch: Record<string, unknown> = {};
   if (changed.length) {

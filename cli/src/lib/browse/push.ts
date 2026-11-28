@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
 import { getWorkItemTitle } from "../ado.js";
-import { compose, DEFAULT_EMPTY, resolveTemplate, templateCandidates } from "../templates.js";
+import { compose, DEFAULT_EMPTY, emptyFor, resolveTemplate, templateCandidates } from "../templates.js";
 import { TEAM_FILE, type TeamConfig } from "../team.js";
 import { BrowseError, kindOf, normPath, repoClientOf, shortSha, webCommitUrl, webRepoUrl, type Browse, type Person } from "./core.js";
 import { browseHistory, readFileAt } from "./read.js";
@@ -231,7 +231,7 @@ export async function createRemotePr(b: Browse, o: { project: string; repo: stri
         template: tpl.content,
         body: "",
         code: { story: o.story ? `AB#${o.story}` : undefined, commits },
-        emptyText: o.team.pullRequest?.emptySection || DEFAULT_EMPTY,
+        emptyText: emptyFor(o.team),
         optionalSections: o.team.pullRequest?.optionalSections,
         fallback: { changes: `- ${o.path}: ${subject}`, tests: nl ? "Nog niet uitgevoerd." : "Not run yet." },
       }).text

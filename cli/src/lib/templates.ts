@@ -5,6 +5,11 @@ import { readUtf8 } from "./team.js";
 
 export const TEMPLATE_DIRS = [".azuredevops", ".vsts", "docs", ""];
 export const DEFAULT_EMPTY = "n.v.t.";
+
+/** What an empty template section says: team.yaml `pullRequest.emptySection`, else "n.v.t." for a Dutch team and "-" otherwise. */
+export function emptyFor(team: { language?: unknown; pullRequest?: { emptySection?: string } }, own?: string): string {
+  return own || team.pullRequest?.emptySection || (String(team.language ?? "").toLowerCase() === "nl" ? DEFAULT_EMPTY : "-");
+}
 export const MAX_DESCRIPTION = 4000;
 
 export function checkDescriptionLength(description: string): void {

@@ -3,7 +3,7 @@ import { repoClient, type Ctx } from "./context.js";
 import { AihubError } from "./errors.js";
 import { fetchBranch, git, gitRaw, withTempWorktree } from "./git.js";
 import { commitList, parsePrRef } from "./pr.js";
-import { compose, DEFAULT_EMPTY, parseSections, resolveTemplate } from "./templates.js";
+import { compose, DEFAULT_EMPTY, emptyFor, parseSections, resolveTemplate } from "./templates.js";
 import { isProtected, loadTeam, readUtf8, type TeamConfig } from "./team.js";
 import { showFile } from "./git.js";
 
@@ -197,7 +197,7 @@ async function createPickPr(client: AdoClient, root: string, team: TeamConfig, s
   }
   const code = { story: wi ? `AB#${wi}${wiTitle ? ` ${wiTitle}` : ""}` : undefined, commits: commitList(commits) };
   let description: string;
-  if (tpl) description = compose({ template: tpl.content, body, code, emptyText: team.pullRequest?.emptySection || DEFAULT_EMPTY }).text;
+  if (tpl) description = compose({ template: tpl.content, body, code, emptyText: emptyFor(team) }).text;
   else description = [body.trim(), `## Commits\n\n${code.commits}`].filter(Boolean).join("\n\n") + "\n";
   const created = await client.post<PullRequest>(`${client.repoPath()}/pullrequests`, {
     sourceRefName: branchRef(branch),

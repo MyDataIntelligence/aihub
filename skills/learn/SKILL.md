@@ -13,7 +13,7 @@ The user wants to understand what a PR, branch or the whole repository does and 
 3. Only when the user wants to KEEP the lesson ("bewaar", "sla op", "maak er een les van"):
    - `aihub learn change --json > facts.json`, then write `explanation.json` (UTF-8) as `references/schema.md` says, in the style of `aihub learn level --json`.
    - `aihub learn validate --file explanation.json --facts facts.json`: it lists every problem at once; fix them all, then validate once more.
-   - `aihub learn save --file explanation.json --facts facts.json`; tell the user to open it in VS Code (AI Context Hub: Learn).
+   - `aihub learn save --file explanation.json --facts facts.json`; `aihub learn show --id <id>` shows it.
 4. More pictures on request: `aihub learn diagram|flow|glossary|week|onboarding|item` (`references/more.md`).
 
 Example: "leg uit wat deze branch doet" is `aihub learn change --json`, then the answer. Nothing else.
