@@ -320,6 +320,8 @@ export const BAR_COMMANDS = {
   changeStop: "aihub.bar.changeStop",
   /** `{ id, where?: "newWindow"|"terminal"|"panel"|"here", remoteUrl? }`: a worktree on the change's branch with the change in it -> `{ id, path, branch, cloned, applied, skipped }` */
   changeToWorkingCopy: "aihub.bar.changeToWorkingCopy",
+  /** `{ project, repo, path, top? }` ("+ related files") -> `aihub browse related`: `{ route: "codeSearch"|"tree", files: [{ path, why }] }`: tests and same-name files first, then the files that use it */
+  changeSuggestFiles: "aihub.bar.changeSuggestFiles",
   // ---- Ask Agent about Selected (aihub browse ask; read only; docs/cli-json.md "Ask Agent about Selected") ----
   /** `{ scope: [{ project, repo? }], prompt, where?: "panel"|"newWindow"|"terminal", story?, limit? }` -> `{ id, where, dir, limit, agent, terminal? }`; changeStop `{ id }` stops it too */
   askStart: "aihub.bar.askStart",

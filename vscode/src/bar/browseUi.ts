@@ -45,6 +45,7 @@ export function registerBrowseCommands(reg: (id: string, f: (...a: any[]) => unk
   };
   reg(BAR_COMMANDS.browseSearch, withRg(read("search", browseArgs.search)));
   reg(BAR_COMMANDS.browseSuggestBranch, read("suggest", browseArgs.suggestBranch));
+  reg(BAR_COMMANDS.changeSuggestFiles, read("related", browseArgs.related));
   // a write: never shared, never remembered; the content and message go in private files that are removed right after
   reg(BAR_COMMANDS.browsePush, async (a: PushArg) => {
     let files: ReturnType<typeof pushFiles>;

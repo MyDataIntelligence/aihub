@@ -22,6 +22,7 @@ describe("repository browser in the bar: arguments", () => {
     expect(browseArgs.search({ text: "MAX_RETRIES", project: "p", ext: ["py", "sql"], top: 10 })).toEqual(["browse", "search", "--text", "MAX_RETRIES", "--project", "p", "--top", "10", "--ext", "py,sql"]);
     expect(browseArgs.search({ text: "x", scope: [{ project: "p1" }, { project: "p2", repo: "r" }], branch: "main", local: true })).toEqual(["browse", "search", "--text", "x", "--scope", "p1,p2/r", "--branch", "main", "--local"]);
     expect(browseArgs.createPr({ project: "p", repo: "r", branch: "feature/4711-fix", story: 4711, draft: true })).toEqual(["browse", "pr", "--branch", "feature/4711-fix", "--project", "p", "--repo", "r", "--story", "4711", "--draft"]);
+    expect(browseArgs.related({ project: "p", repo: "r", path: "/a.py", top: 5 })).toEqual(["browse", "related", "--project", "p", "--repo", "r", "--path", "/a.py", "--top", "5"]);
     expect(browseArgs.suggestBranch({ story: 4711, path: "/a.py" })).toEqual(["browse", "suggest-branch", "--story", "4711", "--path", "/a.py"]);
   });
 

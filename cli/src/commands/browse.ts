@@ -18,6 +18,7 @@ export const BROWSE_USAGE = `usage: aihub browse <sub> [--org O] [--refresh]   (
            Code Search; without it (or --local) the clones on this PC (ripgrep, else git grep), nothing sent
   push     --project P --repo R --path /file --base-commit SHA --base-branch B --content-file F --branch feature/x --message-file M
            [--pr [--target T] [--story N] [--pr-title t] [--draft]] [--rebase]   one commit on a new branch, no clone
+  related  --project P --repo R --path /file [--top 10]   "+ related files": users (Code Search), tests and same-name files
   pr       --project P --repo R --branch B [--target T] [--story N] [--pr-title t] [--draft]   Create Pull Request after a push
   suggest-branch [--story N] --path /file [--title t]
   pipelines --project P                                       pipelines of a project: folders, repo, YAML, default branch, latest run
@@ -32,7 +33,7 @@ export const BROWSE_USAGE = `usage: aihub browse <sub> [--org O] [--refresh]   (
   draft-delete --project P --pipeline ID [--keep-branch]      only your own draft-* in \Drafts: the pipeline and its branch
   (push takes --pipeline ID too: the answer says whether that pipeline can run on the new branch)`;
 
-const SUBS = ["change", "ask", "projects", "project", "repo", "items", "file", "branches", "history", "diff", "blame", "find", "search", "push", "pr", "suggest-branch", "pipelines", "pipeline", "run-plan", "run", "artifacts", "artifact-files", "artifact-open", "draft-create", "drafts", "draft-delete"];
+const SUBS = ["change", "ask", "related", "projects", "project", "repo", "items", "file", "branches", "history", "diff", "blame", "find", "search", "push", "pr", "suggest-branch", "pipelines", "pipeline", "run-plan", "run", "artifacts", "artifact-files", "artifact-open", "draft-create", "drafts", "draft-delete"];
 
 export async function run(argv: string[], ctx: Ctx): Promise<void> {
   const [sub0, ...rest0] = argv;
@@ -183,6 +184,8 @@ async function answer(sub: string, v: V, ctx: Ctx): Promise<unknown> {
       const s = await import("../lib/browse/search.js");
       return s.browseSearch(b, { text: need(v, "text"), scope: s.parseScope(str(v, "scope")), project: str(v, "project"), repo: str(v, "repo"), path: str(v, "path"), ext: list(str(v, "ext")), branch: str(v, "branch"), top: num(str(v, "top"), "--top"), local: !!v.local });
     }
+    case "related":
+      return (await import("../lib/browse/search.js")).relatedFiles(b, { ...repoArgs(), path: need(v, "path"), top: num(str(v, "top"), "--top") });
     case "pr":
       return (await import("../lib/browse/push.js")).browsePr(b, { ...repoArgs(), branch: need(v, "branch"), target: str(v, "target"), story: num(str(v, "story"), "--story"), prTitle: str(v, "pr-title"), draft: !!v.draft });
     case "push": {
