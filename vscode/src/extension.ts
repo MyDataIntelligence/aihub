@@ -16,7 +16,7 @@ import { chatOpenArgs, copilotAgentInstalled } from "./agents";
 import { BarLoader } from "./data";
 import { renderBody, renderError, renderPage } from "./html";
 import { popupFor } from "./popups";
-import { statusItems, type BarError, type BarModel, type StatusItem, type Tone } from "./model";
+import { itemsForHead, statusItems, type BarError, type BarModel, type StatusItem, type Tone } from "./model";
 import { Refresher, type Result } from "./refresher";
 import { registerGitCommands } from "./gitUi";
 import { SET_FILES, terminalRoot } from "./terminalRoot";
@@ -163,6 +163,8 @@ export class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     this.watchGit();
   }
 
+  /** The checked-out branch as .git/HEAD says it (set on every HEAD change); undefined until HEAD changed once. */
+  private headBranch: string | undefined;
   private gitWatcher: vscode.FileSystemWatcher | undefined;
   private gitWatcherStats: ReturnType<typeof trackedWatcher> | undefined;
   private watchGit() {
@@ -177,6 +179,12 @@ export class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     const stats = (this.gitWatcherStats = trackedWatcher("bar.gitBranch", glob));
     const fire = () => {
       stats.hit();
+      // the branch at once (a file read, no process): the items of the old branch go now, not when the window has the focus again
+      void readHeadBranch(this.cwd ?? "").then((b) => {
+        if (b === this.headBranch) return;
+        this.headBranch = b;
+        this.renderStatusBar();
+      });
       clearTrackedTimeout(this.gitDebounce);
       this.gitDebounce = trackedTimeout("bar.gitDebounce", () => {
         this.loader.invalidate();
@@ -267,7 +275,7 @@ export class Bar implements vscode.WebviewViewProvider, vscode.Disposable {
     const r = this.last;
     if (!r) return;
     const wanted: StatusItem[] = r.ok
-      ? statusItems(r.model)
+      ? itemsForHead(statusItems(r.model), r.model.branch, this.headBranch)
       : // an item only when it says something: the CLI is missing or old (the user can fix that); "no status" says nothing
         r.error.kind === "missing" || r.error.kind === "old"
         ? [{ id: "story", text: `$(warning) aihub: ${r.error.kind === "missing" ? "not installed" : "update needed"}`, tooltip: r.error.message, tone: "warn", command: "aihub.showBar" }]
