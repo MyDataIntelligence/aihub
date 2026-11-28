@@ -16,7 +16,7 @@ Los Bug #{{story.id}} {{story.title}} op tot een groene pull request naar {{targ
 1. Reproduceer eerst (/bug-reproduce {{story.id}}). Niet te reproduceren: stop en meld wat je zag.
 2. Een test die faalt zonder de fix en slaagt met de fix (het geval uit Repro Steps); alleen gerichte tests:
    `aihub test changed --run`.
-3. Commits met aihub: `aihub commit --type fix --subject "<wat>" --push`.
+3. Richtlijnen: vóór je eerste wijziging `aihub guidelines show --paths <bestanden>`, vóór elke commit en de PR `aihub guidelines check`; los op wat het noemt. Commits met aihub: `aihub commit --type fix --subject "<wat>" --push`.
 4. `aihub pr create` met in de tests het geval uit Repro Steps en de uitkomst; verzin nooit een uitkomst.
 5. Pipeline groen (`aihub watch --pr <n> --notify`), reviewthreads verwerkt, rapport met PR-link, wat de fix bewijst en
    wat niet is uitgevoerd.
