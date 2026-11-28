@@ -3,7 +3,7 @@ import { dirname, join, relative, sep } from "node:path";
 import { configHome } from "../configHome.js";
 import { BrowseError, normPath, repoClientOf, shortSha, webCommitUrl, webRepoUrl, type Browse } from "./core.js";
 import { hunks, merge3, splitLines, type Hunk } from "./lineDiff.js";
-import { contentAt, createRemotePr, headOf, isProtected, teamOf } from "./push.js";
+import { contentAt, createRemotePr, headOf, isProtected, teamOf, verifyTests } from "./push.js";
 import { browseHistory, readFileAt, repoRowOf } from "./read.js";
 
 /**
@@ -459,7 +459,9 @@ export async function changePush(b: Browse, id: string, o: { message?: string; p
   };
   if (o.pr) {
     try {
-      out.pr = await createRemotePr(b, { project: meta.project, repo: meta.repo, branch, target: o.target || def || meta.base.branch, path: d.files[0].path, message, story: o.story ?? meta.story, prTitle: o.prTitle, draft: o.draft, commitId, team });
+      // the description by the one rule of pr create: the agent's summary, the changed files, the checks that really ran
+      const changes = d.files.map((f) => `- ${f.path.replace(/^\//, "")}${f.status === "added" ? (team.language === "nl" ? " (nieuw)" : " (new)") : f.status === "deleted" ? (team.language === "nl" ? " (verwijderd)" : " (removed)") : ""}`).join("\n");
+      out.pr = await createRemotePr(b, { project: meta.project, repo: meta.repo, branch, target: o.target || def || meta.base.branch, path: d.files[0].path, message, story: o.story ?? meta.story, prTitle: o.prTitle, draft: o.draft, commitId, team, summary: d.summary ?? undefined, changes, tests: verifyTests(d.verify as never, team.language) });
     } catch (e) {
       out.prError = (e as Error).message;
     }

@@ -28,6 +28,7 @@ import { loadTeam, readUtf8 } from "./team.js";
 import { prTitle } from "./prTitle.js";
 import { checkActionSections } from "./prActions.js";
 import { checkNoise } from "./prNoise.js";
+import { describePr, notRunYet } from "./prDescription.js";
 import { impactWarning } from "./prImpact.js";
 import { derivedNote, targetFor } from "./baseBranch.js";
 
@@ -100,47 +101,41 @@ export async function createPr(ctx: Ctx, o: CreateOpts): Promise<string> {
     given = first ? `## ${first}\n${o.summaryText.trim()}\n\n${given}` : `${o.summaryText.trim()}\n\n${given}`;
   }
   const body = weaveNotes(given, tplHeadings, notes);
-  const emptyText = emptyFor(team);
-  let description: string;
-  let summary: string;
-  let filled: { heading: string; by: string }[] = [];
-  if (tpl) {
-    const fallback = {
-      changes: changesText(commits, diffSummary(root, mergeBase(root, target))),
-      tests: team.language === "nl" ? "Nog niet uitgevoerd." : "Not run yet.",
-    };
-    const c = compose({ template: tpl.content, body, code, emptyText, fallback, dropExtra: !o.asIs });
-    for (const h of c.dropped) ctx.err(`warning: section "${h}" is not in the team template; left out`);
-    description = c.text;
-    filled = c.filled;
-    const by = (k: string) => c.filled.filter((f) => f.by === k).map((f) => f.heading);
-    summary = [
-      by("body").length ? `body: ${by("body").join(", ")}` : "",
-      by("code").length ? `code: ${by("code").join(", ")}` : "",
-      by("empty").length ? `${emptyText}: ${by("empty").join(", ")}` : "",
-      by("extra").length ? `extra: ${by("extra").join(", ")}` : "",
-      c.dropped.length ? `left out (not in the team template): ${c.dropped.join(", ")}` : "",
-    ]
-      .filter(Boolean)
-      .concat(tplSource)
-      .join("; ");
-  } else {
-    const extra = [code.story, code.commits && `## Commits\n\n${code.commits}`].filter(Boolean).join("\n\n");
-    description = [body.trim(), extra].filter(Boolean).join("\n\n") + "\n";
-    summary = tplSource;
-  }
-  if (!o.asIs) checkNoise(given, "created");
-  if (!o.asIs) checkActionSections({ description, configured: team.pullRequest?.actionSections, emptyText, template: tpl?.content, verb: "created" });
-  // the story's acceptance criteria with their test status: the required section, "N/M proven" on top; not all proven
-  // stops here (nothing written) unless the user chose --draft or --anyway
-  const crit = wi ? await (await import("./e2e/prSection.js")).prCriteria(ctx, client, wi, team.language as string | undefined).catch(() => undefined) : undefined;
+  // one rule for every PR description (also a PR made without a clone): prDescription.ts
+  const d = await describePr(ctx, client, team, {
+    tpl,
+    given: body,
+    noiseText: given,
+    code,
+    fallback: { changes: changesText(commits, diffSummary(root, mergeBase(root, target))), tests: notRunYet(team) },
+    asIs: o.asIs,
+    storyId: wi,
+    plainExtra: [code.story, code.commits && `## Commits\n\n${code.commits}`].filter(Boolean).join("\n\n"),
+  });
+  for (const h of d.dropped) ctx.err(`warning: section "${h}" is not in the team template; left out`);
+  let description = d.description;
+  const emptyText = d.emptyText;
+  const filled = d.filled;
+  const by = (k: string) => d.filled.filter((f) => f.by === k).map((f) => f.heading);
+  let summary = tpl
+    ? [
+        by("body").length ? `body: ${by("body").join(", ")}` : "",
+        by("code").length ? `code: ${by("code").join(", ")}` : "",
+        by("empty").length ? `${emptyText}: ${by("empty").join(", ")}` : "",
+        by("extra").length ? `extra: ${by("extra").join(", ")}` : "",
+        d.dropped.length ? `left out (not in the team template): ${d.dropped.join(", ")}` : "",
+      ]
+        .filter(Boolean)
+        .concat(tplSource)
+        .join("; ")
+    : tplSource;
+  // the story's acceptance criteria with their test status: "N/M proven" on top; not all proven stops here (nothing written)
+  // unless the user chose --draft or --anyway
+  const crit = d.criteria;
   if (crit) {
-    const ps = await import("./e2e/prSection.js");
-    description = ps.withCriteria(description, crit.status, crit.lang);
     summary = [summary, `criteria ${crit.status.proven}/${crit.status.total} proven`].filter(Boolean).join("; ");
-    if (crit.status.proven < crit.status.total && !o.dryRun && !o.draft && !o.anyway) throw ps.notProvenError(crit.status, wi!, crit.lang);
-  }
-  const note = derivedNote(derived);
+    if (crit.status.proven < crit.status.total && !o.dryRun && !o.draft && !o.anyway) throw (await import("./e2e/prSection.js")).notProvenError(crit.status, wi!, crit.lang);
+  }  const note = derivedNote(derived);
   if (note) summary = [summary, note].filter(Boolean).join("; ");
   const warn = impactWarning(root, mergeBase(root, target), team, description);
   if (warn) summary = [summary, warn].filter(Boolean).join("; ");
