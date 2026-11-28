@@ -8,10 +8,10 @@ environment's branch whose deploy stage succeeded. Two read-only commands put Fa
 | Question | Command |
 |---|---|
 | Which commit runs in this workspace? | `aihub fabric deployed --workspace "Fabric test-repo test"` (or `--env TST`) |
-| Why did it fail now? | `aihub fabric failures --workspace "Fabric test-repo test" --since-green [--item pl_main]` |
+| Why did it fail now? | `aihub fabric failures --item pl_main --since-green` (or `--workspace "Fabric test-repo test"`) |
 
 Both need `fabric.environments.<ENV>` in team.yaml with `branch`, `workspace` (`{repo}` is the repository name) and
-`deployedBy { pipeline, stage }`; see [team-yaml.md](team-yaml.md). A feature workspace is connected to git: there
+`deployedBy { pipeline, stage }`; see [team-yaml.md](team-yaml.md). Without `--workspace`, `--since-green` takes the environment (with `deployedBy`) whose workspace holds `--item`, or the only one, and says so in its first line; two give an error that names both. A feature workspace is connected to git: there
 `aihub fabric git status --workspace W` gives the commit.
 
 ## How it works
@@ -27,7 +27,9 @@ Both need `fabric.environments.<ENV>` in team.yaml with `branch`, `workspace` (`
    started. The deployment live during the green run gives the commit `before`, the one live at the red run the commit `after`.
    Runs queued after the red run started are not read.
 4. **What changed.** The commits in `after` and not in `before` (at most 50, said when capped) and the files of each commit,
-   mapped to Fabric item folders `<name>.<Type>/`; other paths stay as they are. Commits are grouped by pull request.
+   mapped to Fabric item folders `<name>.<Type>/`; other paths stay as they are. Commits are grouped by pull request: the
+   merge commit and, for a merge without fast-forward, the branch commits it brought in (the completed pull request that
+   contains them).
 5. **Other repositories** of the two runs: per alias `unchanged` or `a -> b`, or "not available" when the API does not return them.
 6. **Rank.** A pull request (or a commit without one) is a suspect when it touches (a) the failed item or the failing item of
    the root-cause chain, (b) an item the failed pipeline calls (the caller knowledge of `aihub fabric plan`, read from the
