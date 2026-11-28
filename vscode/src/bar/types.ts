@@ -362,6 +362,10 @@ export const BAR_COMMANDS = {
   browseFind: "aihub.bar.browseFind",
   /** `{ text, project?, repo?, path?, ext?, top? }` -> `aihub browse search`: matching lines per file; `searchUnavailable` without Code Search */
   browseSearch: "aihub.bar.browseSearch",
+  /** `{ text, kinds?, top?, project?, org?, refresh?, onPart? }` -> `aihub search all --stream`: Search Everywhere, `{ org, text, kinds:[part] }`; each part also to the `onPart` command as `{ text, part }`; a newer search answers the older one `{ stopped: true }` */
+  searchAll: "aihub.bar.searchAll",
+  /** stop the running Search Everywhere (the popup closed) */
+  searchAllStop: "aihub.bar.searchAllStop",
   /** `{ story?, path, title? }` -> `aihub browse suggest-branch`: `{ branch }` (no network) */
   browseSuggestBranch: "aihub.bar.browseSuggestBranch",
   /** `{ project, repo, path, baseCommit, baseBranch, content, branch, message, pr?, target?, story?, prTitle?, draft?, rebase? }` -> `aihub browse push`: `status: pushed` or `status: conflict` (rebase: true = Rebase my change); protectedBranch and branchExists are errors */
